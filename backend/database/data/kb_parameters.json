@@ -1,0 +1,50 @@
+[
+  {
+    "ParameterID": "P001",
+    "Parameter": "Temperature",
+    "Unit": "℃",
+    "LSL": 100,
+    "USL": 120,
+    "LCL": 90,
+    "UCL": 130,
+    "SCORE": 5,
+    "Active": 1,
+    "Standard": 105
+  },
+  {
+    "ParameterID": "P002",
+    "Parameter": "Steam",
+    "Unit": "bar",
+    "LSL": 3.5,
+    "USL": 6,
+    "LCL": 3,
+    "UCL": 6.5,
+    "SCORE": 5,
+    "Active": 1,
+    "Standard": 4.5
+  },
+  {
+    "ParameterID": "P003",
+    "Parameter": "Air Pressure",
+    "Unit": "bar",
+    "LSL": 4.5,
+    "USL": 5,
+    "LCL": 4,
+    "UCL": 6,
+    "SCORE": 5,
+    "Active": 1,
+    "Standard": 4.5
+  },
+  {
+    "ParameterID": "P004",
+    "Parameter": "Speed",
+    "Unit": "m/min",
+    "LSL": 20,
+    "USL": 30,
+    "LCL": 15,
+    "UCL": 35,
+    "SCORE": 5,
+    "Active": 1,
+    "Standard": 25
+  }
+]

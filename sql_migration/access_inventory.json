@@ -1,0 +1,2205 @@
+{
+  "generated_at": "2026-07-15T13:28:41.894426",
+  "databases": [
+    {
+      "file": "/mnt/data/RECORD.accdb",
+      "schema": "legacy_df_data",
+      "size_bytes": 29003776,
+      "sha256": "456d481142f97315fc7d92b5befb87b2973af7e3df6e74f822bbd53e55bb4dff",
+      "tables": [
+        {
+          "name": "tbl_SentLog",
+          "columns": [
+            {
+              "name": "ID",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "COLOR",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CODE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM1",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "MACHINE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TANK",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "LEVEL",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM2",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENDING",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENT",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME1",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "yyyy-mm-dd hh:nn:ss\r\n"
+            },
+            {
+              "name": "TIME2",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "yyyy-mm-dd hh:nn:ss\r\n"
+            },
+            {
+              "name": "TIME3",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "yyyy-mm-dd hh:nn:ss\r\n"
+            },
+            {
+              "name": "ISSENT",
+              "type_code": 1,
+              "sql_type": "BOOLEAN",
+              "length": 1,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "Yes/No"
+            },
+            {
+              "name": "rawqrdye",
+              "type_code": 12,
+              "sql_type": "TEXT",
+              "length": 0,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "rawqrchem",
+              "type_code": 12,
+              "sql_type": "TEXT",
+              "length": 0,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "scale_check",
+              "type_code": 1,
+              "sql_type": "BOOLEAN",
+              "length": 1,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "Yes/No"
+            }
+          ],
+          "row_count": null,
+          "parse_error": "TypeError(\"'NoneType' object is not subscriptable\")"
+        },
+        {
+          "name": "tbl_Waiting",
+          "columns": [
+            {
+              "name": "ID",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "COLOR",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CODE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM1",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "MACHINE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TANK",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "LEVEL",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM2",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENDING",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENT",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME1",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME2",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME3",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "ISSENT",
+              "type_code": 1,
+              "sql_type": "BOOLEAN",
+              "length": 1,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "Yes/No"
+            }
+          ],
+          "row_count": 71,
+          "stats": {
+            "ID": {
+              "null_count": 71,
+              "distinct_count": 0
+            },
+            "COLOR": {
+              "null_count": 0,
+              "distinct_count": 65
+            },
+            "CODE": {
+              "null_count": 0,
+              "distinct_count": 50
+            },
+            "CONFIRM1": {
+              "null_count": 0,
+              "distinct_count": 2
+            },
+            "MACHINE": {
+              "null_count": 0,
+              "distinct_count": 17
+            },
+            "TANK": {
+              "null_count": 0,
+              "distinct_count": 2
+            },
+            "LEVEL": {
+              "null_count": 0,
+              "distinct_count": 7
+            },
+            "CONFIRM2": {
+              "null_count": 0,
+              "distinct_count": 2
+            },
+            "SENDING": {
+              "null_count": 0,
+              "distinct_count": 1
+            },
+            "SENT": {
+              "null_count": 0,
+              "distinct_count": 1
+            },
+            "TIME1": {
+              "null_count": 1,
+              "distinct_count": 54
+            },
+            "TIME2": {
+              "null_count": 71,
+              "distinct_count": 0
+            },
+            "TIME3": {
+              "null_count": 71,
+              "distinct_count": 0
+            },
+            "ISSENT": {
+              "null_count": 0,
+              "distinct_count": 1
+            }
+          }
+        },
+        {
+          "name": "tbl_ToSend2",
+          "columns": [
+            {
+              "name": "ID",
+              "type_code": 4,
+              "sql_type": "BIGINT",
+              "length": 4,
+              "nullable": true,
+              "autonumber": true,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "COLOR",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CODE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM1",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "MACHINE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TANK",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "LEVEL",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM2",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENDING",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENT",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME1",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME2",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME3",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "ISSENT",
+              "type_code": 1,
+              "sql_type": "BOOLEAN",
+              "length": 1,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "Yes/No"
+            }
+          ],
+          "row_count": 696,
+          "stats": {
+            "ID": {
+              "null_count": 0,
+              "distinct_count": 694,
+              "min": -2143145275,
+              "max": 2140399092
+            },
+            "COLOR": {
+              "null_count": 0,
+              "distinct_count": 1
+            },
+            "CODE": {
+              "null_count": 0,
+              "distinct_count": 416
+            },
+            "CONFIRM1": {
+              "null_count": 0,
+              "distinct_count": 177
+            },
+            "MACHINE": {
+              "null_count": 0,
+              "distinct_count": 1
+            },
+            "TANK": {
+              "null_count": 0,
+              "distinct_count": 22
+            },
+            "LEVEL": {
+              "null_count": 0,
+              "distinct_count": 11
+            },
+            "CONFIRM2": {
+              "null_count": 0,
+              "distinct_count": 29
+            },
+            "SENDING": {
+              "null_count": 14,
+              "distinct_count": 3
+            },
+            "SENT": {
+              "null_count": 14,
+              "distinct_count": 1
+            },
+            "TIME1": {
+              "null_count": 14,
+              "distinct_count": 1
+            },
+            "TIME2": {
+              "null_count": 1,
+              "distinct_count": 565
+            },
+            "TIME3": {
+              "null_count": 84,
+              "distinct_count": 523
+            },
+            "ISSENT": {
+              "null_count": 0,
+              "distinct_count": 2
+            }
+          }
+        },
+        {
+          "name": "tbl_OUTPUT_PROCESSING",
+          "columns": [
+            {
+              "name": "ID",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "COLOR",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CODE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM1",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "MACHINE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TANK",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "LEVEL",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM2",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENDING",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENT",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME1",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME2",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME3",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "ISSENT",
+              "type_code": 1,
+              "sql_type": "BOOLEAN",
+              "length": 1,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "Yes/No"
+            }
+          ],
+          "row_count": 0,
+          "stats": {
+            "ID": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "COLOR": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "CODE": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "CONFIRM1": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "MACHINE": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TANK": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "LEVEL": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "CONFIRM2": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "SENDING": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "SENT": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TIME1": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TIME2": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TIME3": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "ISSENT": {
+              "null_count": 0,
+              "distinct_count": 0
+            }
+          }
+        },
+        {
+          "name": "tbl_ARCHIVE",
+          "columns": [
+            {
+              "name": "ID",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "COLOR",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CODE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM1",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "MACHINE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TANK",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "LEVEL",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM2",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENDING",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENT",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME1",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME2",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME3",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "ISSENT",
+              "type_code": 1,
+              "sql_type": "BOOLEAN",
+              "length": 1,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "Yes/No"
+            }
+          ],
+          "row_count": 0,
+          "stats": {
+            "ID": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "COLOR": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "CODE": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "CONFIRM1": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "MACHINE": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TANK": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "LEVEL": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "CONFIRM2": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "SENDING": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "SENT": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TIME1": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TIME2": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TIME3": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "ISSENT": {
+              "null_count": 0,
+              "distinct_count": 0
+            }
+          }
+        },
+        {
+          "name": "WAITING",
+          "columns": [
+            {
+              "name": "ID1",
+              "type_code": 4,
+              "sql_type": "BIGINT",
+              "length": 4,
+              "nullable": true,
+              "autonumber": true,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "ID",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "COLOR",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CODE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM1",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "MACHINE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TANK",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "LEVEL",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM2",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENDING",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENT",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME1",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "m/d/yyyy hh:nn:ss"
+            },
+            {
+              "name": "TIME2",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME3",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "ISSENT",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": true,
+              "format": "@"
+            }
+          ],
+          "row_count": 57,
+          "stats": {
+            "ID1": {
+              "null_count": 0,
+              "distinct_count": 1
+            },
+            "ID": {
+              "null_count": 57,
+              "distinct_count": 0
+            },
+            "COLOR": {
+              "null_count": 1,
+              "distinct_count": 43
+            },
+            "CODE": {
+              "null_count": 1,
+              "distinct_count": 1
+            },
+            "CONFIRM1": {
+              "null_count": 1,
+              "distinct_count": 13
+            },
+            "MACHINE": {
+              "null_count": 2,
+              "distinct_count": 3
+            },
+            "TANK": {
+              "null_count": 44,
+              "distinct_count": 4
+            },
+            "LEVEL": {
+              "null_count": 1,
+              "distinct_count": 2
+            },
+            "CONFIRM2": {
+              "null_count": 56,
+              "distinct_count": 1
+            },
+            "SENDING": {
+              "null_count": 57,
+              "distinct_count": 0
+            },
+            "SENT": {
+              "null_count": 57,
+              "distinct_count": 0
+            },
+            "TIME1": {
+              "null_count": 1,
+              "distinct_count": 1
+            },
+            "TIME2": {
+              "null_count": 57,
+              "distinct_count": 0
+            },
+            "TIME3": {
+              "null_count": 57,
+              "distinct_count": 0
+            },
+            "ISSENT": {
+              "null_count": 57,
+              "distinct_count": 0
+            }
+          }
+        },
+        {
+          "name": "TBL_INPUT_ALL",
+          "columns": [
+            {
+              "name": "ID",
+              "type_code": 4,
+              "sql_type": "BIGINT",
+              "length": 4,
+              "nullable": true,
+              "autonumber": true,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "COLOR",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CODE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM1",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "MACHINE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TANK",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "LEVEL",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM2",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENDING",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENT",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME1",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "yyyy-mm-dd hh:nn:ss\r\n"
+            },
+            {
+              "name": "TIME2",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "yyyy-mm-dd hh:nn:ss\r\n"
+            },
+            {
+              "name": "TIME3",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "yyyy-mm-dd hh:nn:ss\r\n"
+            },
+            {
+              "name": "ISSENT",
+              "type_code": 1,
+              "sql_type": "BOOLEAN",
+              "length": 1,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "Yes/No"
+            },
+            {
+              "name": "rawqrdye",
+              "type_code": 12,
+              "sql_type": "TEXT",
+              "length": 0,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "rawqrchem",
+              "type_code": 12,
+              "sql_type": "TEXT",
+              "length": 0,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "scale_check",
+              "type_code": 1,
+              "sql_type": "BOOLEAN",
+              "length": 1,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "Yes/No"
+            }
+          ],
+          "row_count": 0,
+          "stats": {
+            "ID": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "COLOR": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "CODE": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "CONFIRM1": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "MACHINE": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TANK": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "LEVEL": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "CONFIRM2": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "SENDING": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "SENT": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TIME1": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TIME2": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TIME3": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "ISSENT": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "rawqrdye": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "rawqrchem": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "scale_check": {
+              "null_count": 0,
+              "distinct_count": 0
+            }
+          }
+        },
+        {
+          "name": "tbl_ToSend",
+          "columns": [
+            {
+              "name": "ID",
+              "type_code": 4,
+              "sql_type": "BIGINT",
+              "length": 4,
+              "nullable": true,
+              "autonumber": true,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "COLOR",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CODE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM1",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "MACHINE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TANK",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "LEVEL",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "CONFIRM2",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "SENDING",
+              "type_code": 1,
+              "sql_type": "BOOLEAN",
+              "length": 1,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "Yes/No"
+            },
+            {
+              "name": "SENT",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "@"
+            },
+            {
+              "name": "TIME1",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "yyyy-mm-dd hh:nn:ss\r\n"
+            },
+            {
+              "name": "TIME2",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "yyyy-mm-dd hh:nn:ss\r\n"
+            },
+            {
+              "name": "TIME3",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "yyyy-mm-dd hh:nn:ss\r\n"
+            },
+            {
+              "name": "ISSENT",
+              "type_code": 1,
+              "sql_type": "BOOLEAN",
+              "length": 1,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "Yes/No"
+            },
+            {
+              "name": "rawqrdye",
+              "type_code": 12,
+              "sql_type": "TEXT",
+              "length": 0,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "rawqrchem",
+              "type_code": 12,
+              "sql_type": "TEXT",
+              "length": 0,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "scale_check",
+              "type_code": 1,
+              "sql_type": "BOOLEAN",
+              "length": 1,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "Yes/No"
+            }
+          ],
+          "row_count": 0,
+          "stats": {
+            "ID": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "COLOR": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "CODE": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "CONFIRM1": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "MACHINE": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TANK": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "LEVEL": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "CONFIRM2": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "SENDING": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "SENT": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TIME1": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TIME2": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "TIME3": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "ISSENT": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "rawqrdye": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "rawqrchem": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "scale_check": {
+              "null_count": 0,
+              "distinct_count": 0
+            }
+          }
+        },
+        {
+          "name": "tblSync",
+          "columns": [
+            {
+              "name": "NextFE",
+              "type_code": 4,
+              "sql_type": "BIGINT",
+              "length": 4,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "FE1_Alive",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "FE2_Alive",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "FE3_Alive",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "FE4_Alive",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "FE5_Alive",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            }
+          ],
+          "row_count": 0,
+          "stats": {
+            "NextFE": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "FE1_Alive": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "FE2_Alive": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "FE3_Alive": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "FE4_Alive": {
+              "null_count": 0,
+              "distinct_count": 0
+            },
+            "FE5_Alive": {
+              "null_count": 0,
+              "distinct_count": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "file": "/mnt/data/RECORD(1).accdb",
+      "schema": "legacy_df_scale",
+      "size_bytes": 24547328,
+      "sha256": "1afca8455e8552f0db059670d92065eda2de5675ea8800e9913d9e88914e3aba",
+      "tables": [
+        {
+          "name": "tblRECORD",
+          "columns": [
+            {
+              "name": "ID",
+              "type_code": 4,
+              "sql_type": "BIGINT",
+              "length": 4,
+              "nullable": true,
+              "autonumber": true,
+              "primary_key": true,
+              "format": ""
+            },
+            {
+              "name": "batchID",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "COLOR",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "CODE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "MACHINE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "LEVEL",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "RACK",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "DYECODE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "WEIGHT",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "PROCESS",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "TIME",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "processCOLOR",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "WH_DONE",
+              "type_code": 1,
+              "sql_type": "BOOLEAN",
+              "length": 1,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": "Yes/No"
+            },
+            {
+              "name": "WH_TIME",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            }
+          ],
+          "row_count": 140660,
+          "stats": {
+            "ID": {
+              "null_count": 0,
+              "distinct_count": 140660,
+              "min": -2147473651,
+              "max": 2147482522
+            },
+            "batchID": {
+              "null_count": 0,
+              "distinct_count": 36420
+            },
+            "COLOR": {
+              "null_count": 109033,
+              "distinct_count": 2510
+            },
+            "CODE": {
+              "null_count": 109033,
+              "distinct_count": 667
+            },
+            "MACHINE": {
+              "null_count": 109033,
+              "distinct_count": 545
+            },
+            "LEVEL": {
+              "null_count": 109033,
+              "distinct_count": 385
+            },
+            "RACK": {
+              "null_count": 31627,
+              "distinct_count": 176
+            },
+            "DYECODE": {
+              "null_count": 31627,
+              "distinct_count": 311
+            },
+            "WEIGHT": {
+              "null_count": 31627,
+              "distinct_count": 6316
+            },
+            "PROCESS": {
+              "null_count": 31627,
+              "distinct_count": 33409
+            },
+            "TIME": {
+              "null_count": 109033,
+              "distinct_count": 31597
+            },
+            "processCOLOR": {
+              "null_count": 31716,
+              "distinct_count": 4
+            },
+            "WH_DONE": {
+              "null_count": 0,
+              "distinct_count": 2
+            },
+            "WH_TIME": {
+              "null_count": 139446,
+              "distinct_count": 4
+            }
+          }
+        },
+        {
+          "name": "tblRECORD_chem",
+          "columns": [
+            {
+              "name": "ID",
+              "type_code": 4,
+              "sql_type": "BIGINT",
+              "length": 4,
+              "nullable": true,
+              "autonumber": true,
+              "primary_key": true,
+              "format": ""
+            },
+            {
+              "name": "batchID",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "COLOR",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "CODE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "MACHINE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "LEVEL",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "RACK",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "DYECODE",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "WEIGHT",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "PROCESS",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "TIME",
+              "type_code": 8,
+              "sql_type": "TIMESTAMP",
+              "length": 8,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            },
+            {
+              "name": "processCOLOR",
+              "type_code": 10,
+              "sql_type": "TEXT",
+              "length": 510,
+              "nullable": true,
+              "autonumber": false,
+              "primary_key": false,
+              "format": ""
+            }
+          ],
+          "row_count": 5061,
+          "stats": {
+            "ID": {
+              "null_count": 0,
+              "distinct_count": 5061,
+              "min": 1773133752,
+              "max": 1782097179
+            },
+            "batchID": {
+              "null_count": 0,
+              "distinct_count": 5061
+            },
+            "COLOR": {
+              "null_count": 0,
+              "distinct_count": 977
+            },
+            "CODE": {
+              "null_count": 0,
+              "distinct_count": 391
+            },
+            "MACHINE": {
+              "null_count": 0,
+              "distinct_count": 52
+            },
+            "LEVEL": {
+              "null_count": 0,
+              "distinct_count": 38
+            },
+            "RACK": {
+              "null_count": 5061,
+              "distinct_count": 0
+            },
+            "DYECODE": {
+              "null_count": 5061,
+              "distinct_count": 0
+            },
+            "WEIGHT": {
+              "null_count": 5061,
+              "distinct_count": 0
+            },
+            "PROCESS": {
+              "null_count": 5061,
+              "distinct_count": 0
+            },
+            "TIME": {
+              "null_count": 0,
+              "distinct_count": 5061
+            },
+            "processCOLOR": {
+              "null_count": 5061,
+              "distinct_count": 0
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    "legacy_df_data.tbl_SentLog: data extraction failed: TypeError(\"'NoneType' object is not subscriptable\")"
+  ]
+}

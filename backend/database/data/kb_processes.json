@@ -1,0 +1,18 @@
+[
+  {
+    "ProcessID": "PR01",
+    "Process": "织胚"
+  },
+  {
+    "ProcessID": "PR02",
+    "Process": "过水"
+  },
+  {
+    "ProcessID": "PR03",
+    "Process": "染色"
+  },
+  {
+    "ProcessID": "PR04",
+    "Process": "烫机"
+  }
+]

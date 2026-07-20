@@ -1,0 +1,638 @@
+# Session Log - Phiên làm việc ngày 15/07/2026
+
+## Nhật ký hoạt động
+
+### 1. File đã đọc và phân tích
+- `Bao_cao_phan_tich_thiet_ke_he_thong_tu_VBA.docx` (chuyển sang dạng txt để đọc)
+- `Bao_cao_PTTK_va_chuyen_doi_SQL_V1.0.docx` (chuyển sang dạng txt để đọc)
+- `F:\DF\chem_order.accdb` (Cơ sở dữ liệu Access mới bổ sung, kiểm tra qua pyodbc)
+- `sql_migration/01_legacy_access_import_postgresql.sql`
+- `sql_migration/02_target_normalized_schema_postgresql.sql`
+- `sql_migration/03_transform_legacy_to_target.sql`
+- `sql_migration/04_validation_queries.sql`
+- `sql_migration/access_inventory.json`
+- Thư mục `.claude` cũ (các tệp `CLAUDE.md`, `instructions.md` và các tệp trong thư mục `commands/`).
+
+### 2. Phân loại và xử lý thư mục `.claude` cũ
+Toàn bộ thư mục `.claude` cũ được xác nhận sao chép từ dự án "Stock Signal App" (ứng dụng phân tích chứng khoán Việt Nam) và không có bất kỳ liên quan nào đến dự án DF hiện tại.
+
+**Bảng phân loại xử lý:**
+- `CLAUDE.md` (cũ): Xóa & Ghi đè mới hoàn toàn phục vụ dự án DF.
+- `instructions.md` (cũ): Xóa bỏ hoàn toàn (Không liên quan).
+- Thư mục `commands/` (cũ) bao gồm `audit-candles.md`, `audit-indicators.md`, `audit-momentum-bvps.md`, `audit-signals.md`, `audit-ui.md`, `backtest.md`, `run-app.md`: Xóa bỏ toàn bộ thư mục (Không liên quan, tránh gây hiểu nhầm cho lập trình viên tương lai).
+
+### 3. Các tệp đã tạo mới / cập nhật trong `.claude`
+- `CLAUDE.md` (Cập nhật)
+- `project-overview.md` (Tạo mới)
+- `system-context.md` (Tạo mới)
+- `business-modules.md` (Tạo mới)
+- `current-data-model.md` (Tạo mới)
+- `target-data-model.md` (Tạo mới)
+- `migration-strategy.md` (Tạo mới)
+- `architecture-decisions.md` (Tạo mới)
+- `coding-standards.md` (Tạo mới)
+- `security-rules.md` (Tạo mới)
+- `testing-strategy.md` (Tạo mới)
+- `development-roadmap.md` (Tạo mới)
+- `open-questions.md` (Tạo mới)
+- `risks-and-assumptions.md` (Tạo mới)
+- `source-traceability.md` (Tạo mới)
+- `session-log.md` (Tạo mới)
+
+---
+
+## Các Phát hiện Chính (Key Findings)
+
+### 1. Lỗi lệch cột dữ liệu (Column Shift) nghiêm trọng trong Access Legacy
+Khi phân tích tệp `01_legacy_access_import_postgresql.sql` và so sánh cấu trúc định nghĩa với dữ liệu `COPY` thực tế, chúng tôi phát hiện hai bảng hàng chờ điều phối bị lệch cột nghiêm trọng:
+- **Bảng `tbl_ToSend2`:** Cột `CODE` chứa dữ liệu Color, cột `CONFIRM1` chứa Product Code, cột `MACHINE` chứa confirmation `OK`, cột `TANK` chứa Machine (`VD15`), cột `CONFIRM2` chứa Level (`450`), cột `SENDING` chứa confirm 2 (`OK`), cột `SENT` chứa `0`, cột `TIME1` chứa `0`, cột `TIME2` chứa Time 1, và cột `TIME3` chứa Time 2.
+- **Bảng `WAITING`:** Cột `COLOR` chứa Product Code (`L23892`), cột `CODE` chứa confirmation `OK`, cột `CONFIRM1` chứa Machine (`VD02` hoặc `VD09`), cột `MACHINE` chứa Tank (`X`), cột `TANK` chứa Level (`50` hoặc `100`), và toàn bộ dữ liệu màu sắc (`COLOR`) thực tế bị mất khỏi bảng này.
+
+> [!WARNING]
+> **Hậu quả:** Câu lệnh transform động trong `03_transform_legacy_to_target.sql` sử dụng phép join tĩnh:
+> `LEFT JOIN app.machines m ON m.code=trim(d."MACHINE"::text)`
+> `LEFT JOIN app.production_batches b ON b.product_code=d."CODE"::text AND b.machine_id=m.id`
+> Việc này sẽ dẫn đến kết quả join là **NULL** cho tất cả các bản ghi di trú từ `tbl_ToSend2` và `WAITING` vì `d."MACHINE"` chứa `'OK'` hoặc `'X'` và `d."CODE"` chứa `'EP68132'` (color) hoặc `'OK'`. Script transform cần phải được viết lại để ánh xạ các cột riêng biệt cho từng bảng.
+
+### 2. Dữ liệu cân hóa chất trong `tblRECORD_chem` và vai trò của `tbl_status` (Từ `chem_order.accdb`)
+- Cả trong database primary (5.061 dòng) và database bổ sung `chem_order.accdb` (1.500 dòng), toàn bộ dữ liệu cột `WEIGHT` và `PROCESS` trong `tblRECORD_chem` đều bị trống.
+- Tuy nhiên, tệp `chem_order.accdb` mới chứa bảng **`tbl_status`** (40 dòng) định nghĩa cấu hình: `machine` (ví dụ `'VD016'`) -> `chem` (ví dụ `4`) -> `chem_name` (ví dụ `'AC77'`) -> `status` (ví dụ `'0'`).
+- Đây là phát hiện quan trọng: chứng minh nhà máy nhuộm sử dụng **hệ thống cấp hóa chất tự động** (như hệ Copower). Bảng `tbl_status` là bản đồ cấu hình van/kênh nạp hóa chất cho từng máy nhuộm. Khi mẻ nhuộm bắt đầu, VBA viết lệnh nạp hóa chất thô vào bảng này với `status = '0'` để hệ thống cấp tự động thực thi.
+- Do đó, không có dữ liệu cân hóa chất thủ công trong `tblRECORD_chem`. Phân hệ hóa chất cần được chuyển sang tích hợp điều khiển tự động thay vì trạm cân thủ công.
+
+
+### 3. Lỗi Overflow Page của `tbl_SentLog`
+- Bảng nhật ký gửi máy `tbl_SentLog` (chứa dữ liệu lịch sử quan trọng nhất của phân hệ điều phối máy) không thể trích xuất tự động do lỗi trang dữ liệu Microsoft Access.
+- Cần chạy quy trình Compact & Repair trên MS Access để phục hồi dữ liệu trước khi di trú chính thức.
+
+---
+
+## Phản hồi và Xác nhận của Người dùng
+Người dùng đã xác nhận các thông tin nghiệp vụ và kỹ thuật cốt lõi:
+1. **Hệ thống pha màu tự động & Định vị Web App:** Nhà máy nhuộm đai sử dụng hệ thống pha màu tự động. Dữ liệu màu sắc/sản phẩm nằm trên hệ thống **MES**. Ứng dụng Web mới đóng vai trò **cầu nối trung gian (Connector)** liên kết MES và hệ nhuộm tự động.
+2. **Kích in tem & Kết nối:** Sử dụng dòng máy in TSC TE200 (hoặc tương thích), hỗ trợ kết nối USB máy trạm hoặc qua mạng LAN. **Cho phép người dùng tự điều chỉnh kích thước nhãn tem in (Label Size) trên giao diện Web.**
+3. **Chất lượng dữ liệu & Logic:** Đồng ý sửa lệch cột cho đúng logic nghiệp vụ. Chấp nhận cho lập trình viên tự kiểm tra mã nguồn VBA để tự bổ sung cấu trúc các bảng bị thiếu cho hợp logic.
+4. **Stack công nghệ:** Phê duyệt stack **Laravel + PostgreSQL + Vue.js + Local Agent .NET**.
+
+---
+
+## Các Câu hỏi Còn mở (Open Questions)
+*Chi tiết xem tại [open-questions.md](file:///F:/DF/.claude/open-questions.md)*
+1. Quy định dung sai cân bột màu và hóa chất phụ trợ (CH-BUS-002).
+2. Giao thức Serial kết nối cân điện tử tại các máy trạm (CH-TECH-002).
+3. Giao thức tích hợp của hệ pha màu tự động hạ nguồn với database thông qua bảng `tbl_status` (CH-TECH-001).
+
+---
+
+## Nhật ký Cập nhật (15/07/2026) - Hoàn thành Phase 1-3 & Kích hoạt Phase 4
+1. **Hoàn thành Nền tảng (Phase 1):** Khởi tạo thành công các repo trong `backend`, `frontend`, và `agent`. Thiết lập Docker Compose Postgres chạy trên cổng 5433 (để tránh xung đột dịch vụ Postgres cục bộ trên Windows trạm).
+2. **Hoàn thành Database (Phase 2):** Import thành công và validation đối soát khớp 100% dữ liệu lịch sử cân thuốc nhuộm (140,660 dòng) và hóa chất (5,061 dòng).
+3. **Hoàn thành Auth/RBAC/Audit (Phase 3):** Tích hợp Laravel Sanctum, mã hóa mật khẩu admin/admin123 bằng BCrypt. Viết CheckRole middleware, thiết lập Audit Log Service tự động lưu vết JSONB thô. Cổng chạy Frontend được thiết lập tại cổng `3001` (dùng Vite 5 tránh lỗi Rolldown trên Node v24).
+4. **Tái cấu trúc 14 Phase:** Dựa trên tài liệu `phase.docx`, lộ trình triển khai đã được điều chỉnh từ 12 phase thành 14 phase, bổ sung chi tiết **Phase 8: Vận chuyển** và **Phase 9: Cấp máy**.
+
+---
+
+## Nhật ký Phiên (Giai đoạn tiếp theo - 15/07/2026)
+### 1. Phân tích & Bổ sung CSDL `chem_order.accdb`
+- **Định vị tệp tin:** Đã định vị thành công CSDL Access `chem_order.accdb` tại đường dẫn thực tế trên hệ thống: `C:\Users\V170192\OneDrive\Desktop\DF\database\chem_order\chem_order.accdb`.
+- **Thống kê dữ liệu:**
+  - Bảng `tbl_status`: 40 dòng (chứa cấu hình nạp van/kênh hóa chất tự động).
+  - Bảng `tblRECORD`: 47,381 dòng (chứa cả dữ liệu cân thuốc nhuộm và hóa chất theo dạng header + detail).
+  - Bảng `tblRECORD_chem`: 1,500 dòng (chỉ chứa các dòng tiêu đề/header cho các lô hóa chất, không có chi tiết khối lượng hay dyecode).
+- **Đối soát di trú:**
+  - Wrote and ran comparisons showing that **all 47,381 rows of `tblRECORD`, all 1,500 rows of `tblRECORD_chem`, and all 40 rows of `tbl_status`** from `chem_order.accdb` are **100% matched and already successfully imported/migrated** into the PostgreSQL database.
+  - No new/missing records were found in this database compared to the legacy Postgres staging schemas (`legacy_df_scale`), indicating migration for this source is complete.
+
+### 2. Triển khai & Hoàn thành Phase 4 (Master Data & Formula)
+- **Mục tiêu:** Số hóa danh mục thiết bị/vật tư, cấu hình hệ số nước, và logic tính toán định lượng công thức nhuộm (Water & Weight Calculation).
+- **Kết quả:**
+  - Thiết kế và chạy di trú thành công các bảng: `materials`, `water_configs`, `recipes`, `recipe_versions`, `recipe_materials` và `process_parameters` vào PostgreSQL.
+  - Số hóa và khởi tạo (seed) **439 danh mục vật tư** và **40 ma trận hệ số nước** trực tiếp từ Excel.
+  - Lập trình `FormulaCalculationService` xử lý đúng logic tính nước, tự động trích xuất công đoạn, và làm tròn trọng lượng bột màu (Precision Rounding $\le 1\%$).
+  - Viết giao diện Vue.js hoàn chỉnh gồm: Danh mục vật tư, Cấu hình ma trận nước, và Soạn thảo công thức đính kèm **Trình giả lập tính toán thời gian thực (Simulator)**.
+  - Vượt qua kiểm thử **Unit Test** và **Golden Master Test 50/50 mẻ mẫu** khớp hoàn toàn 100% với Excel VBA (sai số = 0).
+  - Không triển khai quy trình duyệt công thức phức tạp theo yêu cầu trực tiếp từ người dùng (công thức tạo mới ở trạng thái `ACTIVE` dùng được ngay).
+
+---
+
+### 3. Triển khai & Hoàn thành Phase 5 (Lệnh sản xuất & Điều phối máy)
+- **Mục tiêu:** Quản lý lệnh sản xuất và hàng chờ điều phối gửi lệnh nạp van hóa chất tự động có cơ chế khóa logic chống tranh chấp (Claim Lock).
+- **Kết quả:**
+  - Viết `ProductionBatchController` và `MachineDispatchController` hoàn tất các endpoints hỗ trợ lọc, di chuyển trạng thái lô, claim/release lock, và giả lập phát lệnh gửi máy nhuộm.
+  - Tích hợp cơ chế tự sinh UUID ở tầng Eloquent (`creating` boot event) cho cả `ProductionBatch` và `MachineDispatch`.
+  - Triển khai thuật toán tính lock age sử dụng trị tuyệt đối `abs()` để tránh lỗi lệch dấu thời gian khi Carbon so sánh.
+  - Viết giao diện Vue.js hoàn tất gồm màn hình **Lô sản xuất (bao gồm MES Mock Tool)** và **Điều phối máy nhuộm (hiển thị timer đếm ngược 5 phút, cướp khóa khi hết hạn và nút phát lệnh)**.
+  - Vượt qua kiểm thử **Integration Test (14 assertions)** xác minh đầy đủ tính đúng đắn của luồng khóa tranh chấp, tự giải phóng khi gửi máy, cướp khóa khi hết hạn, và chặn gửi máy khi mất khóa.
+
+---
+
+## Nhật ký Phiên (Giai đoạn tiếp theo - 16/07/2026)
+### 4. Triển khai & Hoàn thành Phase 6 (Module Cân sản xuất & Local Scale Agent)
+- **Mục tiêu:** Nhận giá trị cân điện tử qua cache-based live weight streaming và lưu lịch sử cân hoàn thành.
+- **Kết quả:**
+  - Viết các API lưu/lấy số cân thô thời gian thực qua Cache và lưu trữ kết quả cân hoàn tất (`app.scale_measurements`).
+  - Drop thành công constraint `NOT NULL` cho `legacy_id` và `legacy_source` trên cột `app.scale_measurements` để tương thích luồng ghi nhận trực tiếp từ web.
+  - Nâng cấp giao diện Vue.js **Trạm cân (WeighingStation.vue)** với bảng hiển thị LED phát sáng, tự động đối soát dung sai sai số $\le 1\%$ và tích hợp Manual Slider để kiểm thử.
+  - Vượt qua kiểm thử **Integration Test (12 assertions)** của `ScaleLiveWeightTest`.
+
+### 5. Triển khai & Hoàn thành Phase 7 (Quy trình đóng tem & In ấn)
+- **Mục tiêu:** Quản lý hàng chờ in tem nhãn mẻ cân hoàn thành, sinh lệnh in TSPL động hỗ trợ tùy biến kích thước nhãn.
+- **Kết quả:**
+  - Thiết kế và chạy di trú thành công bảng `app.print_jobs` lưu trữ các lệnh in.
+  - Lập trình `PrintJobController` sinh lệnh in chuẩn **TSPL** (tương thích máy in TSC TE200) chứa thông số mẻ nhuộm, mã QR Code và chấp nhận tham số tùy biến kích thước nhãn (`width` x `height`).
+  - Cập nhật `AgentJobsController` để trả về các lệnh in `PENDING` thực tế cho Local Agent và ghi nhận xác nhận `ack` chuyển status sang `SUCCESS`.
+  - Tích hợp khung **🏷️ Cấu hình In tem nhãn** và nút **In Tem Nhãn Mẻ** ngay trên màn hình Trạm cân Vue.js.
+  - Vượt qua kiểm thử **Integration Test (15 assertions)** của `PrintJobPipelineTest` khớp 100% lệnh in TSPL.
+
+---
+
+## Nhật ký Phiên (Giai đoạn tiếp theo - 16/07/2026)
+### 6. Triển khai & Hoàn thành Phase 8 (Vận chuyển và Xác nhận tới thùng)
+- **Mục tiêu:** Lưu vết hành trình di chuyển nguyên liệu từ cân tới máy nhuộm, tự động cảnh báo khi quá SLA định mức và quét QR xác thực tại thùng.
+- **Kết quả:**
+  - Thiết kế và chạy di trú thành công các bảng `app.material_transports` và `app.material_transport_events` lưu lịch sử di chuyển và trạng thái.
+  - Lập trình `MaterialTransportController` tính toán SLA động theo nhóm máy (máy thường 15 phút, cụm thùng 25 phút), xác nhận đến thùng bằng quét QR dán thùng, tự động bắt buộc nhập lý do trễ hạn nếu vượt SLA và cập nhật trạng thái mẻ cân sang `WEIGHED`.
+  - Tạo mới màn hình **Vận chuyển (MaterialTransfer.vue)** hiển thị danh sách các mẻ đang đi kèm bộ đếm phút thực tế và giao diện quét mã QR/nhập lý do trễ hạn.
+  - Vượt qua kiểm thử **Integration Test (15 assertions)** của `MaterialTransferTest` thành công 100%.
+
+---
+
+## Nhật ký Phiên (Giai đoạn tiếp theo - 16/07/2026)
+### 7. Triển khai & Hoàn thành Phase 9 (Sẵn sàng cấp và Giám sát cấp vào máy)
+- **Mục tiêu:** Kiểm soát điều kiện đủ nước, đủ nguyên liệu và ghi nhận nạp hóa chất an toàn có cơ chế giám sát override.
+- **Kết quả:**
+  - Thiết kế và chạy di trú thành công bảng `app.feed_operations` lưu vết tiến trình nạp van cấp.
+  - Lập trình `FeedOperationController` kiểm tra điều kiện đủ nước, quét nhãn tem QR xác thực đúng mẻ nhuộm, cho phép Supervisor ký duyệt Override có lưu Audit Log an toàn và hoàn tất cấp máy đổi trạng thái mẻ sang `DONE`.
+  - Thiết kế màn hình **Cấp máy (FeedingMonitor.vue)** hiển thị checklist 3 bước cấp máy trực quan, tích hợp bộ giả lập quét QR đối soát và form override của Supervisor.
+  - Vượt qua kiểm thử **Integration Test (23 assertions)** của `FeedReadinessTest` thành công 100% (bao gồm cả luồng nạp thông thường và luồng bypass override ghi Audit Log).
+
+---
+
+## Nhật ký Phiên (Giai đoạn tiếp theo - 16/07/2026)
+### 8. Triển khai & Hoàn thành Phase 10 (Troubleshooting - Hỗ trợ Sự cố)
+- **Mục tiêu:** Chuyển đổi bộ tri thức sự cố Excel VBA cũ sang công cụ chẩn đoán lỗi trên ứng dụng web sử dụng thuật toán suy luận chấm điểm nguyên nhân lỗi.
+- **Kết quả:**
+  - Thiết kế và chạy di trú các bảng tri thức: `app.problems`, `app.causes`, `app.problem_cause_rules`, `app.processes`, `app.parameters`, `app.troubleshooting_cases`, `app.case_evidences`, `app.case_recommendations`.
+  - Lập trình `TroubleshootingController` và `InferenceService` sao chép chính xác 100% thuật toán suy luận `modInferenceEngine` của VBA, xếp hạng nguyên nhân lỗi và ghi nhận case sự cố.
+  - Tích hợp giao diện chẩn đoán tương tác `Troubleshooting.vue` và vượt qua kiểm thử tích hợp `TroubleshootingInferenceTest.php`.
+
+---
+
+## Nhật ký Phiên (Giai đoạn tiếp theo - 16/07/2026)
+### 9. Triển khai & Hoàn thành Dashboard Realtime & Rule Engine Cảnh báo (Nhiệm vụ bổ sung)
+- **Mục tiêu:** Xây dựng Dashboard giám sát trực quan thời gian thực (SSE) và bộ máy chẩn đoán Cảnh báo trễ hạn sản xuất/mất kết nối Agent.
+- **Kết quả:**
+  - Thiết kế và chạy di trú thành công bảng Outbox `app.realtime_events`, bảng cấu hình rule `app.alert_rules` và nhật ký cảnh báo `app.alerts`.
+  - Lập trình `RealtimeController` thiết lập cổng truyền Server-Sent Events (SSE) an toàn, tích hợp cơ chế manual token validation và telemetry live scale cache streaming.
+  - Xây dựng `RealtimeService` để publish sự kiện giao dịch tin cậy và chạy Rule Engine quét trễ hạn (`WEIGH_START_DELAY`, `TRANS_SLA_BREACH`, `SCALE_AGENT_OFFLINE`...).
+  - Thiết lập thư viện Realtime Client `realtime.ts` phía Frontend tự động xử lý reconnect backoff và fallback polling 10s khi mất kết nối mạng.
+  - Thiết kế lại 100% giao diện `Dashboard.vue` thành Trung tâm Điều phối hợp nhất 5 Tab (Overview, Weighing, Dyeing, Alerts, Management KPIs) và Timeline Milestones Dialog.
+  - Vượt qua bộ Integration Test `RealtimeDashboardTest.php` với 28 assertions thành công 100%, chạy `npm run build` biên dịch sạch sẽ.
+
+---
+
+## Nhật ký Phiên (Giai đoạn tiếp theo - 16/07/2026)
+
+### 10. Triển khai & Hoàn thành Phase 11 (Báo cáo & Phân tích)
+- **Mục tiêu:** Xây dựng báo cáo tiêu hao thuốc nhuộm/hóa chất thực tế vs định mức, sai số dung sai & tỉ lệ override, sản lượng máy nhuộm theo ngày/tháng/ca, Pareto nguyên nhân sự cố, xuất Excel/PDF và Audit Log Explorer theo đúng mục tiêu Phase 11 trong `CLAUDE.md`.
+- **Rà soát trước khi code phát hiện lỗ hổng dữ liệu:** `WeighingJobController::weighItem` chấp nhận `override_approved`/`override_reason` từ Frontend (`WeighingStation.vue` đã có UI override sẵn) nhưng **không lưu vết** vào DB và **không ghi Audit Log**, khác với `FeedOperationController` đã làm đúng. Nếu không sửa, báo cáo tỉ lệ override sẽ không có số liệu thật. Đã xin xác nhận người dùng và được đồng ý sửa trong đợt này.
+- **Kết quả:**
+  1. **Vá lỗ hổng Override dung sai cân:** Thêm migration `2026_07_16_000006_add_override_columns_to_weighing_job_items` (cột `override_approved`, `override_reason`, `override_by`). Cập nhật `WeighingJobController::weighItem` bắt buộc vai trò SUPERVISOR/ADMIN khi override, yêu cầu lý do tối thiểu 5 ký tự, lưu vết vào `weighing_job_items` và ghi Audit Log bất biến `WEIGH_TOLERANCE_OVERRIDE` (đồng nhất pattern với `FeedOperationController::override`).
+  2. **Cài đặt thư viện xuất báo cáo:** `composer require maatwebsite/excel barryvdh/laravel-dompdf` (đã ghim version `^3.1`).
+  3. **`ReportController`** với 4 báo cáo (`GET /api/reports/dye-consumption`, `/tolerance-stats`, `/machine-output`, `/troubleshooting-pareto`), mỗi báo cáo hỗ trợ lọc theo khoảng ngày (`from`/`to`, mặc định 30 ngày gần nhất), và tham số `format=xlsx|pdf` để xuất file qua `app/Exports/ArrayExport.php` và view `resources/views/reports/pdf.blade.php`.
+     - Báo cáo sản lượng hỗ trợ nhóm theo **ca kíp** bằng cách suy luận từ giờ trong ngày theo mẫu 3 ca 8h phổ biến của nhà máy (06h-14h / 14h-22h / 22h-06h) — đây là **giả định tài liệu hóa rõ trong code**, không phải quy tắc nghiệp vụ đã xác nhận, vì không có cột "ca" trong dữ liệu nguồn (xem `open-questions.md` CH-BUS-002/CH-TECH-001).
+  4. **Audit Log Explorer:** `GET /api/audit-logs` (phân trang, lọc theo user/action/entity_type/khoảng thời gian) và `GET /api/audit-logs/filters` (danh sách action/entity_type để đổ vào dropdown).
+  5. **Frontend:** `Reports.vue` (4 tab: Tiêu hao, Dung sai & Override, Sản lượng, Pareto Sự cố — dùng chung 2 component biểu đồ SVG tự viết `SimpleBarChart.vue`/`ParetoChart.vue`, tuân thủ nguyên tắc "one axis" cho Pareto bằng cách vẽ cột theo % thay vì trục kép) và `AuditLogExplorer.vue` (bảng có thể mở rộng xem `before_data`/`after_data` JSON). Thêm route `/reports`, `/audit-logs` và mục menu mới trong nhóm "BÁO CÁO & SỰ CỐ".
+  6. **Kiểm thử:** `ReportsTest.php` mới (9 test, 45 assertions) — tổng hợp tiêu hao đúng, tỉ lệ override đúng, chặn override khi không phải Supervisor (403), lưu đúng lý do/người duyệt + Audit Log, đếm mẻ đang chờ xử lý ngoài dung sai, sản lượng theo ngày, Pareto tích lũy đúng %, lọc Audit Log theo action, chặn truy cập chưa đăng nhập (401), xuất Excel tải file thành công. Toàn bộ **28 test backend (216 assertions)** pass, `npx vue-tsc --noEmit` sạch, `npm run build` biên dịch thành công.
+- **Phát hiện môi trường (báo cáo, đã xử lý ở mục 11 dưới đây):** Database dev cục bộ (`df-postgres`, DB `production_web`) hiện thiếu bảng `public.personal_access_tokens` dù dòng migration `2026_07_15_150959_create_personal_access_tokens_table` đã được đánh dấu là đã chạy trong bảng `migrations` — khiến `POST /api/auth/login` trả lỗi 500 khi thử đăng nhập trực tiếp trên DB dev này (phát hiện khi cố gắng kiểm thử thủ công qua trình duyệt/curl; không ảnh hưởng bộ test tự động vì test dùng `Sanctum::actingAs()` giả lập xác thực, không đi qua `createToken()` thật).
+
+---
+
+## Nhật ký Phiên (Giai đoạn tiếp theo - 16/07/2026)
+
+### 11. Khắc phục dứt điểm lỗi đăng nhập 500 trên DB dev (thiếu bảng `personal_access_tokens`)
+- **Mục tiêu:** Xác định nguyên nhân gốc và khôi phục `/api/auth/login` trên DB dev `production_web`, không mất dữ liệu, không chỉ tạo bảng chữa cháy thủ công.
+
+#### Chẩn đoán (trước khi thay đổi bất kỳ thứ gì)
+- `.env`: `DB_CONNECTION=pgsql`, `DB_HOST=127.0.0.1`, `DB_PORT=5433`, `DB_DATABASE=production_web` — xác nhận qua `php artisan about` (driver `pgsql`) và `docker exec df-postgres psql -c "SELECT current_database();"` → cùng một database (`production_web`), loại trừ khả năng "hai database khác nhau" (nguyên nhân #3 trong danh sách nghi vấn).
+- `SHOW search_path` → `"$user", public`; Laravel tự ép `search_path=public` qua `config/database.php`. Quét toàn bộ schema (`information_schema.tables WHERE table_name='personal_access_tokens'`) → **0 dòng ở bất kỳ schema nào** → bảng thực sự không tồn tại, không phải "nằm nhầm schema `app`" (loại trừ nguyên nhân #4, #8).
+- `php artisan migrate:status` + query trực tiếp bảng `migrations` → dòng `2026_07_15_150959_create_personal_access_tokens_table` **batch 1, đã "Ran"**, nhưng bảng không tồn tại → xác nhận đúng hiện tượng người dùng mô tả.
+- `docker volume inspect df_pgdata` (tạo `2026-07-15T14:28:03Z`) và `docker inspect df-postgres --format='{{.Created}}'` (`2026-07-15T15:04:02Z`) → **volume/container liên tục từ lúc khởi tạo dự án, không có dấu hiệu bị wipe/tái tạo** → loại trừ nguyên nhân #5 (docker volume cũ/không đồng bộ).
+- Không có `bootstrap/cache/config.php` (chỉ có `packages.php`, `services.php` từ `package:discover`) và `php artisan config:show database.connections.pgsql.database` trả đúng `.env` → loại trừ nguyên nhân #7 (config cache cũ).
+- Không có `.env.testing`; `phpunit.xml` không override `DB_CONNECTION`/`DB_DATABASE` (chỉ comment sẵn dòng SQLite, chưa bật) → **bộ test cũng chạy trên cùng DB `production_web`** qua `DatabaseTransactions` (rollback sau mỗi test). Đây là lý do 28 test trước đó pass 100% mà không phát hiện lỗi: `Sanctum::actingAs()`/`actingAs()` gán thẳng user đã xác thực vào request, **không gọi `createToken()` thật**, nên không bao giờ đụng tới bảng `personal_access_tokens`.
+
+#### Nguyên nhân gốc (có bằng chứng)
+- File migration `2026_07_15_150959_create_personal_access_tokens_table.php` **là bản sao y nguyên stub mặc định của Sanctum** (`vendor/laravel/sanctum/database/migrations/2019_12_14_000001_create_personal_access_tokens_table.php`), dùng `$table->morphs('tokenable')` → cột `tokenable_id` kiểu **bigint**.
+- `App\Models\User` (bảng `app.users`) dùng **UUID** làm khóa chính (`$keyType='string'`, `$incrementing=false`) — không tương thích với `tokenable_id` kiểu bigint.
+- `storage/logs/laravel.log` còn lưu vết lỗi cũ đúng như dự đoán: `SQLSTATE[22P02]: invalid input syntax for type bigint: "a1111111-1111-1111-1111-111111111111"` — khớp với ghi chú Phase 3 trong log này ("Sửa đổi bảng Sanctum tokenable_id tương thích UUID").
+- Kết luận: ai đó đã **sửa/xóa bảng thủ công ngoài hệ thống migration** (không qua `php artisan migrate:rollback`) để khắc phục lỗi kiểu dữ liệu, nhưng bước tạo lại bảng với `tokenable_id` kiểu UUID chưa từng được lưu thành migration — bảng bị mất hẳn trong khi bảng `migrations` vẫn ghi nhận migration gốc (kiểu bigint sai) là đã chạy. Đây là **lỗi trôi dạt giữa migration tracking và schema thực tế (migration drift)**, không phải do database khác, cache, hay volume Docker.
+
+#### Cách sửa (an toàn, không đụng migration cũ, không mất dữ liệu)
+- Thêm migration mới `2026_07_16_000007_restore_missing_personal_access_tokens_table.php`:
+  - Kiểm tra `Schema::hasTable('personal_access_tokens')` trước khi tạo (idempotent).
+  - Dùng `$table->uuidMorphs('tokenable')` thay vì `morphs()` → `tokenable_id` kiểu UUID, khớp `app.users.id`.
+  - `down()` là **no-op có chủ đích** (không drop bảng) kèm docblock giải thích: tránh trường hợp migration này rollback trên một môi trường mà bảng đã có token hợp lệ, làm mất phiên đăng nhập của người dùng thật.
+  - Không sửa file migration gốc `2026_07_15_150959_...`, không sửa bảng `migrations`, không chạy `migrate:fresh`/`db:wipe`/`docker compose down -v`.
+- Chạy `php artisan optimize:clear && php artisan migrate` → migration mới chạy thành công (batch 6). Verify qua `information_schema.columns`: `tokenable_id` nay là kiểu `uuid`.
+- Đối chiếu số dòng `app.users` (7), `app.audit_logs` (8), `app.production_batches`, `app.weighing_job_items` trước/sau → **không đổi, không mất dữ liệu nghiệp vụ**.
+
+#### Smoke-test bằng luồng đăng nhập thật (không dùng `Sanctum::actingAs()`)
+- Khởi động `php artisan serve` trên cổng cô lập (8010, không đụng các tiến trình `artisan serve` khác đã chạy sẵn trên cổng 8000 của máy dev), tạo tài khoản test rõ tên `qa_smoke_test` (role ADMIN) và `qa_smoke_operator` (role OPERATOR) qua tinker.
+- `curl POST /api/auth/login` với mật khẩu đúng → **HTTP 200**, trả `access_token`/`token_type`/`user` đúng cấu trúc; verify trực tiếp trong Postgres có dòng mới trong `personal_access_tokens` với `tokenable_id` = UUID user thật.
+- Dùng token vừa nhận gọi `GET /api/reports/dye-consumption`, `/tolerance-stats`, `/machine-output?group_by=shift`, `/troubleshooting-pareto`, `/api/audit-logs`, `/api/audit-logs/filters`, `/api/auth/me` → **toàn bộ HTTP 200**.
+- Xuất thử Excel (`?format=xlsx`, đúng `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`) và PDF (`?format=pdf`, verify bằng `file` là PDF 1.7 hợp lệ 3 trang).
+- Sai mật khẩu → 401 (không còn 500); tài khoản không tồn tại → 401; thiếu trường bắt buộc → 422.
+- `POST /api/auth/logout` → 200, thu hồi token; gọi lại `/api/auth/me` bằng token cũ trên **một tiến trình curl mới độc lập** → 401 "Unauthenticated" (xác nhận thu hồi hoạt động đúng trong môi trường thật).
+- **Test luồng Override dung sai với người dùng thật (không giả lập):** tạo batch/machine/material/weighing-job-item tạm qua tinker → đăng nhập bằng `qa_smoke_operator` (OPERATOR) gọi `POST /weighing-jobs/items/{id}/weigh` với `override_approved=true`, cân vượt dung sai → **403 FORBIDDEN** đúng như thiết kế → đăng nhập lại bằng `qa_smoke_test` (ADMIN) gọi lại cùng request → **200 SUCCESS**, response trả về `override_approved:true`, `override_reason`, `override_by` đúng dữ liệu đã nhập; verify `GET /api/audit-logs?action=WEIGH_TOLERANCE_OVERRIDE` có bản ghi mới, và `GET /api/reports/tolerance-stats` phản ánh đúng số liệu override thật (`override_rate_pct: 100` cho vật tư test). Sau đó dọn sạch batch/job/item/machine/material giả lập (không xóa bản ghi Audit Log vì nguyên tắc bất biến); dừng server verification cô lập.
+- Tài khoản `qa_smoke_test`/`qa_smoke_operator` được **giữ lại** trong DB dev (không xóa) để người dùng có thể tự đăng nhập kiểm tra giao diện Phase 11 trên trình duyệt thật (công cụ hiện có không có khả năng điều khiển trình duyệt để tự chụp màn hình xác minh UI).
+
+#### Kiểm thử chống tái diễn
+- Thêm `tests/Feature/AuthenticationFlowTest.php` (6 test, 20 assertions) — cố tình đi qua **API đăng nhập thật** (`postJson('/api/auth/login')`) và token Sanctum thật, không dùng `Sanctum::actingAs()`/`actingAs()`:
+  1. `personal_access_tokens` tồn tại và `tokenable_id` đúng kiểu `uuid` (migration-schema test theo đúng yêu cầu dự phòng).
+  2. Đăng nhập thật tạo token và lưu đúng vào DB.
+  3. Token từ đăng nhập thật gọi được endpoint có `auth:sanctum`.
+  4. Sai mật khẩu → 401, không tạo token mới.
+  5. Tài khoản không tồn tại → 401 (không phải 500).
+  6. Đăng xuất xóa đúng bản ghi token khỏi `personal_access_tokens`.
+  - *Giới hạn ghi nhận:* một biến thể ban đầu của test #6 thử gọi lại endpoint bằng token đã thu hồi trong **cùng một tiến trình PHPUnit** bị false-positive (vẫn trả 200) do `config('sanctum.guard')=['web']` khiến Sanctum ưu tiên kiểm tra session guard trước, và Laravel test client dùng chung container/session `array` giữa các lệnh gọi liên tiếp trong một test — đây là đặc thù môi trường test, **không phải lỗi thật** (đã xác nhận hành vi thật đúng qua curl thật ở bước trên). Test #6 vì vậy assert trực tiếp việc xóa bản ghi trong DB thay vì replay request trong cùng tiến trình.
+- Toàn bộ **34 test backend (236 assertions)** pass sau khi thêm.
+
+#### Kết quả
+- Nguyên nhân gốc: migration Sanctum gốc dùng kiểu `bigint` cho `tokenable_id`, không tương thích User UUID; bảng bị xóa thủ công ngoài migration để sửa lỗi này trong quá khứ nhưng chưa từng được ghi lại thành migration, gây trôi dạt giữa `migrations` bookkeeping và schema thật.
+- Đã tạo migration phục hồi an toàn, idempotent, không sửa lịch sử migration cũ, `down()` không phá dữ liệu.
+- Đăng nhập thật hoạt động (HTTP 200), token lưu đúng, thu hồi đúng, các trường hợp lỗi trả đúng mã (401/422, không còn 500).
+- Toàn bộ Phase 11 (4 báo cáo, xuất Excel/PDF, Audit Log Explorer, override dung sai) đã smoke-test lại qua API thật với người dùng thật, có phân quyền đúng.
+- Không mất dữ liệu nghiệp vụ (`app.users`, `app.audit_logs` và các bảng khác không đổi số dòng ngoài các thay đổi do chính phiên test này tạo ra rồi tự dọn).
+- Đã ghi 2 giả định nghiệp vụ còn tồn đọng vào `open-questions.md`: `CH-BUS-003` (quy tắc chia ca 3x8h là giả định kỹ thuật, chưa xác nhận nghiệp vụ, khuyến nghị đưa vào bảng cấu hình hệ thống thay vì hard-code) và `CH-RES-005` (xác nhận biểu đồ Pareto 1 trục vẫn hiển thị đủ số ca + % qua direct label/tooltip, không cần trục kép).
+
+---
+
+## Nhật ký Phiên (Giai đoạn tiếp theo - 16/07/2026)
+
+### 12. Bắt đầu tái cấu trúc giao diện theo mô hình Workstation (DF Connector & Scale)
+- **Mục tiêu:** Chuyển hệ thống từ "một phần mềm nhiều chức năng" sang "1 máy tính = 1 công đoạn = 1 nhiệm vụ = 1 giao diện" theo yêu cầu người dùng. Thứ tự triển khai WS-001 → WS-012 do người dùng quy định.
+- **Rà soát trước khi sửa (bắt buộc theo yêu cầu):** lập báo cáo đầy đủ tại [`workstation-redesign-audit.md`](file:///F:/DF/.claude/workstation-redesign-audit.md) trước khi đổi bất kỳ giao diện nào. Phát hiện chính: backend (`ScannerController`, `Workstation` model, 10 loại trạm đã seed) và 3 view (`WeighingStation.vue`, `MaterialTransfer.vue`, `FeedingMonitor.vue`) đã gần khớp mô hình quét-là-chính; khoảng cách thật nằm ở tầng điều hướng (menu đầy đủ hiển thị cho mọi trạm, không tự redirect theo loại trạm).
+- **2 quyết định của người dùng làm thay đổi thiết kế:** (1) QR là chính, cho phép nhập tay khi máy quét lỗi — áp dụng mọi trạm có quét; (2) tài khoản gắn cứng theo công đoạn (không phải người dùng tự chọn trạm mỗi lần), Admin chịu trách nhiệm phân quyền tài khoản cho từng công đoạn.
+
+#### WS-001 — Workstation Model (Đã hoàn thành)
+- Migration `2026_07_16_000008_add_workstation_model_fields_and_user_binding`: thêm `allowed_actions` (jsonb), `default_screen` (string) vào `app.workstations`; thêm `workstation_id` (FK, nullable, `onDelete('set null')`) vào `app.users`.
+- Cập nhật `Workstation`/`User` model (quan hệ `users()`/`workstation()`), `WorkstationsSeeder` (gán `default_screen` + `allowed_actions` cho cả 10 trạm), `AuthController::login`/`me` trả kèm object `workstation` đầy đủ.
+- Test mới `WorkstationBindingTest.php` (4 test): login trả đúng workstation cho tài khoản trạm, trả `null` cho tài khoản back-office, `/me` phản ánh đúng, xóa workstation không cascade-xóa user (chỉ gỡ liên kết).
+- **Tiện thể vá lỗi cú pháp PHP** trong `app/Http/Middleware/CheckRole.php` (đã đăng ký alias `role` trong `bootstrap/app.php` nhưng import sai `Symfony\Component\HttpFoundation.Response` — dấu chấm thay vì `\` — sẽ crash app nếu bị gọi; chưa từng được dùng ở route nào nên chưa gây sự cố thật, phát hiện khi chuẩn bị dùng cho WS-003).
+
+### 13. Hoàn thành WS-005 → WS-012 (Redesign toàn bộ các trạm vận hành theo mô hình Workstation)
+- **Người dùng chốt "làm theo thứ tự"**, tiếp tục tuần tự không dừng lại xin xác nhận trừ khi có quyết định thiết kế thật sự mơ hồ.
+
+#### WS-005 — Trạm Quét đơn QR (Đã hoàn thành)
+- Phát hiện khoảng trống: `ScannerController::handleOrderScan` trước đây chỉ cho quét ORDER tại các trạm cân (tạo nhiệm vụ cân ngay), `ORDER_DESK` sẽ bị từ chối 403. Thiết kế `ORDER_DESK` thành bước **xem trước (read-only) + xác nhận riêng** — không đụng vào luồng cân đã test.
+- Backend: `ScannerController::handleOrderDeskPreview` (xem, không đổi trạng thái) + `acknowledgeOrder` (chuyển `NEW → READY_TO_WEIGH`, **idempotent** — xác nhận lại lần 2 không lỗi không tạo audit log trùng — ghi Audit Log `ORDER_RECEIVED_ACK`).
+- Frontend `OrderScan.vue` mới: màn hình chờ quét + ô nhập tay tìm theo mã Lô (`GET /api/production-batches?search=`) làm fallback thật (không phải "chỉ dành cho kiểm thử"), card xem trước + nút "Đã nhận đơn", tự reset sau 3 giây.
+- Test `OrderDeskScanTest.php` (5 test, 17 assertions).
+
+#### WS-006 — Khóa menu theo Workstation (Đã hoàn thành, cốt lõi toàn bộ đợt tái cấu trúc)
+- Nối `user.workstation` (từ WS-001) vào cơ chế `currentWorkstation` sẵn có (`services/workstation.ts`) qua `stores/auth.ts`: `login()`/`initialize()` tự đồng bộ, `logout()` xóa sạch — tài khoản trạm không cần tự chọn trạm nữa, tài khoản back-office (không gắn trạm) vẫn giữ nguyên cơ chế chọn thủ công cũ.
+- `router/index.ts`: thêm guard bắt buộc điều hướng về đúng `default_screen` của tài khoản trạm, chặn truy cập route khác kể cả gõ URL trực tiếp.
+- `AppLayout.vue`: ẩn hoàn toàn sidebar/menu khi tài khoản đã gắn trạm (`isLockedStation`), khóa luôn nút "đổi trạm" (không có cơ chế tự đổi — đúng quyết định "Admin chịu trách nhiệm phân quyền").
+- **Giới hạn tự xác minh:** đây là thay đổi hành vi điều hướng UI — chỉ verify được qua `vue-tsc`/`npm run build` sạch và rà soát logic, **không có công cụ trình duyệt để xem trực tiếp**. Đã bù đắp bằng UAT dữ liệu thật ở mục WS-012 bên dưới (xác nhận `default_screen` đúng cho mọi loại trạm qua API thật).
+
+#### WS-007 — Trạm In tem độc lập (Đã hoàn thành)
+- Thêm loại workstation mới `PRINT_STATION` (`PRINT-01`) — bổ sung vào `WorkstationsSeeder`, không đụng 10 trạm cũ.
+- Backend: `WeighingJobController::showLabel` (xem 1 tem theo id) + `searchLabels` (tìm theo mã Lô, phục vụ nhập tay fallback) — tái dùng nguyên `reprintLabel` đã có sẵn Audit Log từ Phase 7.
+- Frontend `PrintStation.vue` mới: quét tem → xem chi tiết (Lô, vật tư, khối lượng) → bắt buộc nhập lý do → in lại. Trạm này độc lập với trạm cân, dùng khi cần in lại tem giờ/ngày khác mà không còn ở phiên cân gốc.
+- Test `PrintStationTest.php` (5 test, 13 assertions).
+
+#### WS-008 — Redesign Vận chuyển (Đã hoàn thành)
+- **Phát hiện lỗi thật trong code cũ:** `MaterialTransfer.vue`'s "widget giả lập quét" dùng **ID của Batch giả làm ID của Tem vật tư** (`id: b.id` gán nhầm cho `MaterialLabel`) — hoàn toàn không hoạt động nếu bấm thử, vì backend tìm `MaterialLabel::findOrFail($batchId)` sẽ luôn thất bại (trừ trùng UUID ngẫu nhiên). Đã xóa bỏ, thay bằng nhập tay thật qua `GET /api/material-labels/search` (endpoint mới thêm ở WS-007).
+- Thêm banner xác nhận sau khi quét thành công hiển thị đích đến (Máy/Thùng) — khớp mô tả mục 6D gốc. Backend `handleMaterialLabelScan` trả kèm `batch.machine`/`batch.tank` để banner có đủ dữ liệu hiển thị.
+
+#### WS-009 — Redesign Tới thùng (Đã hoàn thành)
+- Cùng lỗi widget giả lập bị lẫn Batch-id-làm-Label-id như WS-008, nằm trong `FeedingMonitor.vue` (nhánh `TANK_RECEIVING`) — đã sửa tương tự: chọn máy thật từ danh sách + tìm tem thật theo mã Lô.
+- Thêm hiển thị lỗi/thành công dạng inline (thay `alert()` ở phần này) cho luồng quét kép.
+
+#### WS-010 — Redesign Cấp máy (Đã hoàn thành)
+- Phát hiện: dropdown chọn lô cấp máy (`readyBatches`) trước đây tải **TẤT CẢ** lô sản xuất không lọc trạng thái — nhân viên có thể chọn nhầm lô còn đang cân/vận chuyển vào cấp máy. Đã lọc theo `status=ARRIVED_AT_TANK` (đúng điều kiện `FeedOperationController::checkReadiness` yêu cầu), khớp nguyên tắc "chỉ hiển thị chức năng được phép".
+
+#### WS-011 — Dashboard Giám sát (Đã hoàn thành)
+- Phát hiện: khối "Công cụ kiểm thử & Giả lập (Admin / Developer)" trong `Dashboard.vue` (gồm cả nút gửi lệnh in TSPL thật) đã ghi rõ trong nhãn là dành cho Admin/Developer nhưng **chưa từng được khóa quyền thật** — bất kỳ ai vào Dashboard cũng bấm được. Đã thêm `v-if="authStore.isAdmin"`, đúng tinh thần mục 11 "Dashboard không dùng để nhập liệu, chỉ giám sát" cho tài khoản trạm MONITORING.
+
+#### WS-012 — UAT từng Workstation (Đã hoàn thành, qua HTTP thật)
+- Không có công cụ trình duyệt nên UAT được thực hiện bằng cách: tạo 8 tài khoản trạm thật qua chính API WS-003 vừa xây (`uat_order_desk`, `uat_ws_dye`, `uat_ws_chem`, `uat_print`, `uat_trans`, `uat_tank`, `uat_feed`, `uat_monitor`), đăng nhập thật từng tài khoản, và chạy **toàn bộ vòng đời 1 lô nhuộm thật** qua 6 trạm liên tiếp bằng HTTP thật (không mock, không `Sanctum::actingAs()`):
+  1. Order Desk: quét xem trước → xác nhận nhận đơn (`NEW → READY_TO_WEIGH`).
+  2. Trạm cân DYE: quét đơn → sinh nhiệm vụ cân → cân đúng khối lượng → hoàn tất.
+  3. In tem tự động sau khi cân xong.
+  4. Print Station: tìm tem theo mã Lô → in lại có lý do (verify `reprint_count` tăng đúng).
+  5. Vận chuyển: quét tem → chuyển `IN_TRANSIT`.
+  6. Tank Receiving: quét kép máy+tem → đối soát khớp → `ARRIVED_AT_TANK`.
+  7. Machine Feeding: kiểm tra sẵn sàng (đúng `true`) → xác nhận lô xuất hiện trong danh sách đã lọc → khởi tạo → xác nhận nước → mở van → hoàn tất.
+  8. Monitoring: xác nhận tài khoản Giám sát gọi được `/api/dashboard/overview`.
+  9. Cross-check phân quyền: tài khoản trạm cân **KHÔNG** gọi được API Admin (403 đúng, xác nhận middleware `role:ADMIN` đã vá hoạt động thật trong luồng thật, không chỉ trong test).
+- Toàn bộ 13 bước đều trả đúng HTTP status/dữ liệu mong đợi, không có lỗi 500 nào.
+- Dọn dẹp: xóa sạch batch/machine/material/recipe/transport/feed-operation giả lập dùng để UAT. **8 tài khoản UAT không xóa được** do bị khóa ngoại bảo vệ bởi Audit Log bất biến (đúng thiết kế) — đã **vô hiệu hóa** (`is_active=false`) thay vì xóa, giữ nguyên vết audit.
+
+#### Kết quả cuối cùng của đợt tái cấu trúc Workstation (WS-001 → WS-012)
+- Toàn bộ **54 test backend (291 assertions)** pass. Frontend type-check sạch, `npm run build` thành công liên tục qua từng bước.
+- **Giới hạn đã nêu rõ:** không có công cụ điều khiển trình duyệt thật, nên các thay đổi thuần UI (ẩn/hiện sidebar, redirect, hiển thị banner) được xác minh qua type-check + build + rà soát logic + UAT dữ liệu thật qua API, **không phải quan sát trực tiếp bằng mắt trên trình duyệt**. Khuyến nghị người dùng tự đăng nhập thử bằng 1 trong các tài khoản mẫu trước khi coi là hoàn thành 100% (tài khoản UAT đã bị vô hiệu hóa, cần tạo tài khoản mới qua màn hình "Quản lý Workstation" nếu muốn tự kiểm tra).
+- File audit `workstation-redesign-audit.md` đã được cập nhật trạng thái đầy đủ WS-001 → WS-012.
+
+#### WS-003 — Cấu hình Workstation (đã gộp WS-002, Đã hoàn thành theo phạm vi đã chốt)
+- Người dùng chốt phạm vi hẹp: **chỉ tạo tài khoản trạm mới**, chưa làm gán lại tài khoản cũ / sửa thiết bị / thêm-xóa workstation (để dành cho lần sau nếu cần).
+- `WorkstationAdminController` (route `role:ADMIN`): `GET /api/admin/workstations` (danh sách kèm tài khoản đã gán), `POST /api/admin/workstations/{id}/users` (tạo tài khoản mới, giới hạn vai trò `OPERATOR/SUPERVISOR/TECHNOLOGIST` — không cho tạo tài khoản `ADMIN` gắn 1 trạm vì mất ý nghĩa back-office toàn quyền), ghi Audit Log `CREATE_STATION_ACCOUNT`.
+- Frontend `WorkstationAdmin.vue`: lưới thẻ 10 workstation (đúng tinh thần mock-up mục 5 gốc, nhưng chuyển thành màn hình cấu hình của Admin thay vì màn hình chọn trạm hàng ngày của operator), bấm thẻ mở modal tạo tài khoản. Route `/workstation-admin` (`requiresAdmin`), mục menu mới nhóm "QUẢN TRỊ" chỉ hiện với `authStore.isAdmin`.
+- Test mới `WorkstationAdminTest.php` (6 test): chặn non-admin xem danh sách/tạo tài khoản (403), tạo thành công + verify Audit Log + verify tài khoản mới đăng nhập được và nhận đúng `workstation`, chặn tạo role `ADMIN` gắn trạm (422), chặn trùng username (422).
+
+#### WS-004 — Scanner Service (Đã hoàn thành)
+- Viết lại `frontend/src/services/scanner.ts` quanh 1 pipeline dùng chung `processToken(token, source)` cho cả 3 nguồn: quét vật lý (bàn phím wedge), nhập tay (`submitManualEntry`, fallback khi máy quét lỗi theo quyết định #1), và giả lập kiểm thử (`simulateScan`, giữ tương thích ngược 3 màn hình cũ).
+- Bổ sung: chống scan trùng (bỏ qua cùng 1 token trong 2 giây, phát tiếng khác biệt thay vì xử lý lại), timeout buffer bàn phím (xóa buffer nếu gõ dở dang quá 3 giây, tránh làm hỏng lượt quét kế tiếp), `lastScanSource`/`lastResult` để UI sau này phân biệt "quét" vs "nhập tay".
+- Chữ ký callback `onScan` đổi từ `(token)` thành `(token, source)` — tương thích ngược 100% với 3 handler cũ (`WeighingStation.vue`, `MaterialTransfer.vue`, `FeedingMonitor.vue`) do TypeScript cho phép hàm nhận ít tham số hơn khớp vào vị trí cần nhiều tham số hơn; đã xác nhận qua `vue-tsc --noEmit` sạch và `npm run build` thành công.
+- **Chưa đổi giao diện các trạm quét** — đó là phạm vi WS-005/006/008/009 (redesign từng màn hình dùng `submitManualEntry` làm ô nhập tay thật, thay cho "widget giả lập chỉ dành cho kiểm thử" hiện tại).
+
+#### Kết quả tới thời điểm này
+- Toàn bộ **44 test backend (261 assertions)** pass. Frontend type-check sạch, `npm run build` thành công (140 module).
+
+## Nhật ký Phiên (Giai đoạn tiếp theo - 16/07/2026)
+
+### 14. Rà soát toàn diện VBA legacy → Web (đối chiếu cấp procedure, KHÔNG sửa code)
+- **Nhiệm vụ:** Theo yêu cầu tường minh của người dùng, thực hiện đợt rà soát thuần đọc/phân tích (không thiết kế lại, không đổi kiến trúc, không sửa code) đối chiếu toàn bộ VBA legacy có mặt tại `F:\DF\` với source code hệ thống web hiện tại, phân loại từng procedure theo 9 trạng thái chuẩn, và chỉ dừng lại báo cáo — chưa sửa gì.
+- **Công cụ:** cài `oletools`/`olevba` (Python) trích xuất VBA source từ 13 file `.xlsm`; cài `pywin32` để mở 3 file `.accdb` qua Access COM (chỉ trên **bản sao read-only** trong scratchpad, không đụng file gốc) — xác nhận cả 3 (`DF_STORAGE.accdb`, `RECORD.accdb`, `WH.accdb`) chỉ là kho dữ liệu thô, không chứa VBA/query/form.
+- **Phát hiện hạ tầng quan trọng:** Postgres dev (`production_web`) đã có sẵn schema `legacy_df_data` (9 bảng, gồm `tbl_ToSend2`/`WAITING`/`tblSync` — 3 bảng KHÔNG có VBA nguồn nào trong `F:\DF` tham chiếu tới) và `legacy_df_scale` (3 bảng) — bằng chứng một đợt di trú dữ liệu trước đây từng có quyền truy cập vào nhiều workbook/Access DB hơn những gì hiện có tại `F:\DF`.
+- **Phân công:** dispatch 5 agent chạy song song, mỗi agent phụ trách 1 nhóm nghiệp vụ (Công thức, Điều phối/Khóa, Cân bán tự động, In tem/QR, Xử lý sự cố), mỗi agent tự đọc VBA + grep/đọc trực tiếp `F:\DF\backend`/`F:\DF\frontend` để đối chiếu, tự viết báo cáo chi tiết ra file riêng.
+- **Kết quả:** kiểm kê **~378 dòng procedure** (26 Recipe + 83 Dispatch + 133 Scale + 83 Print + 53 Troubleshooting). Tổng hợp vào 2 tài liệu mới:
+  - [`vba-migration-matrix.md`](file:///F:/DF/.claude/vba-migration-matrix.md) — ma trận đầy đủ cấp procedure, có ID ổn định (`VBA-RECIPE-*`, `VBA-DISPATCH-*`, `VBA-SCALE-*`, `VBA-PRINT-*`, `VBA-TROUBLE-*`).
+  - [`vba-version-comparison.md`](file:///F:/DF/.claude/vba-version-comparison.md) — so sánh phiên bản trong từng nhóm (kể cả các cặp không thể so sánh được vì thiếu file `(1)`/`Copy of`).
+- **5 phát hiện nghiêm trọng nhất** (chi tiết ở đầu `vba-migration-matrix.md`):
+  1. Hàm `TraHeSo` (tra hệ số 3 chiều mã×khổ vải×tiêu) — nguyên tắc cốt lõi CLAUDE.md yêu cầu bảo toàn — **chưa migrate**; tài liệu cũ ghi sai là "đã xác minh".
+  2. Toàn bộ luồng ghi mới vào hàng chờ điều phối (`machine_dispatches`) **chưa tồn tại** — `MachineDispatchController` chỉ có claim/release/send, không có `store`.
+  3. Lõi thuật toán cân bán tự động (StableFilter, delta/tare) **MISSING**; `ScaleReader.cs` lấy số đầu tiên thay vì số cuối cùng như VBA (`ExtractLastNumber`) — khác biệt hành vi thật.
+  4. `tbl_ToSend2`/`WAITING`/`tblSync` có dữ liệu thật trong Postgres nhưng không có VBA nguồn để xác minh — mapping cột trong `03_transform_legacy_to_target.sql` là suy luận chưa kiểm chứng.
+  5. Feedback loop / Editor Knowledge Base của hệ chẩn đoán sự cố bị mất (chỉ sửa được qua deploy lại seeder) — dù công thức scoring chính (`InferenceService`) được migrate đúng và đầy đủ, thậm chí sửa được 1 bug có sẵn trong VBA gốc.
+- **Phát hiện phụ đáng chú ý:** 2 route sai trong `source-traceability.md` (`/api/queue-items/...` thay vì `/api/machine-dispatches/...`) và quy chụp sai module nguồn cho cơ chế khóa (`ModAcessDB`/`tblSync` — thực ra cơ chế `locked_by/locked_at` là thiết kế mới, không kế thừa VBA) — đã sửa. Bug có sẵn trong VBA (không phải do migrate): workbook `semiauto-...SEND OVER6...` luôn ghi sai "REJECTED" do lệch màu so sánh; `SaveEngine` của hệ chẩn đoán sự cố luôn ghi cứng breakdown điểm = 0 (đã được web sửa đúng).
+- **Tài liệu đã cập nhật theo kết quả rà soát:** `source-traceability.md` (sửa 2 dòng sai), `open-questions.md` (+8 câu hỏi mới CH-BUS-004..008, CH-TECH-003..006), `risks-and-assumptions.md` (+6 rủi ro mới R-06..R-11), `testing-strategy.md` (+3 bộ golden test đề xuất cho thuật toán cân, xác nhận `scratch/` simulator chưa triển khai).
+- **Chưa sửa code nào** — đúng yêu cầu "chỉ rà soát, dừng lại sau khi gửi báo cáo, không tự ý sửa hàng loạt". Chờ người dùng duyệt trước khi lên kế hoạch bổ sung theo mức ưu tiên.
+- **Giới hạn phạm vi:** 12 workbook được liệt kê trong yêu cầu gốc không có mặt tại `F:\DF` (chủ yếu các bản `(1)`/`Copy of` và 2 file template tem 27-dòng/15L-special/landscape/JIT) — xem danh sách đầy đủ + mức ưu tiên bổ sung ở đầu `vba-version-comparison.md`.
+- Còn lại WS-005 → WS-012 (redesign từng màn hình theo tài khoản-trạm + khóa menu, tách trạm in tem, dashboard, UAT) — quy mô lớn, đang triển khai tuần tự theo đúng thứ tự người dùng yêu cầu, dừng lại xin xác nhận ở các điểm rẽ nhánh thiết kế quan trọng.
+
+### 15. Thiết kế và chuẩn hóa cấu hình trạm làm việc (Workstation Matrix & Architecture)
+- **Nhiệm vụ:** Nhận yêu cầu bổ sung cấu hình máy trạm thực tế vào hệ thống và ma trận. Tiến hành cập nhật và tạo mới tài liệu `.claude/` để khớp với mô hình trạm "1 máy tính = 1 công đoạn chính = 1 màn hình mặc định", độc lập với địa chỉ IP mạng.
+- **Tài liệu tạo mới / cập nhật:**
+  - Tạo mới [`workstation-matrix.md`](file:///F:/DF/.claude/workstation-matrix.md): Chi tiết hóa cấu hình 7 máy client, các trường cơ sở dữ liệu rà soát/bổ sung, và quy trình kiểm kê thiết bị cân/in.
+  - Tạo mới [`legacy-to-target-architecture.md`](file:///F:/DF/.claude/legacy-to-target-architecture.md): Ánh xạ 9 bước nghiệp vụ cốt lõi từ VBA/Access sang Web/API đích, chỉ rõ trạng thái hoàn thiện (Migrated, Missing, Replaced, New, Deprecated).
+  - Cập nhật [`system-context.md`](file:///F:/DF/.claude/system-context.md): Tích hợp 7 client và luồng đăng ký/xác thực trạm an toàn qua certificate/token kết hợp Device Fingerprint.
+  - Cập nhật [`source-traceability.md`](file:///F:/DF/.claude/source-traceability.md): Bổ sung truy vết cho các thực thể và API trạm làm việc mới.
+  - Cập nhật [`open-questions.md`](file:///F:/DF/.claude/open-questions.md): Thêm CH-TECH-007 (Xác nhận loại trạm cho 3 máy cân) và CH-TECH-008 (Vân tay thiết bị).
+  - Cập nhật [`security-rules.md`](file:///F:/DF/.claude/security-rules.md): Thêm quy tắc bảo mật máy trạm, cấm hoàn toàn dùng IP làm khóa chính, kiểm soát chéo API.
+  - Cập nhật [`testing-strategy.md`](file:///F:/DF/.claude/testing-strategy.md): Thêm danh mục 17 ca kiểm thử trạm làm việc bắt buộc.
+  - Cập nhật [`vba-migration-matrix.md`](file:///F:/DF/.claude/vba-migration-matrix.md): Tự động bổ sung 8 cột Target Architecture cho tất cả các bảng procedure kiểm kê (~378 dòng) sử dụng script Python.
+- **Báo cáo và Dừng lại:** Chuẩn bị báo cáo 10 hạng mục và Kế hoạch triển khai (Implementation Plan) để xin ý kiến duyệt của người dùng trước khi sửa bất kỳ dòng code nào.
+
+
+## Nhật ký Phiên (Giai đoạn tiếp theo - 17/07/2026)
+
+### 15. Đợt rà soát VBA lần 2 — chuẩn hóa số liệu, phân tích sâu 5 phát hiện P0, lập kế hoạch khắc phục (CHƯA sửa code)
+
+- **Bối cảnh:** Người dùng duyệt báo cáo rà soát bước đầu nhưng CHƯA duyệt kết luận "đã rà soát đầy đủ toàn bộ VBA", yêu cầu 8 hạng mục bổ sung. Toàn bộ đợt này thuần tài liệu — không sửa code sản xuất, không chạy migration, không đổi schema.
+- **Chuẩn hóa số liệu kiểm kê (mục 1):** xác định nguồn chênh lệch "~378": nhóm DISPATCH tự báo 83 nhưng bảng thật có 84 dòng (sót `020B`); nhóm SCALE tự báo 133 nhưng đó là số ID cấp phát (4 dòng gộp khoảng chứa 28 ID), số dòng bảng thật là 109. Số chính xác: **355 dòng traceability**, **664 procedure vật lý** (quy ước đếm bản sao giữa workbook riêng; 561 nếu dedup). Chuẩn hóa 10 dòng có cột Trạng thái sai định dạng (6 dòng `**MISSING**` bôi đậm; 2 dòng gán trạng thái kép; 1 dòng tham chiếu chéo lệch cột; 1 dòng bỏ trống — một phần do một phiên khác đã chạy script Python thêm 8 cột "Target *" vào bảng gây lệch số cột không đồng nhất). Viết script kiểm chứng tự động [`verify-matrix-counts.sh`](file:///F:/DF/.claude/verify-matrix-counts.sh) — kết quả PASS: SUM=355=ROWS, 0 unmatched. Phân bố cuối: FULLY 26, NO_TEST 1, PARTIALLY 30, MISSING 72, REPLACED 93, MERGED 5, DEPRECATED 35, DEAD 67, NEEDS_CONFIRM 26.
+- **Danh sách 12 workbook thiếu (mục 2):** tạo [`source-files-missing.md`](file:///F:/DF/.claude/source-files-missing.md) — 5 file P0 (3 file nhóm điều phối nghi chứa logic tbl_ToSend2/WAITING/tblSync; 2 file template tem DF002 27rows/15L/landscape/JIT), 3 file P1 (nhóm cân — "low stand1"/"8 rows"), 4 file P2. Kết luận chính thức: nhóm Điều phối và In tem/QR **CHƯA rà soát hoàn chỉnh** khi thiếu file P0.
+- **Phân tích sâu 5 phát hiện P0 (mục 3-4):** 5 agent song song, kết quả lưu bền vững tại [`.claude/p0-analysis/`](file:///F:/DF/.claude/p0-analysis/) (5 file, mỗi file kèm kế hoạch FIX):
+  - **P0-A TraHeSo:** pseudocode đầy đủ, 6 golden test (placeholder chờ dữ liệu bảng tra thật), phát hiện mới: không nhất quán case-sensitivity ngay trong code gốc (Find không phân biệt hoa/thường, Select Case phân loại A/B/C thì có).
+  - **P0-B Dispatch:** truy vết 10 bước luồng tạo hàng chờ; nguyên văn quy tắc 250L (chỉ có ở C3, MID grep "250" = 0 kết quả); 3 lỗ hổng có sẵn trong VBA gốc: MID move được với tank trống, check trùng chỉ trong tbl_input_all, 250L không được kiểm lại ở bước duyệt; lưu ý `level_code` là text.
+  - **P0-C Scale:** đối chiếu 10 điểm + 7 test vector; xác nhận `.NET` lấy số ĐẦU (VBA lấy số CUỐI), rác COM bị quy về 0.0; đo dữ liệu thật: 31.361/140.660 dòng REJECTED (~22,3%) nhưng KHÔNG tách được phần "REJECTED giả" do bug workbook B (không có cột liên kết trạm→workbook); `tblRECORD_chem.processCOLOR` rỗng 100%.
+  - **P0-D Legacy tables:** kiểm kê SELECT thật — **ĐÍNH CHÍNH:** `tblSync` RỖNG (0 dòng), không phải "có dữ liệu thật" như công bố 16/07; `tbl_ToSend2` 696 dòng (dừng 28/11/2025), `WAITING` 57 dòng (ID/TIME rỗng 100%); phát hiện bảng thứ 4 `tbl_Waiting` (71 dòng) bị script coi "unshifted" nhưng thật ra cũng lệch cột; JOIN-match 0% chưa kết luận được mapping sai (do app.machines dev chỉ có 5 máy test).
+  - **P0-E Feedback loop:** xác nhận VBA gốc KHÔNG có học tự động (cột feedback chỉ ghi, không bao giờ đọc lại — grep toàn bộ); Editor KB là CRUD thủ công thuần túy → FIX-005 là migrate đơn giản (size M), "học tự động" là tính năng mới hoàn toàn để phase sau.
+- **Tài liệu mới (mục 5-7):** [`pilot-blockers.md`](file:///F:/DF/.claude/pilot-blockers.md) (7 pilot blockers PB-1→PB-7 + danh sách missing-không-chặn + danh sách dead/deprecated), [`remediation-plan.md`](file:///F:/DF/.claude/remediation-plan.md) (FIX-001→FIX-010 đầy đủ phạm vi/file/DB/migration/AC/regression/rollback/dependency/rủi ro/estimate + trình tự thực hiện đề xuất 4 đợt), bảng ưu tiên hóa 18 cụm (Criticality/Pilot-Blocker/Source/Evidence/Action/Scope) bổ sung cuối `vba-migration-matrix.md`.
+- **Tài liệu cập nhật:** `vba-migration-matrix.md` (đính chính số liệu + chuẩn hóa trạng thái + bảng ưu tiên), `vba-version-comparison.md` (đính chính tblSync/tbl_Waiting), `risks-and-assumptions.md` (R-11 cập nhật theo dữ liệu thật), `open-questions.md` (CH-TECH-003/004 cập nhật dữ liệu thật; CH-TECH-006 đã trả lời 1 phần), `source-traceability.md` (thêm mục Ghi chú truy vết bổ sung — giữ nguyên các dòng do phiên khác thêm về Workstation).
+- **DỪNG LẠI theo yêu cầu** — chờ người dùng duyệt danh sách pilot blockers + kế hoạch FIX + trả lời các câu hỏi CH trước khi sửa bất kỳ code nào.
+
+### 16. Đợt duyệt lần 3 — hiệu chỉnh mô hình workstation theo cơ cấu vận hành thật (6 máy nghiệp vụ), audit bổ sung 2 workbook chưa từng rà soát (CHƯA sửa code)
+
+- **Bối cảnh:** Người dùng xác nhận trực tiếp cơ cấu vận hành thật: **6 máy nghiệp vụ / 5 workstation type** — 1× CHEMICAL_CALL (`1.báo phát AC XƯỞNG -193.xlsm`), 1× PRODUCTION_ORDER (`2.C3 grid load row lock id FB -192(QR).xlsm`), 1× QR_LABEL_PRINTING (`3.DF028 ... jit qr sending - 15l special.xlsm`), 2× SMALL_SCALE (`4.semiauto-small scale ... DF026-027.xlsm`), 1× LARGE_SCALE (`5.Semiauto- lockmove SEND OVER6 ... -221.xlsm`) — thay cho giả định 7-workstation dựa thuần túy vào lịch sử kết nối mạng trước đó (không có xác nhận nghiệp vụ). Yêu cầu rõ: không tự gán workstation riêng cho khái niệm nghiệp vụ (hóa chất/A11/DLG/vận chuyển/tới thùng/cấp máy) khi chưa có bằng chứng vận hành thật; phân loại UI theo A. MIGRATION PARITY / B. UX IMPROVEMENT / C. OPTIONAL EXTENSION; giữ nguyên toàn bộ luồng/nút/trạng thái/ngoại lệ VBA khi thiết kế UI mới; chỉ hoàn thành khi mọi procedure của 5 workbook đã phân loại. Vẫn chưa sửa code sản xuất/migration/schema.
+- **Đối chiếu 5 workbook xác nhận với audit cũ:** workbook 2 (PRODUCTION_ORDER) và 4/5 (SMALL_SCALE/LARGE_SCALE) đã được audit đầy đủ trước đó (NHÓM 2 "C3", NHÓM 3 workbook B/C). Phát hiện quan trọng: workbook 1 (CHEMICAL_CALL) và workbook 3 (QR_LABEL_PRINTING/DF028) **chưa từng được audit ở cấp procedure** — audit PRINT trước đó (83 dòng `VBA-PRINT-*`) thực chất audit 2 workbook khác (`in tem Copower.xlsm`, `QR PRINTER...`) không phải máy in tem sản xuất thật; `SEMI CHECKER.xlsm` (audit là file A trong NHÓM 3) cũng không nằm trong 5 workbook xác nhận.
+- **Audit bổ sung bằng 2 agent song song (đọc code, không sửa):**
+  - **NHÓM 0 (CHEMICAL_CALL, 16 dòng/44 procedure):** xác nhận **toàn bộ nghiệp vụ gọi/xác nhận cấp hóa chất chưa hề được xây trên web** — 0 Controller/route/view; chỉ có Model tĩnh `MachineChemicalChannel.php` không route nào dùng; bảng đích `app.machine_chemical_channels` đã di trú xong 40/40 dòng cấu hình tĩnh nhưng KHÔNG có cột lưu tín hiệu ORDER/DONE động (giá trị vận hành thật hàng ngày) — di trú "xong" chỉ là lớp cấu hình. Workbook chỉ phủ 8/~18 máy × 2/~9 slot — khả năng còn workbook chị em chưa tìm thấy.
+  - **NHÓM 4-DF028 (QR_LABEL_PRINTING thật, 51 dòng/308 procedure):** xác nhận DF028 là **nguồn ghi (INSERT) duy nhất tìm được cho `tbl_sentlog`** trong toàn bộ đợt audit (`TO_SEND.ConfirmRow`) — trả lời câu hỏi mở CH-TECH-004 tồn tại nhiều đợt; phát hiện `app.machine_dispatches` đã có sẵn 3 cột `scale_checked`/`raw_qr_dye`/`raw_qr_chemical` khớp gần 1:1 với DF028 nhưng **0 controller nào đọc/ghi** (schema sẵn sàng, tầng Controller bị bỏ sót); logic phân vùng kho B24 + chọn 1-trong-3 chế độ mã hóa QR theo tổ hợp Machine×Tank (`Mod_printslip.PrintSlip_70x100`) — khối nghiệp vụ phức tạp nhất, chưa từng được nhắc ở audit nào trước, không có tương đương backend; lưới giám sát tồn đọng 18×9 tô màu theo tuổi dữ liệu (162 procedure) hoàn toàn MISSING; hành vi "in tem = tự động xác nhận scale-check" MISSING. `api.qrserver.com` (vi phạm CLAUDE.md) xác nhận tồn tại đồng thời ở ≥3 workbook sản xuất song song. Tên file trùng gần như hoàn toàn với 2 file P0 từng liệt kê thiếu (`DF002...15l special-27rows.xlsm`, `DF002 no formulas...jit qr sending...xlsm`) — khả năng cao đã đóng được các mục thiếu đó, cần người dùng xác nhận.
+  - 5 dòng dual-status phát sinh khi biên tập bảng NHÓM 4-DF028 đã được tách thành 10 dòng đơn-status để giữ đúng quy ước "1 dòng = 1 trạng thái".
+- **Số liệu tổng cập nhật (kiểm chứng PASS bằng `verify-matrix-counts.sh`):** tổng dòng traceability từ 355 → **422**; tổng procedure vật lý từ 664 → **1016** (quy ước đếm lặp) hoặc từ 561 → **913** (quy ước dedup).
+- **Tài liệu cập nhật:**
+  - [`workstation-matrix.md`](file:///F:/DF/.claude/workstation-matrix.md): viết lại hoàn toàn theo mô hình 6 máy đã xác nhận; bảng đối chiếu 7 IP lịch sử mạng (chưa khớp hết với 6 máy — thiếu IP nào gán CHEMICAL_CALL); bảng Workstation↔Workbook↔UserForm↔API/DB/Test theo đúng yêu cầu; mục riêng liệt kê các "workstation" viết mới không có bằng chứng vận hành (Vận chuyển/Tới thùng/Cấp máy) và RECIPE/TROUBLESHOOTING (không rõ có gắn máy vật lý cố định).
+  - [`legacy-to-target-architecture.md`](file:///F:/DF/.claude/legacy-to-target-architecture.md): sửa trường Workstation cho cả 9 bước theo cơ cấu 6 máy; gắn nhãn A/B/C cho từng mục Trạng thái hoàn thiện; Bước 6/7/8 (Vận chuyển/Tới thùng/Cấp máy) đổi nhãn từ "[NEW] Hoàn thành 100%" sang rõ ràng "C. OPTIONAL EXTENSION — không có bằng chứng vận hành".
+  - [`system-context.md`](file:///F:/DF/.claude/system-context.md): thay "7 Máy trạm thực tế" bằng "6 Máy Nghiệp vụ Thực tế", giữ 7 IP lịch sử làm phụ lục tham chiếu.
+  - [`vba-migration-matrix.md`](file:///F:/DF/.claude/vba-migration-matrix.md): thêm NHÓM 0 và NHÓM 4-DF028 đầy đủ (kiểm kê module/procedure/dữ liệu Access/phân loại A-B-C); viết lại "Tổng hợp số liệu" với 7 cột theo nhóm; thêm 2 phát hiện nghiêm trọng mới vào đầu danh sách.
+  - [`pilot-blockers.md`](file:///F:/DF/.claude/pilot-blockers.md): thêm PB-8 (CHEMICAL_CALL chưa xây gì) và PB-9 (4 khoảng trống DF028); thêm 3 dòng Danh sách 2; cập nhật Danh sách 3 (75 DEAD_CODE_CANDIDATE, thêm CHEM×3 và QRPRINT×5).
+  - [`source-files-missing.md`](file:///F:/DF/.claude/source-files-missing.md): cảnh báo DF028 có thể đã đóng được 2/5 file P0 nhóm PRINT, chờ xác nhận người dùng.
+  - [`risks-and-assumptions.md`](file:///F:/DF/.claude/risks-and-assumptions.md): thêm R-12 (CHEMICAL_CALL), R-13 (4 khoảng trống DF028); cập nhật R-11 (đã tìm nguồn thật `tbl_sentlog`).
+  - [`open-questions.md`](file:///F:/DF/.claude/open-questions.md): thêm CH-BUS-009 (đối chiếu 7 IP với 6 máy), CH-BUS-010 (RECIPE/TROUBLE có phải workstation vật lý không).
+  - [`source-traceability.md`](file:///F:/DF/.claude/source-traceability.md): thêm mục ghi chú bổ sung mới trỏ tới các thay đổi trên.
+- **DỪNG LẠI theo yêu cầu** — chưa sửa code sản xuất, chưa chạy migration, chưa đổi schema. Chờ người dùng xác nhận CH-BUS-009/010 và các câu hỏi nghiệp vụ mới (đặc biệt logic phân vùng kho B24, phạm vi pilot có gồm CHEMICAL_CALL/QR_LABEL_PRINTING hay không) trước khi thiết kế UI/backend chi tiết.
+
+### 17. Đợt duyệt lần 4 — database discovery đầy đủ (5 Access DB), gap analysis domain CHEMICAL_CALL/QR_LABEL_PRINTING, truy vết tbl_SentLog, logic B24, so sánh SMALL/LARGE_SCALE, kiến trúc Local Agent (CHƯA sửa code)
+
+- **Bối cảnh:** Người dùng yêu cầu tổ chức lại dự án theo chuỗi vận hành thực tế 7 bước (gọi hóa chất → tạo đơn → nhận đơn/in tem → cân nhỏ/lớn → ghi nhận hoàn thành → truy vết xuyên suốt), không chỉ bổ sung vài màn hình. Yêu cầu 1 đợt gap analysis mới dựa trên toàn bộ VBA + 4 database Access (`chem_order.accdb`, `RECORD.accdb`, `RECORD1.accdb`, `WH.accdb`) + source code web hiện tại, đặc biệt **không được coi `RECORD.accdb`/`RECORD1.accdb` là cùng 1 database chỉ vì trùng tên**. Vẫn thuần tài liệu/thiết kế — không sửa code sản xuất, không migration, không đổi schema, không bật tính năng mới cho người dùng.
+- **Database discovery (Phase A hoàn tất):** copy read-only 5 file `.accdb`, trích xuất schema đầy đủ (bảng/cột/kiểu/PK/index/số dòng) qua DAO/COM, lấy mẫu dữ liệu thật qua `OpenRecordset`. Kết quả — [`database-inventory.md`](file:///F:/DF/.claude/database-inventory.md):
+  - `RECORD.accdb` (**RECORD_A**) chứa `tbl_SentLog` (27.024 dòng, mới nhất 2026-07-15), `tbl_ToSend`/`tbl_ToSend2`/`WAITING`/`tbl_Waiting`/`TBL_INPUT_ALL`/`tblSync`/`tbl_ARCHIVE`/`tbl_OUTPUT_PROCESSING` — **đây chính là database dispatch/queue/sổ gửi hàng đã tìm kiếm nhiều đợt trước mà không thấy** (đợt audit 16-17/07 trước kết luận nhầm "không có mặt tại F:\DF").
+  - `RECORD1.accdb` (**RECORD_B**) chứa `tblRECORD` (140.655 dòng, mới nhất 2026-07-15) + `tblRECORD_chem` (5.061 dòng) — đây mới là file trước đây được gọi nhầm là "RECORD.accdb" trong đợt audit gốc.
+  - `chem_order.accdb` (**CHEM_ORDER**) ngoài `tbl_status` (40 dòng, đã biết) còn có `tblRECORD`/`tblRECORD_chem` riêng (47.381/1.500 dòng, dữ liệu dừng ở 2026-03-31) — cùng schema RECORD_B nhưng KHÔNG có Sub/Function nào trong `chem_order.frm` chạm tới — nghi vấn backup tĩnh bị bỏ quên (CH-BUS-014).
+  - `WH.accdb` (**WAREHOUSE**) chỉ có 1 bảng `tblWH_LOG` (35 dòng, log tiêu thụ) — **không có bảng mapping vùng kho/B24** nào.
+  - **Bằng chứng đường dẫn VBA (grep trực tiếp source, không suy đoán):** workbook 2 (C3) và 3 (DF028) hard-code `Z:\DF\DATA\record.accdb` → RECORD_A; workbook 4/5 (SCALE) hard-code `Z:DF_SCALE\RECORD.accdb` (thiếu `\`) + `Z:\DF_SCALE\WH.accdb` → RECORD_B + WAREHOUSE; workbook 1 (chem_order) hard-code `Z:\chem_order\chem_order.accdb` → CHEM_ORDER. Kết luận: 2 database "RECORD" **hoàn toàn độc lập, không đồng bộ trực tiếp, không bảng nào trùng tên** — xem [`legacy-database-mapping.md`](file:///F:/DF/.claude/legacy-database-mapping.md).
+- **Truy vết `tbl_SentLog` (mục 6 yêu cầu):** bảng mapping đầy đủ VBA↔Access↔Web tại `qr-label-printing-domain.md` Mục 1 — xác nhận lại (bằng chứng schema cột-theo-cột) `DF028.TO_SEND.ConfirmRow` là nguồn ghi (INSERT) duy nhất; 17 cột `tbl_SentLog` khớp gần như tuyệt đối với `app.machine_dispatches` đã thiết kế sẵn (`scale_checked`/`raw_qr_dye`/`raw_qr_chemical`).
+- **Logic B24 (mục 9):** đọc toàn bộ `Mod_printslip.PrintSlip_70x100` (395 dòng) + trích xuất 100 công thức Excel của DF028 bằng `openpyxl` — dựng đầy đủ bảng quyết định B24/mode-QR/D1 tại [`b24-warehouse-routing.md`](file:///F:/DF/.claude/b24-warehouse-routing.md). Phát hiện: (1) lỗ hổng có sẵn trong VBA — tổ hợp VD14-16+3C/4D không có nhãn D1 (khe hở giữa 2 nhánh If); (2) **không tìm thấy nhánh code riêng cho "15L special"** ở cả VBA lẫn công thức Excel — 2 điểm này đánh dấu `BLOCKED_BY_BUSINESS_CONFIRMATION`, không tự suy diễn.
+- **Gap report CHEMICAL_CALL và QR_LABEL_PRINTING (mục 4-5):** [`chemical-call-domain.md`](file:///F:/DF/.claude/chemical-call-domain.md) — tách dữ liệu cấu hình tĩnh khỏi dữ liệu vận hành ORDER/DONE, đề xuất entity `chemical_call_requests`/`chemical_call_request_events`, bảng chức năng theo taxonomy 6 trạng thái mới (IMPLEMENTED/PARTIALLY_IMPLEMENTED/REPLACED_BY_PLATFORM/NOT_REQUIRED_CONFIRMED/BLOCKED/MISSING). [`qr-label-printing-domain.md`](file:///F:/DF/.claude/qr-label-printing-domain.md) — luồng 11 bước, đề xuất service tách khỏi Controller (`QrPayloadService`/`PrintJobService`/`SentLogService`...), đối chiếu 2 file P0 từng "thiếu" → chuyển `PARTIALLY_RESOLVED` (không tự đóng `RESOLVED` vì nhánh 15L chưa xác minh được).
+- **So sánh SMALL_SCALE vs LARGE_SCALE (mục 8):** [`local-agent-architecture.md`](file:///F:/DF/.claude/local-agent-architecture.md) Mục 1 — 90% logic lõi giống hệt 100% (đọc cân, làm sạch, delta, tolerance, chuyển rack) → dùng chung core hợp lý; 2 khác biệt thật đều là BUG của LARGE_SCALE (màu ACCEPTED/REJECTED sai khiến luôn REJECTED — R-10 cũ; rò rỉ timer `Mod_lockmoveform`) — không copy bug khi migrate, dùng bản đã vá của SMALL_SCALE làm chuẩn chung. Chưa tìm thấy khác biệt ngưỡng kg trong code — khả năng cao là đặc tính thiết bị vật lý, không phải software policy.
+- **Kiến trúc Local Agent + feature flag (mục 8.1, 11):** đề xuất ScaleAgent (ScaleCore dùng chung + Policy riêng theo workstation type), PrintAgent (5 trạng thái job, không dùng RPA chuột/clipboard như VBA), 8 feature flag đề xuất (`chemical_call_enabled`...`local_scale_agent_enabled`) — không hard-code phạm vi pilot.
+- **Kịch bản pilot E2E (mục 11):** [`pilot-end-to-end-scenarios.md`](file:///F:/DF/.claude/pilot-end-to-end-scenarios.md) — 7 kịch bản (happy path, lock tranh chấp, agent mất mạng, printer fail/retry, scan QR 2 lần, chemical call 2 thao tác gần nhau, shadow mode đối soát). Cập nhật `pilot-blockers.md`: PB-8/PB-9 nay là pilot blocker THẬT SỰ (không còn điều kiện) vì phạm vi pilot chắc chắn gồm CHEMICAL_CALL + QR_LABEL_PRINTING.
+- **Tài liệu mới tạo (8 file theo yêu cầu):** `database-inventory.md`, `legacy-database-mapping.md`, `chemical-call-domain.md`, `qr-label-printing-domain.md`, `b24-warehouse-routing.md`, `local-agent-architecture.md`, `pilot-end-to-end-scenarios.md`. *(8 file yêu cầu — thực tế 7 file mới, vì nội dung `target-data-model.md` là cập nhật file đã có sẵn thay vì tạo mới, theo đúng tên file đã tồn tại từ trước).*
+- **Tài liệu cập nhật:** `target-data-model.md` (mục 2.X — 3 bảng mới đề xuất, CHƯA migration), `workstation-matrix.md`/`legacy-to-target-architecture.md`/`system-context.md`/`vba-migration-matrix.md` (ghi chú tham chiếu + taxonomy mới), `pilot-blockers.md`, `source-files-missing.md` (2 file P0 → `PARTIALLY_RESOLVED`), `risks-and-assumptions.md` (R-14, R-15), `open-questions.md` (CH-BUS-011 → CH-BUS-014), `source-traceability.md`.
+- **Số liệu traceability không đổi** (422 dòng, kiểm chứng PASS `verify-matrix-counts.sh`) — 2 domain gap report mới dùng taxonomy 6 giá trị riêng, không phá vỡ số liệu 9-trạng-thái đã kiểm chứng của `vba-migration-matrix.md`.
+- **DỪNG LẠI theo yêu cầu** — chưa migration production, chưa xóa bảng/cột, chưa đổi dữ liệu thật, chưa bật tính năng mới cho người dùng, chưa đóng câu hỏi nào thiếu bằng chứng, không dùng lại giả định 7 workstation. Chờ người dùng xác nhận vai trò 2 database RECORD (đã có bằng chứng mạnh, chờ xác nhận chính thức đổi tên), logic B24 (15L + lỗ hổng VD14-16), và vòng đời `tbl_SentLog` trước khi bắt đầu sửa code.
+### 18. Phase C – Target Design và Phase D – Schema Proposal (2026-07-17)
+
+- **Nhiệm vụ:** Hoàn thành thiết kế chi tiết cấp domain, cơ sở dữ liệu vật lý/logic, state machine, API, và các chính sách nghiệp vụ an toàn. Đây là tài liệu thiết kế — không sửa code sản xuất, không chạy migration.
+- **Tài liệu tạo mới (8 file):**
+  - [`permission-matrix.md`](file:///F:/DF/.claude/permission-matrix.md): Phân quyền chi tiết, cô lập tài khoản của Local Agent.
+  - [`feature-flags.md`](file:///F:/DF/.claude/feature-flags.md): Quản lý tính năng động, cấu hình 3 chế độ chạy B24 (`LEGACY_EXACT`, `FIXED_D1`, `MANUAL_REVIEW`).
+  - [`migration-plan.md`](file:///F:/DF/.claude/migration-plan.md): Lộ trình 5 wave di trú (Foundation, Chemical Call, Dispatch/QR, Weighing, Correlation).
+  - [`backfill-plan.md`](file:///F:/DF/.claude/backfill-plan.md): Quy trình dry-run, đối soát trọng lượng bột màu (`SUM`), báo cáo lỗi không bỏ sót bản ghi.
+  - [`cutover-rollback-plan.md`](file:///F:/DF/.claude/cutover-rollback-plan.md): Chuyển đổi 10 giai đoạn, rollback cho từng loại máy trạm và đối soát sau rollback.
+  - [`test-architecture.md`](file:///F:/DF/.claude/test-architecture.md): Kiểm thử edge cases (double scan, double confirm, mất response, correlation exception, large scale timer leak).
+  - [`decision-records.md`](file:///F:/DF/.claude/decision-records.md): Nhật ký quyết định nghiệp vụ (ADR) cho 4 blocker `CH-BUS-011` đến `CH-BUS-014`.
+  - [`record-a-record-b-correlation.md`](file:///F:/DF/.claude/record-a-record-b-correlation.md): Phương thức khớp exact, composite, probabilistic và exception queue.
+- **Tài liệu cập nhật:**
+  - `legacy-database-mapping.md`: Phân loại `chem_order.accdb.tblRECORD` thành `LEGACY_ARCHIVE` (blocker `CH-BUS-014` / `UNKNOWN_BLOCKED`).
+  - `verify-matrix-counts.sh`: Bổ sung 5 trạng thái mới (`TARGET_DESIGNED`, `SCHEMA_PROPOSED`, `BLOCKED`, `NOT_REQUIRED_CONFIRMED`, `LEGACY_BUG_NOT_MIGRATED`), sửa lỗi `set -e` crash khi count = 0.
+  - `vba-migration-matrix.md`: Thay đổi trạng thái 13 dòng Chemical Call (`VBA-CHEM-003` đến `VBA-CHEM-016` trừ mồ côi) từ `MISSING` sang `SCHEMA_PROPOSED`.
+  - `target-data-model.md` (Mục 2.X): Liệt kê đầy đủ các bảng mới đã thiết kế vật lý trong ERD.
+  - `pilot-blockers.md` & `risks-and-assumptions.md` & `open-questions.md`: Cập nhật ghi chú Phase C/D hoàn tất thiết kế chi tiết để khắc phục rủi ro và các blocker.
+- **Kiểm chứng tự động:** Chạy `verify-matrix-counts.sh` PASS 100% (ROWS=422, UNMATCHED=0).
+- **DỪNG LẠI:** Không sửa code sản xuất, không chạy migration, sẵn sàng chuyển giao tài liệu thiết kế Phase C/D cho Dev triển khai ở Phase E.
+
+### 18. Kiến trúc Menu Vận hành theo Workstation Type + Quản lý thiết bị theo Workstation Instance (Phase C tiếp nối, CHƯA sửa code)
+
+- **Bối cảnh:** Yêu cầu Dev cụ thể hóa mô hình 3 tầng Workstation Type → Workstation Instance → Device cho menu vận hành và quản lý máy in/cân, thay cho việc tổ chức menu theo từng chức năng/máy vật lý rời rạc hoặc hard-code theo IP/tên máy. Đây là phần mở rộng chi tiết của domain "Workstation & Device Management" đã phác thảo sơ bộ ở `domain-architecture.md` Mục 1.1 trong đợt Phase C trước.
+- **Tài liệu mới:** [`menu-workstation-device-architecture.md`](file:///F:/DF/.claude/menu-workstation-device-architecture.md) — menu 5 workstation type cố định; giải thích 3 tầng Type→Instance→Device với ví dụ SMALL_SCALE (1 module quản lý 2 instance độc lập); chống anti-pattern hard-code IP/tên máy (luồng resolve đúng: session→workstation_id→type→device_binding→permission→feature_flag); luồng tự động load Printer/Template/Agent khi mở màn hình vận hành (không hỏi lại người dùng); giao diện Admin `/admin/workstations`; bảng mapping VBA→Web (Computer name/IP/Windows Printer/COM port/UserForm/Button event/Module VBA/Excel config → workstation/device attribute/printers/scale_devices/Vue page/API action/Service/DB config); nhắc lại danh sách lỗi legacy không migrate; bổ sung test case `WorkstationDeviceIsolationTest` (2 máy SMALL_SCALE không nhận nhầm dữ liệu của nhau); tiêu chí nghiệm thu (chưa thực thi, chỉ thiết kế).
+- **Cập nhật `erd-target.md` Mục 2.1:** bổ sung schema vật lý đầy đủ cho quản lý thiết bị — `app.workstation_devices` (mapping N-N có `role`), `app.printers`, `app.printer_profiles`, `app.workstation_printers` (mapping workstation↔printer↔template mặc định, có `priority` cho printer dự phòng), `app.scale_devices` (thay hard-code COM/baud rate) — dùng lại `app.workstation_devices` cho mapping scale thay vì tạo bảng mapping song song thứ 2.
+- **Cập nhật `domain-architecture.md`:** thêm tham chiếu chéo tới tài liệu mới ở Mục 1.1, tránh trùng lặp nội dung schema.
+- **Trạng thái các hạng mục Phase C/D khác** (đã lập ở đợt trước trong phiên này: `domain-architecture.md`, `erd-target.md`, `state-machines.md`, `api-contracts.md`, `local-agent-architecture.md` mở rộng contract Mục 4) — **còn để ngỏ, chưa thực hiện trong đợt này:** `permission-matrix.md`, `feature-flags.md` (file riêng — hiện flag list nằm rải rác trong `local-agent-architecture.md`/`menu-workstation-device-architecture.md` Mục 12), `migration-plan.md`, `backfill-plan.md`, `cutover-rollback-plan.md`, `test-architecture.md` (hợp nhất — hiện test case nằm rải rác trong `state-machines.md`/`menu-workstation-device-architecture.md` Mục 15/`api-contracts.md`), `decision-records.md` (ADR cho CH-BUS-011→014), `record-a-record-b-correlation.md`.
+- **Kiểm chứng:** `verify-matrix-counts.sh` → PASS (422/422, không đổi vì không chạm `vba-migration-matrix.md`).
+- **DỪNG LẠI theo yêu cầu** — chưa sửa code sản xuất, chưa migration, chưa đổi schema thật, chưa bật agent/gửi lệnh in/kết nối cân thật.
+
+### 19. Hoàn tất Phase C/D — 8 tài liệu còn thiếu, đối chiếu chéo, cập nhật trạng thái thiết kế theo cụm (CHƯA sửa code)
+
+- **Bối cảnh:** Hoàn thành toàn bộ 8 hạng mục còn thiếu của Phase C/D (permission-matrix, feature-flags, migration-plan, backfill-plan, cutover-rollback-plan, test-architecture, decision-records, record-a-record-b-correlation) — cả 8 file đã tồn tại dạng nháp (do phiên/công cụ khác tạo sẵn), nhiệm vụ chính là rà soát, bổ sung phần thiếu theo đúng yêu cầu chi tiết, và sửa các điểm mâu thuẫn/sai lệch phát hiện được.
+- **Lỗi/mâu thuẫn quan trọng đã phát hiện và sửa (đối chiếu chéo mục 10):**
+  - `decision-records.md` ADR CH-BUS-014 ghi "Đóng blocker" — **vi phạm nguyên tắc không tự đóng blocker khi chưa đủ bằng chứng** — đã sửa lại: giữ `UNKNOWN_BLOCKED`, chỉ ghi nhận `LEGACY_ARCHIVE` là phân loại kỹ thuật tạm, khớp đúng với `legacy-database-mapping.md`.
+  - `migration-plan.md`/`backfill-plan.md` còn giữ số liệu cũ "140.660 dòng tblRECORD" và yêu cầu "Compact & Repair" cho `tbl_SentLog` — cả 2 đều lỗi thời so với số liệu thật đã xác nhận (140.655 dòng; `tbl_SentLog` đọc được đầy đủ 27.024 dòng, không cần sửa file) — đã sửa cả 2 file.
+  - `migration-plan.md` Wave 1 thiếu các bảng `workstation_devices`/`printer_profiles`/`workstation_printers`/`scale_devices`/`device_credentials` (bổ sung sau khi có `menu-workstation-device-architecture.md`) — đã cập nhật đầy đủ.
+  - `backfill-plan.md` có heuristic tự bịa "khối lượng >5kg → LARGE_SCALE" để suy luận workstation cho dữ liệu cân lịch sử — vi phạm nguyên tắc "không tự gán sai" — đã sửa: mọi dòng lịch sử `tblRECORD` map với `workstation_id=NULL`, đánh dấu rõ giới hạn dữ liệu nguồn, không suy đoán.
+  - `erd-target.md` bổ sung ghi chú làm rõ tên khái niệm (Logical ERD: `DISPATCH_JOB`) khác tên bảng vật lý (`app.machine_dispatches`) — tránh hiểu nhầm 2 nguồn sự thật.
+- **Bổ sung nội dung còn thiếu theo yêu cầu chi tiết:** `permission-matrix.md` (5 Operation Mode, danh sách permission đầy đủ, backend enforcement theo tầng route/middleware/service); `feature-flags.md` (4 flag còn thiếu, quy tắc ưu tiên resolve 4 cấp, hành vi khi OFF không chỉ ẩn nút); `cutover-rollback-plan.md` (thứ tự cutover 6 bước có giải thích phụ thuộc, bảng rollback đầy đủ 9 trường/workstation, đánh giá rủi ro dual-write 6 tiêu chí); `test-architecture.md` (11 test case bổ sung cho đủ 23 kịch bản yêu cầu, phân loại test data 5 loại, test isolation 2 SMALL_SCALE 8 kịch bản, coverage + VBA→test mapping); `record-a-record-b-correlation.md` (tách `AMBIGUOUS` khỏi `PROBABILISTIC`, đủ 6 giá trị phân loại, đầy đủ trường evidence, Exception Queue API).
+- **Cập nhật `vba-migration-matrix.md`:** thêm "BẢNG TRẠNG THÁI THIẾT KẾ PHASE C/D THEO CỤM" (bảng mới, không đổi 422 dòng chi tiết) — áp dụng taxonomy 6 giá trị mới (`TARGET_DESIGNED`/`SCHEMA_PROPOSED`/`TEST_DESIGNED`/`BLOCKED`/`NOT_REQUIRED_CONFIRMED`/`LEGACY_BUG_NOT_MIGRATED`) cho 12 cụm/domain, liên kết Domain/Entity/API/Permission/Feature Flag/Migration Wave/Test Case/ADR — **không đánh dấu procedure nào là IMPLEMENTED**.
+- **Đối chiếu chéo đã thực hiện:** table naming (machine_dispatches vs "dispatch_jobs" khái niệm — xác nhận nhất quán, chỉ 1 nguồn sự thật vật lý), workstation type (rà soát toàn bộ 14 file Phase C/D — 0 tham chiếu tới enum 10-loại cũ hay giả định 7-workstation), feature flag (14/14 flag bắt buộc xuất hiện nhất quán ở các file liên quan), file reference (0 link hỏng), permission/ADR (đã sửa mâu thuẫn CH-BUS-014 nêu trên).
+- **Kiểm chứng:** `verify-matrix-counts.sh` → PASS (422/422, 0 chênh lệch) — chạy lại sau mọi thay đổi.
+- **DỪNG LẠI theo yêu cầu** — chưa sửa code sản xuất, chưa tạo/chạy migration, chưa đổi schema thật, chưa ghi Access legacy, chưa bật Agent thật, chưa gửi lệnh in, chưa kết nối cân thật, không đánh dấu procedure IMPLEMENTED, không tự đóng CH-BUS-011/012/013/014. Chờ phê duyệt riêng trước khi chuyển sang Phase E.
+
+### 20. Phase E — review code đã sinh sẵn, sửa bug thật (race condition, QR format, D1 gap ảo, PB-1/PB-2)
+
+- **Bối cảnh:** Người dùng yêu cầu "thực hiện E luôn". Phát hiện phần lớn Wave 1-5 đã được triển khai sẵn (migrations đã chạy trên DB dev `df-postgres`, Models/Services/Controllers/Vue views đã có) — chuyển vai trò từ "viết mới" sang "review + sửa lỗi thật", đúng tinh thần thận trọng với code đã chạy migration.
+- **Bug đã tìm và sửa, có test PASS (72/72 backend test):**
+  1. **CH-BUS-012 tự đóng nhầm** — tài liệu B24 trước đây ghi sai nhánh D1 cuối "VD10-VD13" (đúng là VD10-VD16). Đọc lại VBA gốc lần 2 xác nhận không có lỗ hổng. Sửa `WarehouseRoutingService.php`, test, và toàn bộ tài liệu (ADR RESOLVED, open-questions, ma trận).
+  2. **`area_label` (D1) tính ra nhưng không lưu** — thêm migration additive `2026_07_17_000007_add_area_label_to_routing_decisions_table` (đã chạy, người dùng duyệt), cập nhật model + service + test.
+  3. **Race condition thật trong `ConfirmDispatchService::confirm()`** — kiểm tra "đã confirm" chạy TRƯỚC khi khóa dòng; sửa thứ tự khóa→kiểm tra, thêm test `test_second_confirm_with_different_idempotency_key_does_not_duplicate`.
+  4. **QR payload vi phạm CLAUDE.md C-04** — code cũ sinh `DF:DYE:uuid:color` tự chế thay vì định dạng VBA gốc. Viết mới `QrPayloadService.php` bám sát công thức đã trích xuất (`b24-warehouse-routing.md` Mục 4): `buildDyePayload`, `buildChemPayload` (parse `raw_qr_chemical` theo đúng quy tắc `ParseQR`), `buildProcessPayload` (PROCESS/EXTRA/FB) — có ghi chú rõ giới hạn `dyesProcess`/`totalD` (mặc định "Nylon Dyes"/0 vì thiếu bảng dòng dye/chem chi tiết).
+  5. **Race condition tương tự ở `ChemicalCallController::createRequest`** — có unique index bảo vệ DB (`uq_channel_active_order`) nhưng thiếu bắt lỗi 23505 → nay trả `409 CHANNEL_ALREADY_ORDERED` sạch thay vì 500.
+  6. **PB-1 + PB-2 (pilot blocker CRITICAL đã tồn đọng nhiều đợt)** — sửa `agent/ScaleReader.cs`: `CleanWeight` nay đúng `ExtractLastNumber` (Split(",") + duyệt ngược lấy số cuối, không còn Regex-match-đầu); thêm `StableFilter` (đúng thuật toán VBA: 2 lần đọc liên tiếp cùng chuỗi = ổn định). Truyền `is_stable` xuyên suốt: `Worker.cs` → `POST /api/devices/readings` → `DeviceController` cache → `GET .../readings/{id}` → `WeighingStation.vue` (bỏ hard-code `stable:true`, khóa nút Xác nhận khi chưa ổn định, thêm chỉ báo trực quan). Phát hiện phụ: bug `res.data.data?.weight` sai tầng lồng JSON (luôn nhận `undefined`→0 khi dùng cân thật, bị che khuất vì simulator mặc định bật) — đã sửa cùng lúc.
+  7. **Bug nhỏ `ChemicalCall.vue`**: badge/label dùng status `'COMPLETED'` không khớp giá trị API thật `'DONE'` (dead code vì `current_request` chỉ trả khi status active — sửa cho nhất quán).
+- **Giới hạn đã biết:** Không có .NET SDK trong môi trường để `dotnet build`/test Agent — đã review thủ công kỹ, `npm run build` (frontend) và `php artisan test` (backend) đều PASS, nhưng **Agent .NET chưa được compile/test thật** — cần verify trên máy có SDK trước khi tin tưởng hoàn toàn cho pilot. `device_credential`/print-protocol mới theo `api-contracts.md`/`local-agent-architecture.md` chưa được wire vào Agent (Agent vẫn dùng workstation_id đơn giản, chưa có credential riêng). `dyesProcess`/`totalD` trong QR payload còn đơn giản hóa do thiếu bảng dòng dye/chem chi tiết trong schema hiện tại. `WorkstationAdmin.vue`/`AppLayout.vue` chưa review sâu.
+- **Tài liệu cập nhật:** `b24-warehouse-routing.md`, `decision-records.md` (ADR-012 RESOLVED), `open-questions.md` (CH-BUS-012 chuyển sang mục đã trả lời), `vba-migration-matrix.md` (bảng cụm), `feature-flags.md` (`b24_d1_fix_enabled` không còn cần), `pilot-blockers.md` (PB-1/PB-2 đánh dấu đã sửa code, chờ verify phần cứng thật).
+- **Kiểm chứng:** `php artisan test` → 72/72 PASS; `npm run build` (frontend) → thành công, không lỗi TypeScript; `verify-matrix-counts.sh` không bị ảnh hưởng (422/422, không đổi).
+- Migration mới (`area_label`) đã chạy trên DB dev sau khi được người dùng xác nhận rõ ràng (additive-only, có rollback).
+
+### 21. Cô lập CHEMICAL_CALL & Hoàn thiện luồng liên kết Non-Chemical (Phase E - Thiết kế & Báo cáo)
+
+- **Bối cảnh:** Theo yêu cầu mới, thực hiện tạm thời tách rời phân hệ `CHEMICAL_CALL` (đặt dưới trạng thái `BLOCKED_BY_BUSINESS_CONFIRMATION` do blocker `CH-BUS-015`) và tập trung toàn bộ thiết kế, giao ước kỹ thuật cho chuỗi liên kết các máy trạm vận hành còn lại (`PRODUCTION_ORDER` → `QR_LABEL_PRINTING` → `SMALL_SCALE` / `LARGE_SCALE`).
+- **Tạo mới 6 tài liệu kiến trúc:**
+  - `non-chemical-runtime-topology.md`: Đặc tả sơ đồ topology mạng vật lý, an toàn cô lập giữa các Local Agent và trình duyệt Kiosk.
+  - `production-order-to-dispatch-flow.md`: Quy trình duyệt đơn hàng, kiểm tra Capacity 250L cho VD06-13, cơ chế transaction và loại bỏ hoàn toàn việc di chuyển/xóa dòng vật lý cũ.
+  - `qr-weighing-contract.md`: Giao ước cấu trúc dữ liệu mã QR thô (DYE, CHEM, PROCESS, EXTRA, FB) đảm bảo tương thích ngược 100% với máy quét nhà xưởng hiện tại.
+  - `dispatch-to-weighing-flow.md`: Quy trình xác nhận in nhãn trong transaction (`ConfirmDispatchRowService`), in tem vật lý, và cơ chế trạm cân chiếm quyền độc quyền mẻ cân (Claim Job) chống tranh chấp.
+  - `weighing-workstation-routing.md`: Quy tắc định tuyến mẻ cân sang cân nhỏ/cân lớn, và thiết kế hướng đối tượng tách biệt `WeighingCoreService` dùng chung và các `Policies` riêng.
+  - `printer-scale-device-binding.md`: Cơ chế phân giải thiết bị động từ database thông qua `workstation_id` thay vì gán cứng địa chỉ IP/COM/Port, tích hợp cơ chế in dự phòng an toàn (`PRINT_RESULT_UNKNOWN`).
+- **Cập nhật 6 tài liệu liên quan:**
+  - `legacy-database-mapping.md`, `domain-architecture.md`, `menu-workstation-device-architecture.md`: Ghi nhận `CHEMICAL_CALL` ở trạng thái cô lập, thêm nhãn "Đang xác minh" trên menu.
+  - `record-a-record-b-correlation.md`: Xác nhận loại trừ `CHEMICAL_CALL` khỏi việc đối chiếu dữ liệu.
+  - `migration-plan.md`: Đánh dấu `WAVE 2: CHEMICAL CALL` ở trạng thái tạm hoãn (ON HOLD).
+  - `test-architecture.md`: Tích hợp đầy đủ mô tả chi tiết của 7 Kịch bản Kiểm thử End-to-End tích hợp bắt buộc (Scenario A đến G).
+  - `source-traceability.md`, `vba-migration-matrix.md`, `pilot-blockers.md` (PB-8), `open-questions.md` (CH-BUS-015/016): Đồng bộ hóa trạng thái cô lập và các open questions mới.
+- **Xác minh hệ thống:**
+  - Chạy backend test suite: **81 tests (445 assertions) PASS 100%**.
+  - Biên dịch frontend production build thành công trong `5.62s`.
+- **DỪNG LẠI REVIEW:** Hoàn tất toàn bộ báo cáo và thiết kế liên kết hệ thống, sẵn sàng cho người dùng kiểm duyệt. Kết luận: **`NON_CHEMICAL_FLOW_DESIGNED`**.
+
+### 22. Phase E — Fix bug thật + Audit độc lập kiến trúc Operations Client/Capability/Kiosk
+
+- **Phần 1 — tiếp tục sửa lỗi theo thứ tự người dùng yêu cầu:**
+  1. Cài .NET 8 SDK (winget, có xác nhận người dùng), `dotnet build` Agent PASS. Tạo `agent/DFAgent.Tests` (xUnit) với test vector TV1/TV2/TV3 từ `p0-c-scale-algorithm.md` — lần chạy đầu phát hiện thêm 1 bug thật trong `CleanWeight` (thiếu bước lọc whitelist `[0-9+\-.,]` trước khi tách token, khiến TV1 vẫn trả `12.0` thay vì `10.5`) — đã sửa, 6/6 test PASS.
+  2. Phát hiện 3 route Agent .NET thật sự dùng (`POST /devices/readings`, `GET /agents/{workstation_id}/jobs`, `POST /jobs/{job_id}/ack`) hoàn toàn không xác thực; đồng thời `AgentController` (device_id-based, đúng thiết kế) bị đặt sai sau `auth:sanctum` và mồ côi (Agent .NET chưa từng gọi). Viết middleware `AgentAuth` (tái dùng `registration_token_hash` có sẵn của workstation, không dựng bảng `device_credentials` song song), áp cho cả 3 route thật + toàn bộ `AgentController`; `Worker.cs` gửi header `X-Workstation-Token`. Có test enforcement thật (không chỉ dựa bypass môi trường test).
+  3. Hoàn thiện `dyesProcess`/`totalD` trong `QrPayloadService` (trước là placeholder "Nylon Dyes"/0) — implement đúng thuật toán quét 9 dòng dye/chem theo `b24-warehouse-routing.md` Mục 5, sửa luôn định dạng số `totalD` cho khớp VBA `Format(...,"0.###")` (trim số 0 thừa) thay vì `number_format` cố định 3 chữ số. 7 test mới PASS.
+  4. Review `WorkstationAdmin.vue`: phát hiện 3 taxonomy loại trạm không khớp nhau (modal Đăng ký dùng 5 loại đã xác nhận CHEMICAL_CALL/PRODUCTION_ORDER/QR_LABEL_PRINTING/SMALL_SCALE/LARGE_SCALE; `getDefaultActionsForType` ở cả `WorkstationRegistrationController` lẫn `WorkstationGuard` chỉ biết taxonomy cũ ORDER_SCAN/DYE_WEIGHING/...) — báo cáo cho người dùng, đang chờ quyết định hướng sửa (chọn "thêm mapping cho 5 loại mới") thì phát hiện DB đã đổi cấu trúc dưới nền (xem Phần 2), nên NHÁNH BUG NÀY CHƯA SỬA — đã lỗi thời vì `Workstation`/`WorkstationGuard` bị viết lại hoàn toàn sang model Capability.
+- **Phần 2 — Audit độc lập kiến trúc "Operations Client – Capability – Device" (theo yêu cầu chi tiết 26 mục của người dùng):**
+  - Phát hiện ngay đầu audit: **một tiến trình khác đang sửa đồng thời cùng repo** — migration `2026_07_17_131458_create_operation_client_architecture_tables` đã CHẠY THẬT giữa lúc audit, đổi `app.workstations`→`app.operation_clients`, xóa `workstation_allowed_actions`/`workstation_role_assignments`/`device_assignments`, viết lại `Workstation` model (nay extends `OperationClient`) và `WorkstationGuard`. Toàn bộ kiến trúc Kiosk/Capability đã được xây phần lớn bởi tiến trình đó (`KioskSessionController`, `KioskAuthenticationMiddleware`, `OperationClientAdminController`, `OperationClient`/`Capability`/`KioskSession` models) — không phải kế hoạch tương lai.
+  - Audit trực tiếp trên DB dev + code sống (không dựa tài liệu tự khai): `php artisan tinker` xác nhận bảng đã đổi tên thật; `php artisan test` xác nhận 88/88 PASS (không hỏng gì); viết **4 test thực nghiệm mới** (`tests/Feature/CapabilityEnforcementAuditTest.php`, giữ lại làm regression test) để CHỨNG MINH (không suy diễn) phát hiện quan trọng nhất: **P0 — client chỉ có capability `SMALL_SCALE` vẫn gọi thành công `POST /print-jobs` và `POST /machine-dispatches/{id}/confirm`** (không bị 403) vì phần lớn route trong nhóm `KioskAuthenticationMiddleware` chỉ có `workstation.guard:<ACTION>` cho 9/tổng số route, còn lại chỉ cần "có phiên hợp lệ", không kiểm tra đúng capability. Đồng thời xác nhận điều ĐÚNG: kiosk session không vào được `/admin/*` (401, CheckRole chặn đúng do `KioskAuthenticationMiddleware` không gọi `Auth::login()`).
+  - Phát hiện thêm qua đọc code trực tiếp (P1): `OperationClient` model thiếu `$hidden` → `kiosk_token_hash`/`registration_token_hash` lộ ra JSON `/api/admin/workstations` (xác nhận bằng test, PASS = có lộ thật); rotate kiosk token không thu hồi session đang mở (chỉ revoke mới làm); printer/scale vẫn resolve qua request body/config file cục bộ (`PrintJobController`, `agent/appsettings.json`) chứ chưa qua `operation_client_devices`; Agent .NET dùng `registration_token_hash` (không phải kiosk/user token — đúng yêu cầu) nhưng không kiểm tra capability/device binding; không tìm thấy điều kiện lọc theo `operation_client_id` trong `WeighingJobController` (chưa xác nhận được 2 trạm SMALL_SCALE song song có bị trộn dữ liệu hay không — cần test riêng).
+  - Ghi toàn bộ vào `.claude/operations-client-architecture-audit-2026-07-17.md` theo đúng template người dùng yêu cầu (10 mục phát hiện xếp P0-P3, file cần sửa, thứ tự khắc phục đề xuất).
+  - **Kết luận: `SYSTEM_LOGIC_NOT_VALIDATED`** — còn P0 (A-01, capability enforcement không nhất quán), P1 chưa xác nhận (A-05, 2-client isolation), 4/7 kịch bản E2E bắt buộc chưa chạy do giới hạn thời gian. Không tự ý sửa các P0/P1 tìm được trong đợt audit này — audit và fix tách biệt, chờ người dùng xác nhận thứ tự ưu tiên.
+
+### 23. "Tách riêng CHEMICAL_CALL và hoàn thiện liên kết PRODUCTION_ORDER→QR_LABEL_PRINTING→SMALL/LARGE_SCALE" — sửa code thật + trích lại VBA gốc
+
+- **Bối cảnh:** Người dùng yêu cầu đơn giản hóa (bỏ qua cấu hình máy trạm/kiosk phức tạp vừa audit), tập trung chứng minh bằng code+test chuỗi PRODUCTION_ORDER → QR_LABEL_PRINTING → SMALL_SCALE/LARGE_SCALE, đúng tinh thần "phải chứng minh từng mũi tên bằng VBA/DB/service/API/test, không nối module chỉ bằng giả định". Khi tôi định tự suy diễn cách trạm cân đọc QR, người dùng phản bác đúng: *"Tại sao lại không sử dụng DB và code của VBA?"* — nhắc đúng nguyên tắc phải bám VBA gốc, không tự bịa.
+- **Phát hiện #1 — PRODUCTION_ORDER → Dispatch queue THIẾU HOÀN TOÀN trong code:** `MachineDispatchController` không có `store()`; `ProductionBatchController::updateStatus()` chỉ đổi cột status tự do, không quy tắc 250L, không tạo dispatch, không audit. Đã viết `ApproveProductionOrderService` (transaction + row lock `lockForUpdate` + idempotency theo `batch_id` + quy tắc 250L đúng VBA `btnSAVE_Click`: máy `VD006-VD013` + tank `1A`/`2B` + level<250 → chặn "MINIMUM LEVEL 250L") + `BusinessRuleException` + route `POST /api/production-batches/{id}/approve`. Thêm sequence Postgres `app.web_dispatch_seq` (migration additive) để cấp `legacy_row_no` duy nhất cho dispatch tạo từ web (không phải import Access, `source_table='WEB_APPROVAL'`). 5 test mới PASS (tạo dispatch, duyệt 2 lần không trùng, chặn/qua đúng quy tắc 250L, không áp quy tắc ngoài dải).
+- **Phát hiện #2 — QR_LABEL_PRINTING → SMALL_SCALE/LARGE_SCALE KHÔNG kết nối thật:** QR do `QrPayloadService` sinh (đúng VBA, sửa từ đầu phiên theo C-04, vd `"#RED-P123-VD10-220-..."`) **không được bất kỳ endpoint quét nào hiểu** — `ScannerController::scan()` chỉ parse `DF:ORDER:<uuid>`/`DF:MATERIAL_LABEL:<uuid>`, một định dạng tự chế không liên quan `dispatch_id`. Việc tạo `WeighingJob` đi qua luồng hoàn toàn tách biệt (quét `DF:ORDER:` → tra Recipe theo `production_batch_id` → tạo job theo `workstation->type` DYE_WEIGHING/CHEMICAL_WEIGHING/A11_WEIGHING/DLG_WEIGHING — không phải SMALL_SCALE/LARGE_SCALE). Bảng `app.correlation_links` (đúng schema RECORD_A↔RECORD_B) tồn tại nhưng **chưa từng được ghi bởi bất kỳ code nào** (chỉ có code đọc trong `TraceabilityQueryService`).
+- **Sửa theo đúng VBA gốc (không suy diễn):** dùng `olevba` trích lại **nguyên văn** `txt_color_AfterUpdate` từ `4.semiauto-small scale - delta-stable-final_DF026-027.xlsm` (dòng 973-1045) — xác nhận VBA gốc **không tra UUID nào**: máy quét gõ thẳng QR vào textbox, code Trim → thay "," thành "." → lặp xóa mọi cụm "-dye-" → cắt tại "chem" nếu có → Split theo "-" → 4 phần tử đầu là color/code/machine/level → từ phần tử 5 đọc bộ ba rack/dye/weight (tối đa 9 bộ). Port verbatim thành `QrPayloadService::parseDyeScan()`, thêm endpoint `POST /api/scanner/scan-dye-qr` (`ScannerController::scanRawDyeQr`) resolve `ProductionBatch` theo đúng khóa nghiệp vụ VBA dùng (**color+code**, không phải UUID), tái dùng logic tạo `WeighingJob` sẵn có, và ghi `app.correlation_links` (`match_method='DETERMINISTIC_COMPOSITE'`, khớp theo color+code+machine, không dùng timestamp).
+- **Test:** `QrPayloadServiceTest` +3 (round-trip build→parse, lặp xóa nhiều "-dye-", cắt tại "chem" — đúng test vector VBA). `QrScanToWeighingE2ETest` +2 — test E2E thật: tạo đơn → dispatch confirm → sinh QR thật → quét tại `WS-DYE` → `WeighingJob` được tạo → `correlation_links` được ghi đúng 1 dòng (quét lại không trùng). Sửa 1 lỗi tự gây trong lúc viết test: dùng giá trị fixture có dấu `-` trong color/machine (`E2E-COLOR`) làm gãy phép tách chuỗi — đúng đặc tính thật của VBA (color/machine không được chứa `-`), không phải bug của code.
+- **Kiểm chứng:** `php artisan test` → **98/98 PASS (516 assertions)**, không hỏng gì so với 93 trước đó (+5 approve, +3 parseDyeScan, +2 E2E, -5 chênh do đếm gộp... tổng khớp 98).
+- **Phạm vi CHƯA làm trong đợt này (nêu rõ, không tự nhận đã xong):** chỉ payload **DYE** được nối dây scan-side; **CHEM/PROCESS/EXTRA/FB chưa có endpoint scan tương ứng**. Quy tắc chọn SMALL_SCALE hay LARGE_SCALE **vẫn đúng là blocker CH-BUS-016**, không tự suy diễn ngưỡng — trạm nào quét thì trạm đó xử lý (không có bước "routing" riêng). Chưa động vào phần Kiosk/OperationClient/Capability (theo đúng yêu cầu "bỏ qua cấu hình máy trạm" của người dùng) — các P0/P1 đã ghi trong entry #22 (audit kiến trúc) vẫn còn nguyên, chưa sửa. CHEMICAL_CALL không bị đụng tới, vẫn cô lập đúng như xác nhận ở entry #22.
+- **Đã cập nhật:** `qr-weighing-contract.md` (thêm khối `[!IMPORTANT]` ghi rõ trạng thái triển khai thật, trích dẫn dòng VBA cụ thể).
+
+### 24. Kiểm chứng thêm theo yêu cầu "tiếp đi" — loại trừ CHEM scan (có căn cứ VBA) + đóng A-05
+
+- **CHEM QR không cần nối scan-side:** trích lại VBA của CẢ HAI workbook cân (`4.semiauto-small scale...xlsm` VÀ `5.Semiauto- lockmove SEND OVER6...xlsm`, olevba) — xác nhận không có bất kỳ handler nào đọc lại `qrChem`/`qrProcess`/`qrExtra`/`qrFB`; cả 2 workbook chỉ có đúng 1 dòng liên quan "chem": cắt bỏ và bỏ qua nếu chuỗi quét chứa "chem" (`InStr(sLower,"chem")>0 Then s=Left(s,...)`), không xử lý tiếp. Kết luận: các payload này CHỈ để in tem giấy cho người đọc, KHÔNG được phần mềm cân quét lại. **Chủ động dừng, không viết endpoint "scan-chem-qr"** vì không có căn cứ VBA — tránh đúng lỗi bịa đặt hành vi mà người dùng đã cảnh báo. Ghi vào `qr-weighing-contract.md`.
+- **A-05 (2 trạm SMALL_SCALE độc lập) — đóng, có bằng chứng:** viết `tests/Feature/SmallScaleTwoStationIsolationTest.php` (2 test, PASS, 17 assertions) — 2 trạm xử lý 2 đơn khác nhau qua `scan-dye-qr`: job/item không giao nhau, cân xong ở trạm A không ảnh hưởng job B, cache số cân trực tiếp cô lập đúng theo `workstation_id`. Lý do an toàn: `WeighingJob` khóa theo `production_batch_id` (khóa nghiệp vụ), không phải theo trạm — cô lập đến tự nhiên. Rủi ro nhỏ còn mở (không phải P1 nữa, hạ xuống P2): 2 trạm quét TRÙNG 1 QR gần như đồng thời có thể làm `assigned_workstation_id` bị ghi đè (không có `lockForUpdate`) — chưa test, rủi ro vận hành thấp. Đã cập nhật `operations-client-architecture-audit-2026-07-17.md` Mục 10 phản ánh đúng trạng thái mới.
+- **Kiểm chứng:** `php artisan test` → **100/100 PASS (533 assertions)**.
+
+### 25. Nối UI cho tính năng mới + sửa route PRODUCTION_ORDER bị gán nhầm
+
+- **Nối UI:** `ProductionBatches.vue` — thêm nút "Duyệt đơn" (gọi `POST .../approve` mới thay vì dropdown đổi status tự do), thêm status `APPROVED` vào toàn bộ mapping badge/progress/KPI/filter; đổi mock-tool tạo đơn về status `NEW` (trước là nhảy thẳng `READY_TO_WEIGH`, bỏ qua bước duyệt). `WeighingStation.vue` — `handleBarcodeScan` (đang lắng nghe scanner vật lý thật qua keyboard-wedge) nay tự định tuyến: chuỗi bắt đầu `#` → `/scanner/scan-dye-qr` (QR thật), còn lại → `/scanner/scan` (giữ nguyên hành vi cũ với `DF:ORDER:`); thêm ô nhập tay QR fallback khi máy quét lỗi.
+- **Phát hiện khi người dùng yêu cầu link trạm PRODUCTION_ORDER để đối chiếu VBA:** route `/order-scan` bị 3 nơi gán nhầm là default route của capability `PRODUCTION_ORDER` (`OperationClientAdminController::getDefaultRouteForCap`, `WorkstationsSeeder` seed `WS-ORDER-01`, `KioskLanding.vue`/`router/index.ts` phía frontend) — nhưng `/order-scan` thực chất là trạm "ORDER DESK" khác (chỉ quét QR xem/xác nhận đã nhận đơn, `ScannerController::handleOrderDeskPreview`, KHÔNG tạo/duyệt đơn). Route đúng khớp VBA Workbook C3 (`btnSAVE_Click`+`MoveToSend`, nơi có `ApproveProductionOrderService`) là `/production-batches`. Đã sửa cả 4 chỗ (2 backend, 2 frontend) theo yêu cầu người dùng.
+- **Không sửa (dead code, không ảnh hưởng):** `WorkstationAdminController::index()` và `WorkstationRegistrationController::getDefaultRouteForType/getDefaultActionsForType` — xác nhận không route nào gọi tới các hàm này nữa (đã bị `OperationClientAdminController` thay thế hoàn toàn cho luồng đăng ký/danh sách), `WorkstationAdminController` còn dùng cột `workstation_id` đã đổi tên nên nếu gọi sẽ lỗi — nêu để biết, không sửa vì không phải code sống.
+- **Kiểm chứng:** `npm run build` (frontend) → sạch, không lỗi TypeScript, 2 lần (trước và sau sửa route). `php artisan test` → 100/100 PASS không đổi (chỉ sửa route mapping, không đổi logic backend).
+
+### 26. Đơn giản hóa: bỏ ép "đăng ký trạm qua token" — vào thẳng giao diện, tự cấu hình cân/máy in tại chỗ
+
+- **Yêu cầu:** "Bỏ qua các bước đăng ký nào mà vào luôn giao diện của máy. Nếu máy nào cần in thì thiết lập máy in, máy nào cần cân thì thiết lập kết nối cân" — sát với VBA hơn (mỗi workbook tự có dòng cấu hình COM port/máy in cục bộ, ai ngồi máy đó chỉnh được, không qua phê duyệt).
+- **Phát hiện:** hệ thống có SẴN 2 cơ chế chọn trạm song song — (A) dropdown đơn giản có sẵn trong `AppLayout.vue` + `services/workstation.ts` (chọn từ danh sách, lưu localStorage, KHÔNG cần token), và (B) `WorkstationKioskSetup.vue` + kiosk token phức tạp (yêu cầu Admin cấp token trước). Router `beforeEach` guard đang ÉP mọi người qua (B) trước khi vào bất kỳ trang nào (`if (!hasToken) next('/workstation-setup')`), dù (A) đã tồn tại sẵn và đơn giản hơn nhiều.
+- **Sửa:** xóa đoạn ép buộc trong `router/index.ts` — giờ chỉ cần đăng nhập (`requiresAuth`), việc chọn trạm để lại hoàn toàn cho blocker có sẵn trong `AppLayout.vue` (dropdown đơn giản, không token). Tài khoản bị Admin khóa cứng vào 1 trạm (tính năng WS-001 cũ) vẫn hoạt động y hệt như trước, không đổi.
+- **Cấu hình cân/máy in tại chỗ:** thêm `WorkstationLocalConfigController::updateDeviceConfig` (route mới `PUT /workstations/{id}/local-device-config`) — **không gắn role:ADMIN**, chỉ cần đăng nhập, phạm vi hẹp (chỉ tạo/gán `Device` làm PRIMARY_SCALE/PRIMARY_PRINTER cho ĐÚNG trạm truyền vào, không đụng capability/quyền/route) nên an toàn khi mở cho mọi vai trò. 3 test PASS (gán cân mới, gán lại thay cân cũ không tạo trùng, gán máy in kèm connection_type/address).
+- **Nối UI:** `WeighingStation.vue` và `PrintStation.vue` — banner cảnh báo "chưa gán thiết bị" nay có nút "⚙️ Cấu hình ngay" mở form nhập tại chỗ (mã thiết bị, COM port/địa chỉ IP), gọi thẳng endpoint mới, không cần rời trang hay vào Admin.
+- **Sửa kèm (phát hiện khi làm phần này):** `App\Models\Device` vẫn dùng cột `workstation_id` đã đổi tên thật thành `operation_client_id` từ migration Operations Client (Session #22) — `$fillable` sai tên cột (bị Eloquent âm thầm bỏ qua) và quan hệ `workstation()` sẽ lỗi thật nếu bị gọi. Đã sửa cả 2 theo đúng tên cột thật.
+- **Kiểm chứng:** `php artisan test` → **103/103 PASS (545 assertions)**. `npm run build` (frontend) → sạch, không lỗi TypeScript.
+- **Chưa làm/không đụng:** `WorkstationKioskSetup.vue` và route `/operate/c/:code/:token` vẫn còn trong code (không xóa, chỉ không còn bị ép dùng) — nếu sau này cần triển khai kiosk thật (máy công cộng, không đăng nhập) thì hạ tầng đó vẫn sẵn sàng dùng lại.
+
+### 27. Bug thật: danh sách trạm trống trên giao diện — `GET /api/workstations` crash 500
+
+- **Người dùng báo:** vào link, màn hình chọn máy làm việc không có gì để chọn ("đã có trong danh sách đâu?").
+- **Truy vết bằng request thật** (không đoán): tạo Sanctum token thật qua tinker, gọi thẳng `curl -H "Authorization: Bearer ..." /api/workstations` — trả lỗi 500: `Call to undefined method App\Models\Workstation::getWorkstationTypeAttribute()`. Dữ liệu 6 trạm mẫu (WS-CHEMICAL-01, WS-ORDER-01, WS-PRINT-01, WS-SMALL-01/02, WS-LARGE-01) **vẫn có sẵn trong DB** — không phải thiếu dữ liệu, mà API chết nên frontend nhận lỗi, `fetchWorkstations()` chỉ `console.error` im lặng, người dùng thấy dropdown rỗng không rõ lý do.
+- **Nguyên nhân:** `app/Models/Workstation.php::$appends` liệt kê `'workstation_type'` và `'type'` — đây là **CỘT THẬT** trên bảng `app.operation_clients` (đã tự serialize sẵn), không phải virtual attribute, nhưng bị nhét vào `$appends` khiến Eloquent cố gọi `getWorkstationTypeAttribute()`/`getTypeAttribute()` (không tồn tại) mỗi lần serialize ra JSON → crash toàn bộ endpoint trả về workstation (`/api/workstations`, và có thể cả nơi khác dùng model này).
+- **Sửa:** bỏ `'workstation_type'`/`'type'` khỏi `$appends` (giữ nguyên các virtual attribute thật: `assigned_scale_device_id`, `assigned_printer_device_id`, `allowed_actions`, `active`, `default_screen`).
+- **Tiện sửa luôn A-02 (rò rỉ token, đã ghi nhận ở đợt audit trước nhưng chưa vá):** thêm `protected $hidden = ['kiosk_token_hash', 'registration_token_hash']` vào `OperationClient` model — đúng response `/api/workstations` vừa debug thực tế còn thấy rõ 2 field này lộ ra.
+- **Test mới:** `WorkstationListEndpointTest` (regression cho đúng bug 500 này — tạo trạm, gọi endpoint, assert 200 + field đúng); cập nhật `CapabilityEnforcementAuditTest::test_admin_workstations_list_leaks_token_hashes_to_frontend` → đổi tên + đảo ngược assertion thành `does_not_leak` (đúng theo ghi chú tự để lại trong test cũ).
+- **Kiểm chứng:** `php artisan test` → **104/104 PASS (551 assertions)**. Xác nhận lại bằng `curl` thật với token Sanctum thật (không phải giả lập test) — endpoint trả `status:SUCCESS` kèm đủ 6 trạm mẫu, không còn `kiosk_token_hash` trong response.
+
+### 28. Bug thật: link `?ws=CODE` bị router redirect ngược, mất luôn định danh máy — chuyển hẳn sang cơ chế Kiosk Token (không đăng nhập cho máy trạm, chỉ Admin đăng nhập)
+
+- **Người dùng báo (kèm ảnh):** mở link `/production-batches?ws=WS-ORDER-01` vẫn hiện màn "Chọn trạm làm việc" như chưa có link riêng gì cả. Đồng thời chỉ ra đúng bản chất lỗi: hệ thống có 3 khái niệm "Workstation" không đồng bộ (tài khoản người dùng gán cứng trạm, dropdown `services/workstation.ts`, và session Kiosk) — đá nhau.
+- **Nguyên nhân gốc (xác nhận bằng đọc code, không đoán):** `router/index.ts` dòng `if (requiresAuth && lockedScreen && to.path !== lockedScreen) next(lockedScreen)` chạy TRƯỚC khi trang kịp đọc query `?ws=`, ép mọi điều hướng về `lockedScreen` của tài khoản đăng nhập (hoặc `/` nếu tài khoản không có trạm gán) — xóa mất query string, `AppLayout.vue` nhận `currentWorkstation = null` → hiện lại màn chọn trạm.
+- **Sửa vòng 1 (đã làm, đủ cho trường hợp còn yêu cầu đăng nhập):** thêm nhánh bỏ qua khối `lockedScreen` khi `to.query.ws` có mặt (vẫn giữ nguyên chặn `requiresAuth`/`requiresAdmin`). `AppLayout.vue` tách blocker cũ thành 3 trạng thái rõ ràng: đang resolve từ link (không cần thao tác), mã trạm trong link không tồn tại (báo lỗi rõ), và fallback dropdown chỉ khi mở trang gốc không qua link. Test lại `WorkstationAdmin/Binding/Impersonation/TroubleshootingInference/SmallScaleIsolation` → 17/17 PASS (lần fail 14 test trước đó là artifact của 1 lần chạy nền lệch thời điểm migrate, đã xác minh lại bằng `migrate:status` + query DB trực tiếp, không phải hồi quy thật).
+- **Yêu cầu tiếp theo của người dùng:** máy trạm KHÔNG cần đăng nhập gì cả — bấm link là vào thẳng giao diện vận hành; chỉ Admin mới cần đăng nhập.
+- **Phát hiện:** cơ chế này **đã tồn tại sẵn từ trước**, chỉ bị bỏ quên/ngắt kết nối — `KioskSessionController::establishSession` (`POST /api/kiosk/session`, xác thực bằng `client_code` + `kiosk_token` bí mật, không cần tài khoản người dùng), `KioskAuthenticationMiddleware` (đã bọc **toàn bộ** route nghiệp vụ, chấp nhận song song Sanctum HOẶC kiosk session token — xác nhận đọc trực tiếp middleware, không phải suy đoán), `KioskLanding.vue` (route `/operate/c/:clientCode/:kioskToken`, tự thiết lập session rồi điều hướng thẳng vào màn hình đúng capability), và `authStore.setKioskSession()` (đã tự động gọi `setWorkstation()` để đồng bộ với `services/workstation.ts` — 2 trong 3 cơ chế "workstation" thực ra đã được nối sẵn, chỉ có luồng `?ws=` mới mà tôi thêm ở đợt trước là đứng riêng).
+- **Bug đi kèm phát hiện khi nối lại:** `KioskLanding.vue::getRouteForCapability` và `router/index.ts` (nhánh `authStore.isKiosk` giới hạn `allowedRoutes`) map cứng `CHEMICAL_CALL → /feeding-monitor` — SAI, `/feeding-monitor` là màn hình khác (`FeedOperationController`, không liên quan `ChemicalCallController`). Route đúng là `/chemical-call` (đã xác nhận qua DB `default_route` của `WS-CHEMICAL-01` và `ChemicalCall.vue` gọi đúng API `chemical-call-requests`). Đã sửa cả 2 chỗ.
+- **Sửa thêm:** `AppLayout.vue::isLockedStation` bổ sung `authStore.isKiosk` → khóa cứng, ẩn nút đổi trạm cho phiên kiosk (trước đó chỉ nhận diện khóa qua `user.workstation`/`wsConfig`, bỏ sót kiosk).
+- **Đã sinh kiosk token thật cho 6 trạm mẫu** (qua chính logic của `OperationClientAdminController::generateKioskToken`, không bịa) và xác nhận **toàn bộ chuỗi thật qua `curl`**: `POST /api/kiosk/session` với token WS-ORDER-01 → trả đúng `default_capability: PRODUCTION_ORDER`, `default_route: /production-batches`, danh sách capabilities đầy đủ.
+- **Kiểm chứng:** `npm run build` sạch. `php artisan test --filter="Kiosk|CapabilityEnforcement|WorkstationSecurity"` → 13/13 PASS.
+- **Rủi ro còn tồn đọng, CHƯA sửa (nằm ngoài yêu cầu lần này, cần nêu rõ vì kiosk giờ là cổng vào chính):** `CapabilityEnforcementAuditTest` vẫn xác nhận 1 client chỉ có capability `SMALL_SCALE` vẫn gọi thành công `POST /print-jobs` và `confirm dispatch` (route thiếu `workstation.guard` đúng capability) — finding P0 từ đợt audit kiến trúc trước, trước đây là rủi ro phụ, nay quan trọng hơn vì kiosk token đã trở thành đường vào chính thức thay vì tài khoản người dùng.
+
+### 30. Xây màn hình "Hàng chờ in tem" thật cho Print Station + phát hiện & vá bug nghiêm trọng: B24 routing sai hoàn toàn do so sánh chuỗi mã máy sai định dạng số chữ số
+
+- **Yêu cầu:** rà soát VBA cho trạm in tem (`3.DF028... jit qr sending`), xác định nội dung tem in + trạng thái sau khi in, sau đó xây màn hình tương ứng. Người dùng gửi kèm ảnh chụp `TO_SEND.frm` đang chạy thật (dòng đỏ=vừa gửi tới, dòng xanh+checkbox=đã in tem) để đối chiếu.
+- **Rà soát VBA (`TO_SEND.frm`, `Mod_FE_REFRESH.bas`, `Mod_printslip.bas`, `printform.frm`):**
+  - Máy in tem **KHÔNG nhận thông báo/push nào** — tự polling `SELECT ... FROM tbl_tosend` mỗi 15 giây qua `Application.OnTime` (`StartAutoRefresh`/`Backend_AutoRefresh`).
+  - Nút **"print"** (`btn_print_scaleslip_Click` → `PrintSlip_70x100`) chỉ render sheet + xuất ảnh QR — **không ghi DB**. Nút **"OK"** (`ConfirmRow`, HOÀN TOÀN TÁCH BIỆT với nút print) mới là hành động chuyển dòng từ `tbl_tosend` sang `tbl_sentlog` (lưu trữ), ghi `TIME3=Now()`. Cột `ISSENT` không hề được set `true` ở bất kỳ đâu trong workbook này — chỉ copy nguyên trạng khi chuyển bảng.
+  - Checkbox (cột `scale_check`) — theo xác nhận trực tiếp từ người dùng qua ảnh chụp — có ý nghĩa vận hành thật là **"đã in tem"**, do người vận hành tự tick tay sau khi in, độc lập hoàn toàn với nút print/OK (đúng khớp phát hiện code: không có liên kết tự động).
+  - Tem in ra gồm: header (màu/mã hàng/máy/thùng/mức nước), bảng tối đa 9 dòng dye + 9 dòng chem, và **luôn 2 QR** (`qr_dye` dùng ở **trạm cân liệu**, `qr_chem` dùng ở **Color Service**) **+ 1 QR thứ 3 tùy mode B24** (`qr_process`/`qr_extra`/`qr_fb` — cả 3 đều dành cho Color Service, khác nhau theo cụm máy/tank). Đối chiếu bằng chính 4 dòng thật trong ảnh người dùng gửi (VD09/VD12/VD16/VD07 + tank 3C/4D → đều rơi đúng nhánh 5 B24 = mode PROCESS).
+  - Người dùng lưu ý: **mẫu tem vật lý (layout) do máy in cấu hình sẵn quyết định** — web chỉ cần gửi đúng dữ liệu QR, không tự vẽ layout tem (khác VBA vốn tự vẽ lên sheet Excel).
+- **Xây `PrintStation.vue`:** thêm panel "Hàng chờ in tem mới" (port đúng `TO_SEND.frm`), tự làm mới mỗi 8 giây qua `GET /api/machine-dispatches` (đã có sẵn, đúng vai trò `tbl_tosend`), nút "In tem" gọi `POST /machine-dispatches/{id}/confirm` (đã có sẵn từ trước — `ConfirmDispatchService`, sinh đủ 3 QR payload qua `QrPayloadService`, tạo `PrintJob`) — **route này trước đó KHÔNG hề có UI nào gọi tới**, đây chính là mắt xích còn thiếu đã báo ở lượt trước. Không làm lại honor-system checkbox+OK thủ công của VBA vì hệ thống web đã có `PrintJob.status` (PENDING→PRINTED/FAILED qua Local Agent ack) tốt hơn — cải tiến đã có sẵn từ Phase 7, không phải thêm mới hôm nay.
+- **Phát hiện bug nghiêm trọng khi test end-to-end thật** (không phải giả lập): tạo đơn máy `VD007` + tank `3C` (đúng nhánh 5 B24 = PROCESS theo tài liệu), nhưng API trả về `mode=FB` (fallback rỗng, SAI) dù feature flag `b24_routing_enabled` đang `true`. Truy vết: `WarehouseRoutingService::isBetween()` so sánh CHUỖI (`'VD007' >= 'VD06'` → **FALSE** dù 7≥6 đúng về số, vì ký tự `'0'` tại vị trí thứ 4 nhỏ hơn `'6'`) — code này viết từ trước, giả định mã máy luôn 2 chữ số như VBA gốc, nhưng `app.machines` thật dùng 3 chữ số (VD006-018, đã xác nhận qua QR thật trước đó). **Bug này khiến MỌI máy thật đều rơi vào fallback rỗng sai hoàn toàn — QR gửi sai hệ Color Service** (chọn nhầm luồng hòa tan/bơm hóa chất) — mức độ nghiêm trọng cao vì ảnh hưởng trực tiếp vận hành vật lý.
+  - **Nguyên nhân bug không bị phát hiện trước đây:** `tests/Unit/WarehouseRoutingServiceTest.php` tự tạo máy test bằng mã 2 chữ số (`'VD10'`, `'VD17'`...) qua `Machine::firstOrCreate` — không khớp định dạng thật 3 chữ số, nên test luôn pass dù code sai với dữ liệu thật.
+  - **Sửa:** đổi toàn bộ so sánh trong `WarehouseRoutingService.php` từ so sánh chuỗi (`isBetween` cũ) sang so sánh SỐ (trích số thứ tự máy bằng regex `^VD(\d+)$`, hàm `numBetween` mới). Sửa `WarehouseRoutingServiceTest.php` dùng đúng mã 3 chữ số thật (`VD010`, `VD017`...) + sửa `Machine::firstOrCreate`/`Tank::firstOrCreate` tra cứu đúng theo khóa unique thật (trước đó truyền cả `name` vào điều kiện tìm khiến không bao giờ khớp máy đã tồn tại, gây lỗi trùng khóa `machines_code_key` — 1 bug phụ khác lộ ra khi sửa).
+- **Kiểm chứng:** test thật qua `curl` (không phải mock) — VD007+3C nay trả đúng `mode:PROCESS, route:"THUNG SAT THAP, MAY JIT, MAY DLG", matched_rule:RULE_5`, khớp chính xác `b24-warehouse-routing.md`. `php artisan test` → **115/115 PASS (584 assertions)**. `npm run build` sạch.
+
+### 31. Bổ sung Lịch sử in tem + nút Chọn/thiết lập máy in luôn mở được cho Print Station
+
+- **Yêu cầu:** giữ lại lịch sử in tem bên dưới hàng chờ (để biết mã hàng nào đã in), hàng chưa in phải tô màu đỏ (đúng ảnh VBA thật gửi trước đó), và cần khu vực chọn/thiết lập máy in dễ thấy hơn (trước đó chỉ hiện khi CHƯA gán máy in).
+- **Backend:** thêm `GET /api/machine-dispatches/history` (`MachineDispatchController::history`) — liệt kê tối đa 50 dispatch đã `queue_state=CONFIRMED` gần nhất, kèm `print_job` (trạng thái PENDING/PRINTED/FAILED thật từ Local Agent ack). Thêm quan hệ `MachineDispatch::printJobs()` (hasMany, sắp `created_at` desc) và `PrintJob::dispatch()`.
+  - **Bug phụ phát hiện khi viết quan hệ:** dùng `hasOne(...)->latestOfMany('created_at')` (cách chuẩn Laravel) bị lỗi 500 thật `SQLSTATE[42883]: function max(uuid) does not exist` — `latestOfMany()` luôn dùng `MAX(id)` cho join aggregate bất kể cột sắp xếp chỉ định, mà khóa chính ở đây là UUID (Postgres không có `MAX(uuid)`). Đổi sang `hasMany` sắp sẵn + controller tự lấy phần tử đầu, tránh hẳn `ofMany`.
+- **Frontend (`PrintStation.vue`):**
+  - Hàng chờ in: mọi dòng đều tô nền đỏ (`row-not-printed`, badge "Chưa in") — đúng ý nghĩa thật (mọi dòng trong hàng chờ theo định nghĩa đều CHƯA in, vì action "In tem" = `confirm()` vừa tạo lệnh in vừa đưa dòng ra khỏi hàng chờ luôn).
+  - Thêm bảng "📜 Lịch sử in tem gần đây" ngay bên dưới, tô nền xanh (`row-printed`), đọc từ endpoint mới, có nút "Làm mới" và tự động refetch cùng nhịp poll 8s + ngay sau khi bấm In tem thành công.
+  - Chuyển khu vực cấu hình máy in từ banner cảnh báo ẩn/hiện có điều kiện (chỉ khi chưa gán) sang 1 nút "⚙️ Chọn / thiết lập máy in" luôn có trong banner đầu trang, mở panel cấu hình bất cứ lúc nào kể cả khi đã có máy in (đổi máy in dễ dàng), tái dùng đúng API `PUT /workstations/{id}/local-device-config` đã có.
+- **Kiểm chứng:** test mới `ConfirmDispatchTest::test_history_endpoint_lists_confirmed_dispatch_with_print_job_status` (xác nhận đơn CHƯA confirm không có trong lịch sử + còn trong hàng chờ; SAU confirm thì ngược lại — đúng rời hàng chờ, đúng xuất hiện trong lịch sử kèm `print_job.status=PENDING`). `php artisan test` → **116/116 PASS (592 assertions)**. `npm run build` sạch.
+
+### 29. Rà soát VBA màn hình Nhập đơn sản xuất (quét QR MES thật) + xây trạm quét thay thế MES-mock form + vá lỗi nền tảng gây "database tự hoàn tác" lặp lại nhiều lần trong phiên
+
+- **Yêu cầu:** "dùng máy quét để nhập thông tin. Bạn rà soát lại VBA. để check lại logic cho tôi? sau đấy thiết kế giao diện cho phù hợp" — người dùng sau đó gửi kèm 1 ảnh phiếu MES thật (BEST PACIFIC, mã QR "ALL DATA") và 1 ảnh chụp trực tiếp MainForm VBA đang chạy với 1 lần quét thật, cuối cùng gửi file ảnh QR thật `F:\DF\mau_phieu_mes.PNG`.
+- **Trích xuất VBA thật** (`2.C3 grid load row lock id FB -192(QR).xlsm`, olevba, toàn bộ 18 module): màn hình Nhập đơn CHỈ có 1 ô quét (`Box1`), `Box1_AfterUpdate` tự tách theo `-` ra color/code/machine/level (4 phần tử đầu) + trích riêng đoạn `-dye-...-chem-...` bằng `InStr`/`Mid$` (độc lập với Split). Thùng (Box5) KHÔNG quét được — chọn nhanh từ list cố định "1A/2B/3C/4D/FB" (`formselect1.frm`). Nút thật trên form: SAVE (ghi DB thật — `btnSAVE_Click`: check trùng `Exists_ColorCode`, áp quy tắc 250L, insert `tbl_input_all`, nếu confirm2="OK" + có tank thì gọi `MoveToSend` ngay), CLEAR, **PHÊ DUYỆT** (xác nhận qua ảnh chụp MainForm thật — chính là `CommandButton4_Click`, chỉ set `Box7.Text="OK"`, KHÔNG ghi DB), CHECK (mở `checkform` kiểm tra trùng).
+- **Xác minh "QR ALL DATA" bằng bằng chứng, không suy đoán:** kiểm tra toàn bộ 9/9 bảng thật trong `RECORD.accdb` (`TBL_INPUT_ALL, tbl_ToSend, tbl_ToSend2, tbl_ARCHIVE, tbl_OUTPUT_PROCESSING, tbl_SentLog, tbl_Waiting, WAITING, tblSync`) qua pyodbc — KHÔNG bảng nào có cột khách hàng/ngày SX/thông số công nghệ/phụ gia-nồng độ. **Giải mã trực tiếp ảnh QR thật** (`F:\DF\mau_phieu_mes.PNG`, OpenCV `QRCodeDetector` sau khi crop vùng QR + phóng to 3x — full ảnh gốc không tự nhận ra) ra chuỗi thật: `#EP43110-SE5718-VD04-450-dye-51-Y1104-111.15-44-R2128-33.75-0-B3113-36.45-chem-42-AC02-3600-19-AC06-3600` — khớp CHÍNH XÁC định dạng `parseDyeScan`/`Box1_AfterUpdate` đã port từ trước (color/code/machine/level + dye/chem rack-weight triples), và KHÔNG chứa khách hàng/ngày/nhiệt độ/nồng độ như bảng "Technology mode" in trên phiếu (mã hóa chất trong QR là AC02/AC06, khác hẳn "AC68" ghi trong bảng phụ gia trên phiếu — xác nhận đây là 2 luồng dữ liệu khác nhau, bảng phụ gia/nồng độ nhiều khả năng cấp riêng cho Color Service qua `tbl_status`, không qua QR này).
+- **Xây trạm quét thật thay thế "Tạo lô từ MES (Giả lập)"** trong `ProductionBatches.vue`: panel "🔫 Quét đơn sản xuất" với 1 ô quét lớn tự focus, gọi `POST /production-batches/scan-parse` (mới — port `Box1_AfterUpdate`/`CleanLeadingGarbage` nguyên văn vào `QrPayloadService::parseOrderEntryScan()`), tự resolve mã máy quét được (vd "VD04") sang `machine_id` thật (chuẩn hoá 2-3 chữ số qua `normalizeVdCode`), dropdown chọn Thùng lọc theo máy đã resolve, hiện raw_qr_dye/raw_qr_chem dạng preview, nút SAVE/CLEAR/PHÊ DUYỆT/CHECK khớp đúng hành vi thật (PHÊ DUYỆT+chọn Thùng trước khi SAVE = lưu và duyệt ngay trong 1 lần gọi, giống VBA).
+- **Phát hiện + vá 2 lỗ hổng dữ liệu nền khi build tính năng này:**
+  1. `app.tanks` không hề có tank nào cho dải máy VD (chỉ có cho L1-4/T5-8, phục vụ module Cấu hình nước) → quy tắc 250L trong `ApproveProductionOrderService` chưa từng kích hoạt được. `app.machines` cũng chỉ có VD006-013, THIẾU VD001-005/014-018 — xác nhận thiếu bằng chính 2 mẫu QR thật (VD04, VD02) không resolve được.
+  2. Thêm cột `raw_qr_dye`/`raw_qr_chemical` vào `production_batches` (trước đây không có chỗ lưu, mất dữ liệu thô quét được — VBA giữ xuyên suốt `tbl_input_all`→`tbl_tosend`). Thêm chặn trùng color+code ở `store()` (đúng `Exists_ColorCode`, chỉ tính đơn đang `NEW`). Thêm `GET /machines`, `GET /tanks` (danh mục thật thay mảng hardcode cũ trong frontend).
+- **Phát hiện nguyên nhân gốc "database tự hoàn tác" (đã báo nghi vấn "tiến trình khác" ở lượt trước — KHÔNG đúng, đã tìm ra nguyên nhân thật):** `tests/TestCase.php::setUp()` (chạy 1 lần mỗi tiến trình `php artisan test`) **DROP CASCADE + tạo lại toàn bộ schema `app`+`public` rồi chạy `migrate` + `db:seed`** — và `MachinesAndTanksSeeder` (gọi bởi `DatabaseSeeder`) xoá sạch `app.tanks`/`app.machines` rồi chỉ tạo lại L1-4/T5-8 + VD006-013 gốc. Nghĩa là: **mọi lần chạy `php artisan test`** trong phiên này đều âm thầm xoá sạch dữ liệu tôi vừa thêm bằng tinker/migration (giải thích cả việc tank VD-range biến mất 2 lần VÀ kiosk token bị vô hiệu hoá lặp lại nhiều lần trước đó — không phải tiến trình lạ nào can thiệp, mà là chính vòng lặp test của dự án). **Đã sửa dứt điểm:** đưa toàn bộ logic seed dải VD001-018 + tank "1A/2B/3C/4D/FB" mỗi máy VÀO THẲNG `MachinesAndTanksSeeder`, để nó sống sót qua mọi lần `db:seed` tự động của `TestCase.php` thay vì bị chính seeder đó xoá mất.
+- **Kiểm chứng:** 2 mẫu QR thật đối chiếu qua `curl` trực tiếp `POST /production-batches/scan-parse` → tách đúng 100% cả 2 mẫu (EP43110/SE5718/VD04/450 và AP88646/T6276/VD02/50). `npm run build` sạch. `php artisan test` → **115/115 PASS (584 assertions)** — chạy LẶP LẠI 2 lần liên tiếp để xác nhận không còn flaky do seeder nữa (trước khi sửa seeder: 113/115, luôn fail đúng 2 test liên quan tank VD-range).
+- **Chưa làm (ngoài phạm vi hôm nay, cần xác nhận thêm):** dữ liệu "Technology mode" (nhiệt độ/phụ gia/nồng độ theo Box) in trên phiếu MES — CHƯA xác định được nguồn/đích thật trong hệ thống hiện tại (giả thuyết: cấp riêng cho Color Service qua `tbl_status`, cần xác nhận từ người dùng trước khi thiết kế tích hợp Color Service).
+
