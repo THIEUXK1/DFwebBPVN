@@ -138,6 +138,11 @@
 
     <!-- moon (theme tối) -->
     <path v-if="name === 'moon'" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+
+    <!-- download -->
+    <path v-if="name === 'download'" d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline v-if="name === 'download'" points="7 10 12 15 17 10" />
+    <line v-if="name === 'download'" x1="12" y1="15" x2="12" y2="3" />
   </svg>
 </template>
 

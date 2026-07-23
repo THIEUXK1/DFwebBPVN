@@ -11,8 +11,10 @@ import { initTheme } from './services/theme';
 // nháy giao diện tối mặc định rồi mới đổi sang sáng sau khi Vue chạy xong.
 initTheme();
 
-// Centralized API backend baseURL
-axios.defaults.baseURL = 'http://localhost:8002';
+// Centralized API backend baseURL — dùng đúng host mà trình duyệt đang dùng để mở
+// trang (LAN IP của máy chủ, không phải 'localhost') để các máy trạm khác trong
+// mạng nội bộ gọi API đúng máy chủ thay vì gọi vào chính máy trạm đó.
+axios.defaults.baseURL = `http://${window.location.hostname}:8002`;
 
 const app = createApp(App);
 const pinia = createPinia();

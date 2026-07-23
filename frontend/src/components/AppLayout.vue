@@ -30,6 +30,22 @@
           </router-link>
         </div>
       </div>
+
+      <!-- Khu vực tải công cụ — cố định ở đáy sidebar, cho máy trạm gắn cân/máy in tải
+           Local Agent về cài (máy trạm thường không có Internet nên không cài qua mạng
+           ngoài được, phải tải trực tiếp từ máy chủ qua LAN). -->
+      <div class="sidebar-footer">
+        <div class="footer-title">TẢI CÔNG CỤ</div>
+        <a
+          :href="agentInstallerUrl"
+          download
+          class="tool-download-link"
+          title="Cài trên máy trạm có gắn cân điện tử / máy in tem"
+        >
+          <SvgIcon name="download" size="16" />
+          <span>DF Agent (Cân &amp; In tem)</span>
+        </a>
+      </div>
     </aside>
 
     <!-- Right Side Container -->
@@ -255,6 +271,11 @@ import { isFullscreen } from '../services/layout';
 const authStore = useAuthStore();
 const router = useRouter();
 const route = useRoute();
+
+// File cài đặt Local Agent được backend serve tĩnh từ public/downloads/ (xem
+// backend/public/downloads/DFAgentSetup.msi) — dùng đúng host mà trình duyệt đang
+// mở trang (giống main.ts) để máy trạm trong LAN tải đúng từ máy chủ.
+const agentInstallerUrl = `http://${window.location.hostname}:8002/downloads/DFAgentSetup.msi`;
 
 // Station-scoped account (WS-001) HOẶC phiên kiosk (link riêng máy, không đăng nhập):
 // công đoạn được cố định theo tài khoản/link, không cho đổi tay qua dropdown.
@@ -497,6 +518,43 @@ const handleLogout = () => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* Khu vực tải công cụ — cố định ở đáy sidebar (flex-shrink: 0), không cuộn theo
+   menu điều hướng phía trên. */
+.sidebar-footer {
+  flex-shrink: 0;
+  padding: 12px;
+  border-top: 1px solid var(--border-divider);
+}
+
+.footer-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-disabled);
+  padding: 0 12px 6px 12px;
+  letter-spacing: 0.08em;
+}
+
+.tool-download-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  padding: 0 12px;
+  color: var(--text-body);
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.tool-download-link:hover {
+  background-color: var(--bg-card-hover);
+  color: var(--text-title);
 }
 
 .group-title {

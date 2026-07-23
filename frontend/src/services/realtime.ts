@@ -28,7 +28,7 @@ class RealtimeClient {
     
     this.cleanup();
     
-    const url = `http://localhost:8002/api/realtime/stream?token=${encodeURIComponent(token)}&last_event_id=${this.lastEventId}`;
+    const url = `http://${window.location.hostname}:8002/api/realtime/stream?token=${encodeURIComponent(token)}&last_event_id=${this.lastEventId}`;
     
     try {
       this.eventSource = new EventSource(url);
