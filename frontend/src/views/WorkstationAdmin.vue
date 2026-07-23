@@ -446,12 +446,12 @@ function isOnline(ws: any) {
 
 function formatTime(dStr: string) {
   if (!dStr) return 'Chưa kết nối';
-  return new Date(dStr).toLocaleTimeString('vi-VN');
+  return new Date(dStr).toLocaleTimeString('vi-VN', { hour12: false });
 }
 
 function formatDate(dStr: string) {
   if (!dStr) return '-';
-  return new Date(dStr).toLocaleString('vi-VN');
+  return new Date(dStr).toLocaleString('vi-VN', { hour12: false });
 }
 
 function operateClient(ws: any) {

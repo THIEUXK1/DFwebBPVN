@@ -3,8 +3,9 @@
     <!-- Mobile Sidebar Drawer Overlay -->
     <div class="sidebar-overlay" @click="mobileOpen = false"></div>
 
-    <!-- Left Sidebar — hidden entirely for station-scoped accounts (1 máy tính = 1 nhiệm vụ) -->
-    <aside class="sidebar" v-if="!isLockedStation">
+    <!-- Left Sidebar — hidden entirely for station-scoped accounts (1 máy tính = 1 nhiệm vụ)
+         hoặc khi đang bật chế độ Toàn màn hình (xem nút ⛶ ở topbar). -->
+    <aside class="sidebar" v-if="!isLockedStation && !isFullscreen">
       <div class="sidebar-header">
         <div class="logo-circle">DF</div>
         <span class="logo-text">DF Connector</span>
@@ -33,8 +34,8 @@
 
     <!-- Right Side Container -->
     <div class="layout-main">
-      <!-- Top Bar -->
-      <header class="topbar">
+      <!-- Top Bar — ẩn hoàn toàn khi đang ở chế độ Toàn màn hình -->
+      <header class="topbar" v-if="!isFullscreen">
         <div class="topbar-left">
           <!-- Mobile Menu Burger -->
           <button v-if="!isLockedStation" @click="mobileOpen = !mobileOpen" class="mobile-burger-btn">
@@ -77,6 +78,15 @@
               <span class="status-label">Agent</span>
             </div>
           </div>
+
+          <!-- Toàn màn hình: ẩn sidebar + topbar để giao diện thao tác chiếm trọn màn hình -->
+          <button
+            class="notif-btn"
+            @click="isFullscreen = true"
+            title="Mở toàn màn hình (ẩn menu)"
+          >
+            ⛶
+          </button>
 
           <!-- Theme Toggle (Sáng/Tối) -->
           <button
@@ -218,6 +228,11 @@
         <slot v-if="(currentWorkstation || authStore.isAdmin) && !resolvingFromLink && !capabilityMismatch"></slot>
       </div>
     </div>
+
+    <!-- Nút thoát Toàn màn hình — nổi ở góc phải trên, luôn thấy được để quay lại layout bình thường -->
+    <button v-if="isFullscreen" @click="isFullscreen = false" class="exit-fullscreen-btn" title="Thoát toàn màn hình">
+      ✕ Thoát toàn màn hình
+    </button>
   </div>
 </template>
 
@@ -235,6 +250,7 @@ import {
   ROUTE_CAPABILITY_MAP
 } from '../services/workstation';
 import { theme, toggleTheme } from '../services/theme';
+import { isFullscreen } from '../services/layout';
 
 const authStore = useAuthStore();
 const router = useRouter();
@@ -253,6 +269,10 @@ const isLockedStation = computed(() => {
 });
 
 const mobileOpen = ref(false);
+
+// Chế độ Toàn màn hình — ẩn sidebar + topbar để giao diện thao tác (vd trạm cân, in tem)
+// chiếm trọn màn hình. State dùng chung (services/layout.ts) để các trang con (vd lưới
+// máy ở ChemicalCall.vue) tự co giãn thêm cột khi có nhiều chỗ trống hơn.
 
 const selectedWsId = ref<number | null>(null);
 const showWsModal = ref(false);
@@ -336,13 +356,15 @@ const menuGroupsRaw = [
       { path: '/print-station', label: 'In tem', icon: 'recipe' },
       { path: '/material-transports', label: 'Vận chuyển', icon: 'transfer' },
       { path: '/feeding-monitor', label: 'Cấp máy', icon: 'feed' },
-      { path: '/chemical-call', label: 'Gọi hóa chất', icon: 'recipe' }
+      { path: '/chemical-call', label: 'Gọi hóa chất', icon: 'recipe' },
+      { path: '/chemical-call/monitor', label: 'Giám sát Hóa chất', icon: 'dashboard' }
     ]
   },
   {
     title: 'CÔNG NGHỆ',
     items: [
-      { path: '/production-batches', label: 'Lô sản xuất', icon: 'batch' },
+      { path: '/production-batches', label: 'Quét đơn (Lô SX)', icon: 'batch' },
+      { path: '/production-batches/list', label: 'Danh sách Lô SX', icon: 'batch' },
       { path: '/machine-queue', label: 'Điều phối máy', icon: 'queue' },
       { path: '/materials', label: 'Vật tư', icon: 'material' },
       { path: '/water-configs', label: 'Cấu hình nước', icon: 'water' },
@@ -361,7 +383,8 @@ const menuGroupsRaw = [
     title: 'QUẢN TRỊ',
     items: [
       { path: '/workstation-admin', label: 'Workstation & Tài khoản', icon: 'settings', adminOnly: true },
-      { path: '/print-history-admin', label: 'Lịch sử in tem', icon: 'recipe', adminOnly: true }
+      { path: '/print-history-admin', label: 'Lịch sử in tem', icon: 'recipe', adminOnly: true },
+      { path: '/bpdb-admin', label: 'BPDB / JIT (Color Service)', icon: 'settings', adminOnly: true }
     ]
   }
 ];
@@ -381,7 +404,8 @@ const currentRouteName = computed(() => {
     '/weighing-station': 'Quản lý Trạm cân',
     '/material-transports': 'Giám sát Vận chuyển',
     '/feeding-monitor': 'Kiểm soát Cấp máy',
-    '/production-batches': 'Quản lý Lô sản xuất',
+    '/production-batches': 'Trạm Quét đơn sản xuất',
+    '/production-batches/list': 'Danh sách Lô sản xuất',
     '/machine-queue': 'Hàng chờ Điều phối',
     '/materials': 'Danh mục Vật tư',
     '/water-configs': 'Cấu hình Mực nước',
@@ -391,9 +415,11 @@ const currentRouteName = computed(() => {
     '/audit-logs': 'Audit Log Explorer',
     '/workstation-admin': 'Quản lý Workstation & Tài khoản',
     '/print-history-admin': 'Lịch sử in tem — Toàn hệ thống',
+    '/bpdb-admin': 'Giám sát tích hợp Color Service (BPDB/JIT)',
     '/order-scan': 'Trạm Quét đơn QR',
     '/print-station': 'Trạm In tem',
-    '/chemical-call': 'Trạm Gọi Hóa chất'
+    '/chemical-call': 'Trạm Gọi Hóa chất',
+    '/chemical-call/monitor': 'Giám sát Hệ thống Gọi Hóa chất'
   };
   return nameMap[route.path] || 'Trang chủ';
 });
@@ -407,14 +433,17 @@ const handleLogout = () => {
 <style scoped>
 .app-layout {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background-color: var(--bg-main);
   color: var(--text-body);
 }
 
-/* Sidebar Styling */
+/* Sidebar Styling — chiều cao cố định bằng viewport, thanh kéo riêng nằm trong
+   .nav-groups-container nên menu KHÔNG bị kéo theo khi cuộn vùng nội dung bên phải. */
 .sidebar {
   width: 260px;
+  height: 100%;
   background-color: var(--bg-sidebar);
   border-right: 1px solid var(--border-divider);
   display: flex;
@@ -510,17 +539,21 @@ const handleLogout = () => {
   font-weight: 600;
 }
 
-/* Layout Main Right side */
+/* Layout Main Right side — chiều cao đầy đủ, không tự cuộn (chỉ .content-container
+   cuộn bên trong) để topbar luôn cố định và không bị kéo theo view. */
 .layout-main {
   flex: 1;
+  height: 100%;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow: hidden;
 }
 
 /* Topbar Styling */
 .topbar {
   height: 70px;
+  flex-shrink: 0;
   background-color: var(--bg-topbar);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border-divider);
@@ -528,8 +561,6 @@ const handleLogout = () => {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  position: sticky;
-  top: 0;
   z-index: 90;
 }
 
@@ -709,6 +740,34 @@ const handleLogout = () => {
   flex: 1;
   padding: 24px;
   overflow-y: auto;
+}
+
+/* Nút thoát Toàn màn hình — nổi cố định ở góc phải trên, luôn nằm trên mọi nội dung */
+.exit-fullscreen-btn {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-card);
+  color: var(--text-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+.exit-fullscreen-btn:hover {
+  opacity: 1;
+  border-color: var(--status-red);
+  color: var(--status-red);
 }
 
 /* Tablet & Mobile responsive styles */

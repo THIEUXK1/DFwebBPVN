@@ -25,8 +25,23 @@
     <div class="station-banner">
       <div class="banner-left">
         <span class="station-badge">PRINT STATION</span>
-        <h2>{{ currentWorkstation ? currentWorkstation.name : 'Chưa đăng ký trạm' }}</h2>
-        <p class="text-muted font-sm">Mã trạm: <code>{{ currentWorkstation?.code }}</code> | Vị trí: {{ currentWorkstation?.location }}</p>
+        <template v-if="currentWorkstation">
+          <h2>{{ currentWorkstation.name }}</h2>
+          <p class="text-muted font-sm">Mã trạm: <code>{{ currentWorkstation.code }}</code> | Vị trí: {{ currentWorkstation.location }}</p>
+        </template>
+        <template v-else>
+          <h2>Chưa đăng ký trạm (tài khoản Admin)</h2>
+          <div class="text-muted font-sm admin-station-picker">
+            Xem/gán máy in cho trạm:
+            <select
+              class="form-select select-sm"
+              :value="printerStationOverride?.code || ''"
+              @change="onStationOverrideChange(($event.target as HTMLSelectElement).value)"
+            >
+              <option v-for="s in stationOptions" :key="s.code" :value="s.code">{{ s.name }} ({{ s.code }})</option>
+            </select>
+          </div>
+        </template>
       </div>
       <div class="banner-right">
         <div class="dev-badge">
@@ -214,14 +229,23 @@
 
         <div class="preview-modal-actions">
           <button class="btn btn-secondary" @click="closePrintPreview">Hủy</button>
+          <button class="btn btn-secondary" @click="printPreviewViaBrowser">
+            🖥️ In qua trình duyệt
+          </button>
           <button
             class="btn btn-primary"
-            :disabled="confirmingId === previewDispatch.id || !previewSelectedPrinter"
+            :disabled="confirmingId === previewDispatch.id"
             @click="confirmPrintFromPreview"
           >
             {{ confirmingId === previewDispatch.id ? 'Đang gửi lệnh in...' : '🖨️ In tem' }}
           </button>
         </div>
+        <p class="text-muted font-xs mt-2">
+          "In qua trình duyệt" mở trang in riêng, dùng hộp thoại in của Windows/trình duyệt — chọn được bất kỳ máy in nào đã cài, không cần qua Local Agent.
+        </p>
+        <p v-if="!previewSelectedPrinter" class="text-muted font-xs mt-2 preview-no-printer-hint">
+          ⚠️ Chưa phát hiện máy in nào từ Local Agent — lệnh in vẫn được tạo và xếp hàng chờ, máy in sẽ dùng mặc định của trạm khi Agent kết nối lại.
+        </p>
       </div>
     </div>
 
@@ -352,6 +376,36 @@ const route = useRoute();
 const isImpersonating = computed(() => route.query.impersonate === 'true');
 const targetWsId = computed(() => route.query.target_ws);
 
+// Yêu cầu 2026-07-22: tài khoản ADMIN không gắn cứng 1 trạm nào (currentWorkstation =
+// null, mở được mọi màn hình) — nếu chỉ dựa vào currentWorkstation để biết Local Agent
+// nào vừa báo cáo máy in thì admin sẽ KHÔNG BAO GIỜ thấy được máy in dù Agent đã báo cáo
+// thành công lên đúng trạm thật (bug phát hiện khi test MSI: DB có dữ liệu nhưng trang
+// luôn báo "chưa nhận được" vì fetchInstalledPrinters() return sớm). Thêm lựa chọn trạm
+// thủ công CHỈ dùng khi không có currentWorkstation, để admin tự chỉ định đang xem/quản
+// lý máy in của trạm nào.
+const stationOptions = ref<{ id: number; code: string; name: string }[]>([]);
+const printerStationOverride = ref<{ id: number; code: string; name: string } | null>(null);
+const effectiveStationCode = computed(() => currentWorkstation.value?.code || printerStationOverride.value?.code || null);
+const effectiveStationId = computed(() => currentWorkstation.value?.id || printerStationOverride.value?.id || null);
+
+async function fetchStationOptions() {
+  try {
+    const res = await axios.get('/api/workstations');
+    const list = res.data.data || res.data || [];
+    stationOptions.value = list.filter((w: any) => w.type === 'QR_LABEL_PRINTING' || w.workstation_type === 'QR_LABEL_PRINTING');
+    if (!printerStationOverride.value && stationOptions.value.length) {
+      printerStationOverride.value = stationOptions.value[0];
+    }
+  } catch (err) {
+    console.error('Error fetching station options:', err);
+  }
+}
+
+function onStationOverrideChange(code: string) {
+  printerStationOverride.value = stationOptions.value.find(s => s.code === code) || null;
+  fetchInstalledPrinters();
+}
+
 // Chọn máy in — Local Agent (PrinterDiscovery.cs) là nguồn xác định duy nhất. Không còn
 // cấu hình thủ công IP/driver/cổng (yêu cầu 2026-07-18). Thứ tự ưu tiên khi tự động
 // chọn: (1) máy in đã gán riêng cho trạm này VÀ còn tồn tại trong danh sách Agent vừa
@@ -402,12 +456,12 @@ function isVirtualPrinter(name: string | null): boolean {
 }
 
 async function fetchInstalledPrinters() {
-  if (!currentWorkstation.value?.code) return;
+  if (!effectiveStationCode.value) return;
   loadingInstalledPrinters.value = true;
   try {
     const res = await axios.get('/api/workstations');
     const list = res.data.data || res.data;
-    const match = list.find((w: any) => w.code === currentWorkstation.value.code);
+    const match = list.find((w: any) => w.code === effectiveStationCode.value);
     const config = match?.configuration || {};
     agentEverReported.value = Array.isArray(config.available_printers);
     installedPrinters.value = config.available_printers || [];
@@ -422,10 +476,10 @@ async function fetchInstalledPrinters() {
 }
 
 const savePreferredPrinter = async () => {
-  if (!currentWorkstation.value || !selectedPrinterName.value) return;
+  if (!effectiveStationId.value || !selectedPrinterName.value) return;
   savingPrinterConfig.value = true;
   try {
-    await axios.put(`/api/workstations/${currentWorkstation.value.id}/local-device-config`, {
+    await axios.put(`/api/workstations/${effectiveStationId.value}/local-device-config`, {
       printer_device_id: selectedPrinterName.value,
     });
     assignedPrinterName.value = selectedPrinterName.value;
@@ -490,7 +544,7 @@ async function confirmAndPrint(dispatch: any, printerOverride?: string) {
   try {
     await axios.post(`/api/machine-dispatches/${dispatch.id}/confirm`, {
       idempotency_key: `print_${dispatch.id}_${Date.now()}`,
-      workstation_id: currentWorkstation.value?.code,
+      workstation_id: effectiveStationCode.value || undefined,
       // Gửi đúng tên máy in Windows đã resolve (ưu tiên: chọn tay lúc xem trước > đã gán
       // > mặc định hệ thống > máy đầu tiên) — Agent dùng tên này in qua Win32 Spooler
       // theo tên (LabelPrinter.cs::PrintViaUsb), không phải địa chỉ mạng.
@@ -549,6 +603,274 @@ async function renderPreviewQr() {
 watch(previewDispatch, (val) => {
   if (val) renderPreviewQr();
 });
+
+// Port ĐÚNG y hệt WarehouseRoutingService::calculateRouting (backend) — đã đối chiếu
+// xác nhận khớp 100% với code thật Mod_printslip.bas (D1 zone) ngày 2026-07-22. Chỉ
+// dùng để XEM TRƯỚC ở màn hình "In qua trình duyệt" (dispatch chưa confirm nên chưa
+// có RoutingDecision thật) — kết quả này KHÔNG được lưu, không thay thế tính toán thật
+// lúc bấm "In tem" (ConfirmDispatchService/WarehouseRoutingService).
+function numBetween(v: number, min: number, max: number): boolean {
+  return v >= min && v <= max;
+}
+
+/** Port "VD" & Format(Val(Mid(s,3)),"000") — chuẩn hóa mã máy về 3 chữ số (VD4 -> VD004). */
+function normalizeVdCode(code: string): string {
+  const c = (code || '').toUpperCase().trim();
+  if (c.startsWith('VD')) {
+    const num = parseInt(c.slice(2), 10) || 0;
+    return 'VD' + String(num).padStart(3, '0');
+  }
+  return c;
+}
+
+/** Port Format(Now,"yyyymmddhhmm") / Format(Now,"hhmm") — chỉ 2 kiểu Mod_printslip.bas dùng. */
+function nowStamp(pattern: 'yyyymmddhhmm' | 'hhmm'): string {
+  const n = new Date();
+  const p2 = (v: number) => String(v).padStart(2, '0');
+  const hhmm = p2(n.getHours()) + p2(n.getMinutes());
+  if (pattern === 'hhmm') return hhmm;
+  return `${n.getFullYear()}${p2(n.getMonth() + 1)}${p2(n.getDate())}${hhmm}`;
+}
+
+function calculateRoutingPreview(machineCode: string, tankCode: string, levelCode: string) {
+  const machine = (machineCode || '').toUpperCase().trim();
+  const tank = (tankCode || '').toUpperCase().trim();
+  const m = /^VD(\d+)$/.exec(machine);
+  const machineNum = m ? parseInt(m[1], 10) : 0;
+
+  let b24: string | null = null;
+  if (numBetween(machineNum, 6, 13) && (tank === '1A' || tank === '2B')) {
+    b24 = 'THUNG SAT CAO, MAY E13, MAY A11';
+  } else if ((machineNum === 17 || machineNum === 18) && (tank === '1A' || tank === '2B')) {
+    b24 = 'THUNG SAT CAO, MAY E12, MAY A11';
+  } else if ((machineNum === 17 || machineNum === 18) && (tank === '3C' || tank === '4D')) {
+    b24 = levelCode == '50' ? 'PHA TAY, HOA CHAT DLG' : 'THUNG SAT CAO, MAY E12, MAY DLG';
+  } else if ((numBetween(machineNum, 1, 5) || numBetween(machineNum, 14, 16)) && (tank === '1A' || tank === '2B')) {
+    b24 = 'THUNG SAT THAP, MAY JIT, MAY A11';
+  } else if (numBetween(machineNum, 1, 16) && (tank === '3C' || tank === '4D')) {
+    b24 = 'THUNG SAT THAP, MAY JIT, MAY DLG';
+  }
+
+  let d1 = '';
+  if (numBetween(machineNum, 6, 13) && (tank === '1A' || tank === '2B')) {
+    d1 = 'E13';
+  } else if ((machineNum === 17 || machineNum === 18) && ['1A', '2B', '3C', '4D'].includes(tank)) {
+    d1 = 'E12';
+  } else if (numBetween(machineNum, 1, 5) && (tank === '1A' || tank === '2B')) {
+    d1 = 'JIT3';
+  } else if (numBetween(machineNum, 1, 9) && (tank === '3C' || tank === '4D')) {
+    d1 = 'JIT2';
+  } else if (numBetween(machineNum, 14, 16) && (tank === '1A' || tank === '2B')) {
+    d1 = 'JIT4';
+  } else if (numBetween(machineNum, 10, 16) && (tank === '3C' || tank === '4D')) {
+    d1 = 'JIT1';
+  }
+
+  let mode = 'FB';
+  if (b24 !== null) {
+    if (b24.includes('MAY JIT')) mode = 'PROCESS';
+    else if (b24.includes('THUNG SAT CAO')) mode = 'EXTRA';
+  }
+  if (mode === 'FB') {
+    b24 = 'PHU BAN-LAY LIEU COPOWER';
+  }
+
+  return { d1Zone: d1, b24Route: b24 || '', mode };
+}
+
+// In qua trình duyệt — mở tab mới dựng lại tem dạng HTML (không qua TSPL/Local Agent),
+// gọi window.print() để dùng hộp thoại in gốc của Windows, chọn được bất kỳ máy in nào
+// đã cài. Bố cục dưới đây LẤY ĐÚNG toạ độ đo thật từ sheet "DF_WEIGHING_SLIP" gốc
+// (file "Copy of Copy of DF002 no formulas..." không khóa VBA, 2026-07-21) — quy đổi
+// dot TSPL (backend QrPayloadService::buildTsplLabel70x100) sang mm (chia 8, vì 203dpi
+// = 8 dot/mm) để khớp 1:1 với tem in thật, không phải bố cục tự vẽ riêng nữa. Dispatch
+// CHƯA confirm nên chưa có RoutingDecision LƯU THẬT trong DB — nhưng khu vực D1/chuỗi
+// B24 tự tính lại ngay tại đây bằng calculateRoutingPreview() (đã đối chiếu khớp 100%
+// với backend + code VBA gốc), nên tem xem trước vẫn hiển thị ĐÚNG giá trị thật.
+async function printPreviewViaBrowser() {
+  const d = previewDispatch.value;
+  if (!d) return;
+  const b = d.batch || {};
+
+  const routing = calculateRoutingPreview(b.machine?.code || '', b.tank?.code || '', b.level_code || '');
+
+  const dyeQrText = `#${b.color || ''}-${b.product_code || ''}-${b.machine?.code || ''}-${b.level_code || ''}-${b.raw_qr_dye || ''}`;
+
+  // qrChem — port đúng backend QrPayloadService::buildChemPayload: KHÔNG nhét thẳng
+  // raw_qr_chemical thô, mã thùng chỉ lấy ký tự đầu, và mỗi trường cách nhau 1 dòng
+  // trống (yêu cầu 2026-07-22, lệch có chủ đích so với VBA gốc — khớp tem thật đang
+  // dùng). "#" cuối nối TRỰC TIẾP vào dòng khối lượng cuối, không có dòng trống trước nó.
+  const chemRndPreview = 1 + Math.floor(Math.random() * 9);
+  const chemParts = [
+    normalizeVdCode(b.machine?.code || ''),
+    (b.tank?.code || '').toUpperCase().trim().charAt(0),
+    `#${b.color || ''}-${b.product_code || ''}`,
+    String(chemRndPreview),
+    b.level_code || '',
+  ];
+  previewChemLines.value.forEach(r => {
+    chemParts.push(r.code);
+    chemParts.push(String(r.weight).replace(',', '.'));
+  });
+  const chemQrText = chemParts.join('\n\n') + '#';
+
+  // QR chế độ (PROCESS/EXTRA/FB) — port đúng định dạng qrProcess/qrExtra/qrFB trong
+  // Mod_printslip.bas gốc, đặt ở G1:H1. Không có totalD (tổng khối lượng dye) sẵn ở màn
+  // hình xem trước nên tính lại từ chính bảng dye đang hiển thị.
+  let modeQrText = '';
+  if (routing.mode === 'PROCESS') {
+    // Yêu cầu 2026-07-22: dòng trống xen giữa 3 phần (khác VBA gốc chỉ 1 vbCrLf) — đối
+    // chiếu tem thật đang dùng, chỉ áp dụng cho mode PROCESS (xem QrPayloadService::
+    // buildProcessPayload backend, cùng lý do).
+    const newLevel = (b.tank?.code || '').toUpperCase() === '1A' ? '450' : (b.tank?.code || '').toUpperCase() === '2B' ? '250' : (b.level_code || '');
+    modeQrText = `${b.color || ''}-${b.product_code || ''} ${nowStamp('yyyymmddhhmm')}\n\n${b.machine?.code || ''}-${b.tank?.code || ''}-${newLevel}\n\nNylon Dyes`;
+  } else if (routing.mode === 'EXTRA') {
+    const totalD = previewDyeLines.value.reduce((sum, r) => sum + (parseFloat(r.weight) || 0), 0);
+    const rnd = 1 + Math.floor(Math.random() * 9);
+    modeQrText = `${b.machine?.code || ''}\n${(b.tank?.code || '').charAt(0)}\n${b.color || ''} ${b.product_code || ''}\n${rnd}\n${b.level_code || ''}\n1\n${totalD}`;
+  } else {
+    modeQrText = `${b.color || ''}-${b.product_code || ''} ${nowStamp('hhmm')}`;
+  }
+
+  let dyeQrDataUrl = '';
+  let chemQrDataUrl = '';
+  let modeQrDataUrl = '';
+  try {
+    dyeQrDataUrl = await QRCode.toDataURL(dyeQrText, { width: 240, margin: 0 });
+    chemQrDataUrl = await QRCode.toDataURL(chemQrText, { width: 240, margin: 0 });
+    modeQrDataUrl = await QRCode.toDataURL(modeQrText, { width: 200, margin: 0 });
+  } catch (err) {
+    console.error('Failed to render QR for browser print:', err);
+  }
+
+  // Toạ độ — LẤY NGUYÊN các mốc dot (203dpi, 8dot/mm) dùng trong
+  // QrPayloadService::buildTsplLabel70x100 (backend, đã đối chiếu ảnh tem in thật
+  // 2026-07-21), quy đổi sang mm chỉ tại lúc vẽ (chia 8) qua boxDot()/mmD() — KHÔNG
+  // còn tự tính lại mốc riêng, tránh lệch giữa preview và tem in thật. Đổi 2026-07-22:
+  // dùng ĐỦ chiều rộng 0-560 dot (trước đó có lề dư 5.25mm/5.375mm trái/phải không có
+  // trên tem thật), ô Màu+Mã hàng gộp 1 khung không đường kẻ giữa, QR to hơn.
+  const DOT = 8;
+  const mmD = (dot: number) => dot / DOT;
+  function boxDot(x1: number, y1: number, x2: number, y2: number, innerHtml: string, noBorder = false): string {
+    return box(mmD(x1), mmD(y1), mmD(x2 - x1), mmD(y2 - y1), innerHtml, noBorder);
+  }
+
+  const tableTop = 200, rowHDot = 41, tableBottom = tableTop + rowHDot * 9; // 569
+  const rowH = mmD(rowHDot);
+  const titleTop = tableBottom, qrTop = 605, qrBottom = 763, routeY = 772;
+  const dyeColsDot: [number, number][] = [[0, 110], [110, 206], [206, 278]];
+  const chemColsDot: [number, number][] = [[293, 391], [391, 498], [498, 560]];
+
+  const dyeRows = previewDyeLines.value;
+  const chemRows = previewChemLines.value;
+  let tableCellsHtml = '';
+  for (let i = 0; i < 9; i++) {
+    const y = tableTop + i * rowHDot;
+    const dr = dyeRows[i];
+    const cr = chemRows[i];
+    if (dr) {
+      tableCellsHtml += boxDot(dyeColsDot[0][0], y, dyeColsDot[0][1], y + rowHDot, `<span class="cellval">${dr.rack}</span>`, true);
+      tableCellsHtml += boxDot(dyeColsDot[1][0], y, dyeColsDot[1][1], y + rowHDot, `<span class="cellval">${dr.code}</span>`, true);
+      tableCellsHtml += boxDot(dyeColsDot[2][0], y, dyeColsDot[2][1], y + rowHDot, `<span class="cellval cellval-right">${dr.weight}</span>`, true);
+    }
+    if (cr) {
+      tableCellsHtml += boxDot(chemColsDot[0][0], y, chemColsDot[0][1], y + rowHDot, `<span class="cellval">${cr.rack}</span>`, true);
+      tableCellsHtml += boxDot(chemColsDot[1][0], y, chemColsDot[1][1], y + rowHDot, `<span class="cellval">${cr.code}</span>`, true);
+      tableCellsHtml += boxDot(chemColsDot[2][0], y, chemColsDot[2][1], y + rowHDot, `<span class="cellval cellval-right">${cr.weight}</span>`, true);
+    }
+  }
+  // Khung kẻ toàn bảng (kể cả ô rỗng) — vẽ riêng lưới 6 cột x 9 dòng để luôn thấy đủ khung.
+  let tableGridHtml = '';
+  for (let i = 0; i < 9; i++) {
+    const y = mmD(tableTop + i * rowHDot);
+    [...dyeColsDot, ...chemColsDot].forEach(([x1, x2]) => {
+      tableGridHtml += `<div class="gridcell" style="left:${mmD(x1)}mm;top:${y}mm;width:${mmD(x2 - x1)}mm;height:${rowH}mm;"></div>`;
+    });
+  }
+
+  function box(x: number, y: number, w: number, h: number, innerHtml: string, noBorder = false): string {
+    return `<div class="box${noBorder ? ' noborder' : ''}" style="left:${x}mm;top:${y}mm;width:${w}mm;height:${h}mm;">${innerHtml}</div>`;
+  }
+
+  const html = `<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<title>Tem ${b.legacy_batch_id || ''}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; margin: 0; padding: 6mm; color: #000; }
+  .slip { position: relative; width: 70mm; height: 100mm; border: 0.3mm solid #000; }
+  .box { position: absolute; border: 0.3mm solid #000; overflow: visible; padding: 0.4mm 0.8mm; white-space: nowrap; }
+  .box.noborder { border: none; }
+  .gridcell { position: absolute; border: 0.2mm solid #000; }
+  .label-sm { font-size: 2.3mm; white-space: nowrap; }
+  .big { font-size: 3.2mm; font-weight: 700; line-height: 1; white-space: nowrap; }
+  .big.code-line { display: block; margin-top: 1.2mm; }
+  .zone { font-size: 5.5mm; font-weight: 700; line-height: 1; text-align: center; white-space: nowrap; display: block; width: 100%; }
+  .med { font-size: 2.6mm; white-space: nowrap; }
+  .cellval { font-size: 2.2mm; }
+  .cellval-right { display: block; text-align: right; }
+  .title { font-size: 2.4mm; font-weight: 700; }
+  .qr-block { position: absolute; text-align: center; }
+  .qr-block img { width: 100%; height: 100%; object-fit: contain; }
+  .qr-block-inline { display: flex; flex-direction: column; align-items: center; gap: 0.5mm; height: 100%; justify-content: center; }
+  .qr-block-inline img { width: 10mm; height: 10mm; }
+  .placeholder { color: #999; font-style: italic; }
+  .footnote { margin-top: 3mm; font-size: 2.3mm; color: #666; }
+  @media print {
+    body { padding: 0; }
+    .footnote { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="slip">
+    ${boxDot(0, 0, 206, 112, '<span class="label-sm">DF_WEIGHING_SLIP</span>')}
+    ${boxDot(206, 0, 391, 112, `<span class="zone${routing.d1Zone ? '' : ' placeholder'}">${routing.d1Zone || '—'}</span>`)}
+    ${boxDot(391, 0, 560, 112, `<div class="qr-block-inline">${modeQrDataUrl ? `<img src="${modeQrDataUrl}" alt="QR mode" />` : ''}<span class="label-sm">${routing.mode}</span></div>`)}
+
+    ${boxDot(0, 114, 278, 200, `<span class="big">${b.color || ''}</span><span class="big code-line">${b.product_code || ''}</span>`)}
+    ${boxDot(293, 114, 391, 200, `<span class="big">${b.machine?.code || ''}</span>`)}
+    ${boxDot(391, 114, 498, 200, `<span class="big">${b.tank?.code || '-'}</span>`)}
+    ${boxDot(498, 114, 560, 200, `<span class="med">${b.level_code || '-'}</span>`)}
+
+    ${tableGridHtml}
+    ${tableCellsHtml}
+
+    <div style="position:absolute; left:${mmD(0)}mm; top:${mmD(titleTop)}mm; width:${mmD(278)}mm;" class="title">QR CAN THUOC NHUOM</div>
+    <div style="position:absolute; left:${mmD(293)}mm; top:${mmD(titleTop)}mm; width:${mmD(560 - 293)}mm;" class="title">QR CAN CHAT TRO</div>
+
+    <div class="qr-block" style="left:${mmD(0)}mm; top:${mmD(qrTop)}mm; width:${mmD(278)}mm; height:${mmD(qrBottom - qrTop)}mm;">
+      ${dyeQrDataUrl ? `<img src="${dyeQrDataUrl}" alt="QR DYE" />` : ''}
+    </div>
+    <div class="qr-block" style="left:${mmD(293)}mm; top:${mmD(qrTop)}mm; width:${mmD(560 - 293)}mm; height:${mmD(qrBottom - qrTop)}mm;">
+      ${chemQrDataUrl ? `<img src="${chemQrDataUrl}" alt="QR CHEM" />` : ''}
+    </div>
+
+    <div style="position:absolute; left:${mmD(0)}mm; top:${mmD(routeY)}mm; width:${mmD(560)}mm;" class="med">
+      ${routing.b24Route}
+    </div>
+  </div>
+
+  <p class="footnote">
+    Lô: ${b.legacy_batch_id || ''} — In qua trình duyệt (không qua TSPL/Local Agent), bố cục đo đúng từ sheet DF_WEIGHING_SLIP gốc. Khu vực kho/QR chế độ tự tính lại tại đây (khớp backend) — lúc bấm "In tem" thật, hệ thống tính và LƯU lại chính thức, có thể lệch nếu cấu hình routing (feature flag) thay đổi giữa lúc xem trước và lúc in.
+  </p>
+
+  <script>
+    window.onload = function () { window.print(); };
+  <\/script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank', 'width=500,height=750');
+  if (!win) {
+    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    return;
+  }
+  win.document.write(html);
+  win.document.close();
+}
 
 const manualQuery = ref('');
 const manualResults = ref<any[]>([]);
@@ -669,7 +991,7 @@ function resetScan() {
 
 function formatTime(v: string) {
   if (!v) return '—';
-  return new Date(v).toLocaleString('vi-VN');
+  return new Date(v).toLocaleString('vi-VN', { hour12: false });
 }
 
 onMounted(async () => {
@@ -698,6 +1020,9 @@ onMounted(async () => {
     searchManual();
   }
 
+  if (!currentWorkstation.value) {
+    await fetchStationOptions();
+  }
   fetchInstalledPrinters();
   fetchPendingDispatches();
   fetchPrintHistory();
@@ -740,6 +1065,17 @@ onUnmounted(() => {
   padding: 4px 12px;
   border-radius: var(--radius-full);
   margin-bottom: 6px;
+}
+.admin-station-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.select-sm {
+  padding: 2px 8px;
+  font-size: 0.85rem;
+  width: auto;
 }
 .dev-badge {
   display: flex;
@@ -1017,6 +1353,10 @@ onUnmounted(() => {
   gap: 12px;
   padding: var(--space-lg) var(--space-xl);
   border-top: 1px solid var(--border-divider);
+}
+.preview-no-printer-hint {
+  padding: 0 var(--space-xl) var(--space-lg);
+  text-align: right;
 }
 
 /* Bảng RACK/MÃ/KHỐI LƯỢNG tách dòng — layout kiểu scaleform.frm (VBA gốc) */

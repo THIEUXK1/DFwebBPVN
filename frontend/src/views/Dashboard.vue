@@ -478,7 +478,7 @@ const initRealtimeConnection = () => {
       if (live) {
         ws.active = live.active;
         ws.weight = live.weight;
-        ws.lastUpdated = live.active ? new Date().toLocaleTimeString() : 'Heartbeat offline';
+        ws.lastUpdated = live.active ? new Date().toLocaleTimeString('vi-VN', { hour12: false }) : 'Heartbeat offline';
       }
     });
   });
@@ -684,7 +684,7 @@ const getTransportBadgeClass = (status: string) => {
 const formatTime = (dateStr: string) => {
   if (!dateStr) return '-';
   const d = new Date(dateStr);
-  return d.toLocaleString('vi-VN');
+  return d.toLocaleString('vi-VN', { hour12: false });
 };
 
 const viewMachineDetails = (m: any) => {

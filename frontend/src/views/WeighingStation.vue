@@ -28,6 +28,8 @@
         <p class="text-muted font-sm">Mã trạm: <code>{{ currentWorkstation?.code }}</code> | Vị trí: {{ currentWorkstation?.location }}</p>
       </div>
       <div class="banner-right">
+        <!-- Tra cứu bán thành phẩm — port scaleform.btnCheck_Click (VBA) → checkform -->
+        <button class="btn btn-secondary btn-sm mr-2" @click="openChecker">🔍 Tra cứu</button>
         <!-- Scale heartbeat status -->
         <div class="dev-badge">
           <span class="dot-pulse" :class="scaleOnline ? 'dot-green' : 'dot-red'"></span>
@@ -37,6 +39,56 @@
         <div class="dev-badge ml-2">
           <span class="dot-pulse" :class="printerOnline ? 'dot-green' : 'dot-red'"></span>
           <span>Máy in: {{ currentWorkstation?.assigned_printer_device_id || 'Chưa gán' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Tra cứu bán thành phẩm — port checkform (COLOR+CODE+số ngày → danh sách mẻ đã cân) -->
+    <div v-if="showChecker" class="checker-overlay" @click.self="showChecker = false">
+      <div class="checker-modal card-sec">
+        <div class="checker-header">
+          <h3>🔍 Tra cứu bán thành phẩm đã cân</h3>
+          <button class="btn btn-secondary btn-sm" @click="showChecker = false">✖ Đóng</button>
+        </div>
+        <div class="checker-form">
+          <input v-model="checkerColor" type="text" class="form-control" placeholder="COLOR (mã màu)" @keyup.enter="runChecker" />
+          <input v-model="checkerCode" type="text" class="form-control" placeholder="CODE (mã hàng)" @keyup.enter="runChecker" />
+          <input v-model.number="checkerDaysBack" type="number" min="0" class="form-control checker-days-input" placeholder="Số ngày (để trống = tất cả)" @keyup.enter="runChecker" />
+          <button class="btn btn-primary" @click="runChecker" :disabled="!checkerColor || !checkerCode || checkerLoading">
+            {{ checkerLoading ? 'Đang tra...' : 'Kiểm tra' }}
+          </button>
+          <button class="btn btn-secondary" @click="clearChecker">Xóa</button>
+        </div>
+
+        <div class="checker-result mt-3">
+          <p v-if="checkerMessage" class="text-muted font-sm">{{ checkerMessage }}</p>
+          <div v-for="batch in checkerResults" :key="batch.batch_id" class="checker-batch-card">
+            <div class="checker-batch-header">
+              <span class="badge badge-blue">Mẻ: {{ batch.batch_id || 'N/A' }}</span>
+              <span>{{ batch.color }} / {{ batch.product_code }}</span>
+              <span class="text-muted font-xs">
+                Máy: {{ batch.machine_code || 'N/A' }} · Mức: {{ batch.level_code || 'N/A' }} ·
+                {{ batch.measured_at ? new Date(batch.measured_at).toLocaleString('vi-VN') : '' }}
+              </span>
+            </div>
+            <table class="checker-table">
+              <thead>
+                <tr><th>Rack</th><th>Mã vật tư</th><th>Khối lượng</th><th>Process</th><th>Trạng thái</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="(it, idx) in batch.items" :key="idx">
+                  <td>{{ it.rack_code || '-' }}</td>
+                  <td>{{ it.dye_code || '-' }}</td>
+                  <td>{{ it.weight !== null ? it.weight.toFixed(2) + ' g' : '-' }}</td>
+                  <td>{{ it.process_code || '-' }}</td>
+                  <td>
+                    <span v-if="it.override_approved" class="text-danger">⚠️ Override</span>
+                    <span v-else class="text-success">✔️ Đạt</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -128,6 +180,10 @@
             <span class="badge badge-blue">JOB: {{ activeJob.job_type }}</span>
             <span class="badge badge-yellow" v-if="activeJob.status !== 'COMPLETED'">ĐANG CÂN ({{ completedItemsCount }}/{{ activeJob.items.length }})</span>
             <span class="badge badge-green" v-else>ĐÃ HOÀN TẤT CÂN</span>
+            <!-- Phiếu cân tổng hợp — port scaleform.btnPrint_Click, không cần chờ job hoàn tất -->
+            <button class="btn btn-secondary btn-sm ml-2" @click="printSlip" :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'">
+              🖨️ In phiếu cân
+            </button>
           </div>
           <h3>Mẻ nhuộm: <span class="text-glow-blue">{{ activeBatch.legacy_batch_id }}</span></h3>
           
@@ -313,6 +369,7 @@ import axios from 'axios';
 import { currentWorkstation } from '../services/workstation';
 import { scannerService } from '../services/scanner';
 import { useAuthStore } from '../stores/auth';
+import echo from '../services/echo';
 
 const route = useRoute();
 const authStore = useAuthStore();
@@ -450,6 +507,7 @@ function ingestRawWeight(raw: number, stable: boolean) {
 }
 
 let livePoller: any = null;
+let batchPollInterval: any = null;
 
 // Lifecycle
 onMounted(async () => {
@@ -481,11 +539,20 @@ onMounted(async () => {
 
   // Poll live scale readings
   livePoller = setInterval(fetchLiveWeight, 500);
+
+  // Realtime qua Reverb — lô mới được tạo/duyệt ở /production-batches phải xuất hiện
+  // ngay trong dropdown "Giả lập Quét mã" ở đây, không cần rời màn hình rồi quay lại.
+  // Cùng kênh với ProductionBatches.vue/ProductionBatchesList.vue (xem
+  // ProductionBatchUpdated::broadcastOn ở backend). Polling giữ làm lưới an toàn.
+  echo.channel('production-batches').listen('.updated', fetchWaitingBatches);
+  batchPollInterval = setInterval(fetchWaitingBatches, 15000);
 });
 
 onUnmounted(() => {
   scannerService.offScan(handleBarcodeScan);
   if (livePoller) clearInterval(livePoller);
+  if (batchPollInterval) clearInterval(batchPollInterval);
+  echo.leaveChannel('production-batches');
 });
 
 // Watch simulator slider — đi qua CÙNG cổng ingestRawWeight() như cân thật, để kiểm thử
@@ -786,6 +853,66 @@ const resetToScan = () => {
   activeBatch.value = null;
   mockSelectedBatchId.value = '';
   fetchWaitingBatches();
+};
+
+// ===== Tra cứu bán thành phẩm — port VBA scaleform.btnCheck_Click → checkform =====
+const showChecker = ref(false);
+const checkerColor = ref('');
+const checkerCode = ref('');
+const checkerDaysBack = ref<number | null>(null);
+const checkerLoading = ref(false);
+const checkerResults = ref<any[]>([]);
+const checkerMessage = ref('');
+
+const openChecker = () => {
+  showChecker.value = true;
+};
+
+const runChecker = async () => {
+  if (!checkerColor.value || !checkerCode.value) return;
+  checkerLoading.value = true;
+  checkerMessage.value = '';
+  try {
+    const params: Record<string, any> = {
+      color: checkerColor.value.trim(),
+      code: checkerCode.value.trim(),
+    };
+    if (checkerDaysBack.value !== null && checkerDaysBack.value !== undefined && `${checkerDaysBack.value}` !== '') {
+      params.days_back = checkerDaysBack.value;
+    }
+    const res = await axios.get('/api/scale-measurements/checker', { params });
+    checkerResults.value = res.data?.data || [];
+    if (checkerResults.value.length === 0) {
+      checkerMessage.value = res.data?.message || 'KHONG CO DU LIEU';
+    }
+  } catch (err: any) {
+    checkerResults.value = [];
+    checkerMessage.value = err.response?.data?.message || 'Không thể tra cứu dữ liệu.';
+  } finally {
+    checkerLoading.value = false;
+  }
+};
+
+const clearChecker = () => {
+  checkerColor.value = '';
+  checkerCode.value = '';
+  checkerDaysBack.value = null;
+  checkerResults.value = [];
+  checkerMessage.value = '';
+};
+
+// ===== Phiếu cân tổng hợp — port VBA scaleform.btnPrint_Click =====
+const printSlip = async () => {
+  if (!activeJob.value || !currentWorkstation.value) return;
+  try {
+    await axios.post(`/api/weighing-jobs/${activeJob.value.id}/print-slip`, {
+      workstation_code: currentWorkstation.value.code
+    }, getRequestConfig());
+    scannerService.playBeep(1800, 150);
+    alert('Đã gửi phiếu cân sang hàng chờ in.');
+  } catch (err: any) {
+    alert(err.response?.data?.message || 'Không thể in phiếu cân.');
+  }
 };
 </script>
 
@@ -1216,5 +1343,85 @@ const resetToScan = () => {
   background-color: var(--bg-card);
   border-color: var(--border-card);
   color: var(--text-body);
+}
+
+/* Checker (tra cứu bán thành phẩm) modal */
+.checker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  z-index: 1000;
+}
+
+.checker-modal {
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-divider);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  width: 100%;
+  max-width: 860px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.checker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.checker-form {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.checker-form .form-control {
+  flex: 1;
+  min-width: 160px;
+}
+
+.checker-days-input {
+  max-width: 220px;
+}
+
+.checker-batch-card {
+  border: 1px solid var(--border-divider);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 12px;
+  background-color: var(--bg-card);
+}
+
+.checker-batch-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.checker-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.checker-table th,
+.checker-table td {
+  border: 1px solid var(--border-divider);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.checker-table th {
+  background-color: var(--bg-main);
+  color: var(--text-muted);
+  font-weight: 700;
 }
 </style>

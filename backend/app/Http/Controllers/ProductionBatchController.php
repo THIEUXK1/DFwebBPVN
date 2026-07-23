@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\ProductionBatchUpdated;
 use App\Models\ProductionBatch;
 use App\Models\Machine;
 use App\Models\Tank;
@@ -23,6 +24,29 @@ class ProductionBatchController extends Controller
             'status' => 'SUCCESS',
             'data' => Machine::orderBy('code')->get(['id', 'code', 'name']),
         ]);
+    }
+
+    /**
+     * Thêm máy nhuộm mới vào danh mục dùng chung (production batches + kênh gọi hóa
+     * chất đều tham chiếu cùng bảng machines qua machine_id).
+     */
+    public function storeMachine(Request $request)
+    {
+        $request->validate([
+            'code' => 'required|string|max:50|unique:machines,code',
+            'name' => 'required|string|max:255',
+        ]);
+
+        $machine = Machine::create([
+            'code' => $request->input('code'),
+            'name' => $request->input('name'),
+            'is_active' => true,
+        ]);
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'data' => $machine,
+        ], 201);
     }
 
     /**
@@ -97,10 +121,12 @@ class ProductionBatchController extends Controller
      * Create a new production batch — dùng chung cho cả 2 nguồn: đẩy đơn giả lập MES
      * và màn hình quét thật WS-ORDER-01 (mainform.frm/btnSAVE_Click).
      *
-     * Chặn trùng color+code (VBA `Exists_ColorCode` chống chèn trùng vào tbl_input_all,
-     * thông báo "Da ton tai mau nay") — chỉ tính trùng với đơn CHƯA duyệt (status=NEW,
-     * tương đương còn nằm trong tbl_input_all; đơn đã duyệt/dispatch coi như đã "rời"
-     * khỏi hàng chờ nhập, y hệt MoveToSend xóa khỏi tbl_input_all).
+     * Chặn trùng color+code+machine (VBA `Exists_ColorCode` chống chèn trùng vào
+     * tbl_input_all, thông báo "Da ton tai mau nay") — chỉ tính trùng với đơn CHƯA
+     * duyệt (status=NEW, tương đương còn nằm trong tbl_input_all; đơn đã duyệt/dispatch
+     * coi như đã "rời" khỏi hàng chờ nhập, y hệt MoveToSend xóa khỏi tbl_input_all).
+     * Yêu cầu 2026-07-22: tính cả machine_id vào điều kiện trùng — 2 lô cùng màu+mã
+     * hàng nhưng chạy ở 2 máy khác nhau là hợp lệ, không nên cảnh báo nhầm.
      */
     public function store(Request $request)
     {
@@ -119,17 +145,18 @@ class ProductionBatchController extends Controller
 
         $duplicate = ProductionBatch::where('color', $request->input('color'))
             ->where('product_code', $request->input('product_code'))
+            ->where('machine_id', $request->input('machine_id'))
             ->where('status', 'NEW')
             ->exists();
 
         // Không còn chặn cứng — chỉ CẢNH BÁO nghi ngờ trùng. Người vận hành tự xác nhận
         // qua tick "vẫn lưu" (confirm_duplicate=true) rồi gọi lại API mới thật sự lưu,
-        // vì có trường hợp hợp lệ trùng màu+mã hàng (vd 2 lô cùng công thức chạy song
-        // song 2 máy khác nhau) mà chặn cứng sẽ chặn nhầm nghiệp vụ thật.
+        // vì có trường hợp hợp lệ trùng màu+mã hàng+máy (vd nhập lại đơn bị lỗi trước
+        // đó) mà chặn cứng sẽ chặn nhầm nghiệp vụ thật.
         if ($duplicate && !$request->boolean('confirm_duplicate')) {
             return response()->json([
                 'status' => 'DUPLICATE_WARNING',
-                'message' => 'Nghi ngờ trùng: đã có đơn cùng mã màu + mã hàng đang chờ duyệt (chưa gửi máy). Tick xác nhận rồi lưu lại nếu vẫn muốn tạo mới.',
+                'message' => 'Nghi ngờ trùng: đã có đơn cùng mã màu + mã hàng + máy đang chờ duyệt (chưa gửi máy). Tick xác nhận rồi lưu lại nếu vẫn muốn tạo mới.',
             ], 409);
         }
 
@@ -144,6 +171,8 @@ class ProductionBatchController extends Controller
             'raw_qr_dye' => $request->input('raw_qr_dye'),
             'raw_qr_chemical' => $request->input('raw_qr_chemical'),
         ]);
+
+        event(new ProductionBatchUpdated());
 
         return response()->json([
             'status' => 'SUCCESS',
@@ -165,10 +194,48 @@ class ProductionBatchController extends Controller
         $batch->status = $request->input('status');
         $batch->save();
 
+        event(new ProductionBatchUpdated());
+
         return response()->json([
             'status' => 'SUCCESS',
             'message' => 'Production batch status updated',
             'data' => $batch
+        ]);
+    }
+
+    /**
+     * Gán nhanh Thùng trộn cho lô — dùng ở ô "Thùng Trộn" trên bảng danh sách
+     * (yêu cầu 2026-07-22: bấm chọn nhanh ngay tại bảng thay vì phải mở form riêng),
+     * hỗ trợ bỏ chọn (tank_id=null) và bắt buộc thùng phải thuộc đúng máy của lô.
+     */
+    public function updateTank(Request $request, $id)
+    {
+        $request->validate([
+            'tank_id' => 'nullable|exists:tanks,id',
+        ]);
+
+        $batch = ProductionBatch::findOrFail($id);
+        $tankId = $request->input('tank_id');
+
+        if ($tankId !== null) {
+            $tank = \App\Models\Tank::find($tankId);
+            if (!$tank || $tank->machine_id !== $batch->machine_id) {
+                return response()->json([
+                    'status' => 'ERROR',
+                    'message' => 'Thùng đã chọn không thuộc đúng máy của lô này.',
+                ], 422);
+            }
+        }
+
+        $batch->tank_id = $tankId;
+        $batch->save();
+
+        event(new ProductionBatchUpdated());
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'message' => 'Đã cập nhật Thùng trộn.',
+            'data' => $batch->load(['machine', 'tank']),
         ]);
     }
 
@@ -201,6 +268,8 @@ class ProductionBatchController extends Controller
                 'message' => $e->getMessage(),
             ], 422);
         }
+
+        event(new ProductionBatchUpdated());
 
         return response()->json([
             'status' => 'SUCCESS',

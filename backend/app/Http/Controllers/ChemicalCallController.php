@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 use App\Models\MachineChemicalChannel;
 use App\Models\ChemicalCallRequest;
 use App\Models\ChemicalCallRequestEvent;
+use App\Events\ChemicalChannelUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Exception;
@@ -20,6 +21,7 @@ class ChemicalCallController extends Controller
         $channels = MachineChemicalChannel::with('machine')->get()->map(function ($channel) {
             $currentRequest = ChemicalCallRequest::where('channel_id', $channel->id)
                 ->whereIn('status', ['CREATED', 'ORDERED', 'ACKNOWLEDGED', 'DONE'])
+                ->orderByDesc('requested_at')
                 ->first();
                 
             return [
@@ -37,6 +39,44 @@ class ChemicalCallController extends Controller
         });
 
         return response()->json($channels);
+    }
+
+    /**
+     * Thêm 1 kênh phát hóa chất mới cho 1 máy — vd máy vừa lắp thêm van hóa chất mới,
+     * hoặc máy mới chưa có kênh nào. channel_number không được trùng trong cùng 1 máy.
+     */
+    public function storeChannel(Request $request)
+    {
+        $request->validate([
+            'machine_id' => 'required|exists:machines,id',
+            'channel_number' => 'required|integer|min:1',
+            'chemical_code' => 'required|string|max:100',
+        ]);
+
+        $exists = MachineChemicalChannel::where('machine_id', $request->input('machine_id'))
+            ->where('channel_number', $request->input('channel_number'))
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'error' => 'CHANNEL_NUMBER_ALREADY_EXISTS',
+                'message' => 'Máy này đã có kênh số ' . $request->input('channel_number') . ' rồi.',
+            ], 409);
+        }
+
+        $channel = MachineChemicalChannel::create([
+            'machine_id' => $request->input('machine_id'),
+            'channel_number' => $request->input('channel_number'),
+            'chemical_code' => $request->input('chemical_code'),
+            'is_active' => true,
+        ]);
+
+        event(new ChemicalChannelUpdated());
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'data' => $channel->load('machine'),
+        ], 201);
     }
 
     /**
@@ -59,7 +99,7 @@ class ChemicalCallController extends Controller
         $channelId = $request->input('channel_id');
         $idempotencyKey = $request->input('idempotency_key');
 
-        return DB::transaction(function () use ($channelId, $idempotencyKey) {
+        $result = DB::transaction(function () use ($channelId, $idempotencyKey) {
             // Check idempotency
             $existing = ChemicalCallRequest::where('idempotency_key', $idempotencyKey)->first();
             if ($existing) {
@@ -109,12 +149,16 @@ class ChemicalCallController extends Controller
                 throw $e;
             }
 
+            // before_status ghi 'RESET' (nhóm OK) thay vì 'CREATED' (nhóm CHƯA OK) — về mặt
+            // nghiệp vụ, request mới chỉ được tạo khi kênh đang ở trạng thái OK (nút xanh),
+            // 'CREATED' chỉ là giá trị default của cột status ở tầng schema, không phản ánh
+            // đúng trạng thái kênh trước đó nên hiển thị sai thành "CHƯA OK -> CHƯA OK".
             ChemicalCallRequestEvent::create([
                 'request_id' => $ccRequest->id,
                 'event_type' => 'CHEMICAL_CALL_ORDERED',
                 'occurred_at' => now(),
                 'actor_user_id' => auth()->id(),
-                'before_status' => 'CREATED',
+                'before_status' => 'RESET',
                 'after_status' => 'ORDERED',
             ]);
 
@@ -140,6 +184,10 @@ class ChemicalCallController extends Controller
                 'reused' => false,
             ], 201);
         });
+
+        event(new ChemicalChannelUpdated());
+
+        return $result;
     }
 
     /**
@@ -168,6 +216,8 @@ class ChemicalCallController extends Controller
                 'after_status' => 'ACKNOWLEDGED',
             ]);
         });
+
+        event(new ChemicalChannelUpdated());
 
         return response()->json(['id' => $ccRequest->id, 'status' => $ccRequest->status]);
     }
@@ -198,6 +248,8 @@ class ChemicalCallController extends Controller
                 'after_status' => 'DONE',
             ]);
         });
+
+        event(new ChemicalChannelUpdated());
 
         return response()->json(['id' => $ccRequest->id, 'status' => $ccRequest->status]);
     }
@@ -249,6 +301,8 @@ class ChemicalCallController extends Controller
             }
         });
 
+        event(new ChemicalChannelUpdated());
+
         return response()->json(['id' => $ccRequest->id, 'status' => $ccRequest->status]);
     }
 
@@ -277,6 +331,8 @@ class ChemicalCallController extends Controller
             ]);
         });
 
+        event(new ChemicalChannelUpdated());
+
         return response()->json(['id' => $ccRequest->id, 'status' => $ccRequest->status]);
     }
 
@@ -297,7 +353,13 @@ class ChemicalCallController extends Controller
      */
     public function getRecentEvents(Request $request)
     {
+        // CHEMICAL_CALL_RESET là bước dọn dẹp nội bộ (DONE -> RESET) để mở lại kênh cho
+        // lượt gọi mới, không phải sự kiện nghiệp vụ có ý nghĩa với người vận hành — luôn
+        // đi kèm ngay sau CHEMICAL_CALL_DONE nên hiển thị ra sẽ trùng lặp và lệch nhãn
+        // trạng thái (DONE và RESET cùng hiển thị "OK" ở getSimpleStatus() phía frontend,
+        // khiến dòng RESET hiện thành "OK -> OK" vô nghĩa). Lọc bỏ khỏi nhật ký hoạt động.
         $events = ChemicalCallRequestEvent::with(['request.machine', 'request.channel', 'actorUser', 'actorWorkstation'])
+            ->where('event_type', '!=', 'CHEMICAL_CALL_RESET')
             ->orderBy('occurred_at', 'desc')
             ->limit(20)
             ->get()

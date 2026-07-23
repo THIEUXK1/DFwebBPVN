@@ -37,10 +37,12 @@ class QrPayloadService
     }
 
     /**
-     * qrChem = VD### & CRLF & tank_ký_tự_đầu & CRLF & "#"&color&"-"&code & CRLF &
-     *          random(1-9) & CRLF & level & (lặp CRLF+mã hóa chất+CRLF+khối lượng
+     * qrChem = VD### & CRLFx2 & tank_ký_tự_đầu & CRLFx2 & "#"&color&"-"&code & CRLFx2 &
+     *          random(1-9) & CRLFx2 & level & (lặp CRLFx2+mã hóa chất+CRLFx2+khối lượng
      *          cho mỗi dòng có dữ liệu, tối đa 9 dòng, parse từ raw_qr_chemical
-     *          theo cùng quy tắc ParseQR của VBA: tách chuỗi theo "-", bước nhảy 3) & CRLF & "#"
+     *          theo cùng quy tắc ParseQR của VBA: tách chuỗi theo "-", bước nhảy 3) & "#"
+     * (CRLFx2 = 1 dòng trống giữa mỗi trường — lệch có chủ đích so với VBA gốc chỉ 1
+     * CRLF, xem ghi chú trong thân hàm; "#" cuối KHÔNG có CRLF trước nó.)
      */
     public function buildChemPayload(MachineDispatch $dispatch, ?ProductionBatch $batch): string
     {
@@ -65,7 +67,12 @@ class QrPayloadService
             $lines[] = str_replace(',', '.', $chemWeight);
         }
 
-        return implode(self::CRLF, $lines) . self::CRLF . '#';
+        // Yêu cầu 2026-07-22: giống qrProcess (buildProcessPayload) — tem thật đang dùng
+        // có dòng trống xen giữa MỌI trường (không phải 1 vbCrLf đơn như mã VBA gốc trích
+        // xuất được). Chủ động lệch so với nguồn cho khớp thực tế đang vận hành. Riêng "#"
+        // cuối vẫn nối TRỰC TIẾP vào dòng khối lượng cuối, KHÔNG có dòng trống trước nó
+        // (đúng `qrChem = qrChem & "#"`, xác nhận qua ví dụ tem thật "...250#" liền nhau).
+        return implode(self::CRLF . self::CRLF, $lines) . '#';
     }
 
     /**
@@ -258,7 +265,13 @@ class QrPayloadService
             $dyesProcess = $this->computeDyesProcess($dispatch->raw_qr_dye ?? '', $dispatch->raw_qr_chemical ?? '');
             $newLevel = $tank === '1A' ? '450' : ($tank === '2B' ? '250' : $level);
             $timestamp = now()->format('YmdHi');
-            return "{$color}-{$code} {$timestamp}" . self::CRLF . "{$machine}-{$tank}-{$newLevel}" . self::CRLF . $dyesProcess;
+            // Yêu cầu 2026-07-22: người dùng đối chiếu tem thật đang dùng thấy có dòng
+            // trống xen giữa 3 phần (khác VBA gốc chỉ dùng 1 vbCrLf — đã xác nhận lại qua
+            // trích xuất trực tiếp Mod_printslip dòng 248-250). Chủ động chọn LỆCH so với
+            // mã nguồn để khớp đúng cách hiển thị tem thật đang vận hành — chỉ áp dụng cho
+            // mode PROCESS (không đổi qrDye/qrChem/qrExtra/qrFB, không có yêu cầu tương tự).
+            $crlf2 = self::CRLF . self::CRLF;
+            return "{$color}-{$code} {$timestamp}" . $crlf2 . "{$machine}-{$tank}-{$newLevel}" . $crlf2 . $dyesProcess;
         }
 
         if ($mode === 'EXTRA') {
@@ -366,12 +379,26 @@ class QrPayloadService
      *   B24=chuỗi định tuyến kho (vd "THUNG SAT CAO, MAY E13, MAY A11"),
      *   D1=mã khu vực ngắn (vd "E13"/"JIT1").
      *
-     * LƯU Ý QUAN TRỌNG (báo người dùng, KHÔNG tự suy đoán thêm): đây là nội dung/thứ tự
-     * trường ĐÚNG theo VBA, nhưng vị trí pixel/độ rộng cột/font chữ chính xác của sheet
-     * Excel gốc KHÔNG có trong mã VBA (chỉ có trong thiết kế visual của sheet, chưa mở
-     * được để đo) — tọa độ TEXT/QRCODE bên dưới là bố cục HỢP LÝ tự thiết kế lại cho vừa
-     * khổ 70x100mm, không phải sao chép pixel-chính-xác từ file gốc. Cần xem qua
-     * LabelPreview rồi phản hồi để chỉnh lại vị trí nếu chưa đúng ý.
+     * Toạ độ dưới đây (2026-07-22, thay bản trước đo qua Excel COM và có lề trái/phải dư
+     * do quy đổi Fit-to-page) đã được ĐỐI CHIẾU TRỰC TIẾP với ẢNH TEM IN THẬT từ VBA do
+     * người dùng cung cấp (2026-07-21) — sửa 2 lỗi lệch so với bản đo Excel:
+     *   1. Bảng cân mỗi hàng đúng ~41 dot (5.1mm) — bản đo Excel ban đầu tính nhầm 20 dot,
+     *      dồn toàn bộ phần dưới bảng (tiêu đề, QR, dòng định tuyến) lên sai vị trí.
+     *   2. Layout dùng ĐỦ chiều rộng tem 0-560 dot (70mm x 8dot/mm), KHÔNG có lề trái/phải
+     *      dư 42/43 dot như bản đo qua Fit-to-page — khớp đúng ảnh in thật không có viền
+     *      trắng 2 bên.
+     * Ô Màu (B3) và Mã hàng (B4) gộp chung 1 khung KHÔNG có đường kẻ ngang giữa (ảnh thật
+     * xác nhận không có đường kẻ đó dù là 2 dòng dữ liệu khác nhau). QR cell_width tăng
+     * 3->6 để khớp đúng kích thước QR to trên ảnh thật (bản cũ QR nhỏ hơn nhiều so với
+     * khoảng trống dành cho nó).
+     *
+     * Ánh xạ ô gốc (không đổi so với ghi chú cũ):
+     *   B1="DF_WEIGHING_SLIP" | D1=khu vực (font to nhất tem) | G1:H1=QR chế độ
+     *   B3:D3=MÀU | F3=MÁY | G3=THÙNG | H3=MỨC (nhỏ hơn)
+     *   B4:D4=MÃ HÀNG (cùng khung với B3, không có đường kẻ giữa)
+     *   B5:D13=bảng dye (rack/mã/KL, 9 dòng) | F5:H13=bảng chem (tương tự)
+     *   B14:D14="QR CAN THUOC NHUOM" | F14:H14="QR CAN CHAT TRO"
+     *   B16:D22=QR dye | F16:H22=QR chem | B24=chuỗi định tuyến kho B24
      */
     public function buildTsplLabel70x100(
         \App\Models\MachineDispatch $dispatch,
@@ -402,50 +429,100 @@ class QrPayloadService
         $lines[] = 'REFERENCE 0,0';
         $lines[] = 'CLS';
 
-        // Khu vực định tuyến kho (D1/B24) + QR mode — đặt TRÊN CÙNG, đúng vị trí D1/G1:H1
-        // trong VBA (row 1 = trên cùng sheet).
-        if ($d1Zone !== '') {
-            $lines[] = "TEXT 10,10,\"3\",0,1,1,\"KHU: {$d1Zone}\"";
+        // Khung kẻ ô — đúng ảnh tem in thật (mọi trường đều có viền). BOX x1,y1,x2,y2,dot
+        // = khung ngoài từng ô; BAR x,y,w,h = mảng đặc 2 dot dùng làm đường kẻ mảnh (TSPL
+        // không có lệnh LINE riêng).
+        $lines[] = 'BOX 0,0,206,112,2';      // ô watermark DF_WEIGHING_SLIP
+        $lines[] = 'BOX 206,0,391,112,2';    // ô mã khu vực (D1)
+        $lines[] = 'BOX 391,0,560,112,2';    // ô QR mode
+        $lines[] = 'BOX 0,114,278,200,2';    // ô màu + mã hàng (color/code gộp, không có đường ngang giữa — đúng ảnh)
+        $lines[] = 'BOX 293,114,391,200,2';  // ô máy
+        $lines[] = 'BOX 391,114,498,200,2';  // ô thùng
+        $lines[] = 'BOX 498,114,560,200,2';  // ô mức
+        $lines[] = 'BOX 0,200,278,569,2';    // khung ngoài bảng dye
+        $lines[] = 'BOX 293,200,560,569,2';  // khung ngoài bảng chem
+        for ($i = 1; $i < 9; $i++) {
+            $y = 200 + $i * 41;
+            $lines[] = "BAR 0,{$y},278,2";   // kẻ ngang giữa các dòng — dye
+            $lines[] = "BAR 293,{$y},267,2"; // kẻ ngang giữa các dòng — chem
         }
-        $lines[] = $this->tsplQrCommand(440, 10, 3, $qrModePayload);
-        $lines[] = "TEXT 440,120,\"1\",0,1,1,\"{$qrModeType}\"";
+        $lines[] = 'BAR 110,200,2,369';  // kẻ dọc dye: rack | ma | kl
+        $lines[] = 'BAR 206,200,2,369';
+        $lines[] = 'BAR 391,200,2,369';  // kẻ dọc chem: rack | ma | kl
+        $lines[] = 'BAR 498,200,2,369';
 
-        // Header: màu / mã hàng / máy / thùng / mức
-        $lines[] = "TEXT 10,90,\"3\",0,1,1,\"MAU: {$color}\"";
-        $lines[] = "TEXT 10,115,\"2\",0,1,1,\"MA HANG: {$productCode}\"";
-        $lines[] = "TEXT 10,140,\"2\",0,1,1,\"MAY: {$machine}  THUNG: {$tank}  MUC: {$level}\"";
+        // Hàng 1 (y=0-112): B1 = watermark tên sheet gốc (in trên MỌI tem thật, xác nhận
+        // qua ảnh — không phải dữ liệu nghiệp vụ nhưng VBA luôn in nên giữ nguyên).
+        // D1 (merged D1:F1, x=206-391) = mã khu vực, chữ TO NHẤT tem (font "4" — khớp
+        // size 36 trong Excel). G1:H1 (x=391-560) = ảnh QR thứ 3 (PROCESS/EXTRA/FB tùy B24).
+        $lines[] = 'TEXT 15,40,"2",0,1,1,"DF_WEIGHING_SLIP"';
+        if ($d1Zone !== '') {
+            $lines[] = "TEXT 220,20,\"4\",0,1,1,\"{$d1Zone}\"";
+        }
+        $lines[] = $this->tsplQrCommand(400, 5, 3, $qrModePayload);
+        $lines[] = "TEXT 400,100,\"1\",0,1,1,\"{$qrModeType}\"";
 
-        // Bảng cân — dye bên trái, chem bên phải, tối đa 9 dòng mỗi bên (đúng VBA rows 5-13)
-        $lines[] = 'TEXT 10,168,"1",0,1,1,"RACK  MA HOA CHAT  KL(g)"';
-        $lines[] = 'TEXT 290,168,"1",0,1,1,"RACK  MA HOA CHAT  KL(g)"';
-        $rowY = 188;
+        // Hàng 3 (y=114-156): color(B3, x=0-206) + machine(F3, x=293-391) +
+        // tank(G3, x=391-498) + level(H3, x=498-560) — CÙNG 1 HÀNG trong VBA (không
+        // phải 3 dòng riêng như bản cũ). color/machine/tank font "3" (size 20 bold),
+        // level font "2" (size 14, nhỏ hơn — đúng khác biệt trong Excel gốc).
+        $lines[] = "TEXT 5,120,\"3\",0,1,1,\"{$color}\"";
+        $lines[] = "TEXT 300,120,\"3\",0,1,1,\"{$machine}\"";
+        $lines[] = "TEXT 400,120,\"3\",0,1,1,\"{$tank}\"";
+        $lines[] = "TEXT 500,125,\"2\",0,1,1,\"{$level}\"";
+
+        // Hàng 4 (y=156-200): code (B4, merged B4:D4, x=0-278) — riêng 1 hàng, chỉ nửa
+        // trái tem (khác bản cũ ghép chung "MA HANG" vào dòng máy/thùng/mức).
+        $lines[] = "TEXT 5,165,\"3\",0,1,1,\"{$productCode}\"";
+
+        // Bảng cân — dye bên trái (B5:D13, x=0-278), chem bên phải (F5:H13, x=293-560),
+        // 9 hàng, MỖI HÀNG 41 dot (~5.1mm, đo thật — không phải 20 dot như bản cũ).
+        // KHÔNG có dòng tiêu đề cột kiểu "RACK/MA/KL" phía trên bảng — ảnh tem thật xác
+        // nhận bảng đi thẳng vào dữ liệu ngay dưới ô mã máy/thùng/mức (bản trước tự thêm
+        // dòng tiêu đề này, không có thật — đã bỏ).
+        // 3 cột riêng mỗi bên (rack | mã | khối lượng) — KHÔNG gộp 1 chuỗi như bản trước,
+        // vì đã có đường kẻ dọc BAR ở x=110/206 (dye) và x=391/498 (chem) cắt ngang đúng
+        // ranh giới cột; gộp chuỗi sẽ khiến chữ tràn qua đường kẻ sai chỗ. Cột khối lượng
+        // canh phải trong ảnh thật — TSPL không có right-align dựng sẵn theo độ rộng biến
+        // đổi, dùng str_pad canh phải theo số ký tự (đủ tốt cho font đơn cách monospace
+        // của máy in TSPL, không cần đo pixel chính xác).
+        $tableTop = 200;
+        $rowHeight = 41;
+        $padWeight = fn ($w) => str_pad((string) $w, 6, ' ', STR_PAD_LEFT);
         for ($i = 0; $i < 9; $i++) {
+            $rowY = $tableTop + $i * $rowHeight + 12;
             if (isset($dyeRows[$i])) {
                 $r = $dyeRows[$i];
-                $txt = $esc("{$r['rack']}  {$r['code']}  {$r['weight']}");
-                $lines[] = "TEXT 10,{$rowY},\"1\",0,1,1,\"{$txt}\"";
+                $lines[] = "TEXT 5,{$rowY},\"1\",0,1,1,\"{$esc($r['rack'])}\"";
+                $lines[] = "TEXT 115,{$rowY},\"1\",0,1,1,\"{$esc($r['code'])}\"";
+                $lines[] = "TEXT 211,{$rowY},\"1\",0,1,1,\"{$esc($padWeight($r['weight']))}\"";
             }
             if (isset($chemRows[$i])) {
                 $r = $chemRows[$i];
-                $txt = $esc("{$r['rack']}  {$r['code']}  {$r['weight']}");
-                $lines[] = "TEXT 290,{$rowY},\"1\",0,1,1,\"{$txt}\"";
+                $lines[] = "TEXT 298,{$rowY},\"1\",0,1,1,\"{$esc($r['rack'])}\"";
+                $lines[] = "TEXT 396,{$rowY},\"1\",0,1,1,\"{$esc($r['code'])}\"";
+                $lines[] = "TEXT 503,{$rowY},\"1\",0,1,1,\"{$esc($padWeight($r['weight']))}\"";
             }
-            $rowY += 20;
         }
+        $tableBottom = $tableTop + 9 * $rowHeight; // = 569, khớp đúng row14 top đo được
 
-        // Tiêu đề + ảnh QR dye/chem (đúng VBA: title ngay trên ảnh QR, không phải trên bảng)
-        $titleY = $rowY + 10;
-        $lines[] = "TEXT 10,{$titleY},\"2\",0,1,1,\"QR CAN THUOC NHUOM\"";
-        $lines[] = "TEXT 290,{$titleY},\"2\",0,1,1,\"QR CAN CHAT TRO\"";
+        // Tiêu đề (row14, y=569-598) ngay trên ảnh QR — đúng VBA (title SAU bảng, KHÔNG
+        // ngay sau bảng cách 10 dot như bản cũ).
+        $lines[] = "TEXT 5,{$tableBottom},\"2\",0,1,1,\"QR CAN THUOC NHUOM\"";
+        $titleY2 = $tableBottom;
+        $lines[] = "TEXT 298,{$titleY2},\"2\",0,1,1,\"QR CAN CHAT TRO\"";
 
-        $qrY = $titleY + 25;
-        $lines[] = $this->tsplQrCommand(10, $qrY, 5, $qrDyePayload);
-        $lines[] = $this->tsplQrCommand(290, $qrY, 5, $qrChemPayload);
+        // Ảnh QR dye/chem (row16:22, y=605-763, cao 158 dot ~19.8mm) — cell_width tăng
+        // từ 5 lên 6 để lấp gần hết chiều cao thật của vùng (bản cũ 5 để nhỏ hơn nhiều
+        // so với khoảng trống thật, do cả khối bị tính sai vị trí phía trên).
+        $qrTop = 605;
+        $lines[] = $this->tsplQrCommand(5, $qrTop, 6, $qrDyePayload);
+        $lines[] = $this->tsplQrCommand(298, $qrTop, 6, $qrChemPayload);
 
-        // Chuỗi định tuyến kho đầy đủ (B24) — dòng cuối, đúng vị trí cuối sheet trong VBA
-        $routeY = $qrY + 180;
+        // Chuỗi định tuyến kho đầy đủ (B24, row24, y=767-800) — dòng cuối cùng của tem,
+        // đúng vị trí cuối sheet đo được (không phải "qrY+180" ước lượng như bản cũ).
         if ($b24Route !== '') {
-            $lines[] = "TEXT 10,{$routeY},\"2\",0,1,1,\"{$b24Route}\"";
+            $lines[] = "TEXT 5,772,\"2\",0,1,1,\"{$b24Route}\"";
         }
 
         $lines[] = 'PRINT 1,1';

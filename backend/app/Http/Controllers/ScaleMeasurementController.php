@@ -66,4 +66,78 @@ class ScaleMeasurementController extends Controller
             'data' => $measurement
         ], 201);
     }
+
+    /**
+     * Tra cứu bán thành phẩm đã cân theo COLOR + CODE (+ số ngày trở về trước, tùy chọn).
+     * Port từ VBA gốc `checkform.btnCheck_Click` (workbook semiauto-small-scale,
+     * scaleform.btnCheck_Click → checkform.Show) — nguyên bản Access truy vấn phẳng
+     * `SELECT DISTINCT batchID ... WHERE COLOR=? AND CODE=? [AND TIME>=today-N]`,
+     * rồi loop từng batchID lấy chi tiết RACK/DYECODE/WEIGHT/PROCESS. Ở đây gom nhóm
+     * trực tiếp theo `legacy_batch_id` vì schema `scale_measurements` đã phẳng hóa đủ
+     * (mỗi dòng tự mang color/product_code, không cần tách dòng header/detail như Access).
+     *
+     * Không có cột "processColor" thật ở hệ mới (cột `process_color` tồn tại nhưng chưa
+     * từng được ghi ở bất kỳ luồng nào — xem p0-c-scale-algorithm.md) — thay vào đó suy ra
+     * "có Override hay không" từ `weighing_job_items.override_approved` của item liên kết,
+     * vì trong hệ mới một `ScaleMeasurement` chỉ được tạo khi đã lưu thành công (trong dung
+     * sai hoặc được Override phê duyệt), không tồn tại "REJECTED đã lưu" như Access cũ.
+     */
+    public function checker(Request $request)
+    {
+        $request->validate([
+            'color' => 'required|string|max:100',
+            'code' => 'required|string|max:100',
+            'days_back' => 'sometimes|integer|min:0|max:3650',
+        ]);
+
+        $color = trim($request->input('color'));
+        $code = trim($request->input('code'));
+
+        $query = ScaleMeasurement::with('weighingJobItem')
+            ->where('color', $color)
+            ->where('product_code', $code);
+
+        if ($request->filled('days_back')) {
+            $query->where('measured_at', '>=', Carbon::now()->subDays((int) $request->input('days_back'))->startOfDay());
+        }
+
+        $measurements = $query->orderBy('measured_at', 'desc')->get();
+
+        if ($measurements->isEmpty()) {
+            return response()->json([
+                'status' => 'SUCCESS',
+                'message' => 'KHONG CO DU LIEU',
+                'data' => [],
+            ]);
+        }
+
+        $batches = $measurements
+            ->groupBy('legacy_batch_id')
+            ->map(function ($items, $batchId) {
+                $first = $items->first();
+                return [
+                    'batch_id' => $batchId,
+                    'color' => $first->color,
+                    'product_code' => $first->product_code,
+                    'machine_code' => $first->machine_code,
+                    'level_code' => $first->level_code,
+                    'measured_at' => optional($first->measured_at)->toIso8601String(),
+                    'items' => $items->map(function ($m) {
+                        return [
+                            'rack_code' => $m->rack_code,
+                            'dye_code' => $m->dye_code,
+                            'weight' => $m->weight !== null ? (float) $m->weight : null,
+                            'process_code' => $m->process_code,
+                            'override_approved' => (bool) optional($m->weighingJobItem)->override_approved,
+                        ];
+                    })->values(),
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'data' => $batches,
+        ]);
+    }
 }

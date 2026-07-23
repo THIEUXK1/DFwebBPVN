@@ -12,6 +12,10 @@ public class Program
 
     public static IHostBuilder CreateHostBuilder(string[] args) =>
         Host.CreateDefaultBuilder(args)
+            // Cho phép chạy như Windows Service thật (SCM start/stop, working directory
+            // đúng thư mục cài đặt) khi cài qua MSI — vẫn chạy console bình thường như cũ
+            // khi launch trực tiếp (no-op nếu không phải chạy dưới Service Control Manager).
+            .UseWindowsService(options => { options.ServiceName = "DFAgent"; })
             .ConfigureServices((hostContext, services) =>
             {
                 services.AddSingleton<OfflineQueue>();

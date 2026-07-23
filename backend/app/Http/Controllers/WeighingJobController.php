@@ -367,6 +367,99 @@ class WeighingJobController extends Controller
     }
 
     /**
+     * In phiếu cân tổng hợp (slip) — port từ VBA `scaleform.btnPrint_Click` (workbook
+     * semiauto-small-scale): bảng COLOR/CODE/MACHINE/LEVEL + từng dòng RACK/vật tư/khối
+     * lượng/trạng thái. VBA gốc không giới hạn trạng thái job (in được cả khi đang cân dở,
+     * dòng chưa cân để trống) — giữ đúng hành vi đó, khác với printLabel() (tem vật tư) vốn
+     * bắt buộc job COMPLETED. Đi qua đúng pipeline PrintJob/Local Agent như mọi lệnh in khác
+     * (CLAUDE.md mục 5 — trình duyệt không được giao tiếp trực tiếp phần cứng).
+     */
+    public function printSlip(Request $request, $id)
+    {
+        $request->validate([
+            'workstation_code' => 'sometimes|string|exists:operation_clients,code',
+        ]);
+
+        $job = WeighingJob::with('items.material')->findOrFail($id);
+        $batch = ProductionBatch::with('machine')->where('id', $job->production_batch_id)->firstOrFail();
+
+        $client = $request->attributes->get('operation_client');
+        $workstationCode = $request->input('workstation_code') ?? ($client ? $client->code : null);
+        if (!$workstationCode) {
+            return response()->json(['status' => 'ERROR', 'message' => 'Không xác định được mã trạm.'], 400);
+        }
+        $workstation = OperationClient::where('code', $workstationCode)->firstOrFail();
+
+        // Verify printer configuration (giống printLabel())
+        $printerDevice = $workstation->devices()
+            ->where('device_type', 'PRINTER')
+            ->where('operation_client_devices.enabled', true)
+            ->where('operation_client_devices.is_default', true)
+            ->first();
+        if (!$printerDevice) {
+            $printerDevice = $workstation->devices()
+                ->where('device_type', 'PRINTER')
+                ->where('operation_client_devices.enabled', true)
+                ->first();
+        }
+
+        if (!$printerDevice) {
+            return response()->json([
+                'status' => 'ERROR',
+                'message' => 'Chưa cấu hình máy in cho máy trạm này.'
+            ], 400);
+        }
+
+        $printerAddress = $printerDevice->code;
+
+        $machineCode = $batch->machine ? $batch->machine->code : 'N/A';
+
+        $tspl = "SIZE 76 mm, 130 mm\r\n" .
+                "GAP 2 mm, 0 mm\r\n" .
+                "DIRECTION 1,0\r\n" .
+                "REFERENCE 0,0\r\n" .
+                "CLS\r\n" .
+                "TEXT 15,15,\"3\",0,1,1,\"DF_WEIGHING_SLIP\"\r\n" .
+                "TEXT 15,50,\"2\",0,1,1,\"MAU: {$batch->color}\"\r\n" .
+                "TEXT 15,75,\"2\",0,1,1,\"HANG: {$batch->product_code}\"\r\n" .
+                "TEXT 15,100,\"2\",0,1,1,\"MAY: {$machineCode}\"\r\n" .
+                "TEXT 15,125,\"2\",0,1,1,\"MUC: " . ($batch->level_code ?? '') . "\"\r\n";
+
+        $y = 155;
+        foreach ($job->items as $idx => $item) {
+            if ($item->status === 'COMPLETED') {
+                $statusText = $item->override_approved ? 'OVERRIDE' : 'ACCEPTED';
+            } elseif ($item->status === 'OUT_OF_TOLERANCE') {
+                $statusText = 'REJECTED';
+            } else {
+                $statusText = 'PENDING';
+            }
+            $weightText = $item->actual_weight !== null ? number_format((float) $item->actual_weight, 2) . 'g' : '---';
+            $seq = $item->sequence_no ?? ($idx + 1);
+            $line = "#{$seq} {$item->material_code} {$weightText} {$statusText}";
+            $tspl .= "TEXT 15,{$y},\"1\",0,1,1,\"" . str_replace('"', '', $line) . "\"\r\n";
+            $y += 22;
+        }
+
+        $tspl .= "TEXT 15,{$y},\"1\",0,1,1,\"In luc: " . Carbon::now()->format('d/m/Y H:i:s') . "\"\r\n";
+        $tspl .= "PRINT 1,1\r\n";
+
+        $printJob = PrintJob::create([
+            'workstation_id' => $workstation->code,
+            'label_payload' => $tspl,
+            'printer_connection_type' => 'USB',
+            'printer_address' => $printerAddress,
+            'status' => 'PENDING',
+        ]);
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'message' => 'Đã gửi phiếu cân sang hàng chờ in.',
+            'data' => $printJob,
+        ], 201);
+    }
+
+    /**
      * WS-007: look up a single material label by id — the scan path for the standalone print
      * station. Read-only; printing/reprinting is a separate explicit action.
      */

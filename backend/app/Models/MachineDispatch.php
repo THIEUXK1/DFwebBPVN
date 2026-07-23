@@ -82,4 +82,9 @@ class MachineDispatch extends Model
     {
         return $this->belongsTo(RoutingDecision::class, 'routing_decision_id');
     }
+
+    public function bpdbTaskLink()
+    {
+        return $this->hasOne(BpdbTaskLink::class, 'dispatch_id');
+    }
 }

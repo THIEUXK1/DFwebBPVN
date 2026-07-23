@@ -35,9 +35,11 @@ Route::middleware(\App\Http\Middleware\KioskAuthenticationMiddleware::class)->gr
     Route::get('/production-batches', [\App\Http\Controllers\ProductionBatchController::class, 'index']);
     Route::post('/production-batches', [\App\Http\Controllers\ProductionBatchController::class, 'store']);
     Route::get('/machines', [\App\Http\Controllers\ProductionBatchController::class, 'machines']);
+    Route::post('/machines', [\App\Http\Controllers\ProductionBatchController::class, 'storeMachine']);
     Route::get('/tanks', [\App\Http\Controllers\ProductionBatchController::class, 'tanks']);
     Route::post('/production-batches/scan-parse', [\App\Http\Controllers\ProductionBatchController::class, 'scanParse']);
     Route::put('/production-batches/{id}/status', [\App\Http\Controllers\ProductionBatchController::class, 'updateStatus']);
+    Route::put('/production-batches/{id}/tank', [\App\Http\Controllers\ProductionBatchController::class, 'updateTank']);
     Route::post('/production-batches/{id}/approve', [\App\Http\Controllers\ProductionBatchController::class, 'approve']);
 
     // Machine Dispatches
@@ -53,6 +55,7 @@ Route::middleware(\App\Http\Middleware\KioskAuthenticationMiddleware::class)->gr
 
     // Chemical Calls (Wave 2)
     Route::get('/chemical-channels', [\App\Http\Controllers\ChemicalCallController::class, 'getChannels']);
+    Route::post('/chemical-channels', [\App\Http\Controllers\ChemicalCallController::class, 'storeChannel']);
     Route::post('/chemical-call-requests', [\App\Http\Controllers\ChemicalCallController::class, 'createRequest']);
     Route::patch('/chemical-call-requests/{id}/acknowledge', [\App\Http\Controllers\ChemicalCallController::class, 'acknowledge']);
     Route::patch('/chemical-call-requests/{id}/complete', [\App\Http\Controllers\ChemicalCallController::class, 'complete']);
@@ -65,6 +68,7 @@ Route::middleware(\App\Http\Middleware\KioskAuthenticationMiddleware::class)->gr
     Route::get('/devices/readings/{workstation_id}', [\App\Http\Controllers\DeviceController::class, 'getReading']);
     Route::get('/scale-measurements', [\App\Http\Controllers\ScaleMeasurementController::class, 'index']);
     Route::post('/scale-measurements', [\App\Http\Controllers\ScaleMeasurementController::class, 'store']);
+    Route::get('/scale-measurements/checker', [\App\Http\Controllers\ScaleMeasurementController::class, 'checker']);
 
     // Print Jobs for Web App
     Route::post('/print-jobs', [\App\Http\Controllers\PrintJobController::class, 'store']);
@@ -78,6 +82,7 @@ Route::middleware(\App\Http\Middleware\KioskAuthenticationMiddleware::class)->gr
     Route::post('/weighing-job-items/{id}/accept', [\App\Http\Controllers\WeighingJobController::class, 'acceptWeight']);
     Route::post('/weighing-job-items/{id}/override', [\App\Http\Controllers\WeighingJobController::class, 'overrideWeight']);
     Route::post('/weighing-jobs/{id}/print', [\App\Http\Controllers\WeighingJobController::class, 'printLabel'])->middleware('workstation.guard:PRINT_LABEL');
+    Route::post('/weighing-jobs/{id}/print-slip', [\App\Http\Controllers\WeighingJobController::class, 'printSlip'])->middleware('workstation.guard:PRINT_SLIP');
     Route::get('/material-labels/search', [\App\Http\Controllers\WeighingJobController::class, 'searchLabels']);
     Route::get('/material-labels/{id}', [\App\Http\Controllers\WeighingJobController::class, 'showLabel']);
     Route::post('/material-labels/{id}/reprint', [\App\Http\Controllers\WeighingJobController::class, 'reprintLabel'])->middleware('workstation.guard:REPRINT_LABEL');
@@ -139,6 +144,34 @@ Route::middleware(\App\Http\Middleware\KioskAuthenticationMiddleware::class)->gr
         Route::post('/admin/workstations/{id}/generate-kiosk-token', [\App\Http\Controllers\OperationClientAdminController::class, 'generateKioskToken']);
         Route::post('/admin/workstations/{id}/revoke-kiosk-token', [\App\Http\Controllers\OperationClientAdminController::class, 'revokeKioskToken']);
         Route::get('/admin/devices', [\App\Http\Controllers\DeviceController::class, 'index']);
+
+        // BPDB / JIT (Color Service) monitoring — chỉ đọc, xem colorservice-trace-report.
+        Route::get('/admin/bpdb/overview', [\App\Http\Controllers\BpdbAdminController::class, 'overview']);
+        Route::get('/admin/bpdb/task-links', [\App\Http\Controllers\BpdbAdminController::class, 'taskLinks']);
+        Route::get('/admin/bpdb/jit-routing-rules', [\App\Http\Controllers\BpdbAdminController::class, 'jitRoutingRules']);
+
+        Route::get('/admin/bpdb/machines/status', [\App\Http\Controllers\BpdbMachineController::class, 'status']);
+        Route::get('/admin/bpdb/machines/status-summary', [\App\Http\Controllers\BpdbMachineController::class, 'statusSummary']);
+        Route::get('/admin/bpdb/machines/{machineCode}/status', [\App\Http\Controllers\BpdbMachineController::class, 'show']);
+        Route::get('/admin/bpdb/machines/{machineCode}/timeline', [\App\Http\Controllers\BpdbMachineController::class, 'timeline']);
+
+        Route::get('/admin/bpdb/chemical-demand', [\App\Http\Controllers\BpdbChemicalDemandController::class, 'index']);
+        Route::get('/admin/bpdb/chemical-demand/summary', [\App\Http\Controllers\BpdbChemicalDemandController::class, 'summary']);
+        Route::get('/admin/bpdb/chemical-demand/{taskId}', [\App\Http\Controllers\BpdbChemicalDemandController::class, 'show']);
+
+        Route::get('/admin/bpdb/material-activity/summary', [\App\Http\Controllers\BpdbMaterialActivityController::class, 'summary']);
+        Route::get('/admin/bpdb/material-activity/by-machine', [\App\Http\Controllers\BpdbMaterialActivityController::class, 'byMachine']);
+        Route::get('/admin/bpdb/material-activity/by-material', [\App\Http\Controllers\BpdbMaterialActivityController::class, 'byMaterial']);
+        Route::get('/admin/bpdb/material-activity/timeseries', [\App\Http\Controllers\BpdbMaterialActivityController::class, 'timeseries']);
+        Route::get('/admin/bpdb/material-activity/detail', [\App\Http\Controllers\BpdbMaterialActivityController::class, 'detail']);
+        Route::get('/admin/bpdb/material-activity/detail/export', [\App\Http\Controllers\BpdbMaterialActivityController::class, 'exportDetail']);
+
+        Route::get('/admin/bpdb/machine-feeding/summary', [\App\Http\Controllers\BpdbMachineFeedingController::class, 'summary']);
+        Route::get('/admin/bpdb/machine-feeding/by-machine', [\App\Http\Controllers\BpdbMachineFeedingController::class, 'byMachine']);
+        Route::get('/admin/bpdb/machine-feeding/by-material', [\App\Http\Controllers\BpdbMachineFeedingController::class, 'byMaterial']);
+        Route::get('/admin/bpdb/machine-feeding/timeseries', [\App\Http\Controllers\BpdbMachineFeedingController::class, 'timeseries']);
+        Route::get('/admin/bpdb/machine-feeding/detail', [\App\Http\Controllers\BpdbMachineFeedingController::class, 'detail']);
+        Route::get('/admin/bpdb/machine-feeding/detail/export', [\App\Http\Controllers\BpdbMachineFeedingController::class, 'exportDetail']);
     });
 
     // Reports & Analytics (Phase 11)

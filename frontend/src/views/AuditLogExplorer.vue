@@ -151,7 +151,7 @@ async function load(page = 1) {
 
 function formatDate(v: string) {
   if (!v) return '—';
-  return new Date(v).toLocaleString('vi-VN');
+  return new Date(v).toLocaleString('vi-VN', { hour12: false });
 }
 function truncate(v: string | null) {
   if (!v) return '—';

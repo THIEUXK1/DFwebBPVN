@@ -18,104 +18,125 @@
       </div>
     </div>
 
-    <!-- Top banner status indicators (VBA Operating Style, No Scale References) -->
-    <div class="station-banner">
-      <div class="banner-left">
-        <span class="station-badge">CHEMICAL CALL OPERATING SYSTEM</span>
-        <h2>{{ currentWorkstation ? currentWorkstation.name : 'Hệ thống Gọi Hóa Chất Xưởng Nhuộm' }}</h2>
-        <p class="text-muted font-sm">
-          Mã trạm: <code>{{ currentWorkstation?.code || 'WS-CHEMICAL-01' }}</code> | 
-          Vị trí: {{ currentWorkstation?.location || 'Khu gọi hóa chất' }}
-        </p>
-      </div>
-      <div class="banner-right status-board font-sm">
-        <div class="status-indicator">🖥️ Workstation: <strong class="text-success">{{ currentWorkstation?.code || 'WS-CHEMICAL-01' }}</strong></div>
-        <div class="status-indicator">🎛️ Valve System: <strong class="text-success">ONLINE</strong></div>
-        <div class="status-indicator">🤖 Local Agent: <strong class="text-success">ONLINE</strong></div>
-        <div class="status-indicator">⚡ Realtime MES: <strong class="text-success">CONNECTED</strong></div>
-        <div class="status-indicator">⏱️ Cập nhật cuối: <strong class="text-primary">{{ lastUpdateTime }}</strong></div>
-      </div>
-    </div>
-
     <!-- Error/Success Alerts -->
     <div v-if="errorMsg" class="alert-box alert-error">⚠️ {{ errorMsg }}</div>
     <div v-if="successMsg" class="alert-box alert-success">✅ {{ successMsg }}</div>
+
+    <!-- Quản lý danh mục: thêm máy mới / thêm kênh mới -->
+    <div class="admin-actions-row">
+      <button @click="openAddMachine" class="btn btn-secondary btn-sm">➕ Thêm máy</button>
+      <button @click="openAddChannel" class="btn btn-secondary btn-sm">➕ Thêm kênh</button>
+    </div>
 
     <!-- Factory Operating Grid (Equivalent to VBA CHEM_ORDER) -->
     <div v-if="loading" class="card text-center padding-xl text-muted">
       <span class="spinner">⏳</span> Đang tải thông tin van đường ống xưởng nhuộm...
     </div>
 
-    <div v-else class="machine-grid">
-      <div 
-        v-for="(channels, machineCode) in groupedChannels" 
-        :key="machineCode" 
+    <div v-else class="machine-grid" :class="{ 'grid-4col': isFullscreen }">
+      <div
+        v-for="(channels, machineCode) in groupedChannels"
+        :key="machineCode"
         class="card machine-card"
       >
         <div class="machine-card-header">
           <span class="machine-name-title">🖥️ Máy {{ machineCode }}</span>
           <span class="machine-status-dot dot-green"></span>
         </div>
-        
+
         <div class="machine-card-body">
-          <div 
-            v-for="c in channels" 
-            :key="c.channel_id" 
+          <div
+            v-for="c in channels"
+            :key="c.channel_id"
             class="channel-row"
             :class="getChannelRowClass(c)"
           >
             <div class="channel-number-col">
-              <strong class="font-mono text-dark">Kênh {{ c.channel_number }}</strong>
+              <span v-if="isChannelRed(c)" class="alert-dot" aria-hidden="true"></span>
+              <span class="channel-number-pill">Kênh {{ c.channel_number }}</span>
             </div>
-            
+
             <div class="chemical-name-col">
-              <span class="chem-formula font-semibold" title="Tên hóa chất / công thức từ Database">{{ c.chemical_code }}</span>
+              <span class="chem-formula" title="Tên hóa chất / công thức từ Database">{{ c.chemical_code }}</span>
             </div>
-            
-            <div class="status-badge-col">
-              <span :class="['badge', getStatusBadgeClass(c)]">
-                {{ getStatusLabel(c) }}
-              </span>
-            </div>
-            
-            <div class="action-btn-col">
-              <!-- IDLE state: show Call / ORDER button -->
-              <button 
-                v-if="!c.current_request" 
-                @click="callChemical(c)" 
-                class="btn btn-primary btn-sm w-full py-1"
-                :disabled="actionLoading === c.channel_id || (isImpersonating && remoteMode === 'VIEW_ONLY')"
-              >
-                📣 Gọi
-              </button>
-              
-              <!-- ORDER state: show Cancel / Hủy button & waiting text -->
-              <div v-else-if="c.current_request.status === 'ORDERED' || c.current_request.status === 'ACKNOWLEDGED'" class="d-flex align-center gap-1 justify-between w-full">
-                <span class="waiting-txt font-xs text-danger blink">Đang phát...</span>
-                <button 
-                  @click="cancelRequest(c.current_request.id, c.channel_id)" 
-                  class="btn btn-danger btn-xs py-1 px-2"
-                  title="Hủy yêu cầu"
-                  :disabled="actionLoading === c.channel_id || (isImpersonating && remoteMode === 'VIEW_ONLY')"
-                >
-                  ❌ Hủy
-                </button>
-              </div>
-              
-              <!-- DONE state: show OK button to acknowledge and reset -->
-              <button 
-                v-else-if="c.current_request.status === 'DONE'"
-                @click="resetRequest(c.current_request.id, c.channel_id)" 
-                class="btn btn-success btn-sm w-full py-1 font-semibold"
-                :disabled="actionLoading === c.channel_id || (isImpersonating && remoteMode === 'VIEW_ONLY')"
-              >
-                🟢 OK
-              </button>
-            </div>
-            
+
             <div class="time-col font-xs text-muted text-right">
               {{ c.current_request ? formatTime(c.current_request.requested_at) : '-' }}
             </div>
+
+            <div class="action-btn-col">
+              <!-- Nút toggle duy nhất: xanh (OK) <-> đỏ (chưa OK). Bấm khi đang xanh = Gọi
+                   hóa chất (chuyển đỏ); bấm khi đang đỏ = báo Xong (chuyển lại xanh). -->
+              <button
+                @click="toggleChannel(c)"
+                class="btn btn-sm w-full py-1 font-semibold toggle-btn"
+                :class="isChannelRed(c) ? 'btn-danger' : 'btn-success'"
+                :disabled="actionLoading === c.channel_id || (isImpersonating && remoteMode === 'VIEW_ONLY')"
+              >
+                {{ actionLoading === c.channel_id ? 'Đang xử lý...' : (isChannelRed(c) ? '🔴 Bấm khi Xong' : '🟢 OK — Bấm để Gọi') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Thêm máy mới -->
+    <div v-if="showAddMachine" class="modal-overlay" @click.self="showAddMachine = false">
+      <div class="ws-modal-card">
+        <div class="modal-header">
+          <h3>➕ Thêm máy mới</h3>
+          <button @click="showAddMachine = false" class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group mb-3">
+            <label>Mã máy (vd: VD019)</label>
+            <input v-model="newMachine.code" type="text" class="form-control" placeholder="VD019" />
+          </div>
+          <div class="form-group mb-3">
+            <label>Tên máy</label>
+            <input v-model="newMachine.name" type="text" class="form-control" placeholder="Máy nhuộm VD019" />
+          </div>
+          <p v-if="addMachineError" class="text-error font-sm">❌ {{ addMachineError }}</p>
+          <div class="modal-actions">
+            <button @click="showAddMachine = false" class="btn btn-secondary">Hủy</button>
+            <button @click="submitAddMachine" class="btn btn-primary" :disabled="!newMachine.code || !newMachine.name || addingMachine">
+              {{ addingMachine ? 'Đang lưu...' : 'Lưu máy mới' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Thêm kênh mới -->
+    <div v-if="showAddChannel" class="modal-overlay" @click.self="showAddChannel = false">
+      <div class="ws-modal-card">
+        <div class="modal-header">
+          <h3>➕ Thêm kênh mới</h3>
+          <button @click="showAddChannel = false" class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group mb-3">
+            <label>Máy</label>
+            <select v-model="newChannel.machine_id" class="form-select">
+              <option :value="null">-- Chọn máy --</option>
+              <option v-for="m in machinesList" :key="m.id" :value="m.id">{{ m.code }} ({{ m.name }})</option>
+            </select>
+          </div>
+          <div class="form-group mb-3">
+            <label>Số kênh</label>
+            <input v-model.number="newChannel.channel_number" type="number" min="1" class="form-control" placeholder="1" />
+          </div>
+          <div class="form-group mb-3">
+            <label>Mã hóa chất</label>
+            <input v-model="newChannel.chemical_code" type="text" class="form-control" placeholder="AC02" />
+          </div>
+          <p v-if="addChannelError" class="text-error font-sm">❌ {{ addChannelError }}</p>
+          <div class="modal-actions">
+            <button @click="showAddChannel = false" class="btn btn-secondary">Hủy</button>
+            <button @click="submitAddChannel" class="btn btn-primary" :disabled="!newChannel.machine_id || !newChannel.channel_number || !newChannel.chemical_code || addingChannel">
+              {{ addingChannel ? 'Đang lưu...' : 'Lưu kênh mới' }}
+            </button>
           </div>
         </div>
       </div>
@@ -129,15 +150,14 @@
       </div>
       <div v-if="showLogs" class="logs-body mt-3">
         <div class="table-responsive">
-          <table class="table table-dark">
+          <table class="table table-dark logs-table">
             <thead>
               <tr>
                 <th>Thời gian</th>
                 <th>Máy</th>
                 <th>Kênh</th>
                 <th>Hóa chất</th>
-                <th>Trạng thái cũ</th>
-                <th>Trạng thái mới</th>
+                <th>Chuyển trạng thái</th>
                 <th>Người thao tác</th>
                 <th>Workstation</th>
                 <th>Chi tiết</th>
@@ -149,14 +169,19 @@
                 <td><strong>{{ log.machine_code || '-' }}</strong></td>
                 <td>Kênh {{ log.channel_number || '-' }}</td>
                 <td class="font-mono text-info">{{ log.chemical_code || '-' }}</td>
-                <td><span class="badge" :class="getStatusClass(log.before_status)">{{ log.before_status || '-' }}</span></td>
-                <td><span class="badge" :class="getStatusClass(log.after_status)">{{ log.after_status || '-' }}</span></td>
+                <td>
+                  <span class="status-transition">
+                    <span class="badge" :class="getSimpleStatus(log.before_status).cls">{{ getSimpleStatus(log.before_status).label }}</span>
+                    <span class="transition-arrow">→</span>
+                    <span class="badge" :class="getSimpleStatus(log.after_status).cls">{{ getSimpleStatus(log.after_status).label }}</span>
+                  </span>
+                </td>
                 <td><code>{{ log.actor_username || 'Hệ thống' }}</code></td>
                 <td><code>{{ log.workstation_code || '-' }}</code></td>
                 <td>{{ log.message }}</td>
               </tr>
               <tr v-if="logs.length === 0">
-                <td colspan="9" class="text-center text-muted py-4">Chưa có nhật ký hoạt động nào được ghi nhận.</td>
+                <td colspan="8" class="text-center text-muted py-4">Chưa có nhật ký hoạt động nào được ghi nhận.</td>
               </tr>
             </tbody>
           </table>
@@ -164,52 +189,6 @@
       </div>
     </div>
 
-    <!-- Simulator Control (Visible only in Development/Impersonation Mode) -->
-    <div v-if="isDevelopment" class="admin-sim-panel card mt-4 border-dashed">
-      <div class="d-flex justify-between align-center border-b pb-2">
-        <h4>🧪 Bảng điều khiển giả lập Phòng điều phối (Control Room Simulator)</h4>
-        <span class="badge badge-yellow">DEVELOPER MODE</span>
-      </div>
-      <p class="text-muted font-xs mt-1">Sử dụng bảng này để phê duyệt Tiếp nhận hoặc báo cáo Hoàn thành van phát thay cho hệ thống PLC tự động.</p>
-
-      <div class="active-requests-list mt-3">
-        <div v-if="activeRequests.length === 0" class="text-center py-4 text-muted font-sm">
-          Không có yêu cầu van phát nào đang hoạt động.
-        </div>
-        <div 
-          v-else 
-          v-for="r in activeRequests" 
-          :key="r.channel_id" 
-          class="active-req-row"
-        >
-          <div class="req-info">
-            <strong>Máy {{ r.machine_code }} - Kênh {{ r.channel_number }}</strong>
-            <span class="font-xs block text-muted">{{ r.chemical_code }}</span>
-          </div>
-          <div class="req-status-badge">
-            <span :class="['badge', getStatusBadgeClass(r)]">{{ getStatusLabel(r) }}</span>
-          </div>
-          <div class="req-actions">
-            <button 
-              v-if="r.current_request.status === 'ORDERED'"
-              @click="acknowledgeRequest(r.current_request.id, r.channel_id)"
-              class="btn btn-warning btn-xs mr-2"
-              :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'"
-            >
-              Tiếp Nhận (Acknowledge)
-            </button>
-            <button 
-              v-if="r.current_request.status === 'ACKNOWLEDGED' || r.current_request.status === 'ORDERED'"
-              @click="completeRequest(r.current_request.id, r.channel_id)"
-              class="btn btn-success btn-xs"
-              :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'"
-            >
-              Hoàn Thành (Complete)
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -217,16 +196,14 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
+import echo from '../services/echo';
+import { isFullscreen } from '../services/layout';
 
 const route = useRoute();
 const isImpersonating = computed(() => route.query.impersonate === 'true');
 const targetWsId = computed(() => route.query.target_ws);
 const remoteMode = ref<'VIEW_ONLY' | 'REMOTE_OPERATE'>('VIEW_ONLY');
 const showLogs = ref(true);
-
-const isDevelopment = computed(() => {
-  return import.meta.env.DEV || isImpersonating.value;
-});
 
 const remoteModeClass = computed(() => {
   return remoteMode.value === 'VIEW_ONLY' ? 'mode-view-only' : 'mode-remote-operate';
@@ -257,14 +234,28 @@ interface ChemicalChannel {
   current_request: RequestInfo | null;
 }
 
-const currentWorkstation = ref<any>(null);
 const channelsList = ref<ChemicalChannel[]>([]);
 const loading = ref(true);
 const actionLoading = ref<number | null>(null);
 const errorMsg = ref('');
 const successMsg = ref('');
 const logs = ref<any[]>([]);
-const lastUpdateTime = ref<string>('-');
+
+// Thêm máy / thêm kênh — danh mục dùng chung với Lô sản xuất (bảng machines).
+const machinesList = ref<any[]>([]);
+const showAddMachine = ref(false);
+const newMachine = ref({ code: '', name: '' });
+const addingMachine = ref(false);
+const addMachineError = ref('');
+
+const showAddChannel = ref(false);
+const newChannel = ref<{ machine_id: number | null; channel_number: number | null; chemical_code: string }>({
+  machine_id: null,
+  channel_number: null,
+  chemical_code: ''
+});
+const addingChannel = ref(false);
+const addChannelError = ref('');
 
 let pollInterval: any = null;
 
@@ -286,17 +277,11 @@ const groupedChannels = computed(() => {
   return groups;
 });
 
-// List of channels that have active requests (ORDERED, ACKNOWLEDGED, DONE)
-const activeRequests = computed(() => {
-  return channelsList.value.filter(c => c.current_request !== null);
-});
-
 // Fetch channels from Backend API
 async function fetchChannels() {
   try {
     const res = await axios.get('/api/chemical-channels');
     channelsList.value = res.data;
-    lastUpdateTime.value = new Date().toLocaleTimeString('vi-VN');
   } catch (err: any) {
     console.error('Failed to fetch channels:', err);
     errorMsg.value = 'Không thể kết nối đến máy chủ API để lấy thông tin van đường ống.';
@@ -315,175 +300,153 @@ async function fetchRecentEvents() {
   }
 }
 
-// Call Chemical POST Request
-async function callChemical(channel: ChemicalChannel) {
+// Danh sách máy dùng cho dropdown "Thêm kênh" (bảng machines dùng chung toàn hệ thống).
+async function fetchMachinesList() {
+  try {
+    const res = await axios.get('/api/machines');
+    machinesList.value = res.data.data || [];
+  } catch (err) {
+    console.error('Failed to fetch machines list:', err);
+  }
+}
+
+function openAddMachine() {
+  newMachine.value = { code: '', name: '' };
+  addMachineError.value = '';
+  showAddMachine.value = true;
+}
+
+async function submitAddMachine() {
+  addMachineError.value = '';
+  addingMachine.value = true;
+  try {
+    await axios.post('/api/machines', newMachine.value);
+    showAddMachine.value = false;
+    await fetchMachinesList();
+    successMsg.value = `Đã thêm máy ${newMachine.value.code} thành công.`;
+  } catch (err: any) {
+    addMachineError.value = err.response?.data?.message || 'Không thể thêm máy mới (mã máy có thể đã tồn tại).';
+  } finally {
+    addingMachine.value = false;
+  }
+}
+
+function openAddChannel() {
+  newChannel.value = { machine_id: null, channel_number: null, chemical_code: '' };
+  addChannelError.value = '';
+  showAddChannel.value = true;
+}
+
+async function submitAddChannel() {
+  addChannelError.value = '';
+  addingChannel.value = true;
+  try {
+    await axios.post('/api/chemical-channels', newChannel.value);
+    showAddChannel.value = false;
+    await fetchChannels();
+    successMsg.value = `Đã thêm kênh ${newChannel.value.channel_number} thành công.`;
+  } catch (err: any) {
+    addChannelError.value = err.response?.data?.message || 'Không thể thêm kênh mới.';
+  } finally {
+    addingChannel.value = false;
+  }
+}
+
+// Kênh đang "ĐỎ" (chưa OK) khi có yêu cầu đang chờ phát/đã tiếp nhận nhưng chưa xong.
+function isChannelRed(channel: ChemicalChannel): boolean {
+  return !!channel.current_request && (channel.current_request.status === 'ORDERED' || channel.current_request.status === 'ACKNOWLEDGED');
+}
+
+// Toggle 1 nút duy nhất thay cho quy trình nhiều bước Gọi/Tiếp nhận/Hoàn thành/OK:
+// Xanh -> bấm = Gọi hóa chất (chuyển Đỏ). Đỏ -> bấm = báo Xong (Hoàn thành + đóng yêu
+// cầu luôn trong 1 lần bấm, chuyển thẳng lại Xanh, không cần bấm OK riêng nữa).
+async function toggleChannel(channel: ChemicalChannel) {
   errorMsg.value = '';
   successMsg.value = '';
   actionLoading.value = channel.channel_id;
 
-  const idempotencyKey = `cc-${channel.channel_id}-${Date.now()}`;
-
   try {
-    const res = await axios.post('/api/chemical-call-requests', {
-      channel_id: channel.channel_id,
-      idempotency_key: idempotencyKey
-    }, getRequestConfig());
-
-    if (res.data) {
-      successMsg.value = `Gửi yêu cầu phát hóa chất thành công cho máy ${channel.machine_code}!`;
-      await fetchChannels();
-      await fetchRecentEvents();
+    if (isChannelRed(channel)) {
+      const requestId = channel.current_request!.id;
+      await axios.patch(`/api/chemical-call-requests/${requestId}/complete`, {}, getRequestConfig());
+      await axios.patch(`/api/chemical-call-requests/${requestId}/reset`, {}, getRequestConfig());
+      successMsg.value = `Đã đánh dấu XONG cho máy ${channel.machine_code} - Kênh ${channel.channel_number}.`;
+    } else {
+      // Nếu còn sót request DONE cũ chưa đóng (VD do lỗi mạng lần trước), đóng nốt
+      // trước khi gọi mới — tránh vi phạm ràng buộc unique request đang active.
+      if (channel.current_request?.id) {
+        await axios.patch(`/api/chemical-call-requests/${channel.current_request.id}/reset`, {}, getRequestConfig());
+      }
+      const idempotencyKey = `cc-${channel.channel_id}-${Date.now()}`;
+      await axios.post('/api/chemical-call-requests', {
+        channel_id: channel.channel_id,
+        idempotency_key: idempotencyKey
+      }, getRequestConfig());
+      successMsg.value = `Đã GỌI hóa chất cho máy ${channel.machine_code} - Kênh ${channel.channel_number}.`;
     }
+    await fetchChannels();
+    await fetchRecentEvents();
   } catch (err: any) {
-    errorMsg.value = err.response?.data?.message || 'Gửi yêu cầu gọi hóa chất thất bại.';
+    errorMsg.value = err.response?.data?.message || 'Không thể đổi trạng thái kênh.';
   } finally {
     actionLoading.value = null;
   }
-}
-
-// Cancel Request PATCH
-async function cancelRequest(requestId: string, channelId: number) {
-  errorMsg.value = '';
-  successMsg.value = '';
-  actionLoading.value = channelId;
-
-  try {
-    await axios.patch(`/api/chemical-call-requests/${requestId}/cancel`, {
-      reason: 'Hủy yêu cầu từ màn hình điều khiển máy'
-    }, getRequestConfig());
-    successMsg.value = 'Hủy yêu cầu phát hóa chất thành công.';
-    await fetchChannels();
-    await fetchRecentEvents();
-  } catch (err: any) {
-    errorMsg.value = err.response?.data?.message || 'Hủy yêu cầu thất bại.';
-  } finally {
-    actionLoading.value = null;
-  }
-}
-
-// OK Button Request reset (DONE -> RESET)
-async function resetRequest(requestId: string, channelId: number) {
-  errorMsg.value = '';
-  successMsg.value = '';
-  actionLoading.value = channelId;
-
-  try {
-    await axios.patch(`/api/chemical-call-requests/${requestId}/reset`, {}, getRequestConfig());
-    successMsg.value = 'Xác nhận OK (Reset van phát) thành công.';
-    await fetchChannels();
-    await fetchRecentEvents();
-  } catch (err: any) {
-    errorMsg.value = err.response?.data?.message || 'Xác nhận OK thất bại.';
-  } finally {
-    actionLoading.value = null;
-  }
-}
-
-// Acknowledge Request PATCH (Simulator Room)
-async function acknowledgeRequest(requestId: string, channelId: number) {
-  errorMsg.value = '';
-  successMsg.value = '';
-  try {
-    await axios.patch(`/api/chemical-call-requests/${requestId}/acknowledge`, {}, getRequestConfig());
-    successMsg.value = 'Giả lập Tiếp nhận yêu cầu thành công.';
-    await fetchChannels();
-    await fetchRecentEvents();
-  } catch (err: any) {
-    errorMsg.value = err.response?.data?.message || 'Tiếp nhận yêu cầu thất bại.';
-  }
-}
-
-// Complete Request PATCH (Simulator Room)
-async function completeRequest(requestId: string, channelId: number) {
-  errorMsg.value = '';
-  successMsg.value = '';
-  try {
-    await axios.patch(`/api/chemical-call-requests/${requestId}/complete`, {}, getRequestConfig());
-    successMsg.value = 'Giả lập Hoàn thành cấp hóa chất thành công.';
-    await fetchChannels();
-    await fetchRecentEvents();
-  } catch (err: any) {
-    errorMsg.value = err.response?.data?.message || 'Hoàn thành cấp hóa chất thất bại.';
-  }
-}
-
-// Helpers for Classes and Labels
-function getStatusLabel(channel: ChemicalChannel) {
-  if (!channel.current_request) return 'IDLE';
-  const status = channel.current_request.status;
-  if (status === 'ORDERED' || status === 'ACKNOWLEDGED') return 'ORDER';
-  if (status === 'DONE') return 'DONE';
-  return 'IDLE';
-}
-
-function getStatusBadgeClass(channel: ChemicalChannel) {
-  if (!channel.current_request) return 'badge-neutral';
-  const status = channel.current_request.status;
-  if (status === 'ORDERED' || status === 'ACKNOWLEDGED') return 'badge-danger';
-  if (status === 'DONE') return 'badge-success';
-  return 'badge-neutral';
 }
 
 function getChannelRowClass(channel: ChemicalChannel) {
-  if (!channel.current_request) return 'row-idle';
-  const status = channel.current_request.status;
-  if (status === 'ORDERED' || status === 'ACKNOWLEDGED') return 'row-ordered';
-  if (status === 'DONE') return 'row-done';
-  return 'row-idle';
+  return isChannelRed(channel) ? 'row-ordered' : 'row-done';
 }
 
-function getStatusClass(status: string) {
-  if (status === 'ORDERED' || status === 'ACKNOWLEDGED') return 'badge-danger';
-  if (status === 'DONE') return 'badge-success';
-  return 'badge-neutral';
+// Rút gọn toàn bộ trạng thái nội bộ (CREATED/ORDERED/ACKNOWLEDGED/DONE/RESET/CANCELLED)
+// về đúng 2 khái niệm người vận hành thấy trên lưới máy: OK (xanh) / CHƯA OK (đỏ) —
+// riêng CANCELLED giữ nhãn riêng vì đó là "hủy yêu cầu", không phải trạng thái van.
+function getSimpleStatus(status: string): { label: string; cls: string } {
+  if (status === 'CREATED' || status === 'ORDERED' || status === 'ACKNOWLEDGED') {
+    return { label: '🔴 CHƯA OK', cls: 'badge-danger' };
+  }
+  if (status === 'DONE' || status === 'RESET') {
+    return { label: '🟢 OK', cls: 'badge-success' };
+  }
+  if (status === 'CANCELLED') {
+    return { label: '⚪ ĐÃ HỦY', cls: 'badge-neutral' };
+  }
+  return { label: status || '-', cls: 'badge-neutral' };
 }
 
 function formatTime(timeStr: string | null) {
   if (!timeStr) return '-';
   try {
     const d = new Date(timeStr);
-    return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   } catch (e) {
     return timeStr;
   }
 }
 
 onMounted(async () => {
-  // Resolve Workstation
-  if (isImpersonating.value && targetWsId.value) {
-    try {
-      const res = await axios.get('/api/workstations');
-      const wsList = res.data.data || res.data;
-      const target = wsList.find((w: any) => String(w.id) === String(targetWsId.value));
-      if (target) {
-        currentWorkstation.value = target;
-      }
-    } catch (e) {
-      console.error('Failed to load impersonated workstation', e);
-    }
-  } else {
-    const wsConfigStr = localStorage.getItem('df_workstation_config');
-    if (wsConfigStr) {
-      try {
-        currentWorkstation.value = JSON.parse(wsConfigStr);
-      } catch (e) {
-        console.error('Failed to parse workstation config', e);
-      }
-    }
-  }
-
   await fetchChannels();
   await fetchRecentEvents();
+  await fetchMachinesList();
 
-  // Start polling channel statuses every 3 seconds for real-time responsiveness
+  // Realtime qua Reverb (WebSocket) — /chemical-call và /chemical-call/monitor cùng nghe
+  // kênh public "chemical-channels": đổi trạng thái ở trang này thấy NGAY ở trang kia,
+  // không phải đợi tới lượt polling. Xem ChemicalChannelUpdated::broadcastOn (backend).
+  echo.channel('chemical-channels').listen('.updated', () => {
+    fetchChannels();
+    fetchRecentEvents();
+  });
+
+  // Vẫn giữ polling làm lưới an toàn (vd WebSocket rớt kết nối tạm thời) — chu kỳ dài hơn
+  // vì cập nhật chính đã qua Reverb tức thì.
   pollInterval = setInterval(() => {
     fetchChannels();
     fetchRecentEvents();
-  }, 3000);
+  }, 10000);
 });
 
 onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval);
+  echo.leaveChannel('chemical-channels');
 });
 </script>
 
@@ -495,46 +458,19 @@ onUnmounted(() => {
   padding: var(--space-md);
 }
 
-.station-banner {
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-card);
-  border-radius: var(--radius-md);
-  padding: var(--space-md) var(--space-lg);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.station-badge {
-  background-color: var(--status-blue-bg);
-  color: var(--status-blue);
-  border: 1px solid var(--status-blue-border);
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-xs);
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-
-.status-board {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  text-align: right;
-}
-
-.status-indicator {
-  color: var(--text-muted);
-}
-
 .machine-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--space-md);
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: var(--space-lg);
 }
 
 @media (min-width: 1200px) {
   .machine-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* Đang ở chế độ Toàn màn hình (sidebar+topbar ẩn) — nhiều chỗ trống hơn, dùng 4 cột */
+  .machine-grid.grid-4col {
     grid-template-columns: repeat(4, 1fr);
   }
 }
@@ -560,6 +496,7 @@ onUnmounted(() => {
 
 .machine-name-title {
   font-weight: 700;
+  font-size: 1.1rem;
   color: var(--text-title);
 }
 
@@ -575,15 +512,70 @@ onUnmounted(() => {
 
 .channel-row {
   display: grid;
-  grid-template-columns: 1.1fr 1.6fr 1.1fr 1.8fr 1fr;
+  grid-template-columns: auto auto 1fr auto;
   align-items: center;
-  padding: 8px 12px;
+  gap: var(--space-lg);
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border-divider);
   transition: background-color 0.2s ease;
 }
 
 .channel-row:last-child {
   border-bottom: none;
+}
+
+.channel-number-col,
+.chemical-name-col {
+  white-space: nowrap;
+}
+
+.channel-number-col {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alert-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #ef4444;
+  box-shadow: 0 0 0 rgba(239, 68, 68, 0.6);
+  animation: alert-dot-pulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes alert-dot-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alert-dot {
+    animation: none;
+  }
+}
+
+.channel-number-pill {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-title);
+  background-color: var(--bg-card-hover);
+  border: 1px solid var(--border-card-hover);
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+}
+
+.time-col {
+  font-size: 0.95rem;
 }
 
 /* Status colors equivalent to legacy VBA */
@@ -593,25 +585,51 @@ onUnmounted(() => {
 
 .row-ordered {
   background-color: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid #ef4444;
+  animation: row-alert-pulse 1.2s ease-in-out infinite;
 }
 
 .row-done {
   background-color: rgba(52, 211, 153, 0.08);
+  border-left: 4px solid transparent;
+}
+
+@keyframes row-alert-pulse {
+  0%, 100% {
+    background-color: rgba(239, 68, 68, 0.08);
+  }
+  50% {
+    background-color: rgba(239, 68, 68, 0.28);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-ordered {
+    animation: none;
+    background-color: rgba(239, 68, 68, 0.2);
+  }
 }
 
 .chem-formula {
+  display: inline-block;
   font-family: 'JetBrains Mono', monospace;
-  font-size: var(--font-xs);
-  color: var(--text-body);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--status-blue);
+  background-color: var(--status-blue-bg);
+  border: 1px solid var(--status-blue-border);
+  padding: 4px 12px;
+  border-radius: var(--radius-md);
 }
 
 .badge {
-  font-size: 10px;
-  padding: 2px 4px;
-  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
   font-weight: 700;
   display: inline-block;
   text-align: center;
+  white-space: nowrap;
 }
 
 .badge-neutral {
@@ -627,11 +645,6 @@ onUnmounted(() => {
 .badge-success {
   background-color: var(--status-green);
   color: #fff;
-}
-
-.badge-yellow {
-  background-color: var(--status-yellow);
-  color: #000;
 }
 
 .blink {
@@ -659,10 +672,10 @@ onUnmounted(() => {
 }
 
 .logs-body {
-  max-height: 250px;
+  max-height: 320px;
   overflow-y: auto;
   border: 1px solid var(--border-divider);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
 }
 
 .table-dark {
@@ -670,20 +683,39 @@ onUnmounted(() => {
   color: #f3f4f6;
   margin-bottom: 0;
   width: 100%;
+  border-collapse: collapse;
 }
 
 .table th, .table td {
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-bottom: 1px solid #1f2937;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   text-align: left;
 }
 
 .table th {
   background-color: #1f2937;
   color: #9ca3af;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   position: sticky;
   top: 0;
+}
+
+.table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.status-transition {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.transition-arrow {
+  color: #6b7280;
+  font-weight: 700;
 }
 
 /* Remote monitoring banner styles */
@@ -728,41 +760,85 @@ onUnmounted(() => {
   color: var(--text-body);
 }
 
-/* Simulator panel */
-.admin-sim-panel {
-  padding: var(--space-md);
-  background-color: rgba(245, 158, 11, 0.01);
+.dot-green {
+  background-color: var(--status-green);
 }
 
-.active-requests-list {
-  background-color: #1f2937;
-  border: 1px solid #374151;
-  border-radius: var(--radius-sm);
-  max-height: 150px;
-  overflow-y: auto;
+/* Thêm máy / thêm kênh */
+.admin-actions-row {
+  display: flex;
+  gap: var(--space-md);
 }
 
-.active-req-row {
+.toggle-btn {
+  min-height: 34px;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.ws-modal-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 420px;
+  box-shadow: var(--shadow-xl);
+}
+
+.modal-header {
+  padding: var(--space-xl);
+  border-bottom: 1px solid var(--border-divider);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 12px;
-  border-bottom: 1px solid #374151;
 }
 
-.active-req-row:last-child {
-  border-bottom: none;
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-title);
 }
 
-.req-actions {
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.modal-body {
+  padding: var(--space-xl);
+}
+
+.modal-body .form-group {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.border-dashed {
-  border-style: dashed !important;
+.modal-body .form-group label {
+  font-weight: 600;
+  color: var(--text-title);
+  font-size: 0.9rem;
 }
 
-.dot-green {
-  background-color: var(--status-green);
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
 }
 </style>

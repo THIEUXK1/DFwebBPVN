@@ -20,7 +20,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(\App\Services\ColorService\BpdbReadOnlyClient::class, function () {
+            return new \App\Services\ColorService\BpdbReadOnlyClient(config('colorservice'));
+        });
+        $this->app->singleton(\App\Services\ColorService\BpdbTaskMatcherService::class);
+        $this->app->singleton(\App\Services\ColorService\BpdbMachineMonitoringService::class);
+        $this->app->singleton(\App\Services\ColorService\BpdbChemicalDemandService::class);
     }
 
     /**

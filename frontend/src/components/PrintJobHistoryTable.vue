@@ -183,7 +183,7 @@ function printStatusBadgeClass(status: string | undefined) {
 
 function formatTime(v: string | undefined) {
   if (!v) return '—';
-  return new Date(v).toLocaleString('vi-VN');
+  return new Date(v).toLocaleString('vi-VN', { hour12: false });
 }
 
 // Modal nhập lý do — thay window.prompt()/alert() (bị chặn hoặc không hiện gì trong 1 số

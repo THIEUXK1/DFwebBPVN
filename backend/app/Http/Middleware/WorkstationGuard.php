@@ -141,6 +141,7 @@ class WorkstationGuard
             'WEIGH_ITEM' => 'WEIGH',
             'PRINT_LABEL' => 'PRINT',
             'REPRINT_LABEL' => 'PRINT',
+            'PRINT_SLIP' => 'PRINT',
             
             'SCAN_ORDER' => 'SCAN_QR',
             'SCAN_LABEL' => 'SCAN_QR',
@@ -165,6 +166,7 @@ class WorkstationGuard
         $mapping = [
             'WEIGH_ITEM' => 'SMALL_SCALE',
             'PRINT_LABEL' => 'SMALL_SCALE',
+            'PRINT_SLIP' => 'SMALL_SCALE',
             'REPRINT_LABEL' => 'QR_LABEL_PRINTING',
             'SCAN_ORDER' => 'PRODUCTION_ORDER',
             'CONFIRM_TRANSIT' => 'SMALL_SCALE',

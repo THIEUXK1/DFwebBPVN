@@ -66,6 +66,13 @@ class ApproveProductionOrderService
                 throw new BusinessRuleException('Không thể duyệt đơn đã bị hủy.');
             }
 
+            // Yêu cầu 2026-07-22: bắt buộc chọn Thùng trộn trước khi duyệt — đổi từ quy tắc
+            // cũ (Thùng tùy chọn). Chặn ở đây (không chỉ ở UI) vì đây là service dùng chung
+            // cho cả nút Duyệt trên bảng danh sách lẫn PHÊ DUYỆT tự động trong luồng quét.
+            if (!$batch->tank_id) {
+                throw new BusinessRuleException('Phải chọn Thùng trộn trước khi duyệt đơn.');
+            }
+
             $this->assertMinLevelRule($batch);
 
             $beforeStatus = $batch->status;

@@ -220,7 +220,7 @@ const getStatusLabel = (status: string) => {
 const formatTime = (timeStr: string) => {
   if (!timeStr) return '-';
   const d = new Date(timeStr);
-  return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 };
 
 const getElapsedMinutes = (startedAt: string) => {

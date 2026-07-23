@@ -7,6 +7,7 @@ import Materials from '../views/Materials.vue';
 import WaterConfigs from '../views/WaterConfigs.vue';
 import Recipes from '../views/Recipes.vue';
 import ProductionBatches from '../views/ProductionBatches.vue';
+import ProductionBatchesList from '../views/ProductionBatchesList.vue';
 import MachineQueue from '../views/MachineQueue.vue';
 import WeighingStation from '../views/WeighingStation.vue';
 import MaterialTransfer from '../views/MaterialTransfer.vue';
@@ -16,10 +17,12 @@ import Reports from '../views/Reports.vue';
 import AuditLogExplorer from '../views/AuditLogExplorer.vue';
 import WorkstationAdmin from '../views/WorkstationAdmin.vue';
 import PrintHistoryAdmin from '../views/PrintHistoryAdmin.vue';
+import BpdbAdmin from '../views/BpdbAdmin.vue';
 import OrderScan from '../views/OrderScan.vue';
 import PrintStation from '../views/PrintStation.vue';
 import WorkstationKioskSetup from '../views/WorkstationKioskSetup.vue';
 import ChemicalCall from '../views/ChemicalCall.vue';
+import ChemicalCallMonitor from '../views/ChemicalCallMonitor.vue';
 import KioskLanding from '../views/KioskLanding.vue';
 import KioskMenu from '../views/KioskMenu.vue';
 
@@ -64,6 +67,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/chemical-call/monitor',
+    name: 'ChemicalCallMonitor',
+    component: ChemicalCallMonitor,
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/troubleshooting',
     name: 'Troubleshooting',
     component: Troubleshooting,
@@ -79,6 +88,12 @@ const routes = [
     path: '/production-batches',
     name: 'ProductionBatches',
     component: ProductionBatches,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/production-batches/list',
+    name: 'ProductionBatchesList',
+    component: ProductionBatchesList,
     meta: { requiresAuth: true }
   },
   {
@@ -157,6 +172,12 @@ const routes = [
     path: '/print-history-admin',
     name: 'PrintHistoryAdmin',
     component: PrintHistoryAdmin,
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
+    path: '/bpdb-admin',
+    name: 'BpdbAdmin',
+    component: BpdbAdmin,
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   // Fallback redirect
