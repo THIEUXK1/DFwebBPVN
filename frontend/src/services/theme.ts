@@ -7,8 +7,8 @@ const STORAGE_KEY = 'df_theme';
 function getInitialTheme(): ThemeMode {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved === 'light' || saved === 'dark') return saved;
-  // Mặc định giữ nguyên "Obsidian Industrial Theme" (tối) như thiết kế gốc.
-  return 'dark';
+  // Mặc định giao diện sáng.
+  return 'light';
 }
 
 export const theme = ref<ThemeMode>(getInitialTheme());
