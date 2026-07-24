@@ -43,7 +43,7 @@ public class Worker : BackgroundService
         _offlineQueue = offlineQueue;
         _printerDiscovery = printerDiscovery;
 
-        _backendUrl = _config.GetValue<string>("Backend:Url", "http://localhost:8002/api") ?? "http://localhost:8002/api";
+        _backendUrl = _config.GetValue<string>("Backend:Url", "http://localhost:8500/api") ?? "http://localhost:8500/api";
         _workstationId = _config.GetValue<string>("Workstation:Id", "WS-01") ?? "WS-01";
         _pollIntervalMs = _config.GetValue<int>("Scale:PollIntervalMs", 500);
 
