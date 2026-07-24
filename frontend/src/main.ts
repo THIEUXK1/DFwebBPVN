@@ -14,7 +14,7 @@ initTheme();
 // Centralized API backend baseURL — dùng đúng host mà trình duyệt đang dùng để mở
 // trang (LAN IP của máy chủ, không phải 'localhost') để các máy trạm khác trong
 // mạng nội bộ gọi API đúng máy chủ thay vì gọi vào chính máy trạm đó.
-axios.defaults.baseURL = `http://${window.location.hostname}:8500`;
+axios.defaults.baseURL = `http://${window.location.hostname}:8002`;
 
 const app = createApp(App);
 const pinia = createPinia();

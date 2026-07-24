@@ -31,10 +31,7 @@
   --radius-full: 9999px;
 }
 
-/* Theme mặc định = tối (data-theme được services/theme.ts set lên <html> ngay lúc
-   khởi động app, trước khi mount, để tránh nháy sai theme). :root đứng cùng
-   [data-theme="dark"] để trang vẫn có màu đúng ngay cả khi JS chưa kịp chạy. */
-:root, [data-theme="dark"] {
+[data-theme="dark"] {
   /* HSL Sleek Dark Mode (Obsidian Industrial Theme) */
   --bg-main: hsl(222, 20%, 8%);
   --bg-sidebar: hsl(222, 20%, 10%);
@@ -107,8 +104,10 @@
   --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
 }
 
-/* Theme sáng — cùng cấu trúc biến với theme tối ở trên, đổi giá trị màu. */
-[data-theme="light"] {
+/* Theme mặc định = sáng (data-theme được services/theme.ts set lên <html> ngay lúc
+   khởi động app, trước khi mount, để tránh nháy sai theme). :root đứng cùng
+   [data-theme="light"] để trang vẫn có màu đúng ngay cả khi JS chưa kịp chạy. */
+:root, [data-theme="light"] {
   /* Backgrounds */
   --bg-main: hsl(220, 25%, 97%);
   --bg-sidebar: hsl(0, 0%, 100%);
