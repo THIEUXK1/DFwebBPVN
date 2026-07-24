@@ -97,6 +97,14 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // Server DB dùng chung (10.0.60.209) có session TimeZone mặc định là
+            // 'Asia/Bangkok' (UTC+7), không phải UTC như app.timezone của Laravel. Cột
+            // timestamptz khi PHP ghi now() (UTC, không kèm offset) xuống bị Postgres hiểu
+            // nhầm là giờ Bangkok rồi tự trừ lùi 7 tiếng lúc lưu — khiến toàn bộ timestamp
+            // ghi mới đều lệch 7 tiếng. Ép session về UTC ngay khi Laravel kết nối để khớp
+            // với app.timezone, không đụng tới cấu hình server DB dùng chung. Dữ liệu cũ đã
+            // ghi trước khi sửa (nếu có) vẫn giữ nguyên, không bị đụng tới bởi thay đổi này.
+            'timezone' => 'UTC',
         ],
 
         'sqlsrv' => [
