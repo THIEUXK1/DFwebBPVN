@@ -272,6 +272,7 @@ class ChemicalCallController extends Controller
         }
 
         DB::transaction(function () use ($ccRequest) {
+            $previousStatus = $ccRequest->status;
             $ccRequest->status = 'DONE';
             $ccRequest->confirmed_at = now();
             $ccRequest->confirmed_by_user_id = auth()->id();
@@ -282,7 +283,7 @@ class ChemicalCallController extends Controller
                 'event_type' => 'CHEMICAL_CALL_DONE',
                 'occurred_at' => now(),
                 'actor_user_id' => auth()->id(),
-                'before_status' => $ccRequest->getOriginal('status'),
+                'before_status' => $previousStatus,
                 'after_status' => 'DONE',
             ]);
         });
@@ -308,6 +309,7 @@ class ChemicalCallController extends Controller
         }
 
         DB::transaction(function () use ($ccRequest, $request) {
+            $previousStatus = $ccRequest->status;
             $ccRequest->status = 'CANCELLED';
             $ccRequest->cancelled_at = now();
             $ccRequest->cancelled_reason = $request->input('reason');
@@ -318,7 +320,7 @@ class ChemicalCallController extends Controller
                 'event_type' => 'CHEMICAL_CALL_CANCELLED',
                 'occurred_at' => now(),
                 'actor_user_id' => auth()->id(),
-                'before_status' => $ccRequest->getOriginal('status'),
+                'before_status' => $previousStatus,
                 'after_status' => 'CANCELLED',
                 'note' => $request->input('reason'),
             ]);
@@ -356,6 +358,7 @@ class ChemicalCallController extends Controller
         }
 
         DB::transaction(function () use ($ccRequest) {
+            $previousStatus = $ccRequest->status;
             $ccRequest->status = 'RESET';
             $ccRequest->save();
 
@@ -364,7 +367,7 @@ class ChemicalCallController extends Controller
                 'event_type' => 'CHEMICAL_CALL_RESET',
                 'occurred_at' => now(),
                 'actor_user_id' => auth()->id(),
-                'before_status' => $ccRequest->getOriginal('status'),
+                'before_status' => $previousStatus,
                 'after_status' => 'RESET',
             ]);
         });

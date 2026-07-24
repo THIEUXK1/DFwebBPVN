@@ -381,6 +381,9 @@ function openAddChannel() {
   newChannel.value = { machine_id: null, channel_number: null, chemical_code: '' };
   addChannelError.value = '';
   showAddChannel.value = true;
+  if (machinesList.value.length === 0) {
+    fetchMachinesList();
+  }
 }
 
 async function submitAddChannel() {
@@ -500,9 +503,10 @@ function formatTime(timeStr: string | null) {
 }
 
 onMounted(async () => {
-  await fetchChannels();
-  await fetchRecentEvents();
-  await fetchMachinesList();
+  // Chạy song song thay vì tuần tự — trang hiện trước, không phải chờ hết API này tới API
+  // kia mới render. Danh sách máy (machinesList) không cần cho lần tải đầu, chỉ dùng khi mở
+  // popup "Thêm kênh" nên được tải lười (xem openAddChannel) thay vì chặn ở đây.
+  await Promise.all([fetchChannels(), fetchRecentEvents()]);
 
   // Realtime qua Reverb (WebSocket) — /chemical-call và /chemical-call/monitor cùng nghe
   // kênh public "chemical-channels": đổi trạng thái ở trang này thấy NGAY ở trang kia,
@@ -588,7 +592,7 @@ onUnmounted(() => {
 
 .channel-row {
   display: grid;
-  grid-template-columns: auto auto 1fr auto;
+  grid-template-columns: auto auto 1fr minmax(0, auto);
   align-items: center;
   gap: var(--space-lg);
   padding: 14px 16px;
@@ -850,10 +854,18 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 .toggle-btn {
   min-height: 34px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 .edit-channel-btn {
