@@ -326,14 +326,11 @@
             </div>
 
             <div class="form-group">
-              <label for="mock-level">Mã mức nước (Water Level Code)</label>
-              <input
-                id="mock-level"
-                v-model="mockForm.level_code"
-                type="text"
-                placeholder="Ví dụ: L-4 (Trung bình)"
-                class="form-control"
-              />
+              <label for="mock-level">Mức nước cố định (Water Level)</label>
+              <select id="mock-level" v-model="mockForm.level_code" class="form-select">
+                <option value="">-- Chọn mức nước --</option>
+                <option v-for="lv in waterLevels" :key="lv" :value="lv">{{ lv }}</option>
+              </select>
             </div>
 
             <!-- Error/Success feedbacks -->
@@ -518,6 +515,9 @@ const selectedBatch = ref<any | null>(null);
 const selectedDyeLines = computed(() => parseRackLines(selectedBatch.value?.raw_qr_dye));
 const selectedChemLines = computed(() => parseRackLines(selectedBatch.value?.raw_qr_chemical));
 
+// Mức nước cố định (Water Level) - 4 giá trị chuẩn hệ thống
+const waterLevels = [50, 100, 250, 450];
+
 // Mock Form state
 const mockForm = reactive({
   legacy_batch_id: '',
@@ -555,10 +555,10 @@ onMounted(() => {
   // cân đều làm bảng này tự cập nhật ngay, giữ nguyên filter/trang đang xem (fetchBatches
   // tự đọc lại searchQuery/statusFilter/machineFilter/currentPage hiện tại). Xem
   // ProductionBatchUpdated::broadcastOn (backend) — cùng kênh với /production-batches.
-  echo.channel('production-batches').listen('.updated', fetchBatches);
+  echo.channel('production-batches').listen('.updated', () => fetchBatches(true));
 
   // Polling làm lưới an toàn nếu WebSocket rớt kết nối tạm thời.
-  batchPollInterval = setInterval(fetchBatches, 15000);
+  batchPollInterval = setInterval(() => fetchBatches(true), 15000);
 });
 
 onUnmounted(() => {
@@ -566,8 +566,11 @@ onUnmounted(() => {
   echo.leaveChannel('production-batches');
 });
 
-const fetchBatches = async () => {
-  loading.value = true;
+// silent = true cho các lần refresh nền (WebSocket "production-batches" updated, polling
+// 15s) — không set loading nên bảng không bị thay bằng skeleton/nháy khi người dùng không
+// hề thao tác gì. Chỉ hiện skeleton khi tải lần đầu hoặc người dùng chủ động đổi filter/trang.
+const fetchBatches = async (silent = false) => {
+  if (!silent) loading.value = true;
   try {
     const response = await axios.get('/api/production-batches', {
       params: {
@@ -582,7 +585,7 @@ const fetchBatches = async () => {
   } catch (error) {
     console.error('Error fetching batches:', error);
   } finally {
-    loading.value = false;
+    if (!silent) loading.value = false;
   }
 };
 

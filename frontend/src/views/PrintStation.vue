@@ -366,6 +366,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
 import QRCode from 'qrcode';
+import echo from '../services/echo';
 import scannerService from '../services/scanner';
 import { currentWorkstation } from '../services/workstation';
 import { useAuthStore } from '../stores/auth';
@@ -1031,12 +1032,22 @@ onMounted(async () => {
     fetchPendingDispatches();
     fetchPrintHistory();
   }, 8000);
+
+  // Realtime qua Reverb — /production-batches và /production-batches/list bắn
+  // ProductionBatchUpdated ngay khi Duyệt đơn (tạo dispatch mới vào hàng chờ in), nghe
+  // chung kênh "production-batches" để hàng chờ ở đây cập nhật NGAY, không cần đợi
+  // polling 8s hay F5.
+  echo.channel('production-batches').listen('.updated', () => {
+    fetchPendingDispatches();
+    fetchPrintHistory();
+  });
 });
 
 onUnmounted(() => {
   scannerService.offScan(handleScan);
   if (resetTimer) clearTimeout(resetTimer);
   if (pollTimer) clearInterval(pollTimer);
+  echo.leaveChannel('production-batches');
 });
 </script>
 

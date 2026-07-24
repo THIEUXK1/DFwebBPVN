@@ -260,7 +260,11 @@ router.beforeEach((to, _from, next) => {
       return;
     }
   } else {
-    if (requiresAuth && lockedScreen && to.path !== lockedScreen) {
+    // Admin không bị khóa cứng vào 1 màn hình theo workstation binding — dùng được toàn
+    // bộ route mà tài khoản có quyền, không cần "chọn trạm" trước (yêu cầu 2026-07-24).
+    // Quy tắc khóa màn hình này chỉ áp dụng cho tài khoản vận hành (OPERATOR) gắn cứng
+    // công đoạn theo đúng mô hình "1 máy tính = 1 công đoạn".
+    if (requiresAuth && !authStore.isAdmin && lockedScreen && to.path !== lockedScreen) {
       next(lockedScreen);
       return;
     }

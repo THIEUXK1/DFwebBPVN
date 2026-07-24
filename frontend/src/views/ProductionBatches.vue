@@ -69,7 +69,10 @@
         </div>
         <div class="form-group">
           <label>OK (Mức nước)</label>
-          <input v-model="scanForm.level" type="text" class="form-control" placeholder="450" />
+          <select v-model="scanForm.level" class="form-select">
+            <option value="">-- Chọn mức nước --</option>
+            <option v-for="lv in waterLevels" :key="lv" :value="String(lv)">{{ lv }}</option>
+          </select>
         </div>
       </div>
 
@@ -185,18 +188,19 @@
               <th>Mã hàng</th>
               <th>Máy</th>
               <th>Thùng</th>
+              <th>Tiến Trình</th>
               <th>Trạng thái</th>
               <th>Cập nhật</th>
               <th>Thao tác</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="batch in recentBatches" :key="batch.id">
+            <tr v-for="batch in recentBatches" :key="batch.id" @click="openRecentDetail(batch)" class="clickable-row">
               <td class="highlight-code">{{ batch.legacy_batch_id }}</td>
               <td>{{ batch.color }}</td>
               <td>{{ batch.product_code }}</td>
               <td><span class="machine-tag">{{ batch.machine?.code || 'N/A' }}</span></td>
-              <td>
+              <td @click.stop>
                 <select
                   v-if="editingTankBatchId === batch.id"
                   :value="batch.tank_id || ''"
@@ -214,9 +218,21 @@
                   <span class="text-muted" v-else>+ Chọn thùng</span>
                 </button>
               </td>
+              <td>
+                <div class="progress-bar-wrapper" :title="'Độ hoàn tất: ' + getProgressPercent(batch.status) + '%'">
+                  <div class="progress-bar-fill" :style="{ width: getProgressPercent(batch.status) + '%' }"></div>
+                </div>
+              </td>
               <td><span :class="['badge', getRecentStatusClass(batch.status)]">{{ batch.status }}</span></td>
               <td class="date-cell">{{ formatRecentDate(batch.updated_at || batch.created_at) }}</td>
-              <td>
+              <td @click.stop class="actions-cell">
+                <button
+                  @click="openRecentDetail(batch)"
+                  class="btn btn-secondary btn-sm"
+                  title="Xem chi tiết Thuốc nhuộm (DYE) và Hóa chất (CHEM) của lô này"
+                >
+                  👁️ Chi tiết
+                </button>
                 <button
                   v-if="batch.status === 'NEW'"
                   @click="approveRecentBatch(batch)"
@@ -229,12 +245,120 @@
               </td>
             </tr>
             <tr v-if="recentBatches.length === 0">
-              <td colspan="8" class="text-center text-muted pad-empty-row">Chưa có lô sản xuất nào.</td>
+              <td colspan="9" class="text-center text-muted pad-empty-row">Chưa có lô sản xuất nào.</td>
             </tr>
           </tbody>
         </table>
       </div>
     </section>
+
+    <!-- Chi tiết Lô sản xuất — giống hệt modal ở /production-batches/list, xem nhanh
+         DYE/CHEM + duyệt ngay tại đây không cần rời trang quét. -->
+    <div class="drawer-overlay center-modal-overlay" v-if="recentDetailOpen" @click.self="closeRecentDetail">
+      <div class="right-drawer detail-modal">
+        <div class="drawer-header">
+          <h3>🔍 Chi tiết Lô sản xuất</h3>
+          <button @click="closeRecentDetail" class="drawer-close-btn">&times;</button>
+        </div>
+
+        <div class="drawer-body" v-if="selectedRecentBatch">
+          <div class="detail-hero mb-4">
+            <span :class="['badge', getRecentStatusClass(selectedRecentBatch.status)]" class="hero-badge">
+              {{ selectedRecentBatch.status }}
+            </span>
+            <h4>Lô: {{ selectedRecentBatch.legacy_batch_id }}</h4>
+          </div>
+
+          <div class="detail-info-list">
+            <div class="detail-item">
+              <span class="detail-label">Mã màu công thức (Color)</span>
+              <span class="detail-value">{{ selectedRecentBatch.color }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Mã hàng sản phẩm (Product)</span>
+              <span class="detail-value">{{ selectedRecentBatch.product_code }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Máy nhuộm chỉ định</span>
+              <span class="detail-value">{{ selectedRecentBatch.machine ? selectedRecentBatch.machine.code + ' - ' + selectedRecentBatch.machine.name : 'N/A' }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Thùng trộn nhuộm</span>
+              <select
+                :value="selectedRecentBatch.tank_id || ''"
+                class="form-select detail-tank-select"
+                @change="updateTank(selectedRecentBatch, ($event.target as HTMLSelectElement).value)"
+              >
+                <option value="">-- Chưa chọn --</option>
+                <option v-for="t in tanks.filter(t => t.machine_id === selectedRecentBatch.machine_id)" :key="t.id" :value="t.id">
+                  Thùng {{ t.code }}
+                </option>
+              </select>
+            </div>
+            <div class="detail-item" v-if="selectedRecentBatch.level_code">
+              <span class="detail-label">Mức nước chỉ định</span>
+              <span class="detail-value">{{ selectedRecentBatch.level_code }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Ngày khởi tạo</span>
+              <span class="detail-value">{{ formatRecentDate(selectedRecentBatch.created_at) }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Ngày cập nhật gần nhất</span>
+              <span class="detail-value">{{ formatRecentDate(selectedRecentBatch.updated_at) }}</span>
+            </div>
+          </div>
+
+          <!-- Bảng tách dòng RACK/MÃ/KHỐI LƯỢNG — giống layout scaleform.frm (VBA gốc) -->
+          <div class="rack-tables-row mt-4" v-if="selectedRecentDyeLines.length || selectedRecentChemLines.length">
+            <div class="rack-table-col">
+              <label class="rack-table-title">🧵 Thuốc nhuộm (DYE)</label>
+              <table class="data-table rack-table">
+                <thead><tr><th>RACK</th><th>MÃ THUỐC NHUỘM</th><th>KHỐI LƯỢNG</th></tr></thead>
+                <tbody>
+                  <tr v-for="(line, idx) in selectedRecentDyeLines" :key="'rec-dye-' + idx" class="rack-row-filled">
+                    <td class="rack-cell-num">{{ line.rack }}</td>
+                    <td class="rack-cell-code">{{ line.code }}</td>
+                    <td class="rack-cell-weight">{{ line.weight }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="rack-table-col">
+              <label class="rack-table-title">🧪 Hóa chất (CHEM)</label>
+              <table class="data-table rack-table">
+                <thead><tr><th>RACK</th><th>MÃ HÓA CHẤT</th><th>KHỐI LƯỢNG</th></tr></thead>
+                <tbody>
+                  <tr v-for="(line, idx) in selectedRecentChemLines" :key="'rec-chem-' + idx" class="rack-row-filled">
+                    <td class="rack-cell-num">{{ line.rack }}</td>
+                    <td class="rack-cell-code">{{ line.code }}</td>
+                    <td class="rack-cell-weight">{{ line.weight }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p v-else class="text-muted font-sm mt-4">Lô này không có dữ liệu quét DYE/CHEM (được tạo bằng tay hoặc từ MES giả lập).</p>
+
+          <p v-if="selectedRecentBatch.status === 'NEW' && !selectedRecentBatch.tank" class="text-error mt-2">
+            ⚠️ Phải chọn Thùng trộn trước khi duyệt đơn này.
+          </p>
+
+          <div class="drawer-actions mt-4">
+            <button
+              v-if="selectedRecentBatch.status === 'NEW'"
+              @click="approveRecentBatch(selectedRecentBatch)"
+              class="btn btn-primary flex-2"
+              :disabled="approvingRecentId === selectedRecentBatch.id || !selectedRecentBatch.tank"
+              :title="!selectedRecentBatch.tank ? 'Phải chọn Thùng trộn trước khi duyệt' : ''"
+            >
+              {{ approvingRecentId === selectedRecentBatch.id ? 'Đang duyệt...' : '✅ Duyệt đơn → Tạo hàng chờ in tem' }}
+            </button>
+            <button @click="closeRecentDetail" class="btn btn-secondary flex-1">Đóng cửa sổ</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -251,6 +375,40 @@ import echo from '../services/echo';
 // Bảng đầy đủ (lọc/duyệt) vẫn ở /production-batches/list.
 const batches = ref<any[]>([]);
 const recentBatches = computed(() => batches.value.slice(0, 10));
+
+// Modal "Chi tiết Lô sản xuất" — giống hệt /production-batches/list, xem DYE/CHEM +
+// duyệt ngay không cần rời trang quét (yêu cầu 2026-07-24).
+const recentDetailOpen = ref(false);
+const selectedRecentBatch = ref<any | null>(null);
+const selectedRecentDyeLines = computed(() => parseRackLines(selectedRecentBatch.value?.raw_qr_dye));
+const selectedRecentChemLines = computed(() => parseRackLines(selectedRecentBatch.value?.raw_qr_chemical));
+
+const lockBodyScroll = () => { document.body.style.overflow = 'hidden'; };
+const unlockBodyScroll = () => { document.body.style.overflow = ''; };
+
+const openRecentDetail = (batch: any) => {
+  selectedRecentBatch.value = batch;
+  recentDetailOpen.value = true;
+  lockBodyScroll();
+};
+const closeRecentDetail = () => {
+  recentDetailOpen.value = false;
+  selectedRecentBatch.value = null;
+  unlockBodyScroll();
+};
+
+const getProgressPercent = (status: string) => {
+  const mapping: Record<string, number> = {
+    'NEW': 10,
+    'APPROVED': 25,
+    'READY_TO_WEIGH': 40,
+    'WEIGHING': 60,
+    'WEIGHED': 80,
+    'SENT': 92,
+    'DONE': 100
+  };
+  return mapping[status] || 0;
+};
 
 // Chọn nhanh Thùng trộn + Duyệt ngay trong bảng "10 lô gần nhất" — cùng cơ chế với
 // /production-batches/list (duyệt giờ bắt buộc có thùng, xem ApproveProductionOrderService).
@@ -286,6 +444,9 @@ const approveRecentBatch = async (batch: any) => {
 // Metadata lists
 const machines = ref<any[]>([]);
 const tanks = ref<any[]>([]);
+
+// Mức nước cố định (Water Level) - 4 giá trị chuẩn hệ thống
+const waterLevels = [50, 100, 250, 450];
 
 // Trạm quét đơn thật (WS-ORDER-01) — state khớp Box1/Box2/Box4/Box5/Box6/Box7 (mainform.frm)
 const scanInputRef = ref<HTMLInputElement | null>(null);
@@ -370,6 +531,12 @@ const handleScan = async () => {
   scanning.value = true;
   scanErrorMsg.value = '';
   scanSuccessMsg.value = '';
+  // Reset trạng thái cảnh báo trùng của lượt quét TRƯỚC — nếu không, "vẫn lưu" đã tick
+  // (confirm_duplicate=true) cho đơn cũ sẽ bị mang sang đơn mới quét, khiến Save đơn mới
+  // (dù thật sự trùng) lưu thẳng không hề cảnh báo. Phát hiện 2026-07-24: quét đơn A bị
+  // cảnh báo trùng, tick "vẫn lưu", rồi quét tiếp đơn B (khác hẳn) mà không Save đơn A.
+  duplicateWarning.value = '';
+  confirmDuplicateSave.value = false;
   if (el) el.value = ''; // xóa ngay để lần quét kế tiếp (nếu có) không bị nối vào
 
   try {
@@ -386,6 +553,7 @@ const handleScan = async () => {
 
     scanMachineId.value = resolveMachineIdFromCode(d.machine);
     scanTankId.value = null;
+    autoCheckDuplicateAfterScan();
   } catch (error: any) {
     scanErrorMsg.value = error.response?.data?.message || 'Không đọc được mã quét.';
   } finally {
@@ -416,16 +584,32 @@ const clearScanForm = () => {
   scanInputRef.value?.focus();
 };
 
+// Trùng màu+mã hàng+máy với 1 đơn đang chờ duyệt (status NEW) — dùng chung logic chặn
+// trùng phía backend (store()), chỉ tính trùng với đơn CHƯA duyệt vì đơn đã duyệt/gửi
+// máy coi như đã "rời" khỏi hàng chờ nhập (y hệt MoveToSend xóa khỏi tbl_input_all).
+const isDuplicateOrder = (color: string, code: string, machineId: number | null) => {
+  return batches.value.some(
+    b => b.status === 'NEW' && b.color === color && b.product_code === code && b.machine_id === machineId
+  );
+};
+
+// Tự động cảnh báo NGAY sau khi quét xong (yêu cầu 2026-07-24: không đợi tới lúc bấm
+// Save mới báo) — hiện đúng banner ⚠️ + tick "vẫn lưu" giống hệt luồng Save phát hiện
+// trùng phía backend, để người vận hành biết ngay khi vừa quét, không quét/nhập tiếp
+// đơn kế mà không hay đơn này đang trùng.
+const autoCheckDuplicateAfterScan = () => {
+  if (isDuplicateOrder(scanForm.color, scanForm.code, scanMachineId.value)) {
+    duplicateWarning.value = 'Nghi ngờ trùng: đã có đơn cùng mã màu + mã hàng + máy đang chờ duyệt (chưa gửi máy). Tick xác nhận rồi lưu lại nếu vẫn muốn tạo mới.';
+  }
+};
+
 // CHECK (btnCheck_Click trong checkform.frm) — kiểm tra trùng màu+mã hàng+máy TRƯỚC khi
 // Save, dùng chung logic chặn trùng với store() (chỉ tính đơn đang NEW). Máy cũng tính
 // vào điều kiện trùng vì cùng màu+mã hàng chạy ở 2 máy khác nhau là hợp lệ.
 const checkDuplicateOrder = async () => {
   scanErrorMsg.value = '';
   scanSuccessMsg.value = '';
-  const duplicate = batches.value.some(
-    b => b.status === 'NEW' && b.color === scanForm.color && b.product_code === scanForm.code
-      && b.machine_id === scanMachineId.value
-  );
+  const duplicate = isDuplicateOrder(scanForm.color, scanForm.code, scanMachineId.value);
   if (duplicate) {
     scanSuccessMsg.value = 'YES — Đơn đã tồn tại (đang chờ duyệt).';
   } else {
@@ -825,6 +1009,177 @@ const formatRecentDate = (dateStr: string) => {
   padding: 0 var(--space-sm);
   font-size: 12px;
   width: auto;
+}
+
+.clickable-row {
+  cursor: pointer;
+}
+
+.detail-tank-select {
+  width: auto;
+  min-width: 140px;
+}
+
+.progress-bar-wrapper {
+  width: 100px;
+  height: 6px;
+  background-color: var(--border-card);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary) 0%, var(--success) 100%);
+  border-radius: var(--radius-full);
+  transition: width 0.3s ease;
+}
+
+/* Modal "Chi tiết Lô sản xuất" — port từ /production-batches/list để 2 trang hiển thị
+   giống hệt nhau khi xem chi tiết 1 lô (yêu cầu 2026-07-24). */
+.drawer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.right-drawer {
+  width: 100%;
+  max-width: 460px;
+  height: 100%;
+  background-color: var(--bg-card);
+  border-left: 1px solid var(--border-card);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  animation: slideLeft 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideLeft {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.center-modal-overlay {
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl);
+}
+
+.detail-modal {
+  max-width: 900px;
+  width: 100%;
+  height: auto;
+  max-height: 90vh;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
+  animation: popCenter 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes popCenter {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@media (max-width: 768px) {
+  .center-modal-overlay {
+    padding: 0;
+  }
+  .detail-modal {
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+}
+
+.drawer-header {
+  height: 70px;
+  padding: 0 var(--space-2xl);
+  border-bottom: 1px solid var(--border-divider);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--bg-sidebar);
+}
+
+.drawer-close-btn {
+  font-size: 2rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.drawer-close-btn:hover {
+  color: var(--text-title);
+}
+
+.drawer-body {
+  flex: 1;
+  padding: var(--space-2xl);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.drawer-actions {
+  display: flex;
+  gap: var(--space-lg);
+}
+
+.detail-hero {
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-divider);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.hero-badge {
+  font-size: 12px;
+}
+
+.detail-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  background-color: var(--bg-main);
+  padding: var(--space-xl);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-divider);
+}
+
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-divider);
+  padding-bottom: var(--space-sm);
+}
+
+.detail-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.detail-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.detail-value {
+  font-weight: 600;
+  color: var(--text-title);
 }
 
 /* Layout adjustments on narrow displays */

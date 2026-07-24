@@ -280,6 +280,7 @@ const agentInstallerUrl = `http://${window.location.hostname}:8500/downloads/DFA
 // Station-scoped account (WS-001) HOẶC phiên kiosk (link riêng máy, không đăng nhập):
 // công đoạn được cố định theo tài khoản/link, không cho đổi tay qua dropdown.
 const isLockedStation = computed(() => {
+  if (authStore.isAdmin) return false;
   if (authStore.isKiosk) return true;
   const wsConfigStr = localStorage.getItem('df_workstation_config');
   let wsConfig = null;
@@ -314,6 +315,9 @@ const wsLinkInvalid = ref(false);
 // đang mở là /print-station (cần QR_LABEL_PRINTING). KHÔNG được âm thầm render dữ
 // liệu sai trạm trong trường hợp này — phải chặn lại và báo lỗi rõ ràng.
 const capabilityMismatch = computed(() => {
+  // Admin không bị chặn bởi capability của trạm đang chọn — có đủ quyền xem mọi màn
+  // hình bất kể trạm hiện tại (nếu có) thuộc loại gì (yêu cầu 2026-07-24).
+  if (authStore.isAdmin) return false;
   if (!currentWorkstation.value) return false;
   if (!ROUTE_CAPABILITY_MAP[route.path]) return false;
   return !workstationMatchesRoute(currentWorkstation.value, route.path);

@@ -406,7 +406,10 @@ class ChemicalCallController extends Controller
             ->get()
             ->map(function ($event) {
                 return [
-                    'time' => $event->occurred_at->format('H:i:s d/m'),
+                    // app.timezone = UTC (lưu trữ) nhưng vận hành ở Việt Nam (UTC+7) — phải quy
+                    // đổi trước khi format chuỗi hiển thị, nếu không giờ trên nhật ký sẽ lệch 7
+                    // tiếng so với giờ thực tế thao tác (vd 13:44 thực tế hiển thị thành 06:44).
+                    'time' => $event->occurred_at->clone()->timezone('Asia/Ho_Chi_Minh')->format('H:i:s d/m'),
                     'machine_code' => $event->request?->machine?->code,
                     'channel_number' => $event->request?->channel?->channel_number,
                     'chemical_code' => $event->request?->channel?->chemical_code,

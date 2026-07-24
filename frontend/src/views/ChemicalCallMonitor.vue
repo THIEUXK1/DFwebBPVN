@@ -41,7 +41,7 @@
             <div class="action-btn-col">
               <!-- Nút toggle: xanh (OK) <-> đỏ (chưa OK), giống trạm thao tác /chemical-call -->
               <button
-                @click="toggleChannel(c)"
+                @click="toggleChannel(c, $event)"
                 class="btn btn-sm py-1 font-semibold toggle-btn"
                 :class="isChannelRed(c) ? 'btn-danger' : 'btn-success'"
                 :disabled="actionLoading === c.channel_id"
@@ -119,7 +119,13 @@ async function fetchChannels() {
 // Toggle 1 nút duy nhất: Xanh -> bấm = Gọi hóa chất (chuyển Đỏ). Đỏ -> bấm = báo Xong
 // (Hoàn thành + đóng yêu cầu luôn trong 1 lần bấm, chuyển thẳng lại Xanh). Giống hệt
 // logic ở trạm thao tác /chemical-call (xem ChemicalCall.vue::toggleChannel).
-async function toggleChannel(channel: ChemicalChannel) {
+async function toggleChannel(channel: ChemicalChannel, event?: MouseEvent) {
+  // Bỏ focus khỏi nút trước khi disable nó — nếu không, trình duyệt tự cuộn
+  // ngang khối .machine-card (overflow: hidden) để giữ nút đang focus trong
+  // tầm nhìn, làm lưới 3 cột trông như bị xô lệch dù grid-template-columns
+  // không hề đổi.
+  (event?.currentTarget as HTMLElement | undefined)?.blur();
+
   errorMsg.value = '';
   actionLoading.value = channel.channel_id;
 
@@ -203,6 +209,7 @@ onUnmounted(() => {
   border: 1px solid var(--border-card);
   border-radius: var(--radius-md);
   overflow: hidden;
+  overflow-anchor: none;
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -226,9 +233,14 @@ onUnmounted(() => {
 
 .channel-row {
   display: grid;
-  grid-template-columns: auto auto 1fr auto;
+  /* minmax(0, max-content) thay vì "auto": cho phép cột co lại (ellipsis) khi
+     card không đủ chỗ, thay vì để nội dung tràn ra ngoài rồi bị overflow:hidden
+     cắt vô hình — chính cái tràn vô hình đó là nguyên nhân khiến trình duyệt
+     tự cuộn ngang khi bấm nút (disable/đổi chữ nút), làm lưới trông như xô lệch
+     cột dù grid-template-columns của .machine-grid không hề đổi. */
+  grid-template-columns: minmax(0, max-content) minmax(0, max-content) minmax(0, 1fr) minmax(0, max-content);
   align-items: center;
-  gap: var(--space-lg);
+  gap: var(--space-md);
   padding: 14px 16px;
   border-bottom: 1px solid var(--border-divider);
   transition: background-color 0.2s ease;
@@ -284,7 +296,7 @@ onUnmounted(() => {
   color: var(--text-title);
   background-color: var(--bg-card-hover);
   border: 1px solid var(--border-card-hover);
-  padding: 4px 12px;
+  padding: 4px 10px;
   border-radius: var(--radius-full);
 }
 
@@ -321,23 +333,33 @@ onUnmounted(() => {
 
 .chem-formula {
   display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: 'JetBrains Mono', monospace;
   font-size: 1.05rem;
   font-weight: 700;
   color: var(--status-blue);
   background-color: var(--status-blue-bg);
   border: 1px solid var(--status-blue-border);
-  padding: 4px 12px;
+  padding: 4px 8px;
   border-radius: var(--radius-md);
 }
 
 .action-btn-col {
   display: flex;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .toggle-btn {
   min-height: 34px;
+  max-width: 100%;
+  padding-left: var(--space-sm);
+  padding-right: var(--space-sm);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 </style>
