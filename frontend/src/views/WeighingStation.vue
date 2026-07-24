@@ -538,7 +538,9 @@ onMounted(async () => {
   scannerService.onScan(handleBarcodeScan);
 
   // Poll live scale readings
-  livePoller = setInterval(fetchLiveWeight, 500);
+  // 1000ms thay vì 500ms — php artisan serve (Windows, single-thread) không chịu được
+  // tần suất 2 lần/giây khi có nhiều trạm cân mở cùng lúc, làm nghẽn các request khác.
+  livePoller = setInterval(fetchLiveWeight, 1000);
 
   // Realtime qua Reverb — lô mới được tạo/duyệt ở /production-batches phải xuất hiện
   // ngay trong dropdown "Giả lập Quét mã" ở đây, không cần rời màn hình rồi quay lại.
