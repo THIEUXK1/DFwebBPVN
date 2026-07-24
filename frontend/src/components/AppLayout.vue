@@ -275,7 +275,7 @@ const route = useRoute();
 // File cài đặt Local Agent được backend serve tĩnh từ public/downloads/ (xem
 // backend/public/downloads/DFAgentSetup.msi) — dùng đúng host mà trình duyệt đang
 // mở trang (giống main.ts) để máy trạm trong LAN tải đúng từ máy chủ.
-const agentInstallerUrl = `http://${window.location.hostname}:8002/downloads/DFAgentSetup.msi`;
+const agentInstallerUrl = `http://${window.location.hostname}:8500/downloads/DFAgentSetup.msi`;
 
 // Station-scoped account (WS-001) HOẶC phiên kiosk (link riêng máy, không đăng nhập):
 // công đoạn được cố định theo tài khoản/link, không cho đổi tay qua dropdown.
