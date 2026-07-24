@@ -1,0 +1,837 @@
+<template>
+  <div class="batches-view-container">
+    <!-- Page Header -->
+    <div class="page-header-row">
+      <div class="header-titles">
+        <h2>🔫 Trạm Quét đơn sản xuất</h2>
+        <p class="text-muted">Quét mã QR "ALL DATA" trên phiếu MES để tạo lô sản xuất mới.</p>
+      </div>
+      <div class="header-actions">
+        <router-link to="/production-batches/list" class="btn btn-secondary">
+          <SvgIcon name="batch" size="18" />
+          Xem danh sách Lô sản xuất
+        </router-link>
+      </div>
+    </div>
+
+    <!-- Trạm quét đơn thật (WS-ORDER-01) — port đúng MainForm VBA "2.C3 grid load row
+         lock id FB -192(QR).xlsm": quét QR "ALL DATA" từ MES vào 1 ô duy nhất, hệ thống
+         tự tách màu/mã hàng/máy/mức nước, người vận hành chọn Thùng rồi PHÊ DUYỆT + SAVE.
+         Xác nhận bằng 2 mẫu QR thật (phiếu MES BEST PACIFIC + ảnh chụp MainForm đang chạy). -->
+    <section class="section card-sec scan-order-panel mb-4">
+      <div class="scan-panel-header">
+        <h3>🔫 Quét đơn sản xuất (MES QR)</h3>
+        <span class="text-muted">Quét mã "ALL DATA" trên phiếu MES vào ô bên dưới — hệ thống tự tách thông tin.</span>
+      </div>
+
+      <div class="scan-input-row">
+        <label>SCAN QR</label>
+        <input
+          ref="scanInputRef"
+          @keyup.enter="handleScan"
+          type="text"
+          autocomplete="off"
+          :disabled="scanning"
+          :placeholder="scanning ? 'Đang xử lý mã vừa quét...' : 'Đưa con trỏ vào đây rồi quét mã QR trên phiếu MES...'"
+          class="form-control scan-input-large"
+        />
+      </div>
+
+      <p v-if="debugRawScan" class="text-muted mono-text scan-debug-line">
+        🔍 Debug raw_scan nhận được ở server: "{{ debugRawScan }}"
+      </p>
+
+      <div class="scan-fields-grid">
+        <div class="form-group">
+          <label>Mã màu (Color)</label>
+          <input v-model="scanForm.color" type="text" class="form-control" placeholder="AP88646" />
+        </div>
+        <div class="form-group">
+          <label>Mã hàng (Code)</label>
+          <input v-model="scanForm.code" type="text" class="form-control" placeholder="T6276" />
+        </div>
+        <div class="form-group">
+          <label>MACHINE</label>
+          <select v-model="scanMachineId" class="form-select" @change="onScanMachineChange">
+            <option :value="null">-- Chọn máy --</option>
+            <option v-for="m in machines" :key="m.id" :value="m.id">{{ m.code }}</option>
+          </select>
+          <span v-if="scanForm.machine && !scanMachineId" class="text-error scan-hint">
+            Quét ra "{{ scanForm.machine }}" — không khớp máy nào, chọn tay ở trên.
+          </span>
+        </div>
+        <div class="form-group">
+          <label>TANK</label>
+          <select v-model="scanTankId" class="form-select" :disabled="!scanMachineId">
+            <option :value="null">-- Chọn thùng --</option>
+            <option v-for="t in availableTanks" :key="t.id" :value="t.id">{{ t.code }}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>OK (Mức nước)</label>
+          <input v-model="scanForm.level" type="text" class="form-control" placeholder="450" />
+        </div>
+      </div>
+
+      <div class="scan-raw-preview" v-if="scanForm.rawQrDye || scanForm.rawQrChemical">
+        <div class="raw-box">
+          <label>Dữ liệu cân thuốc nhuộm (raw_qr_dye)</label>
+          <input :value="scanForm.rawQrDye" type="text" class="form-control mono-text" readonly />
+        </div>
+        <div class="raw-box">
+          <label>Dữ liệu cân hóa chất (raw_qr_chem)</label>
+          <input :value="scanForm.rawQrChemical" type="text" class="form-control mono-text" readonly />
+        </div>
+      </div>
+
+      <!-- Bảng tách dòng RACK/MÃ/KHỐI LƯỢNG — giống layout scaleform.frm (VBA gốc) -->
+      <div class="rack-tables-row" v-if="dyeRackLines.length || chemRackLines.length">
+        <div class="rack-table-col">
+          <label class="rack-table-title">🧵 Thuốc nhuộm (DYE)</label>
+          <table class="data-table rack-table">
+            <thead>
+              <tr>
+                <th>RACK</th>
+                <th>MÃ THUỐC NHUỘM</th>
+                <th>KHỐI LƯỢNG</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(line, idx) in dyeRackLines" :key="'dye-' + idx" class="rack-row-filled">
+                <td class="rack-cell-num">{{ line.rack }}</td>
+                <td class="rack-cell-code">{{ line.code }}</td>
+                <td class="rack-cell-weight">{{ line.weight }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="rack-table-col">
+          <label class="rack-table-title">🧪 Hóa chất (CHEM)</label>
+          <table class="data-table rack-table">
+            <thead>
+              <tr>
+                <th>RACK</th>
+                <th>MÃ HÓA CHẤT</th>
+                <th>KHỐI LƯỢNG</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(line, idx) in chemRackLines" :key="'chem-' + idx" class="rack-row-filled">
+                <td class="rack-cell-num">{{ line.rack }}</td>
+                <td class="rack-cell-code">{{ line.code }}</td>
+                <td class="rack-cell-weight">{{ line.weight }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <p v-if="scanIncomplete" class="text-error mt-2 scan-incomplete-warning">
+        ⚠️ Mã quét có dấu hiệu bị rớt ký tự giữa chừng (thiếu đoạn thuốc nhuộm/hóa chất) — dữ liệu bên dưới KHÔNG đáng tin.
+        Vui lòng đưa lại phiếu MES và quét lại, không SAVE khi còn cảnh báo này.
+      </p>
+      <p v-if="scanErrorMsg" class="text-error mt-2">❌ {{ scanErrorMsg }}</p>
+      <p v-if="scanSuccessMsg" class="text-success mt-2">✅ {{ scanSuccessMsg }}</p>
+
+      <div v-if="duplicateWarning" class="duplicate-warning-box mt-2">
+        <p class="text-error">⚠️ {{ duplicateWarning }}</p>
+        <label class="duplicate-confirm-label">
+          <input type="checkbox" v-model="confirmDuplicateSave" />
+          Tôi xác nhận vẫn muốn lưu đơn này (biết rõ có thể trùng)
+        </label>
+      </div>
+
+      <div class="scan-actions-row">
+        <button
+          @click="saveScanOrder"
+          class="btn btn-primary"
+          :disabled="savingScan || scanIncomplete || !scanForm.color || !scanForm.code || !scanMachineId || (!!duplicateWarning && !confirmDuplicateSave)"
+        >
+          {{ savingScan ? 'Đang lưu...' : (duplicateWarning ? '💾 SAVE (đã xác nhận trùng)' : '💾 SAVE') }}
+        </button>
+        <button @click="clearScanForm" class="btn btn-secondary">CLEAR</button>
+        <button
+          @click="confirm2Ok = !confirm2Ok"
+          class="btn"
+          :class="confirm2Ok ? 'btn-success' : 'btn-secondary'"
+          :disabled="scanIncomplete"
+        >
+          {{ confirm2Ok ? '✅ ĐÃ PHÊ DUYỆT' : 'PHÊ DUYỆT' }}
+        </button>
+        <button @click="checkDuplicateOrder" class="btn btn-secondary" :disabled="!scanForm.color || !scanForm.code">
+          CHECK
+        </button>
+      </div>
+      <p class="text-muted scan-footnote">
+        Tick PHÊ DUYỆT trước khi SAVE = lưu &amp; gửi hàng chờ in tem ngay trong cùng thao tác (như VBA).
+        Không tick = chỉ lưu đơn chờ (NEW), duyệt sau ở trang "Xem danh sách Lô sản xuất". Chọn Thùng là tùy chọn, không bắt buộc để duyệt.
+      </p>
+    </section>
+
+    <!-- 10 bản gần nhất — xem nhanh không cần rời trang quét; đầy đủ + lọc/duyệt ở
+         /production-batches/list. Dùng chung nguồn `batches` đã fetch cho CHECK trùng
+         (đã sắp created_at desc từ backend, chỉ cần cắt 10 dòng đầu). -->
+    <section class="section card-sec recent-batches-panel">
+      <div class="recent-header">
+        <h3>🕘 10 lô gần nhất</h3>
+        <router-link to="/production-batches/list" class="text-muted font-sm">Xem đầy đủ →</router-link>
+      </div>
+      <div class="table-container-fixed mt-3">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Mã Lô</th>
+              <th>Màu</th>
+              <th>Mã hàng</th>
+              <th>Máy</th>
+              <th>Thùng</th>
+              <th>Trạng thái</th>
+              <th>Cập nhật</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="batch in recentBatches" :key="batch.id">
+              <td class="highlight-code">{{ batch.legacy_batch_id }}</td>
+              <td>{{ batch.color }}</td>
+              <td>{{ batch.product_code }}</td>
+              <td><span class="machine-tag">{{ batch.machine?.code || 'N/A' }}</span></td>
+              <td>
+                <select
+                  v-if="editingTankBatchId === batch.id"
+                  :value="batch.tank_id || ''"
+                  class="form-select table-row-select"
+                  @change="updateTank(batch, ($event.target as HTMLSelectElement).value)"
+                  @blur="editingTankBatchId = null"
+                >
+                  <option value="">-- Không chọn --</option>
+                  <option v-for="t in tanks.filter(t => t.machine_id === batch.machine_id)" :key="t.id" :value="t.id">
+                    {{ t.code }}
+                  </option>
+                </select>
+                <button v-else class="tank-pick-btn" @click="editingTankBatchId = batch.id" title="Bấm để chọn nhanh Thùng trộn">
+                  <span class="tank-tag" v-if="batch.tank">{{ batch.tank?.code }}</span>
+                  <span class="text-muted" v-else>+ Chọn thùng</span>
+                </button>
+              </td>
+              <td><span :class="['badge', getRecentStatusClass(batch.status)]">{{ batch.status }}</span></td>
+              <td class="date-cell">{{ formatRecentDate(batch.updated_at || batch.created_at) }}</td>
+              <td>
+                <button
+                  v-if="batch.status === 'NEW'"
+                  @click="approveRecentBatch(batch)"
+                  class="btn btn-primary btn-sm"
+                  :disabled="approvingRecentId === batch.id || !batch.tank"
+                  :title="!batch.tank ? 'Phải chọn Thùng trộn trước khi duyệt' : ''"
+                >
+                  {{ approvingRecentId === batch.id ? 'Đang duyệt...' : (!batch.tank ? '⚠️ Chưa có Thùng' : '✅ Duyệt') }}
+                </button>
+              </td>
+            </tr>
+            <tr v-if="recentBatches.length === 0">
+              <td colspan="8" class="text-center text-muted pad-empty-row">Chưa có lô sản xuất nào.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted, computed, reactive, nextTick } from 'vue';
+import axios from 'axios';
+import SvgIcon from '../components/SvgIcon.vue';
+import { currentWorkstation } from '../services/workstation';
+import { parseRackLines } from '../utils/rackParser';
+import echo from '../services/echo';
+
+// Danh sách lô gần đây — dùng làm nguồn cho CHECK trùng màu/mã hàng trước khi SAVE
+// (checkDuplicateOrder) VÀ hiển thị nhanh 10 dòng mới nhất cuối trang (recentBatches).
+// Bảng đầy đủ (lọc/duyệt) vẫn ở /production-batches/list.
+const batches = ref<any[]>([]);
+const recentBatches = computed(() => batches.value.slice(0, 10));
+
+// Chọn nhanh Thùng trộn + Duyệt ngay trong bảng "10 lô gần nhất" — cùng cơ chế với
+// /production-batches/list (duyệt giờ bắt buộc có thùng, xem ApproveProductionOrderService).
+const editingTankBatchId = ref<string | null>(null);
+const approvingRecentId = ref<string | null>(null);
+
+const updateTank = async (batch: any, tankIdRaw: string) => {
+  const tankId = tankIdRaw === '' ? null : Number(tankIdRaw);
+  editingTankBatchId.value = null;
+  try {
+    const res = await axios.put(`/api/production-batches/${batch.id}/tank`, { tank_id: tankId });
+    batch.tank_id = res.data.data.tank_id;
+    batch.tank = res.data.data.tank;
+  } catch (error: any) {
+    alert(error.response?.data?.message || 'Không thể cập nhật Thùng trộn.');
+  }
+};
+
+const approveRecentBatch = async (batch: any) => {
+  approvingRecentId.value = batch.id;
+  try {
+    await axios.post(`/api/production-batches/${batch.id}/approve`, {
+      workstation_id: currentWorkstation.value?.code
+    });
+    batch.status = 'APPROVED';
+  } catch (error: any) {
+    alert(error.response?.data?.message || 'Không thể duyệt đơn.');
+  } finally {
+    approvingRecentId.value = null;
+  }
+};
+
+// Metadata lists
+const machines = ref<any[]>([]);
+const tanks = ref<any[]>([]);
+
+// Trạm quét đơn thật (WS-ORDER-01) — state khớp Box1/Box2/Box4/Box5/Box6/Box7 (mainform.frm)
+const scanInputRef = ref<HTMLInputElement | null>(null);
+const scanForm = reactive({
+  color: '',
+  code: '',
+  machine: '',
+  level: '',
+  rawQrDye: '',
+  rawQrChemical: ''
+});
+const scanMachineId = ref<number | null>(null);
+const scanTankId = ref<number | null>(null);
+
+// Bảng RACK / MÃ / KHỐI LƯỢNG hiển thị tách dòng như scaleform.frm (VBA gốc) — chỉ hiển
+// thị lại (đọc), KHÔNG thay thế raw_qr_dye/raw_qr_chemical đã lưu nguyên văn xuống DB.
+const dyeRackLines = computed(() => parseRackLines(scanForm.rawQrDye));
+const chemRackLines = computed(() => parseRackLines(scanForm.rawQrChemical));
+const confirm2Ok = ref(false);
+const savingScan = ref(false);
+const scanErrorMsg = ref('');
+const scanSuccessMsg = ref('');
+// Cảnh báo nghi trùng (409 DUPLICATE_WARNING từ backend) — không chặn cứng, chỉ hiện
+// cảnh báo + checkbox; tick xác nhận rồi bấm SAVE lại mới thật sự lưu (confirm_duplicate=true).
+const duplicateWarning = ref('');
+const confirmDuplicateSave = ref(false);
+// Chặn quét chồng lấn: nếu quét lần 2 trước khi lần 1 xử lý xong, 2 request scan-parse
+// chạy song song — request nào TRẢ VỀ SAU sẽ ghi đè scanForm bất kể lần quét nào mới hơn
+// (race điều kiện phản hồi mạng), tạo cảm giác "quét nhiều lần ra kết quả khác nhau" dù
+// backend tách chuỗi hoàn toàn ổn định (đã xác nhận: gọi lại 5 lần cùng input ra kết quả
+// giống hệt). scanning=true khóa mọi lần quét/bấm mới cho tới khi lần trước xử lý xong.
+const scanning = ref(false);
+// Debug tạm thời (2026-07-19): hiện lại đúng chuỗi raw_scan mà server nhận được, để
+// đối chiếu với QR gốc khi máy quét thật đọc ra kết quả không như mong đợi — xóa khi
+// đã xác định xong nguyên nhân lệch dữ liệu.
+const debugRawScan = ref('');
+// Cảnh báo quét bị rớt ký tự giữa chừng (2026-07-19) — xem QrPayloadService::
+// parseOrderEntryScan (scan_looks_incomplete). Chặn SAVE/PHÊ DUYỆT khi đang bật để
+// không lặp lại lỗi lưu nhầm dữ liệu như batch LEP70158 trước đây.
+const scanIncomplete = ref(false);
+
+const availableTanks = computed(() => tanks.value.filter(t => t.machine_id === scanMachineId.value));
+
+/** "VD" & Format(Val(Mid(s,3)),"000") — khớp QrPayloadService::normalizeVdCode (VBA: VD2 -> VD002). */
+const normalizeVdCode = (code: string): string => {
+  const upper = code.toUpperCase().trim();
+  if (upper.startsWith('VD')) {
+    const num = parseInt(upper.slice(2), 10) || 0;
+    return 'VD' + String(num).padStart(3, '0');
+  }
+  return upper;
+};
+
+const resolveMachineIdFromCode = (code: string): number | null => {
+  if (!code) return null;
+  const upper = code.toUpperCase().trim();
+  let match = machines.value.find(m => m.code.toUpperCase() === upper);
+  if (!match) {
+    const normalized = normalizeVdCode(upper);
+    match = machines.value.find(m => m.code.toUpperCase() === normalized);
+  }
+  return match ? match.id : null;
+};
+
+const onScanMachineChange = () => {
+  // Đổi máy tay -> reset thùng vì danh sách thùng phụ thuộc máy.
+  scanTankId.value = null;
+};
+
+const handleScan = async () => {
+  // Đọc thẳng .value từ DOM (input KHÔNG dùng v-model — xem ghi chú ở template):
+  // máy quét QR kiểu "giả bàn phím" bắn ~100 ký tự trong vài chục mili-giây; nếu ô
+  // này là v-model (Vue re-render toàn trang sau MỖI ký tự), trình duyệt không xử lý
+  // kịp và RỚT MẤT một đoạn ký tự giữa chừng (đã xác minh thực tế: quét phiếu
+  // LEP70158 ra "...GSE5430550-256..." thay vì "...SE5433-VD03-50-dye-73-...", mất
+  // hẳn đoạn giữa). Input để trình duyệt tự xử lý gõ phím (uncontrolled), chỉ đọc
+  // giá trị 1 lần khi Enter — không có re-render nào xảy ra trong lúc quét.
+  const el = scanInputRef.value;
+  const rawValueAtScanTime = (el?.value ?? '').trim();
+  if (!rawValueAtScanTime || scanning.value) return; // chặn bấm/quét chồng khi đang xử lý lần trước
+
+  scanning.value = true;
+  scanErrorMsg.value = '';
+  scanSuccessMsg.value = '';
+  if (el) el.value = ''; // xóa ngay để lần quét kế tiếp (nếu có) không bị nối vào
+
+  try {
+    const res = await axios.post('/api/production-batches/scan-parse', { raw_scan: rawValueAtScanTime });
+    const d = res.data.data;
+    scanForm.color = d.color;
+    scanForm.code = d.code;
+    scanForm.machine = d.machine;
+    scanForm.level = d.level;
+    scanForm.rawQrDye = d.raw_qr_dye;
+    scanForm.rawQrChemical = d.raw_qr_chemical;
+    debugRawScan.value = d.debug_raw_scan || '';
+    scanIncomplete.value = !!d.scan_looks_incomplete;
+
+    scanMachineId.value = resolveMachineIdFromCode(d.machine);
+    scanTankId.value = null;
+  } catch (error: any) {
+    scanErrorMsg.value = error.response?.data?.message || 'Không đọc được mã quét.';
+  } finally {
+    scanning.value = false;
+    // Input bị disabled trong lúc xử lý nên mất focus — trả focus lại để quét liên
+    // tiếp không cần thao tác viên tự bấm lại vào ô.
+    nextTick(() => scanInputRef.value?.focus());
+  }
+};
+
+const clearScanForm = () => {
+  if (scanInputRef.value) scanInputRef.value.value = '';
+  scanForm.color = '';
+  scanForm.code = '';
+  scanForm.machine = '';
+  scanForm.level = '';
+  scanForm.rawQrDye = '';
+  scanForm.rawQrChemical = '';
+  debugRawScan.value = '';
+  scanIncomplete.value = false;
+  scanMachineId.value = null;
+  scanTankId.value = null;
+  confirm2Ok.value = false;
+  scanErrorMsg.value = '';
+  scanSuccessMsg.value = '';
+  duplicateWarning.value = '';
+  confirmDuplicateSave.value = false;
+  scanInputRef.value?.focus();
+};
+
+// CHECK (btnCheck_Click trong checkform.frm) — kiểm tra trùng màu+mã hàng+máy TRƯỚC khi
+// Save, dùng chung logic chặn trùng với store() (chỉ tính đơn đang NEW). Máy cũng tính
+// vào điều kiện trùng vì cùng màu+mã hàng chạy ở 2 máy khác nhau là hợp lệ.
+const checkDuplicateOrder = async () => {
+  scanErrorMsg.value = '';
+  scanSuccessMsg.value = '';
+  const duplicate = batches.value.some(
+    b => b.status === 'NEW' && b.color === scanForm.color && b.product_code === scanForm.code
+      && b.machine_id === scanMachineId.value
+  );
+  if (duplicate) {
+    scanSuccessMsg.value = 'YES — Đơn đã tồn tại (đang chờ duyệt).';
+  } else {
+    scanSuccessMsg.value = 'NO — Chưa tồn tại, có thể lưu mới.';
+  }
+};
+
+// SAVE (btnSAVE_Click): tạo đơn; nếu đã chọn Thùng + đã PHÊ DUYỆT -> duyệt ngay trong
+// cùng thao tác (đúng VBA: "If confirm2=OK And tank<>"" Then MoveToSend").
+const saveScanOrder = async () => {
+  scanErrorMsg.value = '';
+  scanSuccessMsg.value = '';
+
+  if (!scanForm.color || !scanForm.code || !scanMachineId.value) {
+    scanErrorMsg.value = 'Khong du thong tin (thiếu màu/mã hàng/máy).';
+    return;
+  }
+
+  savingScan.value = true;
+  try {
+    const createRes = await axios.post('/api/production-batches', {
+      legacy_batch_id: `${scanForm.color}-${scanForm.code}-${Date.now()}`,
+      color: scanForm.color,
+      product_code: scanForm.code,
+      machine_id: scanMachineId.value,
+      tank_id: scanTankId.value || null,
+      level_code: scanForm.level || null,
+      raw_qr_dye: scanForm.rawQrDye || null,
+      raw_qr_chemical: scanForm.rawQrChemical || null,
+      confirm_duplicate: confirmDuplicateSave.value
+    });
+
+    const newBatch = createRes.data.data;
+    duplicateWarning.value = '';
+    confirmDuplicateSave.value = false;
+
+    // Tick PHÊ DUYỆT là đủ để tự động duyệt ngay trong cùng thao tác SAVE — không còn
+    // bắt buộc phải chọn Thùng nữa (backend/ApproveProductionOrderService không yêu cầu
+    // tank_id, quy tắc 250L chỉ áp dụng KHI có tank 1A/2B, tự bỏ qua nếu tank rỗng).
+    if (confirm2Ok.value) {
+      try {
+        await axios.post(`/api/production-batches/${newBatch.id}/approve`, {
+          workstation_id: currentWorkstation.value?.code
+        });
+        scanSuccessMsg.value = `Đã lưu và gửi hàng chờ in tem: ${scanForm.color} - ${scanForm.code}.`;
+      } catch (approveErr: any) {
+        // Lưu đơn đã thành công — chỉ riêng bước duyệt tự động thất bại (vd vi phạm quy
+        // tắc 250L). Báo rõ để người vận hành tự duyệt lại thủ công trong bảng bên dưới,
+        // không lặng lẽ nuốt lỗi.
+        scanErrorMsg.value = `Đã lưu đơn nhưng DUYỆT TỰ ĐỘNG thất bại: ${approveErr.response?.data?.message || 'Lỗi không xác định'}. Duyệt lại thủ công ở trang "Xem danh sách Lô sản xuất".`;
+      }
+    } else {
+      scanSuccessMsg.value = `Đã lưu đơn (chờ duyệt): ${scanForm.color} - ${scanForm.code}.`;
+    }
+
+    clearScanForm();
+    fetchBatches();
+  } catch (error: any) {
+    if (error.response?.data?.status === 'DUPLICATE_WARNING') {
+      duplicateWarning.value = error.response.data.message;
+    } else {
+      scanErrorMsg.value = error.response?.data?.message || 'Có lỗi khi lưu đơn.';
+    }
+  } finally {
+    savingScan.value = false;
+  }
+};
+
+let batchPollInterval: any = null;
+
+onMounted(() => {
+  fetchBatches();
+  fetchMetadata();
+  scanInputRef.value?.focus();
+
+  // Realtime qua Reverb — bất kỳ lô nào được tạo/duyệt/đổi trạng thái ở nơi khác (màn
+  // hình này, /production-batches/list, hay trạm cân) đều làm mới ngay danh sách "10 lô
+  // gần nhất" + nguồn CHECK trùng ở đây, không cần đợi polling hay F5 (yêu cầu 2026-07-23).
+  // Xem ProductionBatchUpdated::broadcastOn (backend).
+  echo.channel('production-batches').listen('.updated', fetchBatches);
+
+  // Polling làm lưới an toàn nếu WebSocket rớt kết nối tạm thời.
+  batchPollInterval = setInterval(fetchBatches, 15000);
+});
+
+onUnmounted(() => {
+  if (batchPollInterval) clearInterval(batchPollInterval);
+  echo.leaveChannel('production-batches');
+});
+
+const fetchBatches = async () => {
+  try {
+    const response = await axios.get('/api/production-batches');
+    batches.value = response.data.data;
+  } catch (error) {
+    console.error('Error fetching batches:', error);
+  }
+};
+
+const fetchMetadata = async () => {
+  try {
+    const [machinesRes, tanksRes] = await Promise.all([
+      axios.get('/api/machines'),
+      axios.get('/api/tanks')
+    ]);
+    machines.value = machinesRes.data.data || [];
+    tanks.value = tanksRes.data.data || [];
+  } catch (error) {
+    console.error('Error fetching metadata:', error);
+  }
+};
+
+const getRecentStatusClass = (status: string) => {
+  const mapping: Record<string, string> = {
+    'NEW': 'badge-grey',
+    'APPROVED': 'badge-blue',
+    'READY_TO_WEIGH': 'badge-blue',
+    'WEIGHING': 'badge-yellow',
+    'WEIGHED': 'badge-green',
+    'SENT': 'badge-orange',
+    'DONE': 'badge-purple'
+  };
+  return mapping[status] || 'badge-grey';
+};
+
+const formatRecentDate = (dateStr: string) => {
+  if (!dateStr) return '-';
+  return new Date(dateStr).toLocaleString('vi-VN', { hour12: false });
+};
+</script>
+
+<style scoped>
+.batches-view-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xl);
+}
+
+.page-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.header-titles h2 {
+  font-size: 1.6rem;
+  color: var(--text-title);
+  margin-bottom: 4px;
+}
+
+/* Trạm quét đơn thật (WS-ORDER-01) */
+.scan-order-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  border: 2px solid var(--primary);
+}
+
+.scan-panel-header h3 {
+  margin: 0 0 4px 0;
+  font-size: 1.2rem;
+  color: var(--text-title);
+}
+
+.scan-input-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scan-input-row label {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.scan-input-large {
+  font-size: 1.3rem;
+  padding: 14px 16px;
+  font-family: monospace;
+  border: 2px dashed var(--primary);
+}
+
+.scan-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-lg);
+}
+
+.scan-hint {
+  font-size: 11px;
+  margin-top: 4px;
+  display: block;
+}
+
+.scan-raw-preview {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-lg);
+}
+
+.raw-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.raw-box label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.scan-debug-line {
+  font-size: 0.78rem;
+  word-break: break-all;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.scan-incomplete-warning {
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-error, #e53e3e);
+  border-radius: 6px;
+  background-color: rgba(229, 62, 62, 0.08);
+}
+
+.duplicate-warning-box {
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--status-yellow-border);
+  border-radius: var(--radius-md);
+  background-color: var(--status-yellow-bg);
+}
+.duplicate-warning-box p {
+  margin: 0 0 8px 0;
+  color: var(--status-yellow);
+  font-weight: 600;
+}
+.duplicate-confirm-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text-body);
+  cursor: pointer;
+}
+.duplicate-confirm-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.mono-text {
+  font-family: monospace;
+  font-size: 0.8rem;
+  background-color: var(--bg-main);
+}
+
+.scan-actions-row {
+  display: flex;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+}
+
+.btn-success {
+  background-color: var(--status-green);
+  color: var(--text-white);
+  border-color: var(--status-green);
+}
+
+.scan-footnote {
+  font-size: 0.8rem;
+}
+
+@media (max-width: 768px) {
+  .scan-raw-preview {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Bảng RACK/MÃ/KHỐI LƯỢNG tách dòng — layout kiểu scaleform.frm (VBA gốc) */
+.rack-tables-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-lg);
+  margin-top: var(--space-lg);
+}
+
+.rack-table-title {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.rack-table th {
+  font-size: 11px;
+}
+
+.rack-row-filled td {
+  background-color: var(--status-green-bg);
+}
+
+.rack-cell-num {
+  width: 60px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.rack-cell-code {
+  font-weight: 700;
+  font-family: monospace;
+}
+
+.rack-cell-weight {
+  font-weight: 700;
+  font-family: monospace;
+  color: var(--status-blue);
+}
+
+@media (max-width: 768px) {
+  .rack-tables-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 10 lô gần nhất */
+.recent-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.recent-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--text-title);
+}
+
+.table-container-fixed {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+}
+
+.highlight-code {
+  color: var(--primary-hover);
+  font-family: monospace;
+}
+
+.machine-tag {
+  background-color: var(--bg-card-hover);
+  border: 1px solid var(--border-card);
+  padding: 3px var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.date-cell {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.pad-empty-row {
+  padding: var(--space-4xl) 0 !important;
+}
+
+.tank-tag {
+  background-color: var(--bg-card-hover);
+  border: 1px solid var(--border-card);
+  padding: 3px var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tank-pick-btn {
+  background: none;
+  border: 1px dashed var(--border-card);
+  border-radius: var(--radius-sm);
+  padding: 3px var(--space-sm);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.tank-pick-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary-hover);
+  background-color: var(--bg-card-hover);
+}
+
+.table-row-select {
+  height: 32px;
+  padding: 0 var(--space-sm);
+  font-size: 12px;
+  width: auto;
+}
+
+/* Layout adjustments on narrow displays */
+@media (max-width: 768px) {
+  .page-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+</style>

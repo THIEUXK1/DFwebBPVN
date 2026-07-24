@@ -1,0 +1,68 @@
+1. Dropping and recreating app and public schemas...
+2. Loading 02_target_normalized_schema_postgresql.sql...
+   Loaded successfully.
+3. Running migrations...
+   Exit Code: 0
+   Migrations output:
+
+   INFO  Preparing database.  
+
+  Creating migration table .............................................................................. 25.67ms DONE
+
+   INFO  Running migrations.  
+
+  0001_01_01_000000_create_users_table ................................................................. 114.16ms DONE
+  0001_01_01_000001_create_cache_table ................................................................. 101.20ms DONE
+  0001_01_01_000002_create_jobs_table ................................................................... 94.20ms DONE
+  2026_07_15_000001_create_phase4_tables ............................................................... 330.91ms DONE
+  2026_07_15_150959_create_personal_access_tokens_table ................................................. 70.79ms DONE
+  2026_07_15_221804_create_print_jobs_table ............................................................. 56.45ms DONE
+  2026_07_15_222035_create_material_transports_tables ................................................... 81.16ms DONE
+  2026_07_15_222310_create_feed_operations_table ........................................................ 56.30ms DONE
+  2026_07_16_000002_create_troubleshooting_tables ...................................................... 408.31ms DONE
+  2026_07_16_000003_create_realtime_and_alert_tables ................................................... 241.04ms DONE
+  2026_07_16_000004_create_workstations_and_weighing_jobs_tables ....................................... 396.18ms DONE
+  2026_07_16_000005_add_cloth_weight_to_production_batches_table ........................................ 18.85ms DONE
+  2026_07_16_000006_add_override_columns_to_weighing_job_items .......................................... 58.56ms DONE
+  2026_07_16_000007_restore_missing_personal_access_tokens_table ........................................ 15.49ms DONE
+  2026_07_16_000008_add_workstation_model_fields_and_user_binding ....................................... 28.26ms DONE
+  2026_07_16_000009_create_workstation_security_and_network_tables ..................................... 276.90ms DONE
+  2026_07_17_000001_create_wave1_foundation_tables ..................................................... 245.86ms DONE
+  2026_07_17_000002_create_wave2_chemical_call_tables .................................................. 169.37ms DONE
+  2026_07_17_000003_create_wave3_dispatch_qr_print_tables .............................................. 289.77ms DONE
+  2026_07_17_000004_create_wave4_weighing_tables ....................................................... 178.62ms DONE
+  2026_07_17_000005_create_wave5_correlation_tables .................................................... 183.20ms DONE
+
+
+4. Running seeders...
+   Exit Code: 0
+   Seeders output:
+
+   INFO  Seeding database.  
+
+  Database\Seeders\AdminUserSeeder ........................................................................... RUNNING  
+Admin user and roles seeded successfully.
+  Database\Seeders\AdminUserSeeder ....................................................................... 138 ms DONE  
+
+  Database\Seeders\MachinesAndTanksSeeder .................................................................... RUNNING  
+Successfully seeded machines and tanks matching water config lines.
+  Database\Seeders\MachinesAndTanksSeeder ................................................................ 197 ms DONE  
+
+  Database\Seeders\AlertRulesSeeder .......................................................................... RUNNING  
+  Database\Seeders\AlertRulesSeeder ...................................................................... 269 ms DONE  
+
+  Database\Seeders\WorkstationsSeeder ........................................................................ RUNNING  
+  Database\Seeders\WorkstationsSeeder .................................................................... 163 ms DONE  
+
+  Database\Seeders\RecipesSeeder ............................................................................. RUNNING  
+Successfully seeded 4 production recipes with versions & materials.
+  Database\Seeders\RecipesSeeder ......................................................................... 432 ms DONE  
+
+  Database\Seeders\TroubleshootingKnowledgeBaseSeeder ........................................................ RUNNING  
+  Database\Seeders\TroubleshootingKnowledgeBaseSeeder .................................................. 3,102 ms DONE  
+
+  Database\Seeders\FoundationSeeder .......................................................................... RUNNING  
+  Database\Seeders\FoundationSeeder ...................................................................... 194 ms DONE  
+
+
+Success!

@@ -1,0 +1,410 @@
+[
+  {
+    "ID": "PC00034",
+    "ProblemID": "P003",
+    "CauseID": "C0008",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00035",
+    "ProblemID": "P003",
+    "CauseID": "C0009",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00036",
+    "ProblemID": "P003",
+    "CauseID": "C0010",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00037",
+    "ProblemID": "P003",
+    "CauseID": "C0028",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00038",
+    "ProblemID": "P003",
+    "CauseID": "C0002",
+    "CauseScore": 5
+  },
+  {
+    "ID": "PC00039",
+    "ProblemID": "P004",
+    "CauseID": "C0003",
+    "CauseScore": 4
+  },
+  {
+    "ID": "PC00040",
+    "ProblemID": "P004",
+    "CauseID": "C0008",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00041",
+    "ProblemID": "P004",
+    "CauseID": "C0009",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00042",
+    "ProblemID": "P004",
+    "CauseID": "C0010",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00043",
+    "ProblemID": "P004",
+    "CauseID": "C0011",
+    "CauseScore": 5
+  },
+  {
+    "ID": "PC00044",
+    "ProblemID": "P004",
+    "CauseID": "C0028",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00045",
+    "ProblemID": "P004",
+    "CauseID": "C0005",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00046",
+    "ProblemID": "P004",
+    "CauseID": "C0007",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00047",
+    "ProblemID": "P004",
+    "CauseID": "C0030",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00048",
+    "ProblemID": "P004",
+    "CauseID": "C0033",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00049",
+    "ProblemID": "P004",
+    "CauseID": "C0002",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00050",
+    "ProblemID": "P005",
+    "CauseID": "C0001",
+    "CauseScore": 5
+  },
+  {
+    "ID": "PC00051",
+    "ProblemID": "P005",
+    "CauseID": "C0002",
+    "CauseScore": 5
+  },
+  {
+    "ID": "PC00052",
+    "ProblemID": "P009",
+    "CauseID": "C0005",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00053",
+    "ProblemID": "P009",
+    "CauseID": "C0007",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00054",
+    "ProblemID": "P009",
+    "CauseID": "C0016",
+    "CauseScore": 4
+  },
+  {
+    "ID": "PC00055",
+    "ProblemID": "P009",
+    "CauseID": "C0030",
+    "CauseScore": 5
+  },
+  {
+    "ID": "PC00056",
+    "ProblemID": "P009",
+    "CauseID": "C0042",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00057",
+    "ProblemID": "P009",
+    "CauseID": "C0004",
+    "CauseScore": 4
+  },
+  {
+    "ID": "PC00058",
+    "ProblemID": "P009",
+    "CauseID": "C0002",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00059",
+    "ProblemID": "P009",
+    "CauseID": "C0054",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00060",
+    "ProblemID": "P012",
+    "CauseID": "C0031",
+    "CauseScore": 5
+  },
+  {
+    "ID": "PC00061",
+    "ProblemID": "P012",
+    "CauseID": "C0032",
+    "CauseScore": 5
+  },
+  {
+    "ID": "PC00056",
+    "ProblemID": "P001",
+    "CauseID": "C0012",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00057",
+    "ProblemID": "P001",
+    "CauseID": "C0028",
+    "CauseScore": 5
+  },
+  {
+    "ID": "PC00058",
+    "ProblemID": "P001",
+    "CauseID": "C0030",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00059",
+    "ProblemID": "P001",
+    "CauseID": "C0033",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00060",
+    "ProblemID": "P001",
+    "CauseID": "C0002",
+    "CauseScore": 5
+  },
+  {
+    "ID": "PC00061",
+    "ProblemID": "P001",
+    "CauseID": "C0054",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00062",
+    "ProblemID": "P001",
+    "CauseID": "C0055",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00063",
+    "ProblemID": "P001",
+    "CauseID": "C0056",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00064",
+    "ProblemID": "P001",
+    "CauseID": "C0029",
+    "CauseScore": 5
+  },
+  {
+    "ID": "PC00049",
+    "ProblemID": "P002",
+    "CauseID": "C0003",
+    "CauseScore": 5
+  },
+  {
+    "ID": "PC00050",
+    "ProblemID": "P002",
+    "CauseID": "C0008",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00051",
+    "ProblemID": "P002",
+    "CauseID": "C0009",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00052",
+    "ProblemID": "P002",
+    "CauseID": "C0010",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00053",
+    "ProblemID": "P002",
+    "CauseID": "C0011",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00054",
+    "ProblemID": "P002",
+    "CauseID": "C0005",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00055",
+    "ProblemID": "P002",
+    "CauseID": "C0007",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00056",
+    "ProblemID": "P002",
+    "CauseID": "C0016",
+    "CauseScore": 4
+  },
+  {
+    "ID": "PC00057",
+    "ProblemID": "P002",
+    "CauseID": "C0035",
+    "CauseScore": 4
+  },
+  {
+    "ID": "PC00058",
+    "ProblemID": "P002",
+    "CauseID": "C0036",
+    "CauseScore": 4
+  },
+  {
+    "ID": "PC00059",
+    "ProblemID": "P002",
+    "CauseID": "C0037",
+    "CauseScore": 4
+  },
+  {
+    "ID": "PC00060",
+    "ProblemID": "P002",
+    "CauseID": "C0038",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00061",
+    "ProblemID": "P002",
+    "CauseID": "C0004",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00062",
+    "ProblemID": "P002",
+    "CauseID": "C0002",
+    "CauseScore": 4
+  },
+  {
+    "ID": "PC00063",
+    "ProblemID": "P002",
+    "CauseID": "C0054",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00064",
+    "ProblemID": "P002",
+    "CauseID": "C0056",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00065",
+    "ProblemID": "P002",
+    "CauseID": "C0062",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00066",
+    "ProblemID": "P002",
+    "CauseID": "C0061",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00056",
+    "ProblemID": "P010",
+    "CauseID": "C0003",
+    "CauseScore": 5
+  },
+  {
+    "ID": "PC00057",
+    "ProblemID": "P010",
+    "CauseID": "C0008",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00058",
+    "ProblemID": "P010",
+    "CauseID": "C0009",
+    "CauseScore": 1
+  },
+  {
+    "ID": "PC00059",
+    "ProblemID": "P010",
+    "CauseID": "C0010",
+    "CauseScore": 1
+  },
+  {
+    "ID": "PC00060",
+    "ProblemID": "P010",
+    "CauseID": "C0011",
+    "CauseScore": 5
+  },
+  {
+    "ID": "PC00061",
+    "ProblemID": "P010",
+    "CauseID": "C0005",
+    "CauseScore": 2
+  },
+  {
+    "ID": "PC00062",
+    "ProblemID": "P010",
+    "CauseID": "C0028",
+    "CauseScore": 4
+  },
+  {
+    "ID": "PC00063",
+    "ProblemID": "P010",
+    "CauseID": "C0004",
+    "CauseScore": 4
+  },
+  {
+    "ID": "PC00064",
+    "ProblemID": "P010",
+    "CauseID": "C0002",
+    "CauseScore": 4
+  },
+  {
+    "ID": "PC00065",
+    "ProblemID": "P010",
+    "CauseID": "C0046",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00066",
+    "ProblemID": "P010",
+    "CauseID": "C0047",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00067",
+    "ProblemID": "P010",
+    "CauseID": "C0061",
+    "CauseScore": 3
+  },
+  {
+    "ID": "PC00068",
+    "ProblemID": "P010",
+    "CauseID": "C0062",
+    "CauseScore": 3
+  }
+]

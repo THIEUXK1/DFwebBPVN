@@ -1,0 +1,455 @@
+/* Font tự host (đóng gói trong bundle) thay vì gọi fonts.googleapis.com — máy trạm
+   không có Internet vẫn hiển thị đúng font, không phụ thuộc mạng ngoài. */
+@import '@fontsource/outfit/300.css';
+@import '@fontsource/outfit/400.css';
+@import '@fontsource/outfit/500.css';
+@import '@fontsource/outfit/600.css';
+@import '@fontsource/outfit/700.css';
+@import '@fontsource/outfit/800.css';
+@import '@fontsource/inter/300.css';
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+
+:root {
+  /* Spacing Scale (không đổi theo theme) */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
+  --space-4xl: 48px;
+
+  /* BorderRadius (không đổi theo theme) */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+}
+
+/* Theme mặc định = tối (data-theme được services/theme.ts set lên <html> ngay lúc
+   khởi động app, trước khi mount, để tránh nháy sai theme). :root đứng cùng
+   [data-theme="dark"] để trang vẫn có màu đúng ngay cả khi JS chưa kịp chạy. */
+:root, [data-theme="dark"] {
+  /* HSL Sleek Dark Mode (Obsidian Industrial Theme) */
+  --bg-main: hsl(222, 20%, 8%);
+  --bg-sidebar: hsl(222, 20%, 10%);
+  --bg-topbar: hsla(222, 20%, 10%, 0.85);
+  --bg-card: hsl(222, 20%, 13%);
+  --bg-card-hover: hsl(222, 20%, 15%);
+  --bg-popover: hsl(222, 20%, 12%);
+  
+  /* Borders and Dividers */
+  --border-card: hsl(222, 12%, 18%);
+  --border-card-hover: hsl(222, 12%, 25%);
+  --border-divider: hsl(222, 12%, 15%);
+  
+  /* Accent Colors */
+  --primary: hsl(250, 100%, 65%);
+  --primary-hover: hsl(250, 100%, 58%);
+  --primary-bg: hsla(250, 100%, 65%, 0.1);
+  --primary-shadow: rgba(99, 102, 241, 0.25);
+  --primary-shadow-focus: rgba(99, 102, 241, 0.15);
+
+  --secondary: hsl(270, 90%, 60%);
+  --secondary-hover: hsl(270, 90%, 53%);
+  
+  /* Status Colors */
+  --status-grey: hsl(220, 10%, 60%);
+  --status-grey-bg: hsla(220, 10%, 60%, 0.1);
+  --status-grey-border: hsla(220, 10%, 60%, 0.25);
+
+  --status-blue: hsl(210, 100%, 55%);
+  --status-blue-bg: hsla(210, 100%, 55%, 0.1);
+  --status-blue-border: hsla(210, 100%, 55%, 0.25);
+
+  --status-yellow: hsl(38, 92%, 50%);
+  --status-yellow-bg: hsla(38, 92%, 50%, 0.1);
+  --status-yellow-border: hsla(38, 92%, 50%, 0.25);
+
+  --status-green: hsl(142, 70%, 50%);
+  --status-green-bg: hsla(142, 70%, 50%, 0.1);
+  --status-green-border: hsla(142, 70%, 50%, 0.25);
+
+  --status-orange: hsl(25, 95%, 55%);
+  --status-orange-bg: hsla(25, 95%, 55%, 0.1);
+  --status-orange-border: hsla(25, 95%, 55%, 0.25);
+
+  --status-red: hsl(355, 85%, 55%);
+  --status-red-bg: hsla(355, 85%, 55%, 0.1);
+  --status-red-border: hsla(355, 85%, 55%, 0.25);
+
+  --status-purple: hsl(271, 91%, 65%);
+  --status-purple-bg: hsla(271, 91%, 65%, 0.1);
+  --status-purple-border: hsla(271, 91%, 65%, 0.25);
+
+  /* Form Elements */
+  --input-bg: hsl(222, 20%, 9%);
+  --input-bg-focus: hsl(222, 20%, 11%);
+  --input-border: hsl(222, 12%, 18%);
+  --input-border-focus: hsl(250, 100%, 65%);
+  
+  /* Text Palettes */
+  --text-title: hsl(220, 20%, 96%);
+  --text-body: hsl(220, 15%, 85%);
+  --text-muted: hsl(220, 10%, 62%);
+  --text-disabled: hsl(220, 10%, 45%);
+  --text-white: hsl(0, 0%, 100%);
+
+  /* Shadows (đậm hơn cho nền tối) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
+}
+
+/* Theme sáng — cùng cấu trúc biến với theme tối ở trên, đổi giá trị màu. */
+[data-theme="light"] {
+  /* Backgrounds */
+  --bg-main: hsl(220, 25%, 97%);
+  --bg-sidebar: hsl(0, 0%, 100%);
+  --bg-topbar: hsla(0, 0%, 100%, 0.85);
+  --bg-card: hsl(0, 0%, 100%);
+  --bg-card-hover: hsl(220, 25%, 96%);
+  --bg-popover: hsl(0, 0%, 100%);
+
+  /* Borders and Dividers */
+  --border-card: hsl(220, 15%, 89%);
+  --border-card-hover: hsl(220, 15%, 80%);
+  --border-divider: hsl(220, 15%, 91%);
+
+  /* Accent Colors */
+  --primary: hsl(250, 85%, 55%);
+  --primary-hover: hsl(250, 85%, 48%);
+  --primary-bg: hsla(250, 85%, 55%, 0.08);
+  --primary-shadow: rgba(99, 102, 241, 0.2);
+  --primary-shadow-focus: rgba(99, 102, 241, 0.12);
+
+  --secondary: hsl(270, 80%, 48%);
+  --secondary-hover: hsl(270, 80%, 41%);
+
+  /* Status Colors */
+  --status-grey: hsl(220, 10%, 42%);
+  --status-grey-bg: hsla(220, 10%, 42%, 0.08);
+  --status-grey-border: hsla(220, 10%, 42%, 0.2);
+
+  --status-blue: hsl(210, 100%, 42%);
+  --status-blue-bg: hsla(210, 100%, 42%, 0.08);
+  --status-blue-border: hsla(210, 100%, 42%, 0.2);
+
+  --status-yellow: hsl(38, 92%, 40%);
+  --status-yellow-bg: hsla(38, 92%, 40%, 0.1);
+  --status-yellow-border: hsla(38, 92%, 40%, 0.22);
+
+  --status-green: hsl(142, 70%, 32%);
+  --status-green-bg: hsla(142, 70%, 32%, 0.08);
+  --status-green-border: hsla(142, 70%, 32%, 0.2);
+
+  --status-orange: hsl(25, 95%, 45%);
+  --status-orange-bg: hsla(25, 95%, 45%, 0.08);
+  --status-orange-border: hsla(25, 95%, 45%, 0.2);
+
+  --status-red: hsl(355, 78%, 45%);
+  --status-red-bg: hsla(355, 78%, 45%, 0.08);
+  --status-red-border: hsla(355, 78%, 45%, 0.2);
+
+  --status-purple: hsl(271, 85%, 50%);
+  --status-purple-bg: hsla(271, 85%, 50%, 0.08);
+  --status-purple-border: hsla(271, 85%, 50%, 0.2);
+
+  /* Form Elements */
+  --input-bg: hsl(220, 25%, 98%);
+  --input-bg-focus: hsl(0, 0%, 100%);
+  --input-border: hsl(220, 15%, 85%);
+  --input-border-focus: hsl(250, 85%, 55%);
+
+  /* Text Palettes */
+  --text-title: hsl(222, 30%, 14%);
+  --text-body: hsl(222, 15%, 30%);
+  --text-muted: hsl(220, 10%, 46%);
+  --text-disabled: hsl(220, 10%, 68%);
+  --text-white: hsl(0, 0%, 100%);
+
+  /* Shadows (nhẹ hơn cho nền sáng) */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -1px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.1), 0 4px 6px -2px rgba(15, 23, 42, 0.08);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.12);
+}
+
+/* Global Reset and Preflight */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-body);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Outfit', sans-serif;
+  color: var(--text-title);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Scrollbar Customization */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-card);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* Form Controls Reset */
+input, select, textarea, button {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  outline: none;
+}
+
+/* Standard Inputs & Selects */
+.form-control, .form-select, .form-input {
+  width: 100%;
+  height: 42px;
+  padding: 0 var(--space-lg);
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  color: var(--text-title);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.form-control:focus, .form-select:focus, .form-input:focus {
+  background-color: var(--input-bg-focus);
+  border-color: var(--input-border-focus);
+  box-shadow: 0 0 0 3px var(--primary-shadow-focus), var(--shadow-sm);
+}
+.form-control::placeholder {
+  color: var(--text-disabled);
+}
+
+textarea.form-control {
+  height: auto;
+  padding: var(--space-md) var(--space-lg);
+  resize: vertical;
+}
+
+/* Buttons System */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  height: 42px;
+  padding: 0 var(--space-xl);
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+  box-shadow: var(--shadow-sm);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+  color: var(--text-white);
+}
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--primary-shadow);
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background-color: var(--bg-card-hover);
+  border: 1px solid var(--border-card);
+  color: var(--text-title);
+}
+.btn-secondary:hover:not(:disabled) {
+  background-color: hsl(222, 20%, 18%);
+  border-color: var(--border-card-hover);
+}
+
+.btn-danger {
+  background-color: var(--status-red-bg);
+  border: 1px solid var(--status-red-border);
+  color: var(--status-red);
+}
+.btn-danger:hover:not(:disabled) {
+  background-color: var(--status-red);
+  color: var(--text-white);
+  border-color: var(--status-red);
+}
+
+/* Badge states */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 3px var(--space-sm);
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px solid transparent;
+}
+.badge-grey {
+  background-color: var(--status-grey-bg);
+  border-color: var(--status-grey-border);
+  color: var(--status-grey);
+}
+.badge-blue {
+  background-color: var(--status-blue-bg);
+  border-color: var(--status-blue-border);
+  color: var(--status-blue);
+}
+.badge-yellow {
+  background-color: var(--status-yellow-bg);
+  border-color: var(--status-yellow-border);
+  color: var(--status-yellow);
+}
+.badge-green {
+  background-color: var(--status-green-bg);
+  border-color: var(--status-green-border);
+  color: var(--status-green);
+}
+.badge-orange {
+  background-color: var(--status-orange-bg);
+  border-color: var(--status-orange-border);
+  color: var(--status-orange);
+}
+.badge-red {
+  background-color: var(--status-red-bg);
+  border-color: var(--status-red-border);
+  color: var(--status-red);
+}
+.badge-purple {
+  background-color: var(--status-purple-bg);
+  border-color: var(--status-purple-border);
+  color: var(--status-purple);
+}
+
+/* Card components */
+.card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2xl);
+  box-shadow: var(--shadow-md);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.card:hover {
+  border-color: var(--border-card-hover);
+}
+
+/* Tables Redesign */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
+  background-color: var(--bg-card);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.data-table th {
+  background-color: var(--bg-sidebar);
+  color: var(--text-title);
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  padding: var(--space-lg) var(--space-2xl);
+  border-bottom: 2px solid var(--border-divider);
+  user-select: none;
+}
+
+.data-table td {
+  padding: var(--space-lg) var(--space-2xl);
+  border-bottom: 1px solid var(--border-divider);
+  color: var(--text-body);
+  vertical-align: middle;
+  transition: background-color 0.15s ease;
+}
+
+.data-table tbody tr:hover td {
+  background-color: var(--bg-card-hover);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Skeleton Loading utility */
+.skeleton {
+  background: linear-gradient(90deg, var(--border-card) 25%, var(--bg-card-hover) 50%, var(--border-card) 75%);
+  background-size: 200% 100%;
+  animation: loading-skeleton 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes loading-skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Helper spacing utilities */
+.text-muted { color: var(--text-muted) !important; }
+.text-success { color: var(--status-green) !important; }
+.text-error { color: var(--status-red) !important; }
+.text-warning { color: var(--status-yellow) !important; }
+.text-center { text-align: center !important; }
+.mt-2 { margin-top: var(--space-sm) !important; }
+.mt-4 { margin-top: var(--space-lg) !important; }
+.mb-4 { margin-bottom: var(--space-lg) !important; }
+.flex-1 { flex: 1 !important; }
+.flex-2 { flex: 2 !important; }
+
+/* Grid systems */
+.two-col-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-2xl);
+}
+@media (max-width: 1024px) {
+  .two-col-grid {
+    grid-template-columns: 1fr;
+  }
+}

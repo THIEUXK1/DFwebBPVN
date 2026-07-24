@@ -1,0 +1,415 @@
+﻿Option Explicit
+
+Public Sub PrintSlip_70x100( _
+    ByVal c As String, _
+    ByVal cd As String, _
+    ByVal mc As String, _
+    ByVal tk As String, _
+    ByVal lv As String, _
+    ByVal rawDye As String, _
+    ByVal rawChem As String)
+
+    Dim ws As Worksheet
+    Dim shp As Shape, s As Shape
+    Dim arr() As String
+    Dim i As Long, idx As Long, r As Long
+
+    Dim qrDye As String, qrChem As String, qrProcess As String
+    Dim tempDye As String, tempChem As String, tempProcess As String, tempExtra As String
+
+    Dim side As Double, L As Double, t As Double
+    Dim CRLF As String: CRLF = vbCrLf
+
+    Dim rndNum As Long
+    Dim vF As String, vH As String
+    Dim dyesProcess As String, vC As String
+    Dim isDisperse As Boolean, hasChemKey As Boolean
+
+    Dim f3Val As String, g3Val As String, b24 As String
+    Dim newLevel As String, timeStamp As String
+
+    Dim totalD As Double
+    Dim qrExtra As String
+
+    Set ws = ThisWorkbook.Worksheets("DF_WEIGHING_SLIP")
+
+    ws.Unprotect "dfslip"
+
+
+ws.Range("B2:I24").ClearContents
+ws.Range("B1").Value = "DF_WEIGHING_SLIP"
+
+
+For Each s In ws.Shapes
+    If s.Name = "qr_dye" Or _
+       s.Name = "qr_chem" Or _
+       s.Name = "qr_process" Or _
+       s.Name = "qr_extra" Or _
+       s.Name = "qr_fb" Then
+        s.Delete
+    End If
+Next s
+
+    For Each s In ws.Shapes
+        Select Case s.Name
+            Case "qr_dye", "qr_chem", "qr_process", "qr_extra", "qr_fb"
+                s.Delete
+        End Select
+    Next s
+
+    ws.Range("B3").NumberFormat = "@": ws.Range("B3").Value = c
+    ws.Range("B4").NumberFormat = "@": ws.Range("B4").Value = cd
+    ws.Range("F3").NumberFormat = "@": ws.Range("F3").Value = mc
+    ws.Range("G3").NumberFormat = "@": ws.Range("G3").Value = tk
+    ws.Range("H3").NumberFormat = "@": ws.Range("H3").Value = lv
+
+    arr = Split(rawDye, "-")
+    idx = 0
+    For i = 0 To UBound(arr) Step 3
+        If idx >= 9 Or i + 2 > UBound(arr) Then Exit For
+        ws.Cells(5 + idx, "B").Value = arr(i)
+        ws.Cells(5 + idx, "C").Value = arr(i + 1)
+        ws.Cells(5 + idx, "D").Value = Replace(arr(i + 2), ",", ".")
+        idx = idx + 1
+    Next i
+
+    arr = Split(rawChem, "-")
+    idx = 0
+    For i = 0 To UBound(arr) Step 3
+        If idx >= 9 Or i + 2 > UBound(arr) Then Exit For
+        ws.Cells(5 + idx, "F").Value = arr(i)
+        ws.Cells(5 + idx, "G").Value = arr(i + 1)
+        ws.Cells(5 + idx, "H").Value = Replace(arr(i + 2), ",", ".")
+        idx = idx + 1
+    Next i
+
+    '=====================
+    ' PROCESS CHECK
+    '=====================
+    isDisperse = False
+    dyesProcess = "Nylon Dyes"
+    hasChemKey = False
+
+    For r = 5 To 13
+        vC = UCase$(Trim$(ws.Cells(r, "C").Value))
+        If vC <> "" Then
+            If Right$(vC, 1) = "C" Then dyesProcess = "Cation Dyes"
+            If Right$(vC, 1) = "D" Or Left$(vC, 3) = "Y13" Or Left$(vC, 3) = "R23" Or Left$(vC, 3) = "B33" Then
+                isDisperse = True
+            End If
+        End If
+    Next r
+
+    For r = 5 To 13
+        vF = Trim$(ws.Cells(r, "F").Value)
+        If InStr(vF, "0574") > 0 Or InStr(vF, "0507") > 0 Then
+            hasChemKey = True
+            Exit For
+        End If
+    Next r
+
+    If dyesProcess <> "Cation Dyes" Then
+        If isDisperse And hasChemKey Then dyesProcess = "Disperse Dyes"
+    End If
+
+    ws.Range("B14:D14").Merge
+    ws.Range("B14").Value = "QR CAN THUOC NHUOM"
+
+    ws.Range("F14:H14").Merge
+    ws.Range("F14").Value = "QR CAN CHAT TRO"
+
+    Randomize
+    rndNum = Int(9 * Rnd) + 1
+
+    qrDye = "#" & c & "-" & cd & "-" & mc & "-" & lv & "-" & rawDye
+
+    Dim vF3QR As String
+
+vF3QR = UCase$(Trim$(ws.Range("F3").text))
+
+If Left$(vF3QR, 2) = "VD" Then
+    vF3QR = "VD" & Format$(Val(Mid$(vF3QR, 3)), "000")
+End If
+
+qrChem = vF3QR & CRLF & _
+         Left$(ws.Range("G3").text, 1) & CRLF & _
+         "#" & ws.Range("B3").text & "-" & ws.Range("B4").text & CRLF & _
+         rndNum & CRLF & ws.Range("H3").text
+
+    r = 5
+    Do While ws.Cells(r, "H").Value <> ""
+        qrChem = qrChem & CRLF & ws.Cells(r, "F").Value & CRLF & Replace(ws.Cells(r, "H").text, ",", ".")
+        r = r + 1
+    Loop
+
+    qrChem = qrChem & "#"
+
+    tempDye = Environ$("TEMP") & "\qr_dye.png"
+    tempChem = Environ$("TEMP") & "\qr_chem.png"
+
+    If Not GenerateQRCode(qrDye, 400, tempDye) Then
+        MsgBox "QR DYE FAIL"
+        GoTo SAFE_EXIT
+    End If
+
+    If Not GenerateQRCode(qrChem, 400, tempChem) Then
+        MsgBox "QR CHEM FAIL"
+        GoTo SAFE_EXIT
+    End If
+
+    side = Application.Min(ws.Range("B16:D22").Width, ws.Range("B16:D22").Height) * 0.8
+    L = ws.Range("B16:D22").Left + (ws.Range("B16:D22").Width - side) / 2
+    t = ws.Range("B16:D22").Top + (ws.Range("B16:D22").Height - side) / 2
+
+    Set shp = ws.Shapes.AddPicture(tempDye, msoFalse, msoCTrue, L, t, side, side)
+    shp.Name = "qr_dye"
+
+    L = ws.Range("F16:H22").Left + (ws.Range("F16:H22").Width - side) / 2
+    t = ws.Range("F16:H22").Top + (ws.Range("F16:H22").Height - side) / 2
+
+    Set shp = ws.Shapes.AddPicture(tempChem, msoFalse, msoCTrue, L, t, side, side)
+    shp.Name = "qr_chem"
+
+    '=====================
+    ' B24 NORMALIZE
+    '=====================
+    b24 = UCase$(Trim$(ws.Range("B24").Value))
+    f3Val = UCase$(Trim$(ws.Range("F3").Value))
+    g3Val = UCase$(Trim$(ws.Range("G3").Value))
+
+    ws.Range("B24").Value = ""
+
+    If (f3Val >= "VD06" And f3Val <= "VD13") And (g3Val = "1A" Or g3Val = "2B") Then
+        ws.Range("B24").Value = "THUNG SAT CAO, MAY E13, MAY A11"
+
+    ElseIf (f3Val = "VD17" Or f3Val = "VD18") And (g3Val = "1A" Or g3Val = "2B") Then
+        ws.Range("B24").Value = "THUNG SAT CAO, MAY E12, MAY A11"
+
+    ElseIf (f3Val = "VD17" Or f3Val = "VD18") And (g3Val = "3C" Or g3Val = "4D") Then
+        If Val(ws.Range("H3").Value) = 50 Then
+            ws.Range("B24").Value = "PHA TAY, HOA CHAT DLG"
+        Else
+            ws.Range("B24").Value = "THUNG SAT CAO, MAY E12, MAY DLG"
+        End If
+
+    ElseIf ((f3Val >= "VD01" And f3Val <= "VD05") Or (f3Val >= "VD14" And f3Val <= "VD16")) And _
+           (g3Val = "1A" Or g3Val = "2B") Then
+        ws.Range("B24").Value = "THUNG SAT THAP, MAY JIT, MAY A11"
+
+    ElseIf (f3Val >= "VD01" And f3Val <= "VD16") And (g3Val = "3C" Or g3Val = "4D") Then
+        ws.Range("B24").Value = "THUNG SAT THAP, MAY JIT, MAY DLG"
+    End If
+
+
+    
+'========================
+' QR MODE SELECT
+'========================
+Dim mode As String
+
+
+b24 = UCase$(Trim$(ws.Range("B24").Value))
+
+If InStr(1, b24, "MAY JIT") > 0 Then
+    mode = "PROCESS"
+
+ElseIf InStr(1, b24, "THUNG SAT CAO") > 0 Then
+    mode = "EXTRA"
+
+Else
+    mode = "FB"
+    ws.Range("B24").Value = "PHU BAN-LAY LIEU COPOWER"
+End If
+
+'========================
+' COMMON POSITION G1
+'========================
+
+side = ws.Range("G1:H1").Height * 0.95
+
+L = ws.Range("G1:H1").Left + (ws.Range("G1:H1").Width - side) / 2
+t = ws.Range("G1:H1").Top + (ws.Range("G1:H1").Height - side) / 2
+
+'========================
+' QR PROCESS
+'========================
+If mode = "PROCESS" Then
+
+    timeStamp = Format(Now, "yyyymmddhhmm")
+
+    If g3Val = "1A" Then
+        newLevel = "450"
+    ElseIf g3Val = "2B" Then
+        newLevel = "250"
+    Else
+        newLevel = ws.Range("H3").text
+    End If
+
+    qrProcess = ws.Range("B3").text & "-" & ws.Range("B4").text & " " & timeStamp & vbCrLf & _
+                ws.Range("F3").text & "-" & ws.Range("G3").text & "-" & newLevel & vbCrLf & _
+                dyesProcess
+
+    tempProcess = Environ$("TEMP") & "\qr_process.png"
+
+    If GenerateQRCode(qrProcess, 400, tempProcess) Then
+        Set shp = ws.Shapes.AddPicture(tempProcess, msoFalse, msoCTrue, L, t, side, side)
+        shp.Name = "qr_process"
+    End If
+
+'========================
+' QR EXTRA
+'========================
+ElseIf mode = "EXTRA" Then
+
+    'Dim vF3QR As String
+
+    vF3QR = UCase$(Trim$(ws.Range("F3").text))
+
+    If Left$(vF3QR, 2) = "VD" Then
+        vF3QR = "VD" & Format$(Val(Mid$(vF3QR, 3)), "000")
+    End If
+
+    totalD = 0
+    For r = 5 To 13
+        totalD = totalD + Val(ws.Cells(r, "D").Value)
+    Next r
+
+    Randomize
+    rndNum = Int(9 * Rnd) + 1
+
+    qrExtra = vF3QR & vbCrLf & _
+          Left$(ws.Range("G3").text, 1) & vbCrLf & _
+          ws.Range("B3").text & " " & ws.Range("B4").text & vbCrLf & _
+          rndNum & vbCrLf & _
+          ws.Range("H3").text & vbCrLf & _
+          "1" & vbCrLf & _
+          Format(totalD, "0.###")
+
+    tempExtra = Environ$("TEMP") & "\qr_extra.png"
+
+    If GenerateQRCode(qrExtra, 400, tempExtra) Then
+        Set shp = ws.Shapes.AddPicture(tempExtra, msoFalse, msoCTrue, L, t, side, side)
+        shp.Name = "qr_extra"
+    End If
+
+'========================
+' QR FB (DEFAULT)
+'========================
+
+Else
+
+  Dim qrFB As String, tempFB As String
+
+
+timeStamp = Format(Now, "hhmm")
+
+qrFB = ws.Range("B3").text & "-" & _
+       ws.Range("B4").text & " " & _
+       timeStamp '& vbCrLf & _
+       ws.Range("F3").text & vbCrLf & _
+       ws.Range("G3").text & vbCrLf & _
+       "1" & vbCrLf & _
+       "1" & vbCrLf & _
+       "SLAB01"
+
+'===== DYE =====
+For r = 5 To 13
+
+    If Trim$(ws.Cells(r, "C").Value) <> "" Then
+
+        qrFB = qrFB & vbCrLf & _
+               ws.Cells(r, "C").Value & vbCrLf & _
+               Replace(ws.Cells(r, "D").text, ",", ".")
+
+    End If
+
+Next r
+
+'===== CHEM =====
+For r = 5 To 13
+
+    If Trim$(ws.Cells(r, "G").Value) <> "" Then
+
+        qrFB = qrFB & vbCrLf & _
+               ws.Cells(r, "G").Value & vbCrLf & _
+               Replace(ws.Cells(r, "H").text, ",", ".")
+
+    End If
+
+Next r
+
+'qrFB = qrFB & "#"
+
+tempFB = Environ$("TEMP") & "\qr_fb.png"
+
+If GenerateQRCode(qrFB, 400, tempFB) Then
+    Set shp = ws.Shapes.AddPicture(tempFB, msoFalse, msoCTrue, L, t, side, side)
+    shp.Name = "qr_fb"
+End If
+
+End If
+
+ws.Range("D1").Value = ""
+
+If (f3Val >= "VD06" And f3Val <= "VD13") And _
+   (g3Val = "1A" Or g3Val = "2B") Then
+
+    ws.Range("D1").Value = "E13"
+
+ElseIf (f3Val = "VD17" Or f3Val = "VD18") And _
+       (g3Val = "1A" Or g3Val = "2B" Or g3Val = "3C" Or g3Val = "4D") Then
+
+    ws.Range("D1").Value = "E12"
+
+ElseIf (f3Val >= "VD01" And f3Val <= "VD05") And _
+       (g3Val = "1A" Or g3Val = "2B") Then
+
+    ws.Range("D1").Value = "JIT3"
+
+ElseIf (f3Val >= "VD01" And f3Val <= "VD09") And _
+       (g3Val = "3C" Or g3Val = "4D") Then
+
+    ws.Range("D1").Value = "JIT2"
+
+ElseIf (f3Val >= "VD14" And f3Val <= "VD16") And _
+       (g3Val = "1A" Or g3Val = "2B") Then
+
+    ws.Range("D1").Value = "JIT4"
+
+ElseIf (f3Val >= "VD10" And f3Val <= "VD16") And _
+       (g3Val = "3C" Or g3Val = "4D") Then
+
+    ws.Range("D1").Value = "JIT1"
+
+End If
+
+'========================
+' PRINT
+'========================
+SetupSlipPage ws       ' <-- 閜 kh? 70x100 + fit trang
+    ws.PrintOut
+SAFE_EXIT:
+    ws.Protect Password:="dfslip", UserInterfaceOnly:=True
+
+End Sub
+Public Sub SetupSlipPage(ByVal ws As Worksheet)
+    On Error Resume Next
+    ws.PageSetup.PrintArea = "$B$1:$H$24"      ' vung in cua tem
+    With ws.PageSetup
+        .Orientation = xlPortrait
+        ' --- le = 0 ---
+        .LeftMargin = 0:  .RightMargin = 0
+        .TopMargin = 0:   .BottomMargin = 0
+        .HeaderMargin = 0: .FooterMargin = 0
+        .CenterHorizontally = True
+        .CenterVertically = True
+        ' --- ep noi dung vua dung 1 trang tem ---
+        .Zoom = False
+        .FitToPagesWide = 1
+        .FitToPagesTall = 1
+        ' --- kho giay 70 x 100 mm ---
+        ' Cach chuan: chon dung "form" ma driver may in dinh nghia la 70x100.
+        ' Neu driver co san form so 256 = 70x100 thi dong duoi se lay dung kho:
+        .PaperSize = 256
+    End With
+End Sub

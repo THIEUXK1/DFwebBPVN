@@ -1,0 +1,8 @@
+node_modules/
+vendor/
+bin/
+obj/
+*.log
+database.zip
+agent/installer/
+agent/publish/

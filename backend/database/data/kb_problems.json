@@ -1,0 +1,191 @@
+[
+  {
+    "ProblemID": "P001",
+    "Problem": "色花",
+    "Severity": "Critical",
+    "Description": "颜色上色不均匀，带子表面出现深浅不一致或局部色泽差异。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P002",
+    "Problem": "段差",
+    "Severity": "High",
+    "Description": "带子沿长度方向出现周期性或连续性的颜色深浅差异。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P003",
+    "Problem": "地面色",
+    "Severity": "High",
+    "Description": "带子正反两面颜色存在明显差异。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P004",
+    "Problem": "条差",
+    "Severity": "High",
+    "Description": "不同条带染色后颜色存在明显差异。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P005",
+    "Problem": "跑料",
+    "Severity": "Critical",
+    "Description": "染料在料槽中提前上色，带子未进入蒸箱前已出现明显颜色。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P006",
+    "Problem": "勾纱",
+    "Severity": "High",
+    "Description": "带子表面的纱线被勾起，形成毛丝、抽丝，严重时可能导致断纱。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P007",
+    "Problem": "勾丝",
+    "Severity": "High",
+    "Description": "带子边缘被挤压、卷曲或收缩，影响织物平整度，常见于针织带。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P008",
+    "Problem": "起毛",
+    "Severity": "Medium",
+    "Description": "带子表面纱线或纤维断裂并起毛，形成明显毛羽。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P009",
+    "Problem": "停机带",
+    "Severity": "High",
+    "Description": "带子沿长度方向出现局部或连续的异常色带，与正常区域存在明显颜色差异。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P010",
+    "Problem": "色杂",
+    "Severity": "Critical",
+    "Description": "带子沿长度方向出现无规律的颜色差异，各段颜色不一致。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P011",
+    "Problem": "针孔",
+    "Severity": "Critical",
+    "Description": "带子表面出现细小的针孔状孔洞。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P012",
+    "Problem": "色点",
+    "Severity": "Critical",
+    "Description": "织物表面附着未溶解或析出的染料颗粒，形成明显色点。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P013",
+    "Problem": "湿带",
+    "Severity": "Low",
+    "Description": "带子没烫干",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P014",
+    "Problem": "污糟",
+    "Severity": "Critical",
+    "Description": "织物表面附着异物、污染物或颗粒，形成明显污渍。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P015",
+    "Problem": "弯带",
+    "Severity": "High",
+    "Description": "弯度超过标准",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P016",
+    "Problem": "漏根-漏白",
+    "Severity": "High",
+    "Description": "氨纶丝外露，未被外层纱线完全包覆，形成露白现象。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P017",
+    "Problem": "起波",
+    "Severity": "High",
+    "Description": "带子表面或边缘出现波浪状变形，影响平整度。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P018",
+    "Problem": "折痕",
+    "Severity": "Critical",
+    "Description": "带子表面出现因折叠形成的明显折痕。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P019",
+    "Problem": "带面不良",
+    "Severity": "High",
+    "Description": "带子表面出现凹凸、粗糙或其他异常，影响外观质量。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P020",
+    "Problem": "带边不良",
+    "Severity": "High",
+    "Description": "带子边缘出现变形、损伤或其他异常，影响外观质量",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P021",
+    "Problem": "循环偏长",
+    "Severity": "High",
+    "Description": "带子上的文字、图案或花纹循环长度超过标准要求。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P022",
+    "Problem": "循环偏短",
+    "Severity": "Medium",
+    "Description": "带子上的文字、图案或花纹循环长度短于标准要求。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P023",
+    "Problem": "宽度偏小",
+    "Severity": "High",
+    "Description": "带子宽度小于标准要求",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P024",
+    "Problem": "宽度偏大",
+    "Severity": "High",
+    "Description": "带子宽度大于标准要求。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P025",
+    "Problem": "打扭",
+    "Severity": "High",
+    "Description": "带子沿长度方向发生扭转变形。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P026",
+    "Problem": "折边",
+    "Severity": "Critical",
+    "Description": "带子边缘向内折叠，形成明显折边。",
+    "Active": 1
+  },
+  {
+    "ProblemID": "P027",
+    "Problem": "打卷",
+    "Severity": "High",
+    "Description": "带子切断后自然向一侧或两侧卷曲，无法保持平整。",
+    "Active": 1
+  }
+]

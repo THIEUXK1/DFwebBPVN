@@ -1,0 +1,14 @@
+IP SEARCH RESULTS (TARGETED)
+============================
+Scanning Excel: lưu trình sx.xlsx
+  Sheet: Sheet1 (18 rows, 13 cols)
+  Sheet: Sheet2 (29 rows, 18 cols)
+  Sheet: Sheet3 (20 rows, 14 cols)
+Scanning Excel: guide.xlsx
+  Sheet: Sheet1 (119 rows, 2 cols)
+  Sheet: Sheet2 (25 rows, 36 cols)
+Scanning Excel: Copy of 测水位料桶.xlsx
+  Sheet: Sheet1 (18 rows, 53 cols)
+  Sheet: Sheet2 (13 rows, 73 cols)
+Scanning Word: Phase.docx
+Scan complete.
