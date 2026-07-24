@@ -80,6 +80,44 @@ class ChemicalCallController extends Controller
     }
 
     /**
+     * Sửa kênh đã có — đổi mã hóa chất và/hoặc số kênh. Giữ nguyên máy (machine_id)
+     * vì đổi máy thực chất là tạo kênh khác, nên chỉ cho sửa 2 trường này.
+     */
+    public function updateChannel(Request $request, $id)
+    {
+        $channel = MachineChemicalChannel::findOrFail($id);
+
+        $request->validate([
+            'channel_number' => 'required|integer|min:1',
+            'chemical_code' => 'required|string|max:100',
+        ]);
+
+        $exists = MachineChemicalChannel::where('machine_id', $channel->machine_id)
+            ->where('channel_number', $request->input('channel_number'))
+            ->where('id', '!=', $channel->id)
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'error' => 'CHANNEL_NUMBER_ALREADY_EXISTS',
+                'message' => 'Máy này đã có kênh số ' . $request->input('channel_number') . ' rồi.',
+            ], 409);
+        }
+
+        $channel->update([
+            'channel_number' => $request->input('channel_number'),
+            'chemical_code' => $request->input('chemical_code'),
+        ]);
+
+        event(new ChemicalChannelUpdated());
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'data' => $channel->fresh()->load('machine'),
+        ]);
+    }
+
+    /**
      * Create a new chemical call request.
      */
     public function createRequest(Request $request)

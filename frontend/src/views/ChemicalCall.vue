@@ -75,6 +75,14 @@
               >
                 {{ actionLoading === c.channel_id ? 'Đang xử lý...' : (isChannelRed(c) ? '🔴 Bấm khi Xong' : '🟢 OK — Bấm để Gọi') }}
               </button>
+              <button
+                @click="openEditChannel(c)"
+                class="btn btn-sm btn-secondary edit-channel-btn"
+                title="Sửa kênh (số kênh / mã hóa chất)"
+                :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'"
+              >
+                ✏️
+              </button>
             </div>
           </div>
         </div>
@@ -136,6 +144,33 @@
             <button @click="showAddChannel = false" class="btn btn-secondary">Hủy</button>
             <button @click="submitAddChannel" class="btn btn-primary" :disabled="!newChannel.machine_id || !newChannel.channel_number || !newChannel.chemical_code || addingChannel">
               {{ addingChannel ? 'Đang lưu...' : 'Lưu kênh mới' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Sửa kênh -->
+    <div v-if="showEditChannel" class="modal-overlay" @click.self="showEditChannel = false">
+      <div class="ws-modal-card">
+        <div class="modal-header">
+          <h3>✏️ Sửa kênh {{ editChannel.machine_code }} — Kênh {{ editChannel.original_channel_number }}</h3>
+          <button @click="showEditChannel = false" class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group mb-3">
+            <label>Số kênh</label>
+            <input v-model.number="editChannel.channel_number" type="number" min="1" class="form-control" />
+          </div>
+          <div class="form-group mb-3">
+            <label>Mã hóa chất</label>
+            <input v-model="editChannel.chemical_code" type="text" class="form-control" placeholder="AC02" />
+          </div>
+          <p v-if="editChannelError" class="text-error font-sm">❌ {{ editChannelError }}</p>
+          <div class="modal-actions">
+            <button @click="showEditChannel = false" class="btn btn-secondary">Hủy</button>
+            <button @click="submitEditChannel" class="btn btn-primary" :disabled="!editChannel.channel_number || !editChannel.chemical_code || editingChannel">
+              {{ editingChannel ? 'Đang lưu...' : 'Lưu thay đổi' }}
             </button>
           </div>
         </div>
@@ -257,6 +292,17 @@ const newChannel = ref<{ machine_id: number | null; channel_number: number | nul
 const addingChannel = ref(false);
 const addChannelError = ref('');
 
+const showEditChannel = ref(false);
+const editChannel = ref<{ channel_id: number | null; machine_code: string; original_channel_number: number | null; channel_number: number | null; chemical_code: string }>({
+  channel_id: null,
+  machine_code: '',
+  original_channel_number: null,
+  channel_number: null,
+  chemical_code: ''
+});
+const editingChannel = ref(false);
+const editChannelError = ref('');
+
 let pollInterval: any = null;
 
 // Group channels by Machine Code
@@ -349,6 +395,36 @@ async function submitAddChannel() {
     addChannelError.value = err.response?.data?.message || 'Không thể thêm kênh mới.';
   } finally {
     addingChannel.value = false;
+  }
+}
+
+function openEditChannel(channel: ChemicalChannel) {
+  editChannel.value = {
+    channel_id: channel.channel_id,
+    machine_code: channel.machine_code,
+    original_channel_number: channel.channel_number,
+    channel_number: channel.channel_number,
+    chemical_code: channel.chemical_code
+  };
+  editChannelError.value = '';
+  showEditChannel.value = true;
+}
+
+async function submitEditChannel() {
+  editChannelError.value = '';
+  editingChannel.value = true;
+  try {
+    await axios.patch(`/api/chemical-channels/${editChannel.value.channel_id}`, {
+      channel_number: editChannel.value.channel_number,
+      chemical_code: editChannel.value.chemical_code
+    }, getRequestConfig());
+    showEditChannel.value = false;
+    await fetchChannels();
+    successMsg.value = `Đã cập nhật kênh ${editChannel.value.channel_number} (${editChannel.value.machine_code}).`;
+  } catch (err: any) {
+    editChannelError.value = err.response?.data?.message || 'Không thể sửa kênh.';
+  } finally {
+    editingChannel.value = false;
   }
 }
 
@@ -770,8 +846,20 @@ onUnmounted(() => {
   gap: var(--space-md);
 }
 
+.action-btn-col {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .toggle-btn {
   min-height: 34px;
+}
+
+.edit-channel-btn {
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 0 10px;
 }
 
 .modal-overlay {

@@ -56,6 +56,7 @@ Route::middleware(\App\Http\Middleware\KioskAuthenticationMiddleware::class)->gr
     // Chemical Calls (Wave 2)
     Route::get('/chemical-channels', [\App\Http\Controllers\ChemicalCallController::class, 'getChannels']);
     Route::post('/chemical-channels', [\App\Http\Controllers\ChemicalCallController::class, 'storeChannel']);
+    Route::patch('/chemical-channels/{id}', [\App\Http\Controllers\ChemicalCallController::class, 'updateChannel']);
     Route::post('/chemical-call-requests', [\App\Http\Controllers\ChemicalCallController::class, 'createRequest']);
     Route::patch('/chemical-call-requests/{id}/acknowledge', [\App\Http\Controllers\ChemicalCallController::class, 'acknowledge']);
     Route::patch('/chemical-call-requests/{id}/complete', [\App\Http\Controllers\ChemicalCallController::class, 'complete']);
