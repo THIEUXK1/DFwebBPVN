@@ -170,7 +170,7 @@
                   </option>
                 </select>
                 <button
-                  v-else
+                  v-else-if="batch.status === 'NEW'"
                   class="tank-pick-btn"
                   @click="openTankEdit(batch)"
                   title="Bấm để chọn nhanh Thùng trộn"
@@ -178,6 +178,9 @@
                   <span class="tank-tag" v-if="batch.tank">{{ batch.tank?.code }}</span>
                   <span class="text-muted" v-else>+ Chọn thùng</span>
                 </button>
+                <span v-else class="tank-tag" title="Đơn đã duyệt — không thể đổi Thùng trộn nữa">
+                  {{ batch.tank?.code || 'N/A' }}
+                </span>
               </td>
               <td>
                 <div class="progress-bar-wrapper" :title="'Độ hoàn tất: ' + getProgressPercent(batch.status) + '%'">
@@ -380,6 +383,7 @@
             <div class="detail-item">
               <span class="detail-label">Thùng trộn nhuộm</span>
               <select
+                v-if="selectedBatch.status === 'NEW'"
                 :value="selectedBatch.tank_id || ''"
                 class="form-select detail-tank-select"
                 @change="updateTank(selectedBatch, ($event.target as HTMLSelectElement).value)"
@@ -389,6 +393,9 @@
                   Thùng {{ t.code }}
                 </option>
               </select>
+              <span v-else class="detail-value" title="Đơn đã duyệt — không thể đổi Thùng trộn nữa">
+                {{ selectedBatch.tank ? 'Thùng ' + selectedBatch.tank.code : 'Chưa chọn' }}
+              </span>
             </div>
             <div class="detail-item" v-if="selectedBatch.level_code">
               <span class="detail-label">Mức nước chỉ định</span>

@@ -13,6 +13,7 @@
           <th>Trạm gửi</th>
           <th>Thời gian chuyển</th>
           <th>Trạng thái in mới nhất</th>
+          <th>Thao tác</th>
         </tr>
       </thead>
       <tbody>
@@ -32,11 +33,19 @@
               </span>
               <span v-if="d.print_jobs?.length > 1" class="text-muted font-xs ml-1">({{ d.print_jobs.length }} lần)</span>
             </td>
+            <td class="actions-cell" @click.stop>
+              <button
+                v-if="latestJob(d) && latestJob(d)?.status !== 'PENDING'"
+                class="btn btn-secondary btn-sm"
+                :disabled="busyId === d.id"
+                @click="requestReprint(d)"
+              >🖨️ In lại</button>
+            </td>
           </tr>
 
           <!-- Tier B: từng PrintJob (lần in đầu + các lần in lại) -->
           <tr v-if="expanded.has(d.id)" class="tier-b-wrap">
-            <td :colspan="9">
+            <td :colspan="10">
               <table class="data-table nested-table">
                 <thead>
                   <tr>

@@ -8,7 +8,7 @@
       <span class="spinner">⏳</span> Đang tải thông tin van đường ống xưởng nhuộm...
     </div>
 
-    <div v-else class="machine-grid" :class="{ 'grid-4col': isFullscreen }">
+    <div v-else class="machine-grid">
       <div
         v-for="(channels, machineCode) in groupedChannels"
         :key="machineCode"
@@ -60,7 +60,6 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import echo from '../services/echo';
-import { isFullscreen } from '../services/layout';
 
 interface RequestInfo {
   id: string;
@@ -189,19 +188,10 @@ onUnmounted(() => {
 
 .machine-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  /* Luôn cố định 3 cột (yêu cầu 2026-07-25) — trang này không hiện AppLayout/nút Toàn
+     màn hình nên bỏ hẳn phụ thuộc vào isFullscreen dùng chung toàn app. */
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--space-lg);
-}
-
-@media (min-width: 1200px) {
-  .machine-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  /* Đang ở chế độ Toàn màn hình (sidebar+topbar ẩn) — nhiều chỗ trống hơn, dùng 4 cột */
-  .machine-grid.grid-4col {
-    grid-template-columns: repeat(4, 1fr);
-  }
 }
 
 .machine-card {

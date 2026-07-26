@@ -380,7 +380,7 @@ import { ref, onMounted, onUnmounted, reactive } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import axios from 'axios';
 import SvgIcon from '../components/SvgIcon.vue';
-import realtimeService from '../services/realtime';
+import echo from '../services/echo';
 
 const authStore = useAuthStore();
 
@@ -441,29 +441,47 @@ const alertModalAction = ref<'ACKNOWLEDGE' | 'RESOLVE'>('ACKNOWLEDGE');
 const selectedAlertForAction = ref<any | null>(null);
 const alertActionNotes = ref('');
 
-// Setup Realtime Connection
+// Setup Realtime Connection — qua Reverb (kênh public "dashboard-events"), thay cho SSE
+// cũ (/api/realtime/stream) đã bị gỡ 2026-07-25 vì giữ 1 kết nối HTTP sống mãi khiến
+// php artisan serve trên Windows (không có concurrency thật) bị treo chỉ với 1 tab mở.
+let liveWeightPoller: any = null;
+
+const fetchLiveWeights = async () => {
+  for (const ws of workstations.value) {
+    try {
+      const res = await axios.get(`/api/devices/readings/${ws.id}`);
+      const live = res.data;
+      ws.active = !!live?.active;
+      ws.weight = live?.weight ?? 0;
+      ws.lastUpdated = ws.active ? new Date().toLocaleTimeString('vi-VN', { hour12: false }) : 'Không có dữ liệu';
+    } catch {
+      // Bỏ qua lỗi 1 lần đọc — sẽ tự thử lại ở vòng poll tiếp theo.
+    }
+  }
+};
+
 const initRealtimeConnection = () => {
-  const token = authStore.token;
-  if (!token) return;
+  // 1. Theo dõi trạng thái kết nối WebSocket (Reverb) qua pusher-js connector.
+  const pusherConnection = (echo.connector as any)?.pusher?.connection;
+  const mapping: Record<string, string> = {
+    connected: 'Đã kết nối trực tiếp (Realtime Online)',
+    connecting: 'Đang kết nối...',
+    unavailable: 'Mất kết nối. Đang thử kết nối lại...',
+    disconnected: 'Không có kết nối mạng',
+    failed: 'Không có kết nối mạng',
+  };
+  const applyStatus = (state: string) => {
+    connectionStatus.value = state === 'connected' ? 'ONLINE' : (state === 'connecting' ? 'RECONNECTING' : 'OFFLINE');
+    connectionStatusText.value = mapping[state] || 'Chờ kết nối';
+  };
+  if (pusherConnection) {
+    applyStatus(pusherConnection.state);
+    pusherConnection.bind('state_change', (states: any) => applyStatus(states.current));
+  }
 
-  // 1. Hook Connection Status
-  realtimeService.connect(token);
-  
-  // Track reactive connection status
-  const checkStatusInterval = setInterval(() => {
-    connectionStatus.value = realtimeService.status.value;
-    const mapping: Record<string, string> = {
-      'ONLINE': 'Đã kết nối trực tiếp (Realtime Online)',
-      'RECONNECTING': 'Mất kết nối. Đang thử kết nối lại...',
-      'FALLBACK': 'Chế độ dự phòng hoạt động (Polling 10s)',
-      'OFFLINE': 'Không có kết nối mạng'
-    };
-    connectionStatusText.value = mapping[realtimeService.status.value] || 'Chờ kết nối';
-  }, 1000);
-
-  // 2. Subscribe to transactional events
-  realtimeService.subscribe('*', (event: any) => {
-    // Whenever any transactional event arrives, fetch corresponding snapshots to keep view fresh
+  // 2. Lắng nghe mọi sự kiện nghiệp vụ (batch/dispatch/alert/...) qua kênh public — làm mới
+  // snapshot ngay khi có thay đổi thay vì đợi polling.
+  echo.channel('dashboard-events').listen('.event', () => {
     fetchOverviewSnapshot();
     fetchWeighingSnapshot();
     fetchMachinesSnapshot();
@@ -471,30 +489,20 @@ const initRealtimeConnection = () => {
     fetchManagementKpiSnapshot();
   });
 
-  // 3. Subscribe to live scale telemetry heartbeat (updates live weights without DB queries)
-  realtimeService.subscribe('scale_heartbeat', (data: any) => {
-    workstations.value.forEach(ws => {
-      const live = data[ws.id];
-      if (live) {
-        ws.active = live.active;
-        ws.weight = live.weight;
-        ws.lastUpdated = live.active ? new Date().toLocaleTimeString('vi-VN', { hour12: false }) : 'Heartbeat offline';
-      }
-    });
-  });
+  // 3. Cân điện tử đọc trọng lượng live qua REST polling nhẹ (giống WeighingStation.vue),
+  // không cần kênh riêng vì tần suất đổi rất nhanh (mỗi giây) không hợp broadcast từng sự kiện.
+  fetchLiveWeights();
+  liveWeightPoller = setInterval(fetchLiveWeights, 2000);
 
-  // 4. Hook fallback polling sync
-  realtimeService.subscribe('fallback_sync', (data: any) => {
-    // If running in polling fallback mode, sync state
-    if (data.overview) {
-      overviewData.value = data.overview;
-    }
-  });
-
-  // Clean up
   return () => {
-    clearInterval(checkStatusInterval);
-    realtimeService.disconnect();
+    echo.leaveChannel('dashboard-events');
+    if (pusherConnection) {
+      pusherConnection.unbind('state_change');
+    }
+    if (liveWeightPoller) {
+      clearInterval(liveWeightPoller);
+      liveWeightPoller = null;
+    }
   };
 };
 
@@ -508,7 +516,6 @@ onMounted(() => {
   fetchAlertsSnapshot();
   fetchManagementKpiSnapshot();
 
-  // Establish SSE stream connection
   disposeRealtime = initRealtimeConnection();
 });
 

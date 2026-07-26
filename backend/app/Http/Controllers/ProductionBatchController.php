@@ -217,6 +217,16 @@ class ProductionBatchController extends Controller
         $batch = ProductionBatch::findOrFail($id);
         $tankId = $request->input('tank_id');
 
+        // Yêu cầu 2026-07-26: khóa Thùng trộn sau khi đơn đã duyệt — đơn NEW mới cho đổi
+        // thùng tự do, từ APPROVED trở đi coi như đã "chốt" để tránh QR/tem đã phát hành
+        // (dùng batch.tank tại thời điểm in) bị lệch so với thùng thực tế đã ghi ở tem.
+        if ($batch->status !== 'NEW') {
+            return response()->json([
+                'status' => 'ERROR',
+                'message' => 'Đơn đã duyệt — không thể đổi Thùng trộn nữa.',
+            ], 422);
+        }
+
         if ($tankId !== null) {
             $tank = \App\Models\Tank::find($tankId);
             if (!$tank || $tank->machine_id !== $batch->machine_id) {

@@ -186,8 +186,11 @@ Route::middleware(\App\Http\Middleware\KioskAuthenticationMiddleware::class)->gr
     Route::get('/audit-logs/filters', [\App\Http\Controllers\ReportController::class, 'auditLogFilters']);
 });
 
-// Realtime SSE stream (Public, manually authenticated via query token)
-Route::get('/realtime/stream', [\App\Http\Controllers\RealtimeController::class, 'stream']);
+// Route SSE cũ (/realtime/stream) đã bị GỠ BỎ 2026-07-25: vòng lặp while(true) giữ 1
+// connection HTTP sống mãi khiến php artisan serve trên Windows (không có fork(), không
+// có concurrency thật) bị chiếm dụng vĩnh viễn chỉ bởi 1 tab đang mở — mọi request khác
+// treo vô thời hạn. Thay bằng Reverb (App\Events\RealtimeEventBroadcast, kênh
+// "dashboard-events") — xem RealtimeService::publish() và frontend/src/views/Dashboard.vue.
 
 // Device / Agent Integration Routes — xác thực bằng token workstation (agent.auth),
 // KHÔNG dùng auth:sanctum (Local Agent không phải người dùng đăng nhập).

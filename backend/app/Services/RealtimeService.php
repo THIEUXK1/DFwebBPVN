@@ -8,13 +8,16 @@ use App\Models\Alert;
 use App\Models\ProductionBatch;
 use App\Models\MaterialTransport;
 use App\Models\MachineDispatch;
+use App\Events\RealtimeEventBroadcast;
 use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 
 class RealtimeService
 {
     /**
-     * Publish a realtime event to the transactional outbox table.
+     * Publish a realtime event to the transactional outbox table, và bắn qua Reverb
+     * (kênh public "dashboard-events") để Dashboard.vue tự làm mới ngay thay vì phải
+     * giữ 1 kết nối SSE sống mãi (xem RealtimeEventBroadcast).
      */
     public static function publish(
         string $eventType,
@@ -25,7 +28,7 @@ class RealtimeService
         ?int $machineId = null,
         ?string $batchId = null
     ): RealtimeEvent {
-        return RealtimeEvent::create([
+        $event = RealtimeEvent::create([
             'event_type' => $eventType,
             'entity_type' => $entityType,
             'entity_id' => $entityId,
@@ -35,6 +38,18 @@ class RealtimeService
             'batch_id' => $batchId,
             'occurred_at' => Carbon::now(),
         ]);
+
+        RealtimeEventBroadcast::dispatch([
+            'id' => $event->id,
+            'event_type' => $event->event_type,
+            'entity_type' => $event->entity_type,
+            'entity_id' => $event->entity_id,
+            'payload' => $event->payload,
+            'machine_id' => $event->machine_id,
+            'batch_id' => $event->batch_id,
+        ]);
+
+        return $event;
     }
 
     /**

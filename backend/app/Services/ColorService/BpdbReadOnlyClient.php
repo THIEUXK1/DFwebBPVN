@@ -79,8 +79,12 @@ class BpdbReadOnlyClient
         $encrypt = ($this->config['encrypt'] ?? false) ? 'yes' : 'no';
         $trustCert = ($this->config['trust_server_certificate'] ?? true) ? 'yes' : 'no';
 
+        // PDO::ATTR_TIMEOUT không được driver pdo_odbc tôn trọng (chỉ pdo_mysql/pdo_pgsql
+        // dùng nó) — nếu SQL Server chậm/treo, PHP built-in server (single-threaded) sẽ bị
+        // đơ TOÀN BỘ vì đang xử lý tuần tự từng request. "Connection Timeout" là keyword
+        // DSN thật sự được ODBC Driver for SQL Server tôn trọng, phải khai báo ở đây.
         $dsn = "odbc:Driver={{$driver}};Server={$host},{$port};Database={$database};"
-             . "Encrypt={$encrypt};TrustServerCertificate={$trustCert};";
+             . "Encrypt={$encrypt};TrustServerCertificate={$trustCert};Connection Timeout=5;";
 
         $this->pdo = new PDO($dsn, $this->config['username'], $this->config['password'], [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
