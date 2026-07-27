@@ -8,7 +8,42 @@
       <span class="spinner">⏳</span> Đang tải thông tin van đường ống xưởng nhuộm...
     </div>
 
-    <div v-else class="machine-grid">
+    <!-- Bảng tổng hợp "đang chờ xử lý" — gom tất cả thùng "chưa OK" từ mọi máy vào 1 chỗ,
+         xếp theo thời gian gọi lâu nhất trước, để người trực không phải rà từng card máy
+         mới biết có bao nhiêu yêu cầu đang chờ. -->
+    <div v-else class="card pending-panel" :class="{ 'has-pending': pendingChannels.length > 0 }">
+      <div class="pending-panel-header">
+        <span v-if="pendingChannels.length > 0" class="alert-dot" aria-hidden="true"></span>
+        <span>{{ pendingChannels.length > 0 ? `🔴 Đang chờ xử lý (${pendingChannels.length})` : '✅ Không có yêu cầu nào đang chờ' }}</span>
+      </div>
+
+      <div v-if="pendingChannels.length > 0" class="pending-list">
+        <div v-for="c in pendingChannels" :key="c.channel_id" class="pending-item">
+          <div class="pending-item-main">
+            <span class="channel-number-pill">{{ c.machine_code }} — Thùng {{ c.channel_number }}</span>
+            <span class="chem-formula">{{ c.chemical_code }}</span>
+          </div>
+          <div class="pending-item-meta">
+            <span class="font-xs text-muted">Gọi lúc {{ c.current_request ? formatTime(c.current_request.requested_at) : '-' }}</span>
+            <div class="pending-item-actions">
+              <ChemicalCallQrThumb
+                v-if="dispatchLabelByChannel[c.channel_id]"
+                :text="dispatchLabelByChannel[c.channel_id].qr_text"
+              />
+              <button
+                @click="toggleChannel(c, $event)"
+                class="btn btn-sm py-1 font-semibold toggle-btn btn-danger"
+                :disabled="actionLoading === c.channel_id"
+              >
+                {{ actionLoading === c.channel_id ? 'Đang xử lý...' : '🔴 Bấm khi Xong' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="!loading" class="machine-grid">
       <div
         v-for="(channels, machineCode) in groupedChannels"
         :key="machineCode"
@@ -125,6 +160,18 @@ const dispatchLabelByChannel = computed(() => {
   return map;
 });
 
+// Xếp theo thời gian gọi lâu nhất trước — thùng chờ lâu nhất là thùng cần xử lý gấp nhất.
+const pendingChannels = computed(() => {
+  return channelsList.value
+    .filter(isChannelRed)
+    .slice()
+    .sort((a, b) => {
+      const ta = a.current_request?.requested_at ? new Date(a.current_request.requested_at).getTime() : 0;
+      const tb = b.current_request?.requested_at ? new Date(b.current_request.requested_at).getTime() : 0;
+      return ta - tb;
+    });
+});
+
 function isChannelRed(channel: ChemicalChannel): boolean {
   return !!channel.current_request && (channel.current_request.status === 'ORDERED' || channel.current_request.status === 'ACKNOWLEDGED');
 }
@@ -223,6 +270,63 @@ onUnmounted(() => {
   flex-direction: column;
   gap: var(--space-md);
   padding: var(--space-md);
+}
+
+.pending-panel {
+  padding: var(--space-md) var(--space-lg);
+  transition: border-color 0.2s ease;
+}
+
+.pending-panel.has-pending {
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.pending-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text-title);
+}
+
+.pending-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.pending-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background-color: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid #ef4444;
+  flex: 1 1 240px;
+  max-width: 320px;
+}
+
+.pending-item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pending-item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pending-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .machine-grid {
