@@ -27,7 +27,7 @@
           >
             <div class="channel-number-col">
               <span v-if="isChannelRed(c)" class="alert-dot" aria-hidden="true"></span>
-              <span class="channel-number-pill">Kênh {{ c.channel_number }}</span>
+              <span class="channel-number-pill">Thùng {{ c.channel_number }}</span>
             </div>
 
             <div class="chemical-name-col">

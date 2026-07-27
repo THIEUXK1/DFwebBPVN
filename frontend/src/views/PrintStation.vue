@@ -114,48 +114,53 @@
 
       <p v-if="confirmError" class="text-error mt-2">❌ {{ confirmError }}</p>
 
-      <div class="table-container-fixed mt-3" v-if="pendingDispatches.length">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Mã Lô</th>
-              <th>Màu</th>
-              <th>Mã hàng</th>
-              <th>Máy</th>
-              <th>Thùng</th>
-              <th>Trạng thái</th>
-              <th>Thao tác</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="d in pendingDispatches" :key="d.id" class="row-not-printed">
-              <td class="highlight-code">{{ d.batch?.legacy_batch_id }}</td>
-              <td>{{ d.batch?.color }}</td>
-              <td>{{ d.batch?.product_code }}</td>
-              <td><span class="machine-tag">{{ d.batch?.machine?.code || 'N/A' }}</span></td>
-              <td>{{ d.batch?.tank?.code || '-' }}</td>
-              <td>
-                <span class="badge badge-red">Chưa in</span>
-              </td>
-              <td class="actions-cell">
-                <button
-                  @click="confirmAndPrint(d)"
-                  class="btn btn-primary btn-sm"
-                  :disabled="confirmingId === d.id"
-                >
-                  {{ confirmingId === d.id ? 'Đang xử lý...' : '⚡ In nhanh' }}
-                </button>
-                <button
-                  @click="openPrintPreview(d)"
-                  class="btn btn-secondary btn-sm"
-                  :disabled="confirmingId === d.id"
-                >
-                  👁️ Xem trước
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="queue-columns mt-3" v-if="pendingDispatches.length">
+        <div class="table-container-fixed" v-for="(col, colIdx) in queueColumns" :key="colIdx">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Mã Lô</th>
+                <th>Màu</th>
+                <th>Mã hàng</th>
+                <th>Máy</th>
+                <th>Thùng</th>
+                <th>Trạng thái</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="d in col" :key="d.id" class="row-not-printed">
+                <td class="highlight-code">{{ d.batch?.legacy_batch_id }}</td>
+                <td>{{ d.batch?.color }}</td>
+                <td>{{ d.batch?.product_code }}</td>
+                <td><span class="machine-tag">{{ d.batch?.machine?.code || 'N/A' }}</span></td>
+                <td>{{ d.batch?.tank?.code || '-' }}</td>
+                <td>
+                  <span class="badge badge-red">Chưa in</span>
+                </td>
+                <td class="actions-cell">
+                  <button
+                    @click="confirmAndPrint(d)"
+                    class="btn btn-primary btn-sm"
+                    :disabled="confirmingId === d.id"
+                  >
+                    {{ confirmingId === d.id ? 'Đang xử lý...' : '⚡ In nhanh' }}
+                  </button>
+                  <button
+                    @click="openPrintPreview(d)"
+                    class="btn btn-secondary btn-sm"
+                    :disabled="confirmingId === d.id"
+                  >
+                    👁️ Xem trước
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="!col.length">
+                <td colspan="7" class="text-muted text-center">Không có đơn nào ở cột này.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
       <p v-else class="text-muted text-center mt-3">Không có đơn nào đang chờ in.</p>
     </section>
@@ -516,6 +521,13 @@ const pendingDispatches = ref<any[]>([]);
 const confirmingId = ref<string | null>(null);
 const confirmError = ref('');
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+// Chia danh sách hàng chờ in thành 2 cột (yêu cầu 2026-07-27) — cột trái lấp đầy trước,
+// cột phải chứa phần còn lại, để xem được nhiều đơn hơn mà không phải cuộn dọc quá dài.
+const queueColumns = computed(() => {
+  const half = Math.ceil(pendingDispatches.value.length / 2);
+  return [pendingDispatches.value.slice(0, half), pendingDispatches.value.slice(half)];
+});
 
 async function fetchPendingDispatches() {
   try {
@@ -1156,6 +1168,16 @@ onUnmounted(() => {
   width: 100%;
   overflow-x: auto;
   border-radius: var(--radius-lg);
+}
+.queue-columns {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-lg);
+}
+@media (max-width: 900px) {
+  .queue-columns {
+    grid-template-columns: 1fr;
+  }
 }
 .highlight-code {
   color: var(--primary-hover);

@@ -97,6 +97,16 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // LAN nội bộ tới server vật lý 10.0.60.209 thỉnh thoảng chập chờn (mất gói tin,
+            // không phải bị từ chối kết nối hẳn) — không set timeout thì PDO có thể treo rất
+            // lâu ở bước bắt tay TCP. Vì backend này chạy `php artisan serve` đơn luồng và
+            // cũng đang phục vụ luôn các Local Agent ngoài xưởng trong giai đoạn Parallel Run,
+            // 1 request bị treo do mất mạng sẽ đơ toàn bộ app cho mọi người, giống lỗi SSE và
+            // ODBC BPDB đã sửa trước đó. PDO::ATTR_TIMEOUT được pdo_pgsql tôn trọng làm
+            // connect_timeout (khác pdo_odbc không tôn trọng nó).
+            'options' => [
+                PDO::ATTR_TIMEOUT => 5,
+            ],
             // Server DB dùng chung (10.0.60.209) có session TimeZone mặc định là
             // 'Asia/Bangkok' (UTC+7), không phải UTC như app.timezone của Laravel. Cột
             // timestamptz khi PHP ghi now() (UTC, không kèm offset) xuống bị Postgres hiểu

@@ -25,7 +25,7 @@
     <!-- Quản lý danh mục: thêm máy mới / thêm kênh mới -->
     <div class="admin-actions-row">
       <button @click="openAddMachine" class="btn btn-secondary btn-sm">➕ Thêm máy</button>
-      <button @click="openAddChannel" class="btn btn-secondary btn-sm">➕ Thêm kênh</button>
+      <button @click="openAddChannel" class="btn btn-secondary btn-sm">➕ Thêm thùng</button>
     </div>
 
     <!-- Factory Operating Grid (Equivalent to VBA CHEM_ORDER) -->
@@ -53,7 +53,7 @@
           >
             <div class="channel-number-col">
               <span v-if="isChannelRed(c)" class="alert-dot" aria-hidden="true"></span>
-              <span class="channel-number-pill">Kênh {{ c.channel_number }}</span>
+              <span class="channel-number-pill">Thùng {{ c.channel_number }}</span>
             </div>
 
             <div class="chemical-name-col">
@@ -78,7 +78,7 @@
               <button
                 @click="openEditChannel(c)"
                 class="btn btn-sm btn-secondary edit-channel-btn"
-                title="Sửa kênh (số kênh / mã hóa chất)"
+                title="Sửa thùng (số thùng / mã hóa chất)"
                 :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'"
               >
                 ✏️
@@ -120,7 +120,7 @@
     <div v-if="showAddChannel" class="modal-overlay" @click.self="showAddChannel = false">
       <div class="ws-modal-card">
         <div class="modal-header">
-          <h3>➕ Thêm kênh mới</h3>
+          <h3>➕ Thêm thùng mới</h3>
           <button @click="showAddChannel = false" class="close-btn">&times;</button>
         </div>
         <div class="modal-body">
@@ -132,7 +132,7 @@
             </select>
           </div>
           <div class="form-group mb-3">
-            <label>Số kênh</label>
+            <label>Số thùng</label>
             <input v-model.number="newChannel.channel_number" type="number" min="1" class="form-control" placeholder="1" />
           </div>
           <div class="form-group mb-3">
@@ -143,7 +143,7 @@
           <div class="modal-actions">
             <button @click="showAddChannel = false" class="btn btn-secondary">Hủy</button>
             <button @click="submitAddChannel" class="btn btn-primary" :disabled="!newChannel.machine_id || !newChannel.channel_number || !newChannel.chemical_code || addingChannel">
-              {{ addingChannel ? 'Đang lưu...' : 'Lưu kênh mới' }}
+              {{ addingChannel ? 'Đang lưu...' : 'Lưu thùng mới' }}
             </button>
           </div>
         </div>
@@ -154,12 +154,12 @@
     <div v-if="showEditChannel" class="modal-overlay" @click.self="showEditChannel = false">
       <div class="ws-modal-card">
         <div class="modal-header">
-          <h3>✏️ Sửa kênh {{ editChannel.machine_code }} — Kênh {{ editChannel.original_channel_number }}</h3>
+          <h3>✏️ Sửa thùng {{ editChannel.machine_code }} — Thùng {{ editChannel.original_channel_number }}</h3>
           <button @click="showEditChannel = false" class="close-btn">&times;</button>
         </div>
         <div class="modal-body">
           <div class="form-group mb-3">
-            <label>Số kênh</label>
+            <label>Số thùng</label>
             <input v-model.number="editChannel.channel_number" type="number" min="1" class="form-control" />
           </div>
           <div class="form-group mb-3">
@@ -190,7 +190,7 @@
               <tr>
                 <th>Thời gian</th>
                 <th>Máy</th>
-                <th>Kênh</th>
+                <th>Thùng</th>
                 <th>Hóa chất</th>
                 <th>Chuyển trạng thái</th>
                 <th>Người thao tác</th>
@@ -202,7 +202,7 @@
               <tr v-for="(log, idx) in logs" :key="idx" :class="log.type">
                 <td class="font-mono">{{ log.time }}</td>
                 <td><strong>{{ log.machine_code || '-' }}</strong></td>
-                <td>Kênh {{ log.channel_number || '-' }}</td>
+                <td>Thùng {{ log.channel_number || '-' }}</td>
                 <td class="font-mono text-info">{{ log.chemical_code || '-' }}</td>
                 <td>
                   <span class="status-transition">
@@ -393,9 +393,9 @@ async function submitAddChannel() {
     await axios.post('/api/chemical-channels', newChannel.value);
     showAddChannel.value = false;
     await fetchChannels();
-    successMsg.value = `Đã thêm kênh ${newChannel.value.channel_number} thành công.`;
+    successMsg.value = `Đã thêm thùng ${newChannel.value.channel_number} thành công.`;
   } catch (err: any) {
-    addChannelError.value = err.response?.data?.message || 'Không thể thêm kênh mới.';
+    addChannelError.value = err.response?.data?.message || 'Không thể thêm thùng mới.';
   } finally {
     addingChannel.value = false;
   }
@@ -423,9 +423,9 @@ async function submitEditChannel() {
     }, getRequestConfig());
     showEditChannel.value = false;
     await fetchChannels();
-    successMsg.value = `Đã cập nhật kênh ${editChannel.value.channel_number} (${editChannel.value.machine_code}).`;
+    successMsg.value = `Đã cập nhật thùng ${editChannel.value.channel_number} (${editChannel.value.machine_code}).`;
   } catch (err: any) {
-    editChannelError.value = err.response?.data?.message || 'Không thể sửa kênh.';
+    editChannelError.value = err.response?.data?.message || 'Không thể sửa thùng.';
   } finally {
     editingChannel.value = false;
   }
@@ -449,7 +449,7 @@ async function toggleChannel(channel: ChemicalChannel) {
       const requestId = channel.current_request!.id;
       await axios.patch(`/api/chemical-call-requests/${requestId}/complete`, {}, getRequestConfig());
       await axios.patch(`/api/chemical-call-requests/${requestId}/reset`, {}, getRequestConfig());
-      successMsg.value = `Đã đánh dấu XONG cho máy ${channel.machine_code} - Kênh ${channel.channel_number}.`;
+      successMsg.value = `Đã đánh dấu XONG cho máy ${channel.machine_code} - Thùng ${channel.channel_number}.`;
     } else {
       // Nếu còn sót request DONE cũ chưa đóng (VD do lỗi mạng lần trước), đóng nốt
       // trước khi gọi mới — tránh vi phạm ràng buộc unique request đang active.
@@ -461,12 +461,12 @@ async function toggleChannel(channel: ChemicalChannel) {
         channel_id: channel.channel_id,
         idempotency_key: idempotencyKey
       }, getRequestConfig());
-      successMsg.value = `Đã GỌI hóa chất cho máy ${channel.machine_code} - Kênh ${channel.channel_number}.`;
+      successMsg.value = `Đã GỌI hóa chất cho máy ${channel.machine_code} - Thùng ${channel.channel_number}.`;
     }
     await fetchChannels();
     await fetchRecentEvents();
   } catch (err: any) {
-    errorMsg.value = err.response?.data?.message || 'Không thể đổi trạng thái kênh.';
+    errorMsg.value = err.response?.data?.message || 'Không thể đổi trạng thái thùng.';
   } finally {
     actionLoading.value = null;
   }
