@@ -65,6 +65,12 @@ Route::middleware(\App\Http\Middleware\KioskAuthenticationMiddleware::class)->gr
     Route::get('/chemical-call-requests/{id}/events', [\App\Http\Controllers\ChemicalCallController::class, 'getEvents']);
     Route::get('/chemical-call-events', [\App\Http\Controllers\ChemicalCallController::class, 'getRecentEvents']);
 
+    // Báo phát AC — cấu hình cố định theo máy + bảng tra khối lượng (Wave 2 follow-up)
+    Route::get('/chemical-dispatch-labels', [\App\Http\Controllers\ChemicalDispatchLabelController::class, 'index']);
+    Route::post('/chemical-dispatch-labels', [\App\Http\Controllers\ChemicalDispatchLabelController::class, 'store']);
+    Route::patch('/chemical-dispatch-labels/{id}', [\App\Http\Controllers\ChemicalDispatchLabelController::class, 'update']);
+    Route::get('/chemical-weight-references', [\App\Http\Controllers\ChemicalDispatchLabelController::class, 'weightReferences']);
+
     // Scale Measurements for Web App
     Route::get('/devices/readings/{workstation_id}', [\App\Http\Controllers\DeviceController::class, 'getReading']);
     Route::get('/scale-measurements', [\App\Http\Controllers\ScaleMeasurementController::class, 'index']);

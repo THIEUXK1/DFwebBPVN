@@ -39,6 +39,16 @@
             </div>
 
             <div class="action-btn-col">
+              <!-- QR "Báo phát AC" — 9 dòng giá trị thô đúng định dạng gốc
+                   Mod_MAKE_QR.TaoQR_chemical ("6.báo phát AC- 151.xlsm"), sinh nội bộ (không
+                   qrserver.com, CLAUDE.md mục 5). Mỗi THÙNG có cặp mã hóa chất riêng nên
+                   gắn theo channel_id, không theo máy. Chỉ hiện khi thùng có cấu hình VÀ
+                   đang "chưa OK" — đúng yêu cầu "sinh QR khi máy không ok". -->
+              <ChemicalCallQrThumb
+                v-if="dispatchLabelByChannel[c.channel_id] && isChannelRed(c)"
+                :text="dispatchLabelByChannel[c.channel_id].qr_text"
+              />
+
               <!-- Nút toggle: xanh (OK) <-> đỏ (chưa OK), giống trạm thao tác /chemical-call -->
               <button
                 @click="toggleChannel(c, $event)"
@@ -60,6 +70,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import echo from '../services/echo';
+import ChemicalCallQrThumb from '../components/ChemicalCallQrThumb.vue';
 
 interface RequestInfo {
   id: string;
@@ -76,7 +87,14 @@ interface ChemicalChannel {
   current_request: RequestInfo | null;
 }
 
+interface DispatchLabel {
+  id: number;
+  channel_id: number;
+  qr_text: string;
+}
+
 const channelsList = ref<ChemicalChannel[]>([]);
+const dispatchLabels = ref<DispatchLabel[]>([]);
 const loading = ref(true);
 const errorMsg = ref('');
 const actionLoading = ref<number | null>(null);
@@ -99,6 +117,14 @@ const groupedChannels = computed(() => {
   return groups;
 });
 
+const dispatchLabelByChannel = computed(() => {
+  const map: Record<number, DispatchLabel> = {};
+  dispatchLabels.value.forEach(label => {
+    map[label.channel_id] = label;
+  });
+  return map;
+});
+
 function isChannelRed(channel: ChemicalChannel): boolean {
   return !!channel.current_request && (channel.current_request.status === 'ORDERED' || channel.current_request.status === 'ACKNOWLEDGED');
 }
@@ -113,6 +139,19 @@ async function fetchChannels() {
   } finally {
     loading.value = false;
   }
+}
+
+async function fetchDispatchLabels() {
+  try {
+    const res = await axios.get('/api/chemical-dispatch-labels');
+    dispatchLabels.value = res.data;
+  } catch (err) {
+    console.error('Failed to fetch chemical dispatch labels:', err);
+  }
+}
+
+async function refreshAll() {
+  await Promise.all([fetchChannels(), fetchDispatchLabels()]);
 }
 
 // Toggle 1 nút duy nhất: Xanh -> bấm = Gọi hóa chất (chuyển Đỏ). Đỏ -> bấm = báo Xong
@@ -162,14 +201,14 @@ function formatTime(timeStr: string | null) {
 }
 
 onMounted(async () => {
-  await fetchChannels();
+  await refreshAll();
 
   // Realtime qua Reverb — nghe chung kênh "chemical-channels" với /chemical-call, đổi
-  // trạng thái ở trang kia thấy NGAY ở đây, không đợi polling.
-  echo.channel('chemical-channels').listen('.updated', fetchChannels);
+  // trạng thái (hoặc cấu hình Báo phát AC) ở trang kia thấy NGAY ở đây, không đợi polling.
+  echo.channel('chemical-channels').listen('.updated', refreshAll);
 
   // Polling giữ làm lưới an toàn (WebSocket rớt kết nối tạm thời), chu kỳ dài hơn.
-  pollInterval = setInterval(fetchChannels, 10000);
+  pollInterval = setInterval(refreshAll, 10000);
 });
 
 onUnmounted(() => {
@@ -206,6 +245,10 @@ onUnmounted(() => {
 }
 
 .machine-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
   background-color: var(--bg-sidebar);
   border-bottom: 1px solid var(--border-divider);
@@ -338,7 +381,9 @@ onUnmounted(() => {
 
 .action-btn-col {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 8px;
   min-width: 0;
 }
 
