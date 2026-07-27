@@ -76,7 +76,10 @@ class ChemicalDispatchLabel extends Model
             $this->formatNumber($this->total_weight_2),
         ];
 
-        return implode("\n", $lines);
+        // CRLF (Chr(13)&Chr(10)) đúng như VBA gốc — không phải chỉ LF. Nhiều app quét QR
+        // hiển thị CR và LF thành 2 lần xuống dòng riêng, tạo đúng hiệu ứng "cách 1 dòng"
+        // giữa mỗi giá trị như ảnh QR gốc.
+        return implode("\r\n", $lines);
     }
 
     private function formatNumber($value): string
