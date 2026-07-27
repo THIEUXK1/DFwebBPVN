@@ -382,7 +382,8 @@ const menuGroupsRaw = [
       { path: '/material-transports', label: 'Vận chuyển', icon: 'transfer' },
       { path: '/feeding-monitor', label: 'Cấp máy', icon: 'feed' },
       { path: '/chemical-call', label: 'Gọi hóa chất', icon: 'recipe' },
-      { path: '/chemical-call/monitor', label: 'Giám sát Hóa chất', icon: 'dashboard' }
+      { path: '/chemical-call/monitor', label: 'Giám sát Hóa chất', icon: 'dashboard' },
+      { path: '/chemical-call/pending', label: 'Đang chờ xử lý', icon: 'bell' }
     ]
   },
   {
@@ -444,7 +445,8 @@ const currentRouteName = computed(() => {
     '/order-scan': 'Trạm Quét đơn QR',
     '/print-station': 'Trạm In tem',
     '/chemical-call': 'Trạm Gọi Hóa chất',
-    '/chemical-call/monitor': 'Giám sát Hệ thống Gọi Hóa chất'
+    '/chemical-call/monitor': 'Giám sát Hệ thống Gọi Hóa chất',
+    '/chemical-call/pending': 'Danh sách Hóa chất Đang chờ Xử lý'
   };
   return nameMap[route.path] || 'Trang chủ';
 });

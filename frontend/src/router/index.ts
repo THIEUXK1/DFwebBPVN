@@ -23,6 +23,7 @@ import PrintStation from '../views/PrintStation.vue';
 import WorkstationKioskSetup from '../views/WorkstationKioskSetup.vue';
 import ChemicalCall from '../views/ChemicalCall.vue';
 import ChemicalCallMonitor from '../views/ChemicalCallMonitor.vue';
+import ChemicalCallPending from '../views/ChemicalCallPending.vue';
 import KioskLanding from '../views/KioskLanding.vue';
 import KioskMenu from '../views/KioskMenu.vue';
 
@@ -70,6 +71,12 @@ const routes = [
     path: '/chemical-call/monitor',
     name: 'ChemicalCallMonitor',
     component: ChemicalCallMonitor,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/chemical-call/pending',
+    name: 'ChemicalCallPending',
+    component: ChemicalCallPending,
     meta: { requiresAuth: true }
   },
   {
