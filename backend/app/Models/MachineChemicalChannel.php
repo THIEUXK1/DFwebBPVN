@@ -53,6 +53,13 @@ class MachineChemicalChannel extends Model
         $combo = implode('+', $parts);
         $filename = "QR_{$this->machine->code}_{$combo}.jpg";
 
-        return file_exists(public_path("chemical-qr/{$filename}")) ? "/chemical-qr/{$filename}" : null;
+        if (!file_exists(public_path("chemical-qr/{$filename}"))) {
+            return null;
+        }
+
+        // rawurlencode filename (KHÔNG encode cả path) — dấu "+" thô trong URL bị server
+        // hiểu sai (không khớp tên file, rơi về route mặc định của Laravel thay vì trả
+        // đúng ảnh); encode thành "%2B" thì browser tải đúng file.
+        return '/chemical-qr/' . rawurlencode($filename);
     }
 }
