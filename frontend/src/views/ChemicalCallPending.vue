@@ -16,7 +16,7 @@
         <span>{{ pendingChannels.length > 0 ? `🔴 Đang chờ xử lý (${pendingChannels.length})` : '✅ Không có yêu cầu nào đang chờ' }}</span>
       </div>
 
-      <div v-if="pendingChannels.length > 0" class="pending-list">
+      <TransitionGroup v-if="pendingChannels.length > 0" name="card" tag="div" class="pending-list">
         <div v-for="c in pendingChannels" :key="c.channel_id" class="pending-card">
           <div class="pending-card-qr">
             <ChemicalCallQrImage
@@ -41,11 +41,11 @@
               class="btn btn-sm py-1 font-semibold toggle-btn btn-danger"
               :disabled="actionLoading === c.channel_id"
             >
-              {{ actionLoading === c.channel_id ? 'Đang xử lý...' : '🔴 Bấm khi Xong' }}
+              🔴 Bấm khi Xong
             </button>
           </div>
         </div>
-      </div>
+      </TransitionGroup>
     </div>
   </div>
 </template>
@@ -115,18 +115,27 @@ async function refreshAll() {
 
 // Toggle 1 nút duy nhất: Đỏ -> bấm = báo Xong (Hoàn thành + đóng yêu cầu luôn trong 1 lần
 // bấm, chuyển thẳng lại Xanh). Giống hệt logic ở /chemical-call và /chemical-call/monitor.
+//
+// Cập nhật LẠC QUAN (optimistic): xóa current_request khỏi state cục bộ NGAY khi bấm,
+// không đợi 2 lượt PATCH (complete rồi reset) xong mới cập nhật giao diện — thẻ biến mất
+// khỏi lưới ngay lập tức thay vì phải chờ round-trip mạng. Nếu API lỗi thì phục hồi lại
+// current_request cũ (rollback) và báo lỗi.
 async function toggleChannel(channel: ChemicalChannel, event?: MouseEvent) {
   (event?.currentTarget as HTMLElement | undefined)?.blur();
 
   errorMsg.value = '';
   actionLoading.value = channel.channel_id;
 
+  const previousRequest = channel.current_request;
+  channel.current_request = null;
+
   try {
-    const requestId = channel.current_request!.id;
+    const requestId = previousRequest!.id;
     await axios.patch(`/api/chemical-call-requests/${requestId}/complete`);
     await axios.patch(`/api/chemical-call-requests/${requestId}/reset`);
-    await fetchChannels();
+    fetchChannels();
   } catch (err: any) {
+    channel.current_request = previousRequest;
     errorMsg.value = err.response?.data?.message || 'Không thể đổi trạng thái kênh.';
   } finally {
     actionLoading.value = null;
@@ -221,6 +230,12 @@ onUnmounted(() => {
   margin-top: var(--space-md);
 }
 
+@media (max-width: 768px) {
+  .pending-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 .pending-card {
   display: flex;
   flex-direction: column;
@@ -287,5 +302,31 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Thẻ vào/ra mượt (vd bấm "Xong" hoặc có yêu cầu mới xuất hiện) thay vì đổi đột ngột;
+   .card-move làm các thẻ còn lại trượt êm vào chỗ trống khi 1 thẻ biến mất. */
+.card-move,
+.card-enter-active,
+.card-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.card-enter-from,
+.card-leave-to {
+  opacity: 0;
+  transform: scale(0.92);
+}
+
+.card-leave-active {
+  z-index: -1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-move,
+  .card-enter-active,
+  .card-leave-active {
+    transition: none;
+  }
 }
 </style>

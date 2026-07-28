@@ -10,7 +10,7 @@
 
     <div v-else class="machine-grid">
       <div
-        v-for="(channels, machineCode) in groupedChannels"
+        v-for="machineCode in sortedMachineCodes"
         :key="machineCode"
         class="card machine-card"
       >
@@ -20,7 +20,7 @@
 
         <div class="machine-card-body">
           <div
-            v-for="c in channels"
+            v-for="c in groupedChannels[machineCode]"
             :key="c.channel_id"
             class="channel-row"
             :class="isChannelRed(c) ? 'row-ordered' : 'row-done'"
@@ -60,7 +60,7 @@
                 :class="isChannelRed(c) ? 'btn-danger' : 'btn-success'"
                 :disabled="actionLoading === c.channel_id"
               >
-                {{ actionLoading === c.channel_id ? 'Đang xử lý...' : (isChannelRed(c) ? '🔴 Bấm khi Xong' : '🟢 OK — Bấm để Gọi') }}
+                {{ isChannelRed(c) ? '🔴 Bấm khi Xong' : '🟢 OK — Bấm để Gọi' }}
               </button>
             </div>
           </div>
@@ -101,6 +101,14 @@ const actionLoading = ref<number | null>(null);
 
 let pollInterval: any = null;
 
+// Số thứ tự máy trích từ mã "VDxxx" — dùng để sắp tăng dần đúng số (không phải so sánh
+// chuỗi, vì "VD010" < "VD9" theo chuỗi dù 10 > 9). Máy không khớp định dạng VD rơi
+// xuống cuối, xếp theo tên để vẫn có thứ tự ổn định.
+function machineSortNum(code: string): number {
+  const m = /^VD(\d+)$/.exec((code || '').toUpperCase().trim());
+  return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER;
+}
+
 const groupedChannels = computed(() => {
   const groups: Record<string, ChemicalChannel[]> = {};
   channelsList.value.forEach(c => {
@@ -115,6 +123,15 @@ const groupedChannels = computed(() => {
   });
 
   return groups;
+});
+
+// Danh sách máy theo thứ tự tăng dần (VD001 -> VD018...) để hiển thị thẻ máy trên màn
+// hình theo đúng thứ tự vật lý, thay vì thứ tự ngẫu nhiên theo dữ liệu trả về từ API.
+const sortedMachineCodes = computed(() => {
+  return Object.keys(groupedChannels.value).sort((a, b) => {
+    const diff = machineSortNum(a) - machineSortNum(b);
+    return diff !== 0 ? diff : a.localeCompare(b);
+  });
 });
 
 function isChannelRed(channel: ChemicalChannel): boolean {
@@ -140,6 +157,11 @@ async function refreshAll() {
 // Toggle 1 nút duy nhất: Xanh -> bấm = Gọi hóa chất (chuyển Đỏ). Đỏ -> bấm = báo Xong
 // (Hoàn thành + đóng yêu cầu luôn trong 1 lần bấm, chuyển thẳng lại Xanh). Giống hệt
 // logic ở trạm thao tác /chemical-call (xem ChemicalCall.vue::toggleChannel).
+//
+// Cập nhật LẠC QUAN: đổi màu/nhãn nút NGAY khi bấm, không đợi PATCH/POST xong mới cập
+// nhật (trước đây phải chờ 1-2 lượt network mới thấy đổi màu). id/thời gian thật của
+// request mới sẽ được đồng bộ lại ngay sau đó qua fetchChannels() chạy nền. Nếu API lỗi
+// thì rollback về trạng thái cũ và báo lỗi.
 async function toggleChannel(channel: ChemicalChannel, event?: MouseEvent) {
   // Bỏ focus khỏi nút trước khi disable nó — nếu không, trình duyệt tự cuộn
   // ngang khối .machine-card (overflow: hidden) để giữ nút đang focus trong
@@ -150,14 +172,20 @@ async function toggleChannel(channel: ChemicalChannel, event?: MouseEvent) {
   errorMsg.value = '';
   actionLoading.value = channel.channel_id;
 
+  const previousRequest = channel.current_request;
+  const wasRed = isChannelRed(channel);
+  channel.current_request = wasRed
+    ? null
+    : { id: '__optimistic__', status: 'ORDERED', requested_at: new Date().toISOString() };
+
   try {
-    if (isChannelRed(channel)) {
-      const requestId = channel.current_request!.id;
+    if (wasRed) {
+      const requestId = previousRequest!.id;
       await axios.patch(`/api/chemical-call-requests/${requestId}/complete`);
       await axios.patch(`/api/chemical-call-requests/${requestId}/reset`);
     } else {
-      if (channel.current_request?.id) {
-        await axios.patch(`/api/chemical-call-requests/${channel.current_request.id}/reset`);
+      if (previousRequest?.id) {
+        await axios.patch(`/api/chemical-call-requests/${previousRequest.id}/reset`);
       }
       const idempotencyKey = `cc-${channel.channel_id}-${Date.now()}`;
       await axios.post('/api/chemical-call-requests', {
@@ -165,8 +193,9 @@ async function toggleChannel(channel: ChemicalChannel, event?: MouseEvent) {
         idempotency_key: idempotencyKey
       });
     }
-    await fetchChannels();
+    fetchChannels();
   } catch (err: any) {
+    channel.current_request = previousRequest;
     errorMsg.value = err.response?.data?.message || 'Không thể đổi trạng thái kênh.';
   } finally {
     actionLoading.value = null;

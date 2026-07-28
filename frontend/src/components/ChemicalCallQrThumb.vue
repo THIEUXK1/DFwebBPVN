@@ -1,5 +1,5 @@
 <template>
-  <canvas ref="canvasEl" class="chem-call-qr-thumb" :class="{ 'chem-call-qr-thumb--large': size >= 100 }" :title="text"></canvas>
+  <canvas ref="canvasEl" class="chem-call-qr-thumb" :class="{ 'chem-call-qr-thumb--large': size >= 100, 'is-loaded': ready }" :title="text"></canvas>
 </template>
 
 <script setup lang="ts">
@@ -8,12 +8,15 @@ import QRCode from 'qrcode';
 
 const props = withDefaults(defineProps<{ text: string; size?: number }>(), { size: 40 });
 const canvasEl = ref<HTMLCanvasElement | null>(null);
+const ready = ref(false);
 
 function render() {
   if (canvasEl.value) {
-    QRCode.toCanvas(canvasEl.value, props.text, { width: props.size, margin: 1 }).catch((err) => {
-      console.error('Chemical call QR render failed', err);
-    });
+    QRCode.toCanvas(canvasEl.value, props.text, { width: props.size, margin: 1 })
+      .then(() => { ready.value = true; })
+      .catch((err) => {
+        console.error('Chemical call QR render failed', err);
+      });
   }
 }
 
@@ -28,7 +31,12 @@ watch(() => props.size, render);
   border-radius: 4px;
   background: #fff;
   cursor: zoom-in;
-  transition: transform 0.15s ease;
+  opacity: 0;
+  transition: transform 0.15s ease, opacity 0.2s ease;
+}
+
+.chem-call-qr-thumb.is-loaded {
+  opacity: 1;
 }
 
 .chem-call-qr-thumb:hover {

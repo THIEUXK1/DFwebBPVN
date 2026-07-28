@@ -35,7 +35,7 @@
 
     <div v-else class="machine-grid" :class="{ 'grid-4col': isFullscreen }">
       <div
-        v-for="(channels, machineCode) in groupedChannels"
+        v-for="machineCode in sortedMachineCodes"
         :key="machineCode"
         class="card machine-card"
       >
@@ -46,7 +46,7 @@
 
         <div class="machine-card-body">
           <div
-            v-for="c in channels"
+            v-for="c in groupedChannels[machineCode]"
             :key="c.channel_id"
             class="channel-row"
             :class="getChannelRowClass(c)"
@@ -73,7 +73,7 @@
                 :class="isChannelRed(c) ? 'btn-danger' : 'btn-success'"
                 :disabled="actionLoading === c.channel_id || (isImpersonating && remoteMode === 'VIEW_ONLY')"
               >
-                {{ actionLoading === c.channel_id ? 'Đang xử lý...' : (isChannelRed(c) ? '🔴 Bấm khi Xong' : '🟢 OK — Bấm để Gọi') }}
+                {{ isChannelRed(c) ? '🔴 Bấm khi Xong' : '🟢 OK — Bấm để Gọi' }}
               </button>
               <button
                 @click="openEditChannel(c)"
@@ -314,13 +314,30 @@ const groupedChannels = computed(() => {
     }
     groups[c.machine_code].push(c);
   });
-  
+
   // Sort channels by channel_number
   Object.keys(groups).forEach(machine => {
     groups[machine].sort((a, b) => a.channel_number - b.channel_number);
   });
 
   return groups;
+});
+
+// Số thứ tự máy trích từ mã "VDxxx" — dùng để sắp tăng dần đúng số (không phải so sánh
+// chuỗi, vì "VD010" < "VD9" theo chuỗi dù 10 > 9). Máy không khớp định dạng VD rơi
+// xuống cuối, xếp theo tên để vẫn có thứ tự ổn định.
+function machineSortNum(code: string): number {
+  const m = /^VD(\d+)$/.exec((code || '').toUpperCase().trim());
+  return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER;
+}
+
+// Danh sách máy theo thứ tự tăng dần (VD001 -> VD018...) để hiển thị thẻ máy trên màn
+// hình theo đúng thứ tự vật lý, thay vì thứ tự ngẫu nhiên theo dữ liệu trả về từ API.
+const sortedMachineCodes = computed(() => {
+  return Object.keys(groupedChannels.value).sort((a, b) => {
+    const diff = machineSortNum(a) - machineSortNum(b);
+    return diff !== 0 ? diff : a.localeCompare(b);
+  });
 });
 
 // Fetch channels from Backend API
@@ -439,22 +456,31 @@ function isChannelRed(channel: ChemicalChannel): boolean {
 // Toggle 1 nút duy nhất thay cho quy trình nhiều bước Gọi/Tiếp nhận/Hoàn thành/OK:
 // Xanh -> bấm = Gọi hóa chất (chuyển Đỏ). Đỏ -> bấm = báo Xong (Hoàn thành + đóng yêu
 // cầu luôn trong 1 lần bấm, chuyển thẳng lại Xanh, không cần bấm OK riêng nữa).
+//
+// Cập nhật LẠC QUAN: đổi màu/nhãn nút NGAY khi bấm, không đợi PATCH/POST xong. Đồng bộ
+// lại id/thời gian thật qua fetchChannels() chạy nền; rollback nếu API lỗi.
 async function toggleChannel(channel: ChemicalChannel) {
   errorMsg.value = '';
   successMsg.value = '';
   actionLoading.value = channel.channel_id;
 
+  const previousRequest = channel.current_request;
+  const wasRed = isChannelRed(channel);
+  channel.current_request = wasRed
+    ? null
+    : { id: '__optimistic__', status: 'ORDERED', requested_at: new Date().toISOString() };
+
   try {
-    if (isChannelRed(channel)) {
-      const requestId = channel.current_request!.id;
+    if (wasRed) {
+      const requestId = previousRequest!.id;
       await axios.patch(`/api/chemical-call-requests/${requestId}/complete`, {}, getRequestConfig());
       await axios.patch(`/api/chemical-call-requests/${requestId}/reset`, {}, getRequestConfig());
       successMsg.value = `Đã đánh dấu XONG cho máy ${channel.machine_code} - Thùng ${channel.channel_number}.`;
     } else {
       // Nếu còn sót request DONE cũ chưa đóng (VD do lỗi mạng lần trước), đóng nốt
       // trước khi gọi mới — tránh vi phạm ràng buộc unique request đang active.
-      if (channel.current_request?.id) {
-        await axios.patch(`/api/chemical-call-requests/${channel.current_request.id}/reset`, {}, getRequestConfig());
+      if (previousRequest?.id) {
+        await axios.patch(`/api/chemical-call-requests/${previousRequest.id}/reset`, {}, getRequestConfig());
       }
       const idempotencyKey = `cc-${channel.channel_id}-${Date.now()}`;
       await axios.post('/api/chemical-call-requests', {
@@ -463,9 +489,10 @@ async function toggleChannel(channel: ChemicalChannel) {
       }, getRequestConfig());
       successMsg.value = `Đã GỌI hóa chất cho máy ${channel.machine_code} - Thùng ${channel.channel_number}.`;
     }
-    await fetchChannels();
-    await fetchRecentEvents();
+    fetchChannels();
+    fetchRecentEvents();
   } catch (err: any) {
+    channel.current_request = previousRequest;
     errorMsg.value = err.response?.data?.message || 'Không thể đổi trạng thái thùng.';
   } finally {
     actionLoading.value = null;
