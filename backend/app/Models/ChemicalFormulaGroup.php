@@ -61,4 +61,30 @@ class ChemicalFormulaGroup extends Model
 
         return rtrim(rtrim(number_format((float) $value, 3, '.', ''), '0'), '.');
     }
+
+    /**
+     * Tra công thức từ mã ghép trên thùng (machine_chemical_channels.chemical_code, vd
+     * "AC77 + AC78") — thùng KHÔNG cố định 1 công thức duy nhất (cùng 1 thùng có thể lần
+     * lượt chạy nhiều công thức khác nhau qua các lô khác nhau, xác nhận từ ảnh bảng giấy
+     * thật ở xưởng), nên không cần bảng mapping máy<->công thức riêng: chemical_code hiện
+     * tại của thùng CHÍNH LÀ công thức đang active, chỉ cần tách mã rồi tra thẳng ra đây.
+     */
+    public static function lookupByCombinedCode(?string $combined): ?self
+    {
+        if (!$combined) {
+            return null;
+        }
+
+        $parts = array_map(
+            fn ($p) => preg_replace('/\s+/', '', $p),
+            explode('+', $combined, 2)
+        );
+
+        $code1 = $parts[0] ?? '';
+        $code2 = $parts[1] ?? null;
+
+        return static::where('code_1', $code1)
+            ->where('code_2', $code2 === '' ? null : $code2)
+            ->first();
+    }
 }

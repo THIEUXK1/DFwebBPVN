@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 use App\Models\MachineChemicalChannel;
 use App\Models\ChemicalCallRequest;
 use App\Models\ChemicalCallRequestEvent;
+use App\Models\ChemicalFormulaGroup;
 use App\Events\ChemicalChannelUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,12 +25,18 @@ class ChemicalCallController extends Controller
                 ->orderByDesc('requested_at')
                 ->first();
                 
+            $formulaGroup = ChemicalFormulaGroup::lookupByCombinedCode($channel->chemical_code);
+
             return [
                 'channel_id' => $channel->id,
                 'channel_number' => $channel->channel_number,
                 'machine_code' => $channel->machine ? $channel->machine->code : null,
                 'chemical_code' => $channel->chemical_code,
                 'is_active' => $channel->is_active,
+                // Công thức hiện đang active trên thùng này (tra từ chemical_code) — null
+                // nếu combo mã chưa có trong chemical_formula_groups (công thức mới/chưa
+                // xác nhận qua ảnh QR thật).
+                'formula_qr_text' => $formulaGroup ? $formulaGroup->buildQrText() : null,
                 'current_request' => $currentRequest ? [
                     'id' => $currentRequest->id,
                     'status' => $currentRequest->status,

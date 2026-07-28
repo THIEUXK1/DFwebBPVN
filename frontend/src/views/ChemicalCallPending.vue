@@ -26,8 +26,8 @@
             <span class="font-xs text-muted">Gọi lúc {{ c.current_request ? formatTime(c.current_request.requested_at) : '-' }}</span>
             <div class="pending-item-actions">
               <ChemicalCallQrThumb
-                v-if="dispatchLabelByChannel[c.channel_id]"
-                :text="dispatchLabelByChannel[c.channel_id].qr_text"
+                v-if="c.formula_qr_text"
+                :text="c.formula_qr_text"
               />
               <button
                 @click="toggleChannel(c, $event)"
@@ -62,30 +62,16 @@ interface ChemicalChannel {
   machine_code: string;
   chemical_code: string;
   is_active: boolean;
+  formula_qr_text: string | null;
   current_request: RequestInfo | null;
 }
 
-interface DispatchLabel {
-  id: number;
-  channel_id: number;
-  qr_text: string;
-}
-
 const channelsList = ref<ChemicalChannel[]>([]);
-const dispatchLabels = ref<DispatchLabel[]>([]);
 const loading = ref(true);
 const errorMsg = ref('');
 const actionLoading = ref<number | null>(null);
 
 let pollInterval: any = null;
-
-const dispatchLabelByChannel = computed(() => {
-  const map: Record<number, DispatchLabel> = {};
-  dispatchLabels.value.forEach(label => {
-    map[label.channel_id] = label;
-  });
-  return map;
-});
 
 function isChannelRed(channel: ChemicalChannel): boolean {
   return !!channel.current_request && (channel.current_request.status === 'ORDERED' || channel.current_request.status === 'ACKNOWLEDGED');
@@ -115,17 +101,8 @@ async function fetchChannels() {
   }
 }
 
-async function fetchDispatchLabels() {
-  try {
-    const res = await axios.get('/api/chemical-dispatch-labels');
-    dispatchLabels.value = res.data;
-  } catch (err) {
-    console.error('Failed to fetch chemical dispatch labels:', err);
-  }
-}
-
 async function refreshAll() {
-  await Promise.all([fetchChannels(), fetchDispatchLabels()]);
+  await fetchChannels();
 }
 
 // Toggle 1 nút duy nhất: Đỏ -> bấm = báo Xong (Hoàn thành + đóng yêu cầu luôn trong 1 lần
