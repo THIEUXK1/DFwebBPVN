@@ -32,11 +32,13 @@ class ChemicalCallController extends Controller
                 'channel_number' => $channel->channel_number,
                 'machine_code' => $channel->machine ? $channel->machine->code : null,
                 'chemical_code' => $channel->chemical_code,
+                'quantity' => $channel->quantity,
                 'is_active' => $channel->is_active,
-                // Công thức hiện đang active trên thùng này (tra từ chemical_code) — null
-                // nếu combo mã chưa có trong chemical_formula_groups (công thức mới/chưa
-                // xác nhận qua ảnh QR thật).
-                'formula_qr_text' => $formulaGroup ? $formulaGroup->buildQrText() : null,
+                // Ảnh QR THẬT (xem MachineChemicalChannel::qrImageUrl) — ưu tiên hàng đầu,
+                // loại bỏ rủi ro sai số khi dựng lại text rồi sinh QR. formula_qr_text chỉ
+                // dùng dự phòng cho thùng chưa có ảnh thật tương ứng trong QR.rar.
+                'qr_image_url' => $channel->qrImageUrl(),
+                'formula_qr_text' => $formulaGroup ? $formulaGroup->buildQrText($channel->quantity) : null,
                 'current_request' => $currentRequest ? [
                     'id' => $currentRequest->id,
                     'status' => $currentRequest->status,
@@ -58,6 +60,7 @@ class ChemicalCallController extends Controller
             'machine_id' => 'required|exists:machines,id',
             'channel_number' => 'required|integer|min:1',
             'chemical_code' => 'required|string|max:100',
+            'quantity' => 'nullable|integer|min:0',
         ]);
 
         $exists = MachineChemicalChannel::where('machine_id', $request->input('machine_id'))
@@ -75,6 +78,7 @@ class ChemicalCallController extends Controller
             'machine_id' => $request->input('machine_id'),
             'channel_number' => $request->input('channel_number'),
             'chemical_code' => $request->input('chemical_code'),
+            'quantity' => $request->input('quantity'),
             'is_active' => true,
         ]);
 
@@ -97,6 +101,7 @@ class ChemicalCallController extends Controller
         $request->validate([
             'channel_number' => 'required|integer|min:1',
             'chemical_code' => 'required|string|max:100',
+            'quantity' => 'nullable|integer|min:0',
         ]);
 
         $exists = MachineChemicalChannel::where('machine_id', $channel->machine_id)
@@ -114,6 +119,7 @@ class ChemicalCallController extends Controller
         $channel->update([
             'channel_number' => $request->input('channel_number'),
             'chemical_code' => $request->input('chemical_code'),
+            'quantity' => $request->input('quantity'),
         ]);
 
         event(new ChemicalChannelUpdated());

@@ -39,13 +39,17 @@
             </div>
 
             <div class="action-btn-col">
-              <!-- QR "Báo phát AC" — sinh nội bộ (không qrserver.com, CLAUDE.md mục 5),
-                   tra theo công thức đang active của thùng (chemical_formula_groups, xem
-                   ChemicalFormulaGroup::lookupByCombinedCode) — xác nhận từ ảnh bảng giấy
-                   thật ở xưởng: 1 thùng có thể đổi công thức qua từng lô, không cố định
-                   theo máy. Chỉ hiện khi có công thức khớp VÀ thùng đang "chưa OK". -->
+              <!-- QR "Báo phát AC" — ưu tiên ẢNH THẬT (chụp/xuất từ tem in ở xưởng, xem
+                   MachineChemicalChannel::qrImageUrl) thay vì dựng lại text rồi sinh QR:
+                   đã phát hiện 2 lần dữ liệu đọc từ ảnh bảng giấy sai (quantity, unit_weight),
+                   ảnh thật loại bỏ rủi ro này. Text sinh QR chỉ dự phòng cho thùng chưa có
+                   ảnh thật tương ứng. Chỉ hiện khi thùng đang "chưa OK". -->
+              <ChemicalCallQrImage
+                v-if="c.qr_image_url && isChannelRed(c)"
+                :src="c.qr_image_url"
+              />
               <ChemicalCallQrThumb
-                v-if="c.formula_qr_text && isChannelRed(c)"
+                v-else-if="c.formula_qr_text && isChannelRed(c)"
                 :text="c.formula_qr_text"
               />
 
@@ -71,6 +75,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import echo from '../services/echo';
 import ChemicalCallQrThumb from '../components/ChemicalCallQrThumb.vue';
+import ChemicalCallQrImage from '../components/ChemicalCallQrImage.vue';
 
 interface RequestInfo {
   id: string;
@@ -84,6 +89,7 @@ interface ChemicalChannel {
   machine_code: string;
   chemical_code: string;
   is_active: boolean;
+  qr_image_url: string | null;
   formula_qr_text: string | null;
   current_request: RequestInfo | null;
 }

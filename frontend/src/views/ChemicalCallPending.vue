@@ -25,8 +25,12 @@
           <div class="pending-item-meta">
             <span class="font-xs text-muted">Gọi lúc {{ c.current_request ? formatTime(c.current_request.requested_at) : '-' }}</span>
             <div class="pending-item-actions">
+              <ChemicalCallQrImage
+                v-if="c.qr_image_url"
+                :src="c.qr_image_url"
+              />
               <ChemicalCallQrThumb
-                v-if="c.formula_qr_text"
+                v-else-if="c.formula_qr_text"
                 :text="c.formula_qr_text"
               />
               <button
@@ -49,6 +53,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import echo from '../services/echo';
 import ChemicalCallQrThumb from '../components/ChemicalCallQrThumb.vue';
+import ChemicalCallQrImage from '../components/ChemicalCallQrImage.vue';
 
 interface RequestInfo {
   id: string;
@@ -62,6 +67,7 @@ interface ChemicalChannel {
   machine_code: string;
   chemical_code: string;
   is_active: boolean;
+  qr_image_url: string | null;
   formula_qr_text: string | null;
   current_request: RequestInfo | null;
 }

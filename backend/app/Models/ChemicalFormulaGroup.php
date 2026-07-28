@@ -35,12 +35,20 @@ class ChemicalFormulaGroup extends Model
      * (không tra qua ChemicalWeightReference) — QR thật là nguồn sự thật, đã phát hiện
      * ít nhất 1 nhóm (AC123+AC122) lệch với kết quả tra bảng "semi".
      */
-    public function buildQrText(): string
+    /**
+     * $quantityOverride: quantity KHÔNG cố định theo công thức — xác nhận từ dữ liệu
+     * thật VD006 (2 thùng cùng công thức khác nhau vẫn có thể ra 2 QR khác total nếu
+     * quantity riêng khác nhau... thực ra VD006 cả 2 thùng cùng 240, nhưng nguyên tắc là
+     * quantity thuộc về THÙNG, không thuộc về công thức). Dùng quantity riêng của thùng
+     * (machine_chemical_channels.quantity) nếu có, fallback về quantity mặc định của
+     * công thức khi thùng chưa xác nhận số thật.
+     */
+    public function buildQrText(?int $quantityOverride = null): string
     {
         $lines = [
             "{$this->code_1}-{$this->code_2}",
             $this->formatNumber($this->dosing_step),
-            $this->formatNumber($this->quantity),
+            $this->formatNumber($quantityOverride ?? $this->quantity),
             $this->formatNumber($this->unit_weight_1),
             $this->formatNumber($this->total_weight_1),
         ];
