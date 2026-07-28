@@ -65,14 +65,9 @@ Route::middleware(\App\Http\Middleware\KioskAuthenticationMiddleware::class)->gr
     Route::get('/chemical-call-requests/{id}/events', [\App\Http\Controllers\ChemicalCallController::class, 'getEvents']);
     Route::get('/chemical-call-events', [\App\Http\Controllers\ChemicalCallController::class, 'getRecentEvents']);
 
-    // Báo phát AC — cấu hình cố định theo máy + bảng tra khối lượng (Wave 2 follow-up)
-    Route::get('/chemical-dispatch-labels', [\App\Http\Controllers\ChemicalDispatchLabelController::class, 'index']);
-    Route::post('/chemical-dispatch-labels', [\App\Http\Controllers\ChemicalDispatchLabelController::class, 'store']);
-    Route::patch('/chemical-dispatch-labels/{id}', [\App\Http\Controllers\ChemicalDispatchLabelController::class, 'update']);
-    Route::get('/chemical-weight-references', [\App\Http\Controllers\ChemicalDispatchLabelController::class, 'weightReferences']);
-
-    // Công thức "Báo phát AC" xác nhận từ QR thật (2026-07-28) — chưa gắn máy, xem
-    // migration 2026_07_28_000001_create_chemical_formula_groups_table.php
+    // Công thức "Báo phát AC" xác nhận từ QR thật (2026-07-28) — thùng tự tra ra công
+    // thức đang active qua chemical_code (xem ChemicalCallController::getChannels và
+    // ChemicalFormulaGroup::lookupByCombinedCode), không cần cấu hình tay theo máy nữa.
     Route::get('/chemical-formula-groups', [\App\Http\Controllers\ChemicalFormulaGroupController::class, 'index']);
 
     // Scale Measurements for Web App

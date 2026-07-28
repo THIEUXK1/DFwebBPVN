@@ -26,7 +26,6 @@
     <div class="admin-actions-row">
       <button @click="openAddMachine" class="btn btn-secondary btn-sm">➕ Thêm máy</button>
       <button @click="openAddChannel" class="btn btn-secondary btn-sm">➕ Thêm thùng</button>
-      <button @click="openDispatchLabel" class="btn btn-secondary btn-sm">⚙️ Cấu hình Báo phát AC</button>
     </div>
 
     <!-- Factory Operating Grid (Equivalent to VBA CHEM_ORDER) -->
@@ -178,84 +177,6 @@
       </div>
     </div>
 
-    <!-- Modal Cấu hình Báo phát AC (9 dòng QR cố định theo THÙNG — cấu hình 1 lần, dùng
-         nhiều lần, có thay đổi thì sửa). Mỗi thùng đã tự mang 1 cặp mã hóa chất riêng qua
-         chemical_code hiện có (vd "AC77 + AC78") nên chỉ cần nhập bước/khối lượng, không
-         nhập lại mã. Xem Mod_MAKE_QR.TaoQR_chemical trong "6.báo phát AC- 151.xlsm".
-         Thao tác thường xuyên nhất là RÀ TRẠNG THÁI rồi SỬA — nên hiện sẵn danh sách 16
-         thùng kèm trạng thái, bấm thẳng vào dòng để sửa/tạo, không phải dò dropdown. -->
-    <div v-if="showDispatchLabel" class="modal-overlay" @click.self="showDispatchLabel = false">
-      <div class="ws-modal-card wide">
-        <div class="modal-header">
-          <h3>⚙️ Cấu hình Báo phát AC</h3>
-          <button @click="showDispatchLabel = false" class="close-btn">&times;</button>
-        </div>
-        <div class="modal-body dispatch-label-body">
-          <div class="dispatch-label-list">
-            <div
-              v-for="row in dispatchLabelStatusList"
-              :key="row.channel_id"
-              class="dispatch-label-row"
-              :class="{ active: dispatchLabelForm.channel_id === row.channel_id }"
-              @click="selectDispatchLabelChannel(row.channel_id)"
-            >
-              <span class="font-mono">{{ row.machine_code }} — Thùng {{ row.channel_number }}</span>
-              <span class="font-xs text-muted font-mono">{{ row.chemical_code }}</span>
-              <span class="badge" :class="row.configured ? 'badge-success' : 'badge-neutral'">
-                {{ row.configured ? '✅ Đã xong' : '⬜ Chưa xong' }}
-              </span>
-            </div>
-          </div>
-
-          <div v-if="dispatchLabelForm.channel_id" class="dispatch-label-form">
-            <div class="derived-codes font-xs text-muted mb-3">
-              Mã hóa chất 1: <strong>{{ dispatchLabelCode1 }}</strong>
-              <span :class="unitWeight1 === null ? 'text-warning' : ''">({{ unitWeight1 === null ? '⚠️ không có trong bảng tra, tính là 0' : `đơn vị ${unitWeight1}` }})</span>
-              &nbsp;·&nbsp;
-              Mã hóa chất 2: <strong>{{ dispatchLabelCode2 }}</strong>
-              <span :class="unitWeight2 === null ? 'text-warning' : ''">({{ unitWeight2 === null ? '⚠️ không có trong bảng tra, tính là 0' : `đơn vị ${unitWeight2}` }})</span>
-            </div>
-            <div class="form-row-2">
-              <div class="form-group mb-3">
-                <label>Bước hóa chất 1</label>
-                <input v-model.number="dispatchLabelForm.dosing_step_1" type="number" class="form-control" />
-              </div>
-              <div class="form-group mb-3">
-                <label>Bước hóa chất 2</label>
-                <input v-model.number="dispatchLabelForm.dosing_step_2" type="number" class="form-control" />
-              </div>
-            </div>
-            <div class="form-group mb-3">
-              <label>Số lượng</label>
-              <input v-model.number="dispatchLabelForm.quantity" type="number" class="form-control" />
-            </div>
-            <div class="form-row-2">
-              <div class="form-group mb-3">
-                <label>Khối lượng tổng 1</label>
-                <input v-model.number="dispatchLabelForm.total_weight_1" type="number" step="0.001" class="form-control" />
-              </div>
-              <div class="form-group mb-3">
-                <label>Khối lượng tổng 2</label>
-                <input v-model.number="dispatchLabelForm.total_weight_2" type="number" step="0.001" class="form-control" />
-              </div>
-            </div>
-            <p v-if="dispatchLabelError" class="text-error font-sm">❌ {{ dispatchLabelError }}</p>
-            <div class="modal-actions">
-              <button @click="showDispatchLabel = false" class="btn btn-secondary">Hủy</button>
-              <button
-                @click="submitDispatchLabel"
-                class="btn btn-primary"
-                :disabled="dispatchLabelForm.total_weight_1 === null || dispatchLabelForm.total_weight_2 === null || savingDispatchLabel"
-              >
-                {{ savingDispatchLabel ? 'Đang lưu...' : (dispatchLabelForm.id ? 'Lưu thay đổi' : 'Lưu cấu hình') }}
-              </button>
-            </div>
-          </div>
-          <p v-else class="text-muted font-sm dispatch-label-hint">👆 Bấm vào 1 thùng ở trên để cấu hình hoặc sửa.</p>
-        </div>
-      </div>
-    </div>
-
     <!-- Collapsible Log Panel (Bottom of page, audit compliant) -->
     <div class="logs-panel card">
       <div class="logs-header" @click="showLogs = !showLogs">
@@ -371,84 +292,6 @@ const newChannel = ref<{ machine_id: number | null; channel_number: number | nul
 const addingChannel = ref(false);
 const addChannelError = ref('');
 
-// Cấu hình Báo phát AC — 1 cấu hình cố định / THÙNG (mỗi thùng đã tự mang 1 cặp mã hóa
-// chất riêng qua chemical_code, vd "AC77 + AC78" — không lưu lại mã ở đây), xem
-// backend/app/Models/ChemicalDispatchLabel.php::buildQrText.
-interface DispatchLabel {
-  id: number;
-  channel_id: number;
-  dosing_step_1: number | null;
-  dosing_step_2: number | null;
-  quantity: number | null;
-  chemical_code_1: string;
-  total_weight_1: number;
-  chemical_code_2: string;
-  total_weight_2: number;
-}
-
-const dispatchLabelsList = ref<DispatchLabel[]>([]);
-const weightReferencesList = ref<{ code: string; unit_weight: number }[]>([]);
-const showDispatchLabel = ref(false);
-const savingDispatchLabel = ref(false);
-const dispatchLabelError = ref('');
-const dispatchLabelForm = ref<{
-  id: number | null;
-  channel_id: number | null;
-  dosing_step_1: number | null;
-  dosing_step_2: number | null;
-  quantity: number | null;
-  total_weight_1: number | null;
-  total_weight_2: number | null;
-}>({
-  id: null,
-  channel_id: null,
-  dosing_step_1: null,
-  dosing_step_2: null,
-  quantity: null,
-  total_weight_1: null,
-  total_weight_2: null,
-});
-
-// Mã hóa chất 1/2 suy ra trực tiếp từ chemical_code có sẵn của thùng đang chọn (tách theo
-// dấu "+"), không nhập tay — tránh lệch dữ liệu với chính thùng đó.
-function splitChemicalCode(code: string): [string, string] {
-  // Bỏ toàn bộ khoảng trắng (không chỉ 2 đầu) — dữ liệu thật có lỗi gõ dư dấu cách giữa
-  // mã (vd "AC 78" thay vì "AC78"), khớp đúng cách chuẩn hóa ở backend
-  // (ChemicalDispatchLabel::splitChemicalCode).
-  const parts = code.split('+').map(p => p.replace(/\s+/g, ''));
-  return [parts[0] || '', parts[1] || ''];
-}
-
-const dispatchLabelCode1 = computed(() => {
-  const channel = channelsList.value.find(c => c.channel_id === dispatchLabelForm.value.channel_id);
-  return channel ? splitChemicalCode(channel.chemical_code)[0] : '';
-});
-const dispatchLabelCode2 = computed(() => {
-  const channel = channelsList.value.find(c => c.channel_id === dispatchLabelForm.value.channel_id);
-  return channel ? splitChemicalCode(channel.chemical_code)[1] : '';
-});
-
-const unitWeight1 = computed(() => {
-  const found = weightReferencesList.value.find(r => r.code === dispatchLabelCode1.value);
-  return found ? found.unit_weight : null;
-});
-const unitWeight2 = computed(() => {
-  const found = weightReferencesList.value.find(r => r.code === dispatchLabelCode2.value);
-  return found ? found.unit_weight : null;
-});
-
-// Thao tác thường xuyên nhất với màn hình này là rà trạng thái rồi sửa — nên liệt kê sẵn
-// toàn bộ thùng kèm đã/chưa cấu hình, thay vì bắt chọn mù trong 1 dropdown dài.
-const dispatchLabelStatusList = computed(() => {
-  return channelsList.value.map(c => ({
-    channel_id: c.channel_id,
-    machine_code: c.machine_code,
-    channel_number: c.channel_number,
-    chemical_code: c.chemical_code,
-    configured: dispatchLabelsList.value.some(l => l.channel_id === c.channel_id),
-  }));
-});
-
 const showEditChannel = ref(false);
 const editChannel = ref<{ channel_id: number | null; machine_code: string; original_channel_number: number | null; channel_number: number | null; chemical_code: string }>({
   channel_id: null,
@@ -555,103 +398,6 @@ async function submitAddChannel() {
     addChannelError.value = err.response?.data?.message || 'Không thể thêm thùng mới.';
   } finally {
     addingChannel.value = false;
-  }
-}
-
-// Danh sách cấu hình Báo phát AC hiện có, dùng để nạp lại form khi chọn máy đã cấu hình.
-async function fetchDispatchLabels() {
-  try {
-    const res = await axios.get('/api/chemical-dispatch-labels');
-    dispatchLabelsList.value = res.data;
-  } catch (err) {
-    console.error('Failed to fetch chemical dispatch labels:', err);
-  }
-}
-
-async function fetchWeightReferences() {
-  try {
-    const res = await axios.get('/api/chemical-weight-references');
-    weightReferencesList.value = res.data;
-  } catch (err) {
-    console.error('Failed to fetch chemical weight references:', err);
-  }
-}
-
-function openDispatchLabel() {
-  dispatchLabelForm.value = {
-    id: null,
-    channel_id: null,
-    dosing_step_1: null,
-    dosing_step_2: null,
-    quantity: null,
-    total_weight_1: null,
-    total_weight_2: null,
-  };
-  dispatchLabelError.value = '';
-  showDispatchLabel.value = true;
-  if (weightReferencesList.value.length === 0) fetchWeightReferences();
-  fetchDispatchLabels();
-}
-
-// Bấm 1 dòng trong danh sách thùng: thùng đã có cấu hình -> nạp lại để sửa; thùng chưa
-// có -> mở form trống để tạo mới. Đây là thao tác chính của màn hình này (rà trạng thái
-// rồi sửa/tạo), nên chọn thẳng từ danh sách thay vì qua dropdown.
-function selectDispatchLabelChannel(channelId: number) {
-  const existing = dispatchLabelsList.value.find(l => l.channel_id === channelId);
-  if (existing) {
-    dispatchLabelForm.value = {
-      id: existing.id,
-      channel_id: existing.channel_id,
-      dosing_step_1: existing.dosing_step_1,
-      dosing_step_2: existing.dosing_step_2,
-      quantity: existing.quantity,
-      total_weight_1: existing.total_weight_1,
-      total_weight_2: existing.total_weight_2,
-    };
-  } else {
-    dispatchLabelForm.value = {
-      id: null,
-      channel_id: channelId,
-      dosing_step_1: null,
-      dosing_step_2: null,
-      quantity: null,
-      total_weight_1: null,
-      total_weight_2: null,
-    };
-  }
-}
-
-async function submitDispatchLabel() {
-  dispatchLabelError.value = '';
-  savingDispatchLabel.value = true;
-  const channelId = dispatchLabelForm.value.channel_id;
-  const savedChannel = channelsList.value.find(c => c.channel_id === channelId);
-  const payload = {
-    channel_id: channelId,
-    dosing_step_1: dispatchLabelForm.value.dosing_step_1,
-    dosing_step_2: dispatchLabelForm.value.dosing_step_2,
-    quantity: dispatchLabelForm.value.quantity,
-    total_weight_1: dispatchLabelForm.value.total_weight_1,
-    total_weight_2: dispatchLabelForm.value.total_weight_2,
-  };
-
-  try {
-    if (dispatchLabelForm.value.id) {
-      await axios.patch(`/api/chemical-dispatch-labels/${dispatchLabelForm.value.id}`, payload);
-    } else {
-      await axios.post('/api/chemical-dispatch-labels', payload);
-    }
-    // Không đóng modal — người dùng thường cấu hình nhiều thùng liên tiếp trong 1 lần
-    // vào màn hình này. Nạp lại danh sách trạng thái rồi quay về màn hình chọn thùng.
-    await fetchDispatchLabels();
-    dispatchLabelForm.value.channel_id = null;
-    successMsg.value = savedChannel
-      ? `Đã lưu cấu hình Báo phát AC cho ${savedChannel.machine_code} - Thùng ${savedChannel.channel_number}.`
-      : `Đã lưu cấu hình Báo phát AC.`;
-  } catch (err: any) {
-    dispatchLabelError.value = err.response?.data?.message || 'Không thể lưu cấu hình Báo phát AC.';
-  } finally {
-    savingDispatchLabel.value = false;
   }
 }
 
@@ -1151,60 +897,6 @@ onUnmounted(() => {
   box-shadow: var(--shadow-xl);
 }
 
-.ws-modal-card.wide {
-  max-width: 560px;
-}
-
-.dispatch-label-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
-
-.dispatch-label-list {
-  max-height: 260px;
-  overflow-y: auto;
-  border: 1px solid var(--border-divider);
-  border-radius: var(--radius-md);
-}
-
-.dispatch-label-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-divider);
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.dispatch-label-row:last-child {
-  border-bottom: none;
-}
-
-.dispatch-label-row:hover {
-  background-color: var(--bg-card-hover);
-}
-
-.dispatch-label-row.active {
-  background-color: var(--status-blue-bg);
-}
-
-.dispatch-label-form {
-  border-top: 1px solid var(--border-divider);
-  padding-top: var(--space-md);
-}
-
-.dispatch-label-hint {
-  text-align: center;
-  padding: var(--space-md) 0;
-}
-
-.font-mono {
-  font-family: 'JetBrains Mono', monospace;
-}
-
 .modal-header {
   padding: var(--space-xl);
   border-bottom: 1px solid var(--border-divider);
@@ -1241,12 +933,6 @@ onUnmounted(() => {
   font-weight: 600;
   color: var(--text-title);
   font-size: 0.9rem;
-}
-
-.form-row-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-md);
 }
 
 .modal-actions {

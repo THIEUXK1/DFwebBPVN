@@ -39,14 +39,14 @@
             </div>
 
             <div class="action-btn-col">
-              <!-- QR "Báo phát AC" — 9 dòng giá trị thô đúng định dạng gốc
-                   Mod_MAKE_QR.TaoQR_chemical ("6.báo phát AC- 151.xlsm"), sinh nội bộ (không
-                   qrserver.com, CLAUDE.md mục 5). Mỗi THÙNG có cặp mã hóa chất riêng nên
-                   gắn theo channel_id, không theo máy. Chỉ hiện khi thùng có cấu hình VÀ
-                   đang "chưa OK" — đúng yêu cầu "sinh QR khi máy không ok". -->
+              <!-- QR "Báo phát AC" — sinh nội bộ (không qrserver.com, CLAUDE.md mục 5),
+                   tra theo công thức đang active của thùng (chemical_formula_groups, xem
+                   ChemicalFormulaGroup::lookupByCombinedCode) — xác nhận từ ảnh bảng giấy
+                   thật ở xưởng: 1 thùng có thể đổi công thức qua từng lô, không cố định
+                   theo máy. Chỉ hiện khi có công thức khớp VÀ thùng đang "chưa OK". -->
               <ChemicalCallQrThumb
-                v-if="dispatchLabelByChannel[c.channel_id] && isChannelRed(c)"
-                :text="dispatchLabelByChannel[c.channel_id].qr_text"
+                v-if="c.formula_qr_text && isChannelRed(c)"
+                :text="c.formula_qr_text"
               />
 
               <!-- Nút toggle: xanh (OK) <-> đỏ (chưa OK), giống trạm thao tác /chemical-call -->
@@ -84,17 +84,11 @@ interface ChemicalChannel {
   machine_code: string;
   chemical_code: string;
   is_active: boolean;
+  formula_qr_text: string | null;
   current_request: RequestInfo | null;
 }
 
-interface DispatchLabel {
-  id: number;
-  channel_id: number;
-  qr_text: string;
-}
-
 const channelsList = ref<ChemicalChannel[]>([]);
-const dispatchLabels = ref<DispatchLabel[]>([]);
 const loading = ref(true);
 const errorMsg = ref('');
 const actionLoading = ref<number | null>(null);
@@ -117,14 +111,6 @@ const groupedChannels = computed(() => {
   return groups;
 });
 
-const dispatchLabelByChannel = computed(() => {
-  const map: Record<number, DispatchLabel> = {};
-  dispatchLabels.value.forEach(label => {
-    map[label.channel_id] = label;
-  });
-  return map;
-});
-
 function isChannelRed(channel: ChemicalChannel): boolean {
   return !!channel.current_request && (channel.current_request.status === 'ORDERED' || channel.current_request.status === 'ACKNOWLEDGED');
 }
@@ -141,17 +127,8 @@ async function fetchChannels() {
   }
 }
 
-async function fetchDispatchLabels() {
-  try {
-    const res = await axios.get('/api/chemical-dispatch-labels');
-    dispatchLabels.value = res.data;
-  } catch (err) {
-    console.error('Failed to fetch chemical dispatch labels:', err);
-  }
-}
-
 async function refreshAll() {
-  await Promise.all([fetchChannels(), fetchDispatchLabels()]);
+  await fetchChannels();
 }
 
 // Toggle 1 nút duy nhất: Xanh -> bấm = Gọi hóa chất (chuyển Đỏ). Đỏ -> bấm = báo Xong
