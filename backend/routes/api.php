@@ -71,6 +71,10 @@ Route::middleware(\App\Http\Middleware\KioskAuthenticationMiddleware::class)->gr
     Route::patch('/chemical-dispatch-labels/{id}', [\App\Http\Controllers\ChemicalDispatchLabelController::class, 'update']);
     Route::get('/chemical-weight-references', [\App\Http\Controllers\ChemicalDispatchLabelController::class, 'weightReferences']);
 
+    // Công thức "Báo phát AC" xác nhận từ QR thật (2026-07-28) — chưa gắn máy, xem
+    // migration 2026_07_28_000001_create_chemical_formula_groups_table.php
+    Route::get('/chemical-formula-groups', [\App\Http\Controllers\ChemicalFormulaGroupController::class, 'index']);
+
     // Scale Measurements for Web App
     Route::get('/devices/readings/{workstation_id}', [\App\Http\Controllers\DeviceController::class, 'getReading']);
     Route::get('/scale-measurements', [\App\Http\Controllers\ScaleMeasurementController::class, 'index']);
