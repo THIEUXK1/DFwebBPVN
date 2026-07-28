@@ -17,30 +17,32 @@
       </div>
 
       <div v-if="pendingChannels.length > 0" class="pending-list">
-        <div v-for="c in pendingChannels" :key="c.channel_id" class="pending-item">
-          <div class="pending-item-main">
+        <div v-for="c in pendingChannels" :key="c.channel_id" class="pending-card">
+          <div class="pending-card-qr">
+            <ChemicalCallQrImage
+              v-if="c.qr_image_url"
+              :src="c.qr_image_url"
+              :size="180"
+            />
+            <ChemicalCallQrThumb
+              v-else-if="c.formula_qr_text"
+              :text="c.formula_qr_text"
+              :size="180"
+            />
+            <span v-else class="no-qr-hint font-xs text-muted">Chưa có QR</span>
+          </div>
+
+          <div class="pending-card-body">
             <span class="channel-number-pill">{{ c.machine_code }} — Thùng {{ c.channel_number }}</span>
             <span class="chem-formula">{{ c.chemical_code }}</span>
-          </div>
-          <div class="pending-item-meta">
             <span class="font-xs text-muted">Gọi lúc {{ c.current_request ? formatTime(c.current_request.requested_at) : '-' }}</span>
-            <div class="pending-item-actions">
-              <ChemicalCallQrImage
-                v-if="c.qr_image_url"
-                :src="c.qr_image_url"
-              />
-              <ChemicalCallQrThumb
-                v-else-if="c.formula_qr_text"
-                :text="c.formula_qr_text"
-              />
-              <button
-                @click="toggleChannel(c, $event)"
-                class="btn btn-sm py-1 font-semibold toggle-btn btn-danger"
-                :disabled="actionLoading === c.channel_id"
-              >
-                {{ actionLoading === c.channel_id ? 'Đang xử lý...' : '🔴 Bấm khi Xong' }}
-              </button>
-            </div>
+            <button
+              @click="toggleChannel(c, $event)"
+              class="btn btn-sm py-1 font-semibold toggle-btn btn-danger"
+              :disabled="actionLoading === c.channel_id"
+            >
+              {{ actionLoading === c.channel_id ? 'Đang xử lý...' : '🔴 Bấm khi Xong' }}
+            </button>
           </div>
         </div>
       </div>
@@ -213,52 +215,51 @@ onUnmounted(() => {
 }
 
 .pending-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-md);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-lg);
   margin-top: var(--space-md);
 }
 
-.pending-item {
+.pending-card {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  padding: var(--space-lg) var(--space-md);
   border-radius: var(--radius-md);
   background-color: rgba(239, 68, 68, 0.08);
   border-left: 4px solid #ef4444;
-  flex: 1 1 240px;
-  max-width: 320px;
+  text-align: center;
 }
 
-.pending-item-main {
+.pending-card-qr {
   display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+}
+
+.no-qr-hint {
+  font-style: italic;
+}
+
+.pending-card-body {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
-}
-
-.pending-item-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.pending-item-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  width: 100%;
 }
 
 .channel-number-pill {
   display: inline-block;
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 1.05rem;
   color: var(--text-title);
   background-color: var(--bg-card-hover);
   border: 1px solid var(--border-card-hover);
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: var(--radius-full);
 }
 
@@ -268,21 +269,21 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--status-blue);
   background-color: var(--status-blue-bg);
   border: 1px solid var(--status-blue-border);
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: var(--radius-md);
 }
 
 .toggle-btn {
-  min-height: 34px;
-  max-width: 100%;
+  min-height: 38px;
+  width: 100%;
   padding-left: var(--space-sm);
   padding-right: var(--space-sm);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

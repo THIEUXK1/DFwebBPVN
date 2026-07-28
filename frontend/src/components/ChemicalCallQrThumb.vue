@@ -1,17 +1,17 @@
 <template>
-  <canvas ref="canvasEl" class="chem-call-qr-thumb" :title="text"></canvas>
+  <canvas ref="canvasEl" class="chem-call-qr-thumb" :class="{ 'chem-call-qr-thumb--large': size >= 100 }" :title="text"></canvas>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
 import QRCode from 'qrcode';
 
-const props = defineProps<{ text: string }>();
+const props = withDefaults(defineProps<{ text: string; size?: number }>(), { size: 40 });
 const canvasEl = ref<HTMLCanvasElement | null>(null);
 
 function render() {
   if (canvasEl.value) {
-    QRCode.toCanvas(canvasEl.value, props.text, { width: 128, margin: 1 }).catch((err) => {
+    QRCode.toCanvas(canvasEl.value, props.text, { width: props.size, margin: 1 }).catch((err) => {
       console.error('Chemical call QR render failed', err);
     });
   }
@@ -19,12 +19,11 @@ function render() {
 
 onMounted(render);
 watch(() => props.text, render);
+watch(() => props.size, render);
 </script>
 
 <style scoped>
 .chem-call-qr-thumb {
-  width: 40px;
-  height: 40px;
   flex-shrink: 0;
   border-radius: 4px;
   background: #fff;
@@ -37,5 +36,9 @@ watch(() => props.text, render);
   z-index: 20;
   transform: scale(3);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.chem-call-qr-thumb--large:hover {
+  transform: scale(1.4);
 }
 </style>

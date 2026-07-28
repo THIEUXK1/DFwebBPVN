@@ -1,11 +1,11 @@
 <template>
-  <img :src="resolvedSrc" class="chem-call-qr-thumb" alt="QR Báo phát AC" />
+  <img :src="resolvedSrc" class="chem-call-qr-thumb" :class="{ 'chem-call-qr-thumb--large': size >= 100 }" :style="{ width: size + 'px', height: size + 'px' }" alt="QR Báo phát AC" />
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 
-const props = defineProps<{ src: string }>();
+const props = withDefaults(defineProps<{ src: string; size?: number }>(), { size: 40 });
 
 // `src` từ backend (MachineChemicalChannel::qrImageUrl) là đường dẫn tương đối
 // (vd "/chemical-qr/QR_VD006_AC77+AC78.jpg") phục vụ từ public/ của Laravel — backend
@@ -21,8 +21,6 @@ const resolvedSrc = computed(() => {
 
 <style scoped>
 .chem-call-qr-thumb {
-  width: 40px;
-  height: 40px;
   flex-shrink: 0;
   border-radius: 4px;
   background: #fff;
@@ -36,5 +34,11 @@ const resolvedSrc = computed(() => {
   z-index: 20;
   transform: scale(3);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+/* QR đã hiện đủ to sẵn (vd trang /chemical-call/pending) — phóng thêm 3x sẽ tràn màn
+   hình, chỉ cần phóng nhẹ để soi chi tiết. */
+.chem-call-qr-thumb--large:hover {
+  transform: scale(1.4);
 }
 </style>
