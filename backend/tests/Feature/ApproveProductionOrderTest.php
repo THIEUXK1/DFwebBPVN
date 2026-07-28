@@ -88,23 +88,23 @@ class ApproveProductionOrderTest extends TestCase
         $this->assertEquals(1, MachineDispatch::where('batch_id', $batch->id)->count());
     }
 
-    /** Quy tắc 250L: VD006-VD013 + tank 1A/2B + level < 250 -> chặn, không tạo dispatch. */
-    public function test_approve_rejects_when_min_level_250_violated(): void
+    /**
+     * Quy tắc "MINIMUM LEVEL 250L" (VD006-VD013 + tank 1A/2B + level < 250) đã bị
+     * BỎ theo yêu cầu người dùng 2026-07-28 — mọi mức nước hợp lệ trong dropdown
+     * (50/100/250/450) đều được chấp nhận, không còn phân biệt máy/thùng.
+     */
+    public function test_approve_allows_low_level_on_previously_restricted_machine_tank(): void
     {
         $batch = $this->makeBatch('VD007', '1A', '100');
 
         $response = $this->actingAs($this->operator)
             ->postJson("/api/production-batches/{$batch->id}/approve");
 
-        $response->assertStatus(422);
-        $response->assertJsonPath('message', 'MINIMUM LEVEL 250L');
-
+        $response->assertStatus(201);
         $batch->refresh();
-        $this->assertEquals('NEW', $batch->status);
-        $this->assertEquals(0, MachineDispatch::where('batch_id', $batch->id)->count());
+        $this->assertEquals('APPROVED', $batch->status);
     }
 
-    /** Quy tắc 250L: cùng máy/tank nhưng level >= 250 -> cho phép duyệt bình thường. */
     public function test_approve_allows_when_min_level_250_satisfied(): void
     {
         $batch = $this->makeBatch('VD008', '2B', '250');
@@ -143,17 +143,4 @@ class ApproveProductionOrderTest extends TestCase
         ]);
     }
 
-    /** Quy tắc 250L KHÔNG áp dụng ngoài dải máy VD006-VD013 hoặc tank khác 1A/2B. */
-    public function test_approve_min_level_rule_does_not_apply_outside_range(): void
-    {
-        $batch = $this->makeBatch('VD014', '1A', '10'); // ngoài dải VD006-VD013
-        $response = $this->actingAs($this->operator)
-            ->postJson("/api/production-batches/{$batch->id}/approve");
-        $response->assertStatus(201);
-
-        $batch2 = $this->makeBatch('VD009', '3C', '10'); // trong dải máy nhưng tank không phải 1A/2B
-        $response2 = $this->actingAs($this->operator)
-            ->postJson("/api/production-batches/{$batch2->id}/approve");
-        $response2->assertStatus(201);
-    }
 }

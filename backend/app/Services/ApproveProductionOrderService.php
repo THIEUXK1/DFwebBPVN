@@ -31,18 +31,8 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 class ApproveProductionOrderService
 {
     /**
-     * Dải máy áp dụng quy tắc 250L (production-order-to-dispatch-flow.md Mục 1.1.3,
-     * đối chiếu VBA btnSAVE_Click). Mã máy thật trong app.machines dùng định dạng
-     * 3 chữ số (VD006..VD013) — đã xác nhận trực tiếp qua DB, không phải VD06 2 chữ số.
-     */
-    private const MIN_LEVEL_MACHINE_MIN = 'VD006';
-    private const MIN_LEVEL_MACHINE_MAX = 'VD013';
-    private const MIN_LEVEL_TANKS = ['1A', '2B'];
-    private const MIN_LEVEL_THRESHOLD = 250.0;
-
-    /**
      * @return array{batch: ProductionBatch, dispatch: MachineDispatch, reused: bool}
-     * @throws BusinessRuleException khi vi phạm quy tắc 250L hoặc batch đã bị hủy
+     * @throws BusinessRuleException khi batch đã bị hủy hoặc chưa chọn Thùng trộn
      */
     public function execute(string $batchId, ?string $userId, ?string $correlationId = null, ?string $originatingStationCode = null): array
     {
@@ -72,8 +62,6 @@ class ApproveProductionOrderService
             if (!$batch->tank_id) {
                 throw new BusinessRuleException('Phải chọn Thùng trộn trước khi duyệt đơn.');
             }
-
-            $this->assertMinLevelRule($batch);
 
             $beforeStatus = $batch->status;
             $batch->status = 'APPROVED';
@@ -134,39 +122,5 @@ class ApproveProductionOrderService
             DB::statement('UPDATE web_dispatch_seq SET value = value + 1');
             return (int) DB::selectOne('SELECT value FROM web_dispatch_seq')->value;
         });
-    }
-
-    /**
-     * VBA btnSAVE_Click: nếu machine trong [VD006,VD013] VÀ tank trong {1A,2B} VÀ
-     * level < 250 -> chặn lưu, thông báo "MINIMUM LEVEL 250L". Chỉ áp dụng khi có
-     * đủ machine+tank+level_code hợp lệ; thiếu dữ liệu thì KHÔNG áp quy tắc (không
-     * suy diễn ngưỡng cho trường hợp chưa xác nhận).
-     */
-    private function assertMinLevelRule(ProductionBatch $batch): void
-    {
-        $machine = $batch->machine;
-        $tank = $batch->tank;
-
-        if (!$machine || !$tank || $batch->level_code === null || $batch->level_code === '') {
-            return;
-        }
-
-        $machineCode = strtoupper(trim($machine->code));
-        $tankCode = strtoupper(trim($tank->code));
-
-        $inRange = $machineCode >= self::MIN_LEVEL_MACHINE_MIN && $machineCode <= self::MIN_LEVEL_MACHINE_MAX;
-        $tankMatches = in_array($tankCode, self::MIN_LEVEL_TANKS, true);
-
-        if (!$inRange || !$tankMatches) {
-            return;
-        }
-
-        if (!is_numeric($batch->level_code)) {
-            return;
-        }
-
-        if ((float) $batch->level_code < self::MIN_LEVEL_THRESHOLD) {
-            throw new BusinessRuleException('MINIMUM LEVEL 250L');
-        }
     }
 }

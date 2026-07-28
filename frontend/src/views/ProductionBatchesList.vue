@@ -128,6 +128,7 @@
               <th>Mã Hàng (Product)</th>
               <th>Máy Nhuộm</th>
               <th>Thùng Trộn</th>
+              <th>Mức nước</th>
               <th>Tiến Trình</th>
               <th>Trạng Thái</th>
               <th>Ngày Cập Nhật</th>
@@ -137,7 +138,7 @@
           <tbody>
             <!-- Skeleton Loading state -->
             <tr v-if="loading" v-for="i in 5" :key="'skel-' + i">
-              <td v-for="j in 9" :key="'cell-' + j">
+              <td v-for="j in 10" :key="'cell-' + j">
                 <div class="skeleton" style="height: 20px; width: 80%;"></div>
               </td>
             </tr>
@@ -182,6 +183,7 @@
                   {{ batch.tank?.code || 'N/A' }}
                 </span>
               </td>
+              <td>{{ batch.level_code || 'N/A' }}</td>
               <td>
                 <div class="progress-bar-wrapper" :title="'Độ hoàn tất: ' + getProgressPercent(batch.status) + '%'">
                   <div class="progress-bar-fill" :style="{ width: getProgressPercent(batch.status) + '%' }"></div>
@@ -228,7 +230,7 @@
 
             <!-- Empty state -->
             <tr v-if="!loading && batches.length === 0">
-              <td colspan="9" class="text-center text-muted pad-empty-row">
+              <td colspan="10" class="text-center text-muted pad-empty-row">
                 <div class="empty-state-icon">🔍</div>
                 <p>Không tìm thấy lô sản xuất nào khớp với điều kiện lọc.</p>
               </td>
@@ -642,7 +644,7 @@ const updateBatchStatus = async (id: string, newStatus: string) => {
 
 // Duyệt đơn -> tạo hàng chờ điều phối cho QR_LABEL_PRINTING (ApproveProductionOrderService).
 // Khác updateBatchStatus (đổi status tự do, không quy tắc gì): endpoint này có transaction,
-// idempotent, và áp quy tắc 250L (VD006-VD013 + tank 1A/2B + level<250 -> chặn).
+// idempotent. Quy tắc "MINIMUM LEVEL 250L" đã bị bỏ theo yêu cầu người dùng 2026-07-28.
 const approveBatch = async (batch: any) => {
   approveErrorMsg.value = '';
   approvingId.value = batch.id;

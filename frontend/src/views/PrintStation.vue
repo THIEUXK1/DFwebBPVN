@@ -124,6 +124,7 @@
                 <th>Mã hàng</th>
                 <th>Máy</th>
                 <th>Thùng</th>
+                <th>Mực nước</th>
                 <th>Trạng thái</th>
                 <th>Thao tác</th>
               </tr>
@@ -135,6 +136,7 @@
                 <td>{{ d.batch?.product_code }}</td>
                 <td><span class="machine-tag">{{ d.batch?.machine?.code || 'N/A' }}</span></td>
                 <td>{{ d.batch?.tank?.code || '-' }}</td>
+                <td>{{ d.batch?.level_code || 'Mặc định' }}</td>
                 <td>
                   <span class="badge badge-red">Chưa in</span>
                 </td>
@@ -156,7 +158,7 @@
                 </td>
               </tr>
               <tr v-if="!col.length">
-                <td colspan="7" class="text-muted text-center">Không có đơn nào ở cột này.</td>
+                <td colspan="8" class="text-muted text-center">Không có đơn nào ở cột này.</td>
               </tr>
             </tbody>
           </table>
@@ -522,11 +524,23 @@ const confirmingId = ref<string | null>(null);
 const confirmError = ref('');
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-// Chia danh sách hàng chờ in thành 2 cột (yêu cầu 2026-07-27) — cột trái lấp đầy trước,
-// cột phải chứa phần còn lại, để xem được nhiều đơn hơn mà không phải cuộn dọc quá dài.
+// Chia danh sách hàng chờ in thành nhiều cột (yêu cầu 2026-07-27, làm thích ứng
+// 2026-07-28) — số cột tự đổi theo bề rộng màn hình thay vì cố định 2, để màn nhỏ
+// (laptop/cửa sổ thu nhỏ) không bị vỡ bảng, còn màn lớn (máy trạm xưởng) tận dụng
+// được hết chỗ trống thay vì luôn chỉ 2 cột.
+const viewportWidth = ref(window.innerWidth);
+function onViewportResize() {
+  viewportWidth.value = window.innerWidth;
+}
+const queueColumnCount = computed(() => {
+  if (viewportWidth.value < 900) return 1;
+  if (viewportWidth.value < 1600) return 2;
+  return 3;
+});
 const queueColumns = computed(() => {
-  const half = Math.ceil(pendingDispatches.value.length / 2);
-  return [pendingDispatches.value.slice(0, half), pendingDispatches.value.slice(half)];
+  const count = queueColumnCount.value;
+  const perCol = Math.ceil(pendingDispatches.value.length / count) || 1;
+  return Array.from({ length: count }, (_, i) => pendingDispatches.value.slice(i * perCol, (i + 1) * perCol));
 });
 
 async function fetchPendingDispatches() {
@@ -812,8 +826,11 @@ async function printPreviewViaBrowser() {
 <title>Tem ${b.legacy_batch_id || ''}</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: Arial, sans-serif; margin: 0; padding: 6mm; color: #000; }
-  .slip { position: relative; width: 70mm; height: 100mm; border: 0.3mm solid #000; }
+  body { font-family: Arial, sans-serif; margin: 0; padding: 6mm; color: #000; display: flex; flex-direction: column; align-items: center; }
+  /* Tem thật chỉ 70x100mm nên trên màn hình to sẽ trông rất bé — phóng to riêng cho
+     màn hình (zoom, không phải transform, để layout giãn ra đúng) để xem cho rõ, còn
+     lúc in thật (@media print bên dưới) luôn trả về đúng kích thước gốc 1:1. */
+  .slip { position: relative; width: 70mm; height: 100mm; border: 0.3mm solid #000; zoom: 2.6; }
   .box { position: absolute; border: 0.3mm solid #000; overflow: visible; padding: 0.4mm 0.8mm; white-space: nowrap; }
   .box.noborder { border: none; }
   .gridcell { position: absolute; border: 0.2mm solid #000; }
@@ -832,7 +849,8 @@ async function printPreviewViaBrowser() {
   .placeholder { color: #999; font-style: italic; }
   .footnote { margin-top: 3mm; font-size: 2.3mm; color: #666; }
   @media print {
-    body { padding: 0; }
+    body { padding: 0; display: block; }
+    .slip { zoom: 1; }
     .footnote { display: none; }
   }
 </style>
@@ -876,7 +894,7 @@ async function printPreviewViaBrowser() {
 </body>
 </html>`;
 
-  const win = window.open('', '_blank', 'width=500,height=750');
+  const win = window.open('', '_blank', 'width=780,height=980');
   if (!win) {
     alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
     return;
@@ -1023,6 +1041,7 @@ onMounted(async () => {
   }
 
   scannerService.onScan(handleScan);
+  window.addEventListener('resize', onViewportResize);
 
   // Đến từ nút "Sang In tem" ở /order-scan — tự tìm theo mã lô, khỏi phải quét lại.
   // Tem gắn theo material_labels (nhiều tem/lô) nên không auto-chọn 1 tem cụ thể,
@@ -1057,6 +1076,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   scannerService.offScan(handleScan);
+  window.removeEventListener('resize', onViewportResize);
   if (resetTimer) clearTimeout(resetTimer);
   if (pollTimer) clearInterval(pollTimer);
   echo.leaveChannel('production-batches');
@@ -1072,12 +1092,23 @@ onUnmounted(() => {
 
 .station-banner {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-md);
   padding: var(--space-lg) var(--space-xl);
   background-color: var(--bg-card);
   border: 1px solid var(--border-card);
   border-radius: var(--radius-lg);
+}
+.banner-left {
+  min-width: 0;
+}
+.banner-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
 }
 .station-badge {
   display: inline-block;
@@ -1103,6 +1134,7 @@ onUnmounted(() => {
 .dev-badge {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   font-size: 0.85rem;
   color: var(--text-muted);
@@ -1169,15 +1201,23 @@ onUnmounted(() => {
   overflow-x: auto;
   border-radius: var(--radius-lg);
 }
+/* 8 cột trong mỗi bảng con (queue-columns) vẫn có thể vượt quá bề rộng cột khi zoom
+   trình duyệt lớn dù đã chia cột thích ứng -> cột "Thao tác" (In nhanh/Xem trước) bị
+   đẩy ra ngoài, phải cuộn ngang mới thấy, người dùng tưởng nút biến mất. Ghim cột này
+   bên phải để luôn thấy nút thao tác dù các cột khác có cuộn ngang hay không. */
+.table-container-fixed .data-table th:last-child,
+.table-container-fixed .data-table td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  box-shadow: -4px 0 6px -4px rgba(0, 0, 0, 0.25);
+}
 .queue-columns {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  /* Số cột lấy từ queueColumnCount (JS, phản ứng theo bề rộng cửa sổ thật) thay vì
+     media query cố định, để luôn khớp với số mảng đã chia trong queueColumns. */
+  grid-template-columns: repeat(v-bind(queueColumnCount), 1fr);
   gap: var(--space-lg);
-}
-@media (max-width: 900px) {
-  .queue-columns {
-    grid-template-columns: 1fr;
-  }
 }
 .highlight-code {
   color: var(--primary-hover);
@@ -1204,10 +1244,12 @@ onUnmounted(() => {
 }
 .manual-input-row {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-sm);
 }
 .manual-input {
   flex: 1;
+  min-width: 160px;
 }
 .manual-error {
   color: var(--status-red);
@@ -1287,8 +1329,10 @@ onUnmounted(() => {
 /* Remote monitoring banner styles */
 .remote-banner {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-md);
   padding: var(--space-md) var(--space-lg);
   border-radius: var(--radius-md);
   border-width: 1px;
@@ -1308,14 +1352,17 @@ onUnmounted(() => {
 }
 .banner-content {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-md);
+  min-width: 0;
 }
 .banner-icon {
   font-size: var(--font-lg);
 }
 .select-mode {
   width: 180px;
+  max-width: 100%;
   background-color: var(--bg-card);
   border-color: var(--border-card);
   color: var(--text-body);
@@ -1382,6 +1429,7 @@ onUnmounted(() => {
 }
 .preview-modal-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 12px;
   padding: var(--space-lg) var(--space-xl);
@@ -1412,7 +1460,9 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
   .rack-tables-row,
-  .preview-header-grid {
+  .preview-header-grid,
+  .printer-config-form,
+  .details-grid {
     grid-template-columns: 1fr;
   }
 }

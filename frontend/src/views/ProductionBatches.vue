@@ -188,6 +188,7 @@
               <th>Mã hàng</th>
               <th>Máy</th>
               <th>Thùng</th>
+              <th>Mức nước</th>
               <th>Tiến Trình</th>
               <th>Trạng thái</th>
               <th>Cập nhật</th>
@@ -221,6 +222,7 @@
                   {{ batch.tank?.code || 'N/A' }}
                 </span>
               </td>
+              <td>{{ batch.level_code || 'N/A' }}</td>
               <td>
                 <div class="progress-bar-wrapper" :title="'Độ hoàn tất: ' + getProgressPercent(batch.status) + '%'">
                   <div class="progress-bar-fill" :style="{ width: getProgressPercent(batch.status) + '%' }"></div>
@@ -248,7 +250,7 @@
               </td>
             </tr>
             <tr v-if="recentBatches.length === 0">
-              <td colspan="9" class="text-center text-muted pad-empty-row">Chưa có lô sản xuất nào.</td>
+              <td colspan="10" class="text-center text-muted pad-empty-row">Chưa có lô sản xuất nào.</td>
             </tr>
           </tbody>
         </table>
@@ -653,9 +655,7 @@ const saveScanOrder = async () => {
     duplicateWarning.value = '';
     confirmDuplicateSave.value = false;
 
-    // Tick PHÊ DUYỆT là đủ để tự động duyệt ngay trong cùng thao tác SAVE — không còn
-    // bắt buộc phải chọn Thùng nữa (backend/ApproveProductionOrderService không yêu cầu
-    // tank_id, quy tắc 250L chỉ áp dụng KHI có tank 1A/2B, tự bỏ qua nếu tank rỗng).
+    // Tick PHÊ DUYỆT là đủ để tự động duyệt ngay trong cùng thao tác SAVE.
     if (confirm2Ok.value) {
       try {
         await axios.post(`/api/production-batches/${newBatch.id}/approve`, {
@@ -663,8 +663,8 @@ const saveScanOrder = async () => {
         });
         scanSuccessMsg.value = `Đã lưu và gửi hàng chờ in tem: ${scanForm.color} - ${scanForm.code}.`;
       } catch (approveErr: any) {
-        // Lưu đơn đã thành công — chỉ riêng bước duyệt tự động thất bại (vd vi phạm quy
-        // tắc 250L). Báo rõ để người vận hành tự duyệt lại thủ công trong bảng bên dưới,
+        // Lưu đơn đã thành công — chỉ riêng bước duyệt tự động thất bại (vd chưa chọn
+        // Thùng trộn). Báo rõ để người vận hành tự duyệt lại thủ công trong bảng bên dưới,
         // không lặng lẽ nuốt lỗi.
         scanErrorMsg.value = `Đã lưu đơn nhưng DUYỆT TỰ ĐỘNG thất bại: ${approveErr.response?.data?.message || 'Lỗi không xác định'}. Duyệt lại thủ công ở trang "Xem danh sách Lô sản xuất".`;
       }

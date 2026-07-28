@@ -118,12 +118,11 @@ class ProductionOrderScanEntryTest extends TestCase
     }
 
     /**
-     * End-to-end đúng VBA btnSAVE_Click: máy trong [VD006,VD013] + tank "1A"/"2B"
-     * (nay đã có thật trong DB nhờ migration seed) + level < 250 -> chặn duyệt.
-     * Trước migration seed tank, test tương đương phải tự tạo Tank thủ công mới thấy
-     * quy tắc hoạt động — test này xác nhận nó hoạt động với ĐÚNG dữ liệu master thật.
+     * Quy tắc "MINIMUM LEVEL 250L" (VBA btnSAVE_Click: máy [VD006,VD013] + tank
+     * 1A/2B + level < 250 -> chặn duyệt) đã bị BỎ theo yêu cầu người dùng
+     * 2026-07-28 — mọi mức nước hợp lệ trong dropdown đều được chấp nhận.
      */
-    public function test_250l_rule_fires_using_real_seeded_tank_data(): void
+    public function test_approve_allows_low_level_using_real_seeded_tank_data(): void
     {
         $user = User::factory()->create();
         $machine = Machine::where('code', 'VD006')->firstOrFail();
@@ -141,7 +140,8 @@ class ProductionOrderScanEntryTest extends TestCase
 
         $response = $this->actingAs($user)->postJson("/api/production-batches/{$batch->id}/approve");
 
-        $response->assertStatus(422);
-        $response->assertJsonPath('message', 'MINIMUM LEVEL 250L');
+        $response->assertStatus(201);
+        $batch->refresh();
+        $this->assertEquals('APPROVED', $batch->status);
     }
 }
