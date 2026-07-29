@@ -72,6 +72,22 @@ class BpdbMachineController extends Controller
         return response()->json(array_merge($summary, $this->envelope($summary['bpdbLastSyncedAt'] ?? now()->toIso8601String())));
     }
 
+    /** Dữ liệu cho biểu đồ Gantt "Máy VD" — groups (máy) + items (mẻ/task). */
+    public function gantt(Request $request, BpdbMachineMonitoringService $service)
+    {
+        $data = $service->getGanttTimeline($request->query('fromDate'), $request->query('toDate'));
+
+        return response()->json(array_merge(
+            [
+                'groups' => $data['groups'],
+                'items' => $data['items'],
+                'totalRecords' => $data['totalRecords'],
+                'bpdbConnected' => $data['bpdb_connected'],
+            ],
+            $this->envelope($data['fetched_at'])
+        ));
+    }
+
     /**
      * Envelope chung (mục 9): lastSyncedAt/dataAgeSeconds/source/readOnly/stale.
      * Ngưỡng "cũ" cấu hình qua feature_flags (Admin sửa được), mặc định 60 giây.

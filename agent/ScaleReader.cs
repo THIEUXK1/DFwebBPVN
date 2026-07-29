@@ -97,19 +97,30 @@ public class ScaleReader : IDisposable
         return (null, false); // The serial port uses event-driven reading (OnDataReceived/ProcessRawData)
     }
 
+    // Throttle cảnh báo "chưa thấy file log cân" — vòng lặp Worker chạy mỗi
+    // PollIntervalMs (mặc định 500ms), log mỗi vòng sẽ spam log file vô ích.
+    private DateTime _nextMissingFileWarnAt = DateTime.MinValue;
+    private static readonly TimeSpan MissingFileWarnInterval = TimeSpan.FromSeconds(30);
+
     private (double? Weight, bool IsStable) ReadSimulatedWeight()
     {
         try
         {
-            // If simulation file doesn't exist, create it with dummy data
+            // Trước đây nếu không thấy file thì tự tạo file giả với số cân bịa (12.45kg) —
+            // khiến màn hình Trạm cân tưởng cân đang hoạt động dù PuTTY chưa bật/chưa log
+            // đúng đường dẫn. Nay coi "không thấy file" là CHƯA NHẬN được tín hiệu cân thật
+            // (weight=null, đúng quy ước TV6 — xem CleanWeight/ReadCurrentWeightWithStability)
+            // — không tự bịa số, không tự tạo file.
             if (!File.Exists(_simulationFilePath))
             {
-                string dir = Path.GetDirectoryName(_simulationFilePath) ?? "";
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                if (DateTime.UtcNow >= _nextMissingFileWarnAt)
                 {
-                    Directory.CreateDirectory(dir);
+                    _logger.LogWarning(
+                        "Chưa nhận tín hiệu cân — không tìm thấy file log tại {Path}. Kiểm tra PuTTY đã bật Session Logging đúng đường dẫn này chưa.",
+                        _simulationFilePath);
+                    _nextMissingFileWarnAt = DateTime.UtcNow.Add(MissingFileWarnInterval);
                 }
-                File.WriteAllText(_simulationFilePath, "ST,GS,+   12.45 kg\r\n");
+                return (null, false);
             }
 
             // Read the last line of the file (mimicking putty log tail) — giữ nguyên hành vi

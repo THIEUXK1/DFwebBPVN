@@ -410,7 +410,9 @@ const menuGroupsRaw = [
     items: [
       { path: '/workstation-admin', label: 'Workstation & Tài khoản', icon: 'settings', adminOnly: true },
       { path: '/print-history-admin', label: 'Lịch sử in tem', icon: 'recipe', adminOnly: true },
-      { path: '/bpdb-admin', label: 'BPDB / JIT (Color Service)', icon: 'settings', adminOnly: true }
+      { path: '/bpdb-admin', label: 'BPDB / JIT (Color Service)', icon: 'settings', adminOnly: true },
+      { path: '/bpdb-machines', label: 'Máy VD (BPDB)', icon: 'batch', adminOnly: true },
+      { path: '/bpdb-machines/gantt', label: 'Gantt Máy VD (BPDB)', icon: 'queue', adminOnly: true }
     ]
   }
 ];
@@ -442,6 +444,8 @@ const currentRouteName = computed(() => {
     '/workstation-admin': 'Quản lý Workstation & Tài khoản',
     '/print-history-admin': 'Lịch sử in tem — Toàn hệ thống',
     '/bpdb-admin': 'Giám sát tích hợp Color Service (BPDB/JIT)',
+    '/bpdb-machines': 'Máy VD — Trạng thái vận hành (BPDB)',
+    '/bpdb-machines/gantt': 'Tiến độ Máy VD — Biểu đồ Gantt (BPDB)',
     '/order-scan': 'Trạm Quét đơn QR',
     '/print-station': 'Trạm In tem',
     '/chemical-call': 'Trạm Gọi Hóa chất',
@@ -632,12 +636,18 @@ const handleLogout = () => {
   display: flex;
   align-items: center;
   gap: 16px;
+  /* Không có min-width:0 thì flex item không co nhỏ hơn nội dung bên trong — tiêu đề
+     breadcrumb dài (vd "Danh sách Hóa chất Đang chờ Xử lý") sẽ tự xuống dòng thứ 2 khi
+     topbar hết chỗ, tràn ra ngoài khung .topbar cao cố định 70px (trông như "văng xuống"). */
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .mobile-burger-btn {
   display: none;
   cursor: pointer;
   color: var(--text-title);
+  flex-shrink: 0;
 }
 
 .breadcrumb-container {
@@ -645,25 +655,36 @@ const handleLogout = () => {
   align-items: center;
   gap: 8px;
   font-size: 0.9rem;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .breadcrumb-root {
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .breadcrumb-separator {
   color: var(--text-disabled);
+  flex-shrink: 0;
 }
 
 .breadcrumb-current {
   color: var(--text-title);
   font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .topbar-right {
   display: flex;
   align-items: center;
   gap: 20px;
+  /* Giữ nguyên kích thước, không bị bóp — toàn bộ phần co lại nhường cho breadcrumb
+     bên trái (đã có ellipsis) khi topbar hết chỗ. */
+  flex-shrink: 0;
 }
 
 /* Realtime status indicators */

@@ -10,8 +10,9 @@ class WeighingJobItem extends Model
     protected $table = 'weighing_job_items';
 
     protected $keyType = 'string';
+
     public $incrementing = false;
-    
+
     public $timestamps = false;
 
     protected $fillable = [
@@ -21,6 +22,7 @@ class WeighingJobItem extends Model
         'tolerance_minus',
         'tolerance_plus',
         'sequence_no',
+        'rack_code',
         'actual_weight',
         'status',
         'label_id',

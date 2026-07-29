@@ -18,6 +18,7 @@ import AuditLogExplorer from '../views/AuditLogExplorer.vue';
 import WorkstationAdmin from '../views/WorkstationAdmin.vue';
 import PrintHistoryAdmin from '../views/PrintHistoryAdmin.vue';
 import BpdbAdmin from '../views/BpdbAdmin.vue';
+import BpdbMachines from '../views/BpdbMachines.vue';
 import OrderScan from '../views/OrderScan.vue';
 import PrintStation from '../views/PrintStation.vue';
 import WorkstationKioskSetup from '../views/WorkstationKioskSetup.vue';
@@ -185,6 +186,21 @@ const routes = [
     path: '/bpdb-admin',
     name: 'BpdbAdmin',
     component: BpdbAdmin,
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
+    path: '/bpdb-machines',
+    name: 'BpdbMachines',
+    component: BpdbMachines,
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
+    // Lazy-load riêng route này — vis-timeline (~600KB) chỉ Admin dùng, không nên cộng
+    // vào bundle chính mà mọi trạm kiosk vận hành đều phải tải (xem CLAUDE.md mục "Wide
+    // Layout... tối ưu hiển thị nhà xưởng").
+    path: '/bpdb-machines/gantt',
+    name: 'BpdbMachinesGantt',
+    component: () => import('../views/BpdbMachinesGantt.vue'),
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   // Fallback redirect

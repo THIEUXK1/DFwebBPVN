@@ -23,7 +23,11 @@
             v-for="c in groupedChannels[machineCode]"
             :key="c.channel_id"
             class="channel-row"
-            :class="isChannelRed(c) ? 'row-ordered' : 'row-done'"
+            :class="[
+              isChannelRed(c) ? 'row-ordered' : 'row-done',
+              actionLoading === c.channel_id ? 'row-processing' : '',
+              actionLoading !== null && actionLoading !== c.channel_id ? 'row-locked' : ''
+            ]"
           >
             <div class="channel-number-col">
               <span v-if="isChannelRed(c)" class="alert-dot" aria-hidden="true"></span>
@@ -58,9 +62,10 @@
                 @click="toggleChannel(c, $event)"
                 class="btn btn-sm py-1 font-semibold toggle-btn"
                 :class="isChannelRed(c) ? 'btn-danger' : 'btn-success'"
-                :disabled="actionLoading === c.channel_id"
+                :disabled="actionLoading !== null"
               >
-                {{ isChannelRed(c) ? '🔴 Bấm khi Xong' : '🟢 OK — Bấm để Gọi' }}
+                <span v-if="actionLoading === c.channel_id">⏳ Đang xử lý...</span>
+                <span v-else>{{ isChannelRed(c) ? '🔴 Bấm khi Xong' : '🟢 OK — Bấm để Gọi' }}</span>
               </button>
             </div>
           </div>
@@ -193,7 +198,10 @@ async function toggleChannel(channel: ChemicalChannel, event?: MouseEvent) {
         idempotency_key: idempotencyKey
       });
     }
-    fetchChannels();
+    // Đợi fetchChannels() lấy trạng thái THẬT từ server rồi mới mở khoá thao tác —
+    // tránh trường hợp API mutation trả về xong nhưng dữ liệu trên lưới vẫn là dữ
+    // liệu lạc quan cũ, người dùng bấm tiếp trước khi trạng thái thật sự cập nhật.
+    await fetchChannels();
   } catch (err: any) {
     channel.current_request = previousRequest;
     errorMsg.value = err.response?.data?.message || 'Không thể đổi trạng thái kênh.';
@@ -358,6 +366,23 @@ onUnmounted(() => {
 .row-done {
   background-color: rgba(52, 211, 153, 0.08);
   border-left: 4px solid transparent;
+}
+
+/* Hàng đang xử lý (vừa bấm) — tối lại để báo hiệu đang thay đổi trạng thái,
+   thay thế màu đỏ/xanh nhấp nháy trong lúc chờ API phản hồi. */
+.row-processing {
+  animation: none;
+  background-color: rgba(15, 23, 42, 0.35);
+  filter: grayscale(0.4);
+}
+
+/* Các hàng còn lại — mờ nhẹ + khoá thao tác khi đang có 1 hàng khác xử lý,
+   để người dùng hiểu phải đợi đổi xong mới được bấm hàng khác. */
+.row-locked {
+  opacity: 0.45;
+  pointer-events: none;
+  filter: grayscale(0.3);
+  transition: opacity 0.2s ease, filter 0.2s ease;
 }
 
 @keyframes row-alert-pulse {

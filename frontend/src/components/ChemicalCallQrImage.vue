@@ -3,7 +3,7 @@
     :src="resolvedSrc"
     class="chem-call-qr-thumb"
     :class="{ 'chem-call-qr-thumb--large': size >= 100, 'is-loaded': loaded }"
-    :style="{ width: size + 'px', height: size + 'px' }"
+    :style="{ '--qr-size': size + 'px' }"
     alt="QR Báo phát AC"
     decoding="async"
     @load="loaded = true"
@@ -33,7 +33,14 @@ const resolvedSrc = computed(() => {
 
 <style scoped>
 .chem-call-qr-thumb {
-  flex-shrink: 0;
+  /* Kích thước theo --qr-size nhưng luôn co lại vừa khung chứa (max-width: 100%) khi
+     khung bị thu hẹp (thu nhỏ trình duyệt/màn hình hẹp) — object-fit: contain đảm bảo
+     ảnh không bao giờ bị cắt/vỡ, chỉ co giãn giữ nguyên tỉ lệ. */
+  width: var(--qr-size);
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  flex-shrink: 1;
   border-radius: 4px;
   background: #fff;
   object-fit: contain;

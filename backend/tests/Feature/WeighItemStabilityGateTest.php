@@ -1,4 +1,5 @@
 <?php
+
 // backend/tests/Feature/WeighItemStabilityGateTest.php
 //
 // p0-c-scale-algorithm.md Mục A.4: WeighingJobController::weighItem trước đây validate
@@ -8,15 +9,15 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
 use App\Models\Machine;
+use App\Models\Material;
 use App\Models\ProductionBatch;
+use App\Models\ScaleMeasurement;
+use App\Models\User;
 use App\Models\WeighingJob;
 use App\Models\WeighingJobItem;
-use App\Models\Material;
-use App\Models\ScaleMeasurement;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class WeighItemStabilityGateTest extends TestCase
 {
@@ -24,10 +25,10 @@ class WeighItemStabilityGateTest extends TestCase
 
     private function makeWeighingItem(): WeighingJobItem
     {
-        $user = User::factory()->create(['username' => 'op_stable_' . uniqid()]);
+        $user = User::factory()->create(['username' => 'op_stable_'.uniqid()]);
         $machine = Machine::firstOrCreate(['code' => 'VD-STABLE-TEST'], ['name' => 'x']);
         $batch = ProductionBatch::create([
-            'legacy_batch_id' => 'STB' . time() . rand(1, 999),
+            'legacy_batch_id' => 'STB'.time().rand(1, 999),
             'color' => 'C', 'product_code' => 'P',
             'machine_id' => $machine->id, 'status' => 'APPROVED',
         ]);
@@ -49,6 +50,7 @@ class WeighItemStabilityGateTest extends TestCase
         ]);
 
         $this->actingAsUser = $user;
+
         return $item;
     }
 
@@ -109,5 +111,45 @@ class WeighItemStabilityGateTest extends TestCase
         $this->assertEquals(100.0, (float) $measurement->weight);
         $this->assertEquals(5.0, (float) $measurement->tare_weight);
         $this->assertEquals(105.0, (float) $measurement->gross_weight);
+    }
+
+    /**
+     * Rebuild /weighing-station theo bảng 9 dòng RACK/DYE CODE/WEIGHT/PROCESS (scaleform.frm
+     * VBA gốc) — rack_code phải được ghi cả trên weighing_job_items lẫn scale_measurements.
+     */
+    public function test_weigh_item_stores_rack_code_on_item_and_measurement()
+    {
+        $item = $this->makeWeighingItem();
+
+        $response = $this->actingAs($this->actingAsUser)->postJson("/api/weighing-jobs/items/{$item->id}/weigh", [
+            'weight' => 100.0,
+            'scale_device_id' => 'MOCK_SCALE',
+            'stable' => true,
+            'rack_code' => 'R3',
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertEquals('R3', WeighingJobItem::find($item->id)->rack_code);
+
+        $measurement = ScaleMeasurement::where('weighing_job_item_id', $item->id)->first();
+        $this->assertEquals('R3', $measurement->rack_code);
+    }
+
+    /**
+     * rack_code phải là 'sometimes|nullable' — không được bắt buộc, vì không phải công thức
+     * nào cũng dùng hết 9 rack (giống VBA: các ô txt_rack{i} còn lại có thể để trống).
+     */
+    public function test_weigh_item_succeeds_without_rack_code()
+    {
+        $item = $this->makeWeighingItem();
+
+        $response = $this->actingAs($this->actingAsUser)->postJson("/api/weighing-jobs/items/{$item->id}/weigh", [
+            'weight' => 100.0,
+            'scale_device_id' => 'MOCK_SCALE',
+            'stable' => true,
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertNull(WeighingJobItem::find($item->id)->rack_code);
     }
 }

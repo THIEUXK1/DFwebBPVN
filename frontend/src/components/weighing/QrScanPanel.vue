@@ -1,0 +1,214 @@
+<template>
+  <div class="scanning-wait-screen card-sec text-center">
+    <!-- Scale warning + tự cấu hình tại chỗ -->
+    <div v-if="!currentWorkstation?.assigned_scale_device_id" class="card error-card mb-4" style="color:var(--status-red); border-color:var(--status-red-border); background:var(--status-red-bg); padding:12px; border-radius:8px; text-align:left;">
+      ⚠️ Trạm chưa gán thiết bị Cân.
+      <button @click="showScaleConfig = !showScaleConfig" class="btn btn-secondary btn-sm ml-2">⚙️ Cấu hình cân ngay</button>
+      <div v-if="showScaleConfig" class="mt-3 device-config-form">
+        <input v-model="scaleConfigForm.deviceId" type="text" class="form-control mb-2" placeholder="Mã cân, vd: SCALE_SMALL_01" />
+        <input v-model="scaleConfigForm.comPort" type="text" class="form-control mb-2" placeholder="Cổng COM, vd: COM3 (tùy chọn)" />
+        <button @click="saveScaleConfig" class="btn btn-primary btn-sm" :disabled="!scaleConfigForm.deviceId || savingScaleConfig">
+          {{ savingScaleConfig ? 'Đang lưu...' : 'Lưu cấu hình cân' }}
+        </button>
+      </div>
+    </div>
+    <!-- Printer warning + tự cấu hình tại chỗ -->
+    <div v-if="!currentWorkstation?.assigned_printer_device_id" class="card warning-card mb-4" style="color:#eab308; border-color:#eab308; background:rgba(234,179,8,0.05); padding:12px; border-radius:8px; border:1px solid rgba(234,179,8,0.2); text-align:left;">
+      ⚠️ Trạm chưa gán máy in chính.
+      <button @click="showPrinterConfig = !showPrinterConfig" class="btn btn-secondary btn-sm ml-2">⚙️ Cấu hình máy in ngay</button>
+      <div v-if="showPrinterConfig" class="mt-3 device-config-form">
+        <input v-model="printerConfigForm.deviceId" type="text" class="form-control mb-2" placeholder="Mã máy in, vd: TSC TE200" />
+        <select v-model="printerConfigForm.connectionType" class="form-select mb-2">
+          <option value="USB">USB</option>
+          <option value="LAN">LAN</option>
+        </select>
+        <input v-model="printerConfigForm.address" type="text" class="form-control mb-2" placeholder="Địa chỉ IP (nếu LAN) hoặc để trống nếu USB" />
+        <button @click="savePrinterConfig" class="btn btn-primary btn-sm" :disabled="!printerConfigForm.deviceId || savingPrinterConfig">
+          {{ savingPrinterConfig ? 'Đang lưu...' : 'Lưu cấu hình máy in' }}
+        </button>
+      </div>
+    </div>
+
+    <div class="scanner-anim-icon">🔳</div>
+    <h3>VUI LÒNG QUÉT MÃ QR ĐƠN CÔNG THỨC ĐỂ BẮT ĐẦU</h3>
+    <p class="text-muted">Hệ thống sẽ tự động đối chiếu, nạp danh sách nguyên liệu và thiết lập dung sai cho trạm.</p>
+
+    <!-- Manual QR entry — fallback khi máy quét vật lý lỗi/không kết nối. Nhập/dán
+         đúng chuỗi QR thật do QR_LABEL_PRINTING in ra (bắt đầu bằng "#"). -->
+    <div class="mock-scanner-widget mt-5">
+      <h4>⌨️ Nhập tay mã QR (khi máy quét lỗi)</h4>
+      <div class="mock-input-row">
+        <input
+          v-model="manualQrInput"
+          type="text"
+          class="form-control"
+          placeholder="Dán hoặc gõ chuỗi QR thật, vd: #RED-P123-VD10-220-..."
+          @keyup.enter="submitManualQr"
+        />
+        <button
+          @click="submitManualQr"
+          class="btn btn-primary"
+          :disabled="!manualQrInput || viewOnly"
+        >
+          Nạp đơn
+        </button>
+      </div>
+    </div>
+
+    <!-- Mock Scanner Tool for Testing -->
+    <div class="mock-scanner-widget mt-3">
+      <h4>📋 Công cụ Giả lập Quét mã (Dành cho kiểm thử)</h4>
+      <div class="mock-input-row">
+        <select v-model="mockSelectedBatchId" class="form-select mock-select">
+          <option value="">-- Chọn mẻ từ CSDL để quét giả lập --</option>
+          <option v-for="b in databaseBatches" :key="b.id" :value="b.id">
+            Mẻ: {{ b.legacy_batch_id }} | Màu: {{ b.color }} | Vải: {{ b.cloth_weight }} kg
+          </option>
+        </select>
+        <button
+          @click="triggerMockScan"
+          class="btn btn-secondary"
+          :disabled="!mockSelectedBatchId || viewOnly"
+        >
+          Simulate QR Scan
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, onMounted, onUnmounted } from 'vue';
+import axios from 'axios';
+import { currentWorkstation } from '../../services/workstation';
+import { scannerService } from '../../services/scanner';
+import echo from '../../services/echo';
+
+defineProps<{ viewOnly: boolean }>();
+const emit = defineEmits<{ (e: 'manual-qr-submit', token: string): void }>();
+
+// Tự cấu hình cân/máy in ngay tại trạm — không qua Admin (đơn giản hóa 2026-07-18)
+const showScaleConfig = ref(false);
+const savingScaleConfig = ref(false);
+const scaleConfigForm = reactive({ deviceId: '', comPort: '' });
+
+const showPrinterConfig = ref(false);
+const savingPrinterConfig = ref(false);
+const printerConfigForm = reactive({ deviceId: '', connectionType: 'USB', address: '' });
+
+const saveScaleConfig = async () => {
+  if (!currentWorkstation.value || !scaleConfigForm.deviceId) return;
+  savingScaleConfig.value = true;
+  try {
+    await axios.put(`/api/workstations/${currentWorkstation.value.id}/local-device-config`, {
+      scale_device_id: scaleConfigForm.deviceId,
+      scale_com_port: scaleConfigForm.comPort || undefined,
+    });
+    currentWorkstation.value.assigned_scale_device_id = scaleConfigForm.deviceId;
+    showScaleConfig.value = false;
+  } catch (err: any) {
+    alert(err.response?.data?.message || 'Không thể lưu cấu hình cân.');
+  } finally {
+    savingScaleConfig.value = false;
+  }
+};
+
+const savePrinterConfig = async () => {
+  if (!currentWorkstation.value || !printerConfigForm.deviceId) return;
+  savingPrinterConfig.value = true;
+  try {
+    await axios.put(`/api/workstations/${currentWorkstation.value.id}/local-device-config`, {
+      printer_device_id: printerConfigForm.deviceId,
+      printer_connection_type: printerConfigForm.connectionType,
+      printer_address: printerConfigForm.address || undefined,
+    });
+    currentWorkstation.value.assigned_printer_device_id = printerConfigForm.deviceId;
+    showPrinterConfig.value = false;
+  } catch (err: any) {
+    alert(err.response?.data?.message || 'Không thể lưu cấu hình máy in.');
+  } finally {
+    savingPrinterConfig.value = false;
+  }
+};
+
+const manualQrInput = ref<string>('');
+const submitManualQr = () => {
+  const token = manualQrInput.value.trim();
+  if (!token) return;
+  emit('manual-qr-submit', token);
+  manualQrInput.value = '';
+};
+
+const databaseBatches = ref<any[]>([]);
+const mockSelectedBatchId = ref<string>('');
+
+const fetchWaitingBatches = async () => {
+  try {
+    const res = await axios.get('/api/production-batches');
+    databaseBatches.value = res.data.data || res.data || [];
+  } catch (err) {
+    console.error('Failed to load batches:', err);
+  }
+};
+
+const triggerMockScan = () => {
+  if (!mockSelectedBatchId.value) return;
+  const token = `DF:ORDER:${mockSelectedBatchId.value}`;
+  // Đi qua scannerService (không emit trực tiếp) vì WeighingStation.vue đã đăng ký
+  // handleBarcodeScan làm callback của scannerService — giữ đúng 1 đường xử lý duy
+  // nhất cho quét thật/quét giả lập, chỉ nhập tay (manual-qr-submit) mới đi tắt.
+  scannerService.simulateScan(token);
+};
+
+let batchPollInterval: any = null;
+
+defineExpose({ fetchWaitingBatches });
+
+onMounted(() => {
+  fetchWaitingBatches();
+  // Realtime qua Reverb — lô mới được tạo/duyệt ở /production-batches phải xuất hiện
+  // ngay trong dropdown "Giả lập Quét mã" ở đây, không cần rời màn hình rồi quay lại.
+  echo.channel('production-batches').listen('.updated', fetchWaitingBatches);
+  batchPollInterval = setInterval(fetchWaitingBatches, 15000);
+});
+
+onUnmounted(() => {
+  if (batchPollInterval) clearInterval(batchPollInterval);
+  echo.leaveChannel('production-batches');
+});
+</script>
+
+<style scoped>
+.scanning-wait-screen {
+  padding: 60px 40px;
+}
+
+.scanner-anim-icon {
+  font-size: 4rem;
+  margin-bottom: 20px;
+  animation: pulseScan 2s infinite ease-in-out;
+}
+
+@keyframes pulseScan {
+  0% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.7; }
+}
+
+.mock-scanner-widget {
+  max-width: 500px;
+  margin: 0 auto;
+  border-top: 1px solid var(--border-divider);
+  padding-top: 24px;
+}
+
+.mock-input-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.mock-select {
+  flex: 2;
+}
+</style>

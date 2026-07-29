@@ -2,17 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
+use App\Models\AuditLog;
+use App\Models\MaterialLabel;
+use App\Models\OperationClient;
+use App\Models\PrintJob;
+use App\Models\ProductionBatch;
+use App\Models\ScaleMeasurement;
+use App\Models\User;
 use App\Models\WeighingJob;
 use App\Models\WeighingJobItem;
-use App\Models\ScaleMeasurement;
-use App\Models\MaterialLabel;
-use App\Models\ProductionBatch;
-use App\Models\PrintJob;
-use App\Models\OperationClient;
-use App\Models\AuditLog;
 use App\Services\RealtimeService;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -24,9 +25,10 @@ class WeighingJobController extends Controller
     public function show($id)
     {
         $job = WeighingJob::with(['batch.machine', 'batch.tank', 'items.material'])->findOrFail($id);
+
         return response()->json([
             'status' => 'SUCCESS',
-            'data' => $job
+            'data' => $job,
         ]);
     }
 
@@ -48,18 +50,24 @@ class WeighingJobController extends Controller
             // có). tare_weight/gross_weight chỉ optional, phục vụ audit minh bạch.
             'tare_weight' => 'sometimes|nullable|numeric|min:0',
             'gross_weight' => 'sometimes|nullable|numeric|min:0',
+            // RACK (rebuild bảng 9 dòng RACK/DYE CODE/WEIGHT/PROCESS đúng scaleform.frm VBA
+            // gốc) — có thể đã được tự điền từ QR (ScannerController::handleOrderScan) hoặc
+            // do thao tác viên tự gõ/sửa tay trên từng dòng trước khi xác nhận cân. Thuần
+            // metadata hiển thị/đối soát, không ảnh hưởng logic so dung sai.
+            'rack_code' => 'sometimes|nullable|string|max:20',
         ]);
 
         $item = WeighingJobItem::with('job.batch')->findOrFail($id);
         $job = $item->job;
         $batch = $job->batch;
 
-        $measuredWeight = (float)$request->input('weight');
+        $measuredWeight = (float) $request->input('weight');
         $tareWeight = $request->input('tare_weight');
         $grossWeight = $request->input('gross_weight');
+        $rackCode = $request->input('rack_code');
         $scaleDeviceId = $request->input('scale_device_id');
-        $stable = (bool)$request->input('stable');
-        $overrideApproved = (bool)$request->input('override_approved', false);
+        $stable = (bool) $request->input('stable');
+        $overrideApproved = (bool) $request->input('override_approved', false);
         $overrideReason = $request->input('override_reason');
 
         // p0-c-scale-algorithm.md Mục A.4: trước đây 'stable' chỉ được validate là boolean hợp
@@ -67,7 +75,7 @@ class WeighingJobController extends Controller
         // được lưu bình thường (nút Xác nhận phía frontend chỉ disable UI, không chặn được ai
         // gọi thẳng API). VBA chặn cứng: chỉ đẩy vào CheckRange/lưu khi StableFilter báo ổn định
         // 2 lần đọc liên tiếp giống hệt. Chặn ở đây để không phụ thuộc hoàn toàn vào UI.
-        if (!$stable) {
+        if (! $stable) {
             return response()->json([
                 'status' => 'ERROR',
                 'message' => 'Số cân chưa ổn định — chờ 2 lần đọc liên tiếp giống nhau trước khi xác nhận.',
@@ -76,16 +84,16 @@ class WeighingJobController extends Controller
         }
 
         // Tolerance Check
-        $target = (float)$item->planned_weight;
-        $toleranceMinus = (float)$item->tolerance_minus;
-        $tolerancePlus = (float)$item->tolerance_plus;
+        $target = (float) $item->planned_weight;
+        $toleranceMinus = (float) $item->tolerance_minus;
+        $tolerancePlus = (float) $item->tolerance_plus;
 
         $minAllowed = $target - $toleranceMinus;
         $maxAllowed = $target + $tolerancePlus;
 
         $inRange = ($measuredWeight >= $minAllowed && $measuredWeight <= $maxAllowed);
 
-        if (!$inRange && !$overrideApproved) {
+        if (! $inRange && ! $overrideApproved) {
             $item->status = 'OUT_OF_TOLERANCE';
             $item->save();
 
@@ -96,16 +104,16 @@ class WeighingJobController extends Controller
                 'data' => [
                     'min_allowed' => $minAllowed,
                     'max_allowed' => $maxAllowed,
-                    'measured' => $measuredWeight
-                ]
+                    'measured' => $measuredWeight,
+                ],
             ], 422);
         }
 
         $client = $request->attributes->get('operation_client');
-        if (!$client) {
+        if (! $client) {
             $code = $request->header('X-Workstation-Code') ?? $request->input('workstation_code');
             if ($code) {
-                $client = \App\Models\OperationClient::where('code', $code)->first();
+                $client = OperationClient::where('code', $code)->first();
             }
         }
 
@@ -115,55 +123,55 @@ class WeighingJobController extends Controller
                 ->where('devices.code', $scaleDeviceId)
                 ->where('operation_client_devices.enabled', true)
                 ->first();
-            if (!$scaleDevice) {
+            if (! $scaleDevice) {
                 return response()->json([
                     'status' => 'ERROR',
-                    'message' => "Thiết bị cân '{$scaleDeviceId}' chưa được gán hoặc chưa được kích hoạt cho máy trạm này."
+                    'message' => "Thiết bị cân '{$scaleDeviceId}' chưa được gán hoặc chưa được kích hoạt cho máy trạm này.",
                 ], 400);
             }
         }
 
-        $isOverride = !$inRange && $overrideApproved;
+        $isOverride = ! $inRange && $overrideApproved;
         $overrideUser = null;
 
         if ($isOverride) {
             $user = Auth::user();
 
-            if (!$user) {
+            if (! $user) {
                 $pin = $request->input('manager_pin');
-                if (!$pin) {
+                if (! $pin) {
                     return response()->json([
                         'status' => 'FORBIDDEN',
-                        'message' => 'Yêu cầu nhập mã PIN của Giám sát (Supervisor) để duyệt override dung sai.'
+                        'message' => 'Yêu cầu nhập mã PIN của Giám sát (Supervisor) để duyệt override dung sai.',
                     ], 403);
                 }
-                $user = \App\Models\User::verifyManagerPin($pin);
-                if (!$user) {
+                $user = User::verifyManagerPin($pin);
+                if (! $user) {
                     return response()->json([
                         'status' => 'FORBIDDEN',
-                        'message' => 'Mã PIN giám sát không đúng hoặc không có quyền.'
+                        'message' => 'Mã PIN giám sát không đúng hoặc không có quyền.',
                     ], 403);
                 }
             }
 
-            if (!$user->hasRole('SUPERVISOR') && !$user->hasRole('ADMIN')) {
+            if (! $user->hasRole('SUPERVISOR') && ! $user->hasRole('ADMIN')) {
                 return response()->json([
                     'status' => 'FORBIDDEN',
-                    'message' => 'Chỉ Giám sát viên (Supervisor) hoặc Admin mới có quyền ký duyệt Override dung sai cân.'
+                    'message' => 'Chỉ Giám sát viên (Supervisor) hoặc Admin mới có quyền ký duyệt Override dung sai cân.',
                 ], 403);
             }
 
-            if (!$overrideReason || strlen(trim($overrideReason)) < 5) {
+            if (! $overrideReason || strlen(trim($overrideReason)) < 5) {
                 return response()->json([
                     'status' => 'ERROR',
                     'message' => 'Vui lòng nhập lý do ghi đè dung sai (tối thiểu 5 ký tự).',
-                    'error_code' => 'OVERRIDE_REASON_REQUIRED'
+                    'error_code' => 'OVERRIDE_REASON_REQUIRED',
                 ], 422);
             }
             $overrideUser = $user;
         }
 
-        return DB::transaction(function () use ($item, $job, $batch, $measuredWeight, $tareWeight, $grossWeight, $scaleDeviceId, $stable, $overrideApproved, $isOverride, $overrideReason, $request, $overrideUser) {
+        return DB::transaction(function () use ($item, $job, $batch, $measuredWeight, $tareWeight, $grossWeight, $rackCode, $isOverride, $overrideReason, $request, $overrideUser) {
             // Save to scale measurements (create new for every weigh attempt, no overwrites)
             $measurement = ScaleMeasurement::create([
                 'legacy_source' => 'web_app',
@@ -173,6 +181,7 @@ class WeighingJobController extends Controller
                 'product_code' => $batch->product_code,
                 'machine_code' => $batch->machine ? $batch->machine->code : 'N/A',
                 'level_code' => $batch->level_code,
+                'rack_code' => $rackCode,
                 'dye_code' => $item->material_code,
                 'weight' => $measuredWeight,
                 'tare_weight' => $tareWeight,
@@ -184,6 +193,7 @@ class WeighingJobController extends Controller
 
             // Update item details
             $item->actual_weight = $measuredWeight;
+            $item->rack_code = $rackCode;
             $item->status = 'COMPLETED';
             $item->completed_at = Carbon::now();
 
@@ -209,6 +219,7 @@ class WeighingJobController extends Controller
                     'after_data' => [
                         'actual_weight' => $measuredWeight,
                         'material_code' => $item->material_code,
+                        'rack_code' => $rackCode,
                         'batch_id' => $batch->id,
                         'reason' => $overrideReason,
                     ],
@@ -260,7 +271,7 @@ class WeighingJobController extends Controller
                     'item' => $item,
                     'job_completed' => ($unfinishedItems === 0),
                     'next_item' => $nextItem,
-                ]
+                ],
             ]);
         });
     }
@@ -276,10 +287,10 @@ class WeighingJobController extends Controller
 
         $job = WeighingJob::with('items')->findOrFail($id);
         $batch = ProductionBatch::with('machine')->where('id', $job->production_batch_id)->firstOrFail();
-        
+
         $client = $request->attributes->get('operation_client');
         $workstationCode = $request->input('workstation_code') ?? ($client ? $client->code : null);
-        if (!$workstationCode) {
+        if (! $workstationCode) {
             return response()->json(['status' => 'ERROR', 'message' => 'Không xác định được mã trạm.'], 400);
         }
         $workstation = OperationClient::where('code', $workstationCode)->firstOrFail();
@@ -287,7 +298,7 @@ class WeighingJobController extends Controller
         if ($job->status !== 'COMPLETED') {
             return response()->json([
                 'status' => 'ERROR',
-                'message' => 'Chỉ được phép in tem sau khi nhiệm vụ cân đã hoàn tất.'
+                'message' => 'Chỉ được phép in tem sau khi nhiệm vụ cân đã hoàn tất.',
             ], 422);
         }
 
@@ -297,17 +308,17 @@ class WeighingJobController extends Controller
             ->where('operation_client_devices.enabled', true)
             ->where('operation_client_devices.is_default', true)
             ->first();
-        if (!$printerDevice) {
+        if (! $printerDevice) {
             $printerDevice = $workstation->devices()
                 ->where('device_type', 'PRINTER')
                 ->where('operation_client_devices.enabled', true)
                 ->first();
         }
 
-        if (!$printerDevice) {
+        if (! $printerDevice) {
             return response()->json([
                 'status' => 'ERROR',
-                'message' => 'Chưa cấu hình máy in cho máy trạm này.'
+                'message' => 'Chưa cấu hình máy in cho máy trạm này.',
             ], 400);
         }
 
@@ -322,27 +333,27 @@ class WeighingJobController extends Controller
                 'weighing_job_id' => $job->id,
                 'material_type' => $job->job_type,
                 'weight' => $totalWeight,
-                'reprint_count' => 0
+                'reprint_count' => 0,
             ]);
 
             // Save label ID on items
             WeighingJobItem::where('weighing_job_id', $job->id)->update([
-                'label_id' => $label->id
+                'label_id' => $label->id,
             ]);
 
             // 2. Generate TSPL Command with internal QR Code Spec
             // QR spec format: DF:MATERIAL_LABEL:<uuid>
             $qrToken = "DF:MATERIAL_LABEL:{$label->id}";
             $machineCode = $batch->machine ? $batch->machine->code : 'VD-COMMON';
-            
-            $tspl = "SIZE 80 mm, 50 mm\r\n" .
-                    "GAP 3 mm, 0 mm\r\n" .
-                    "CLS\r\n" .
-                    "QRCODE 50,50,L,6,A,0,\"$qrToken\"\r\n" .
-                    "TEXT 50,220,\"3\",0,1,1,\"LOT: {$batch->legacy_batch_id}\"\r\n" .
-                    "TEXT 50,250,\"3\",0,1,1,\"LOAI: {$job->job_type}\"\r\n" .
-                    "TEXT 50,280,\"3\",0,1,1,\"KG: " . number_format($totalWeight/1000, 2) . "\"\r\n" .
-                    "TEXT 50,310,\"3\",0,1,1,\"MAY: $machineCode\"\r\n" .
+
+            $tspl = "SIZE 80 mm, 50 mm\r\n".
+                    "GAP 3 mm, 0 mm\r\n".
+                    "CLS\r\n".
+                    "QRCODE 50,50,L,6,A,0,\"$qrToken\"\r\n".
+                    "TEXT 50,220,\"3\",0,1,1,\"LOT: {$batch->legacy_batch_id}\"\r\n".
+                    "TEXT 50,250,\"3\",0,1,1,\"LOAI: {$job->job_type}\"\r\n".
+                    'TEXT 50,280,"3",0,1,1,"KG: '.number_format($totalWeight / 1000, 2)."\"\r\n".
+                    "TEXT 50,310,\"3\",0,1,1,\"MAY: $machineCode\"\r\n".
                     "PRINT 1\r\n";
 
             // 3. Spool print job
@@ -360,8 +371,8 @@ class WeighingJobController extends Controller
                 'data' => [
                     'label_id' => $label->id,
                     'qr_token' => $qrToken,
-                    'print_job' => $printJob
-                ]
+                    'print_job' => $printJob,
+                ],
             ]);
         });
     }
@@ -385,7 +396,7 @@ class WeighingJobController extends Controller
 
         $client = $request->attributes->get('operation_client');
         $workstationCode = $request->input('workstation_code') ?? ($client ? $client->code : null);
-        if (!$workstationCode) {
+        if (! $workstationCode) {
             return response()->json(['status' => 'ERROR', 'message' => 'Không xác định được mã trạm.'], 400);
         }
         $workstation = OperationClient::where('code', $workstationCode)->firstOrFail();
@@ -396,17 +407,17 @@ class WeighingJobController extends Controller
             ->where('operation_client_devices.enabled', true)
             ->where('operation_client_devices.is_default', true)
             ->first();
-        if (!$printerDevice) {
+        if (! $printerDevice) {
             $printerDevice = $workstation->devices()
                 ->where('device_type', 'PRINTER')
                 ->where('operation_client_devices.enabled', true)
                 ->first();
         }
 
-        if (!$printerDevice) {
+        if (! $printerDevice) {
             return response()->json([
                 'status' => 'ERROR',
-                'message' => 'Chưa cấu hình máy in cho máy trạm này.'
+                'message' => 'Chưa cấu hình máy in cho máy trạm này.',
             ], 400);
         }
 
@@ -414,16 +425,16 @@ class WeighingJobController extends Controller
 
         $machineCode = $batch->machine ? $batch->machine->code : 'N/A';
 
-        $tspl = "SIZE 76 mm, 130 mm\r\n" .
-                "GAP 2 mm, 0 mm\r\n" .
-                "DIRECTION 1,0\r\n" .
-                "REFERENCE 0,0\r\n" .
-                "CLS\r\n" .
-                "TEXT 15,15,\"3\",0,1,1,\"DF_WEIGHING_SLIP\"\r\n" .
-                "TEXT 15,50,\"2\",0,1,1,\"MAU: {$batch->color}\"\r\n" .
-                "TEXT 15,75,\"2\",0,1,1,\"HANG: {$batch->product_code}\"\r\n" .
-                "TEXT 15,100,\"2\",0,1,1,\"MAY: {$machineCode}\"\r\n" .
-                "TEXT 15,125,\"2\",0,1,1,\"MUC: " . ($batch->level_code ?? '') . "\"\r\n";
+        $tspl = "SIZE 76 mm, 130 mm\r\n".
+                "GAP 2 mm, 0 mm\r\n".
+                "DIRECTION 1,0\r\n".
+                "REFERENCE 0,0\r\n".
+                "CLS\r\n".
+                "TEXT 15,15,\"3\",0,1,1,\"DF_WEIGHING_SLIP\"\r\n".
+                "TEXT 15,50,\"2\",0,1,1,\"MAU: {$batch->color}\"\r\n".
+                "TEXT 15,75,\"2\",0,1,1,\"HANG: {$batch->product_code}\"\r\n".
+                "TEXT 15,100,\"2\",0,1,1,\"MAY: {$machineCode}\"\r\n".
+                'TEXT 15,125,"2",0,1,1,"MUC: '.($batch->level_code ?? '')."\"\r\n";
 
         $y = 155;
         foreach ($job->items as $idx => $item) {
@@ -434,14 +445,15 @@ class WeighingJobController extends Controller
             } else {
                 $statusText = 'PENDING';
             }
-            $weightText = $item->actual_weight !== null ? number_format((float) $item->actual_weight, 2) . 'g' : '---';
+            $weightText = $item->actual_weight !== null ? number_format((float) $item->actual_weight, 2).'g' : '---';
             $seq = $item->sequence_no ?? ($idx + 1);
-            $line = "#{$seq} {$item->material_code} {$weightText} {$statusText}";
-            $tspl .= "TEXT 15,{$y},\"1\",0,1,1,\"" . str_replace('"', '', $line) . "\"\r\n";
+            $rackText = $item->rack_code !== null && $item->rack_code !== '' ? $item->rack_code : (string) $seq;
+            $line = "RACK{$rackText} {$item->material_code} {$weightText} {$statusText}";
+            $tspl .= "TEXT 15,{$y},\"1\",0,1,1,\"".str_replace('"', '', $line)."\"\r\n";
             $y += 22;
         }
 
-        $tspl .= "TEXT 15,{$y},\"1\",0,1,1,\"In luc: " . Carbon::now()->format('d/m/Y H:i:s') . "\"\r\n";
+        $tspl .= "TEXT 15,{$y},\"1\",0,1,1,\"In luc: ".Carbon::now()->format('d/m/Y H:i:s')."\"\r\n";
         $tspl .= "PRINT 1,1\r\n";
 
         $printJob = PrintJob::create([
@@ -485,7 +497,7 @@ class WeighingJobController extends Controller
 
         $labels = MaterialLabel::with(['batch.machine', 'material'])
             ->whereHas('batch', function ($q) use ($request) {
-                $q->where('legacy_batch_id', 'like', '%' . $request->input('q') . '%');
+                $q->where('legacy_batch_id', 'like', '%'.$request->input('q').'%');
             })
             ->orderByDesc('created_at')
             ->limit(20)
@@ -508,28 +520,28 @@ class WeighingJobController extends Controller
         ]);
 
         $user = Auth::user();
-        if (!$user) {
+        if (! $user) {
             $pin = $request->input('manager_pin');
-            if (!$pin) {
+            if (! $pin) {
                 return response()->json([
                     'status' => 'FORBIDDEN',
-                    'message' => 'Yêu cầu nhập mã PIN của Giám sát (Supervisor) để in lại tem.'
+                    'message' => 'Yêu cầu nhập mã PIN của Giám sát (Supervisor) để in lại tem.',
                 ], 403);
             }
-            $user = \App\Models\User::verifyManagerPin($pin);
-            if (!$user) {
+            $user = User::verifyManagerPin($pin);
+            if (! $user) {
                 return response()->json([
                     'status' => 'FORBIDDEN',
-                    'message' => 'Mã PIN giám sát không đúng hoặc không có quyền.'
+                    'message' => 'Mã PIN giám sát không đúng hoặc không có quyền.',
                 ], 403);
             }
         }
 
         $label = MaterialLabel::with('job.batch.machine')->findOrFail($id);
-        
+
         $client = $request->attributes->get('operation_client');
         $workstationCode = $request->input('workstation_code') ?? ($client ? $client->code : null);
-        if (!$workstationCode) {
+        if (! $workstationCode) {
             return response()->json(['status' => 'ERROR', 'message' => 'Không xác định được mã trạm.'], 400);
         }
         $workstation = OperationClient::where('code', $workstationCode)->firstOrFail();
@@ -540,17 +552,17 @@ class WeighingJobController extends Controller
             ->where('operation_client_devices.enabled', true)
             ->where('operation_client_devices.is_default', true)
             ->first();
-        if (!$printerDevice) {
+        if (! $printerDevice) {
             $printerDevice = $workstation->devices()
                 ->where('device_type', 'PRINTER')
                 ->where('operation_client_devices.enabled', true)
                 ->first();
         }
 
-        if (!$printerDevice) {
+        if (! $printerDevice) {
             return response()->json([
                 'status' => 'ERROR',
-                'message' => 'Chưa cấu hình máy in cho máy trạm này.'
+                'message' => 'Chưa cấu hình máy in cho máy trạm này.',
             ], 400);
         }
 
@@ -565,14 +577,14 @@ class WeighingJobController extends Controller
             $qrToken = "DF:MATERIAL_LABEL:{$label->id}";
             $machineCode = $batch->machine ? $batch->machine->code : 'VD-COMMON';
 
-            $tspl = "SIZE 80 mm, 50 mm\r\n" .
-                    "GAP 3 mm, 0 mm\r\n" .
-                    "CLS\r\n" .
-                    "QRCODE 50,50,L,6,A,0,\"$qrToken\"\r\n" .
-                    "TEXT 50,220,\"3\",0,1,1,\"LOT: {$batch->legacy_batch_id} (REPRINT #{$label->reprint_count})\"\r\n" .
-                    "TEXT 50,250,\"3\",0,1,1,\"LOAI: {$label->material_type}\"\r\n" .
-                    "TEXT 50,280,\"3\",0,1,1,\"KG: " . number_format($label->weight/1000, 2) . "\"\r\n" .
-                    "TEXT 50,310,\"3\",0,1,1,\"MAY: $machineCode\"\r\n" .
+            $tspl = "SIZE 80 mm, 50 mm\r\n".
+                    "GAP 3 mm, 0 mm\r\n".
+                    "CLS\r\n".
+                    "QRCODE 50,50,L,6,A,0,\"$qrToken\"\r\n".
+                    "TEXT 50,220,\"3\",0,1,1,\"LOT: {$batch->legacy_batch_id} (REPRINT #{$label->reprint_count})\"\r\n".
+                    "TEXT 50,250,\"3\",0,1,1,\"LOAI: {$label->material_type}\"\r\n".
+                    'TEXT 50,280,"3",0,1,1,"KG: '.number_format($label->weight / 1000, 2)."\"\r\n".
+                    "TEXT 50,310,\"3\",0,1,1,\"MAY: $machineCode\"\r\n".
                     "PRINT 1\r\n";
 
             $printJob = PrintJob::create([
@@ -584,123 +596,26 @@ class WeighingJobController extends Controller
             ]);
 
             // Save reprint to audit log
-            \App\Models\AuditLog::create([
+            AuditLog::create([
                 'user_id' => $user->id,
                 'action' => 'REPRINT_MATERIAL_LABEL',
                 'entity_type' => 'MaterialLabel',
                 'entity_id' => $label->id,
                 'before_data' => ['reprint_count' => $label->reprint_count - 1],
                 'after_data' => ['reprint_count' => $label->reprint_count, 'reason' => $label->reprint_reason],
-                'client_ip' => $request->ip()
+                'client_ip' => $request->ip(),
             ]);
+
+            // Thuộc tính tạm chỉ để trả về xem trước tem (LabelPreview.vue) — KHÔNG lưu DB
+            // (không có cột này trên material_labels, gán sau lần save() cuối cùng ở trên
+            // nên không có nguy cơ Eloquent cố UPDATE cột không tồn tại).
+            $label->setAttribute('label_payload', $tspl);
 
             return response()->json([
                 'status' => 'SUCCESS',
                 'message' => 'Yêu cầu in lại tem đã gửi thành công.',
-                'data' => $label
+                'data' => $label,
             ]);
         });
-    }
-
-    /**
-     * Push raw weight sample from local scale agent (WS-004/005).
-     */
-    public function pushSample(Request $request, $id)
-    {
-        $request->validate([
-            'device_id' => 'required|uuid',
-            'sequence_no' => 'required|integer',
-            'raw_value' => 'required|string',
-            'device_timestamp' => 'sometimes|string',
-        ]);
-
-        $service = app(\App\Services\WeighingCoreService::class);
-        $sample = $service->addSample(
-            $id,
-            $request->input('device_id'),
-            $request->input('sequence_no'),
-            $request->input('raw_value'),
-            $request->input('device_timestamp')
-        );
-
-        return response()->json([
-            'status' => 'SUCCESS',
-            'data' => $sample
-        ], 201);
-    }
-
-    /**
-     * Get the latest stable reading for the item.
-     */
-    public function getStableReading($id)
-    {
-        $stableSample = \App\Models\WeighingSample::where('job_item_id', $id)
-            ->where('is_stable', true)
-            ->orderBy('sequence_no', 'desc')
-            ->first();
-
-        return response()->json([
-            'status' => 'SUCCESS',
-            'data' => $stableSample
-        ]);
-    }
-
-    /**
-     * Post final weight result (Operator accepts stable reading).
-     */
-    public function acceptWeight(Request $request, $id)
-    {
-        $request->validate([
-            'weight' => 'required|numeric|min:0',
-            'stable_sample_id' => 'sometimes|integer',
-        ]);
-
-        $service = app(\App\Services\WeighingCoreService::class);
-        $result = $service->postResult(
-            $id,
-            (float) $request->input('weight'),
-            $request->input('stable_sample_id')
-        );
-
-        return response()->json([
-            'status' => 'SUCCESS',
-            'data' => $result
-        ]);
-    }
-
-    /**
-     * Supervisor overrides a rejected weighing item.
-     */
-    public function overrideWeight(Request $request, $id)
-    {
-        $request->validate([
-            'reason' => 'required|string|min:5',
-        ]);
-
-        $user = Auth::user();
-        if (!$user->hasRole('SUPERVISOR') && !$user->hasRole('ADMIN')) {
-            return response()->json([
-                'status' => 'FORBIDDEN',
-                'message' => 'Chỉ Giám sát viên (Supervisor) hoặc Admin mới có quyền ký duyệt Override.'
-            ], 403);
-        }
-
-        $service = app(\App\Services\WeighingCoreService::class);
-        try {
-            $result = $service->overrideResult(
-                $id,
-                $request->input('reason'),
-                $user->id
-            );
-            return response()->json([
-                'status' => 'SUCCESS',
-                'data' => $result
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'ERROR',
-                'message' => $e->getMessage()
-            ], 400);
-        }
     }
 }

@@ -108,59 +108,6 @@
       </div>
     </div>
 
-    <!-- TAB: Máy VD -->
-    <div v-if="activeTab === 'machines'">
-      <div class="summary-grid" v-if="machineSummary">
-        <div class="summary-card"><div class="summary-label">Tổng số máy VD</div><div class="summary-value">{{ machineSummary.total }}</div></div>
-        <div class="summary-card"><div class="summary-label">Đang xử lý</div><div class="summary-value" style="color:#2563eb">{{ machineSummary.processing }}</div></div>
-        <div class="summary-card"><div class="summary-label">Đang chờ</div><div class="summary-value" style="color:#ca8a04">{{ machineSummary.waiting }}</div></div>
-        <div class="summary-card"><div class="summary-label">Đang chuyển trạng thái</div><div class="summary-value" style="color:#9333ea">{{ machineSummary.transitioning }}</div></div>
-        <div class="summary-card"><div class="summary-label">Nhàn rỗi</div><div class="summary-value text-muted">{{ machineSummary.idle }}</div></div>
-        <div class="summary-card"><div class="summary-label">Lỗi/Hủy</div><div class="summary-value text-error">{{ machineSummary.error + machineSummary.cancelledRecent }}</div></div>
-        <div class="summary-card"><div class="summary-label">Task bị kẹt</div><div class="summary-value" :class="stuckMachineCount ? 'text-error' : ''">{{ stuckMachineCount }}</div></div>
-      </div>
-      <p class="text-muted font-xs mt-1">
-        Cập nhật gần nhất: <strong>{{ formatTime(lastSyncedAt) }}</strong> · Nguồn: <strong>BPDB — Chỉ đọc</strong>
-        <span v-if="dataStale" class="text-error"> · Dữ liệu có thể đã cũ</span>
-      </p>
-      <div class="connection-disclaimer font-xs">
-        ℹ️ BPDB hiện không cung cấp trạng thái kết nối trực tiếp theo từng máy VD. Trạng thái hiển thị là trạng thái nghiệp vụ suy ra từ lệnh sản xuất.
-      </div>
-
-      <div class="filter-row mt-2">
-        <select v-model="machineStatusFilter" class="form-select font-xs">
-          <option value="">Tất cả trạng thái</option>
-          <option value="PROCESSING">PROCESSING</option>
-          <option value="WAITING">WAITING</option>
-          <option value="TRANSITIONING">TRANSITIONING</option>
-          <option value="COMPLETED_RECENTLY">COMPLETED_RECENTLY</option>
-          <option value="CANCELLED">CANCELLED</option>
-          <option value="ERROR">ERROR</option>
-          <option value="IDLE">IDLE</option>
-        </select>
-      </div>
-
-      <div class="machine-grid mt-2">
-        <div v-for="m in filteredMachines" :key="m.machineCode" class="machine-card" :class="'status-' + m.operationalStatus.toLowerCase()" @click="openMachineDetail(m.machineCode)">
-          <div class="machine-card-top">
-            <strong>{{ m.displayName }}</strong>
-            <span class="op-status-badge" :class="'status-' + m.operationalStatus.toLowerCase()">{{ m.operationalStatus }}</span>
-          </div>
-          <div class="machine-card-body font-xs" v-if="m.currentTask">
-            <div>Tank {{ m.currentTask.tank || '—' }} · JIT {{ m.currentTask.jitQueue || '—' }}</div>
-            <div class="mono-text-sm">{{ m.currentTask.taskTitle }}</div>
-            <div v-if="m.currentTask.workStartTime">Bắt đầu: {{ formatTime(m.currentTask.workStartTime) }}</div>
-          </div>
-          <div class="machine-card-body font-xs text-muted" v-else>Không có lệnh đang hoạt động</div>
-          <div class="machine-card-footer font-xs">
-            <span>Kết nối: <strong class="text-muted">NOT_AVAILABLE</strong></span>
-            <span v-if="m.activeTaskCount > 1" class="text-error"> · {{ m.activeTaskCount }} task đồng thời ⚠️</span>
-          </div>
-          <p v-if="m.stuckWarning" class="text-error font-xs mt-1">⚠️ {{ m.stuckWarning.code }}<span v-if="m.stuckWarning.minutes"> ({{ m.stuckWarning.minutes }}p &gt; ngưỡng {{ m.stuckWarning.threshold }}p)</span></p>
-        </div>
-      </div>
-    </div>
-
     <!-- TAB: Nhu cầu bơm hóa chất -->
     <div v-if="activeTab === 'chemicalDemand'">
       <div class="connection-disclaimer font-xs">
@@ -512,12 +459,12 @@
       </div>
     </div>
 
-    <!-- TAB: Theo dõi xử lý JIT ("Vận chuyển" — Mức B, tái dùng dữ liệu tab Máy VD) -->
+    <!-- TAB: Theo dõi xử lý JIT ("Vận chuyển" — Mức B, tái dùng dữ liệu trạng thái máy) -->
     <div v-if="activeTab === 'transport'">
       <div class="connection-disclaimer font-xs">
         ℹ️ <strong>Mức B — chỉ có dữ liệu chung.</strong> BPDB không tách được bước "đang vận chuyển" riêng khỏi trạng thái task chung (đã rà soát BPVN2025/INTEGDB/INTERFACE_SCC/StandardDB 2026-07-21 — các bảng TRS_*/DLV_* chi tiết từng bước đều rỗng, không được dùng). Bảng dưới đây chỉ hiển thị thông tin có bằng chứng thật: task đang xử lý, máy đích, tank, JIT queue, thời gian — KHÔNG gọi là "đang vận chuyển".
       </div>
-      <p class="text-muted font-xs mt-1">Dữ liệu giống hệt tab "Máy VD" (đọc lại, không gọi thêm API) — chỉ trình bày lại theo góc nhìn "task nào đang ở đâu".</p>
+      <p class="text-muted font-xs mt-1">Dữ liệu giống hệt trang <router-link to="/bpdb-machines">"Máy VD"</router-link> (đọc lại, không gọi thêm API) — chỉ trình bày lại theo góc nhìn "task nào đang ở đâu".</p>
 
       <table class="data-table mt-2">
         <thead><tr><th>Task</th><th>Máy đích</th><th>Tank</th><th>JIT queue</th><th>Trạng thái có bằng chứng</th><th>Bắt đầu</th><th>Cập nhật cuối</th></tr></thead>
@@ -594,56 +541,6 @@
       </div>
     </div>
 
-    <!-- Machine detail drawer -->
-    <div v-if="selectedMachine" class="modal-overlay" @click.self="selectedMachine = null">
-      <div class="detail-drawer">
-        <div class="flex-header">
-          <h3>{{ selectedMachine.machineCode }}</h3>
-          <button class="btn btn-secondary btn-sm" @click="selectedMachine = null">Đóng</button>
-        </div>
-        <p class="font-xs text-muted">Trạng thái: <strong :class="'op-status-badge status-' + (selectedMachine.status?.operationalStatus || '').toLowerCase()">{{ selectedMachine.status?.operationalStatus }}</strong> · Kết nối: NOT_AVAILABLE</p>
-
-        <h4 class="font-sm mt-2">Các tổ hợp Tank/Mức nước</h4>
-        <table class="data-table">
-          <thead><tr><th>MachineName</th><th>Tank</th><th>Dung tích</th></tr></thead>
-          <tbody>
-            <tr v-for="v in selectedMachine.variants" :key="v.machine_id">
-              <td>{{ v.machine_name }}</td>
-              <td>{{ v.tank }}</td>
-              <td>{{ v.max_storage_content }}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <h4 class="font-sm mt-2">Task gần đây ({{ selectedMachine.recentTasks?.length || 0 }})</h4>
-        <table class="data-table">
-          <thead><tr><th>TaskTitle</th><th>Status</th><th>Bắt đầu</th><th>Kết thúc</th><th>Lỗi</th></tr></thead>
-          <tbody>
-            <tr v-for="t in selectedMachine.recentTasks" :key="t.Id">
-              <td class="mono-text-sm">{{ t.TaskTitle }}</td>
-              <td>{{ rawTaskStatusLabel(t.TaskStatus) }}</td>
-              <td>{{ formatTime(t.WorkStartTime) }}</td>
-              <td>{{ formatTime(t.FinishTime) }}</td>
-              <td class="text-error font-xs">{{ t.ErrorMsg || '' }}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <h4 class="font-sm mt-2">Lịch sử hoàn thành gần đây</h4>
-        <table class="data-table">
-          <thead><tr><th>TaskTitle</th><th>Hóa chất</th><th>Khối lượng</th><th>Kết thúc</th></tr></thead>
-          <tbody>
-            <tr v-for="h in selectedMachine.recentHistory" :key="h.ID">
-              <td class="mono-text-sm">{{ h.TaskTitle }}</td>
-              <td>{{ h.DyeName || h.DyeCode }}</td>
-              <td>{{ h.GramsDosed }}g</td>
-              <td>{{ formatTime(h.FinishTime) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
     <!-- Chemical task detail modal -->
     <div v-if="selectedTask" class="modal-overlay" @click.self="selectedTask = null">
       <div class="detail-drawer">
@@ -693,7 +590,6 @@ import axios from 'axios';
 
 const tabs = [
   { key: 'overview', label: 'Tổng quan' },
-  { key: 'machines', label: 'Máy VD' },
   { key: 'chemicalDemand', label: 'Nhu cầu bơm hóa chất' },
   { key: 'materialActivity', label: 'Thống kê hoạt động nguyên liệu' },
   { key: 'machineFeeding', label: 'Cấp máy' },
@@ -737,8 +633,6 @@ const overview = ref<any>(null);
 const taskLinks = ref<any[]>([]);
 const jitRules = ref<any[]>([]);
 const machines = ref<any[]>([]);
-const machineSummary = ref<any>(null);
-const selectedMachine = ref<any>(null);
 const demandActive = ref<any[]>([]);
 const demandCompleted = ref<any[]>([]);
 const demandErrors = ref<any[]>([]);
@@ -746,7 +640,6 @@ const demandSummary = ref<any>(null);
 const selectedTask = ref<any>(null);
 const hideOrphaned = ref(true); // mặc định ẩn task tồn đọng, không xóa khỏi dữ liệu
 const statusFilter = ref('');
-const machineStatusFilter = ref('');
 
 // Tab "Thống kê hoạt động nguyên liệu" — mặc định 30 ngày gần nhất, khớp resolveRange() phía
 // backend khi không truyền from/to.
@@ -831,9 +724,10 @@ const changeMfPage = async (page: number) => {
   await fetchMachineFeedingDetail();
 };
 
-// Tab "Theo dõi xử lý JIT" ("Vận chuyển", Mức B) — tái dùng nguyên `machines` đã fetch cho
-// tab "Máy VD", KHÔNG gọi thêm API riêng (đúng nguyên tắc chỉ hiển thị dữ liệu có bằng
-// chứng, không suy diễn thêm gì ngoài trạng thái task đã biết).
+// Tab "Theo dõi xử lý JIT" ("Vận chuyển", Mức B) — tái dùng nguyên `machines` đã fetch qua
+// fetchMachines() (cùng nguồn dữ liệu với trang riêng "Máy VD" ở /bpdb-machines), KHÔNG
+// gọi thêm API riêng (đúng nguyên tắc chỉ hiển thị dữ liệu có bằng chứng, không suy diễn
+// thêm gì ngoài trạng thái task đã biết).
 const transportRows = computed(() => machines.value.filter((m: any) => m.currentTask));
 
 const loading = ref(false);
@@ -842,11 +736,6 @@ const bpdbConnected = ref(true);
 const lastSyncedAt = ref<string | null>(null);
 const dataAgeSeconds = ref(0);
 const dataStale = ref(false);
-
-const stuckMachineCount = computed(() => machines.value.filter(m => m.stuckWarning).length);
-const filteredMachines = computed(() =>
-  machineStatusFilter.value ? machines.value.filter(m => m.operationalStatus === machineStatusFilter.value) : machines.value
-);
 
 // Tách 3 nhóm theo activityBucket (BpdbChemicalDemandService) — không lọc bằng ngưỡng lặp
 // lại ở frontend, chỉ đọc cờ đã tính sẵn ở backend (nguồn ngưỡng duy nhất, cấu hình qua
@@ -900,18 +789,6 @@ const fetchMachines = async () => {
   machines.value = res.data.data;
   bpdbConnected.value = res.data.bpdbConnected;
   applyEnvelope(res.data);
-};
-
-const fetchMachineSummary = async () => {
-  const res = await axios.get('/api/admin/bpdb/machines/status-summary');
-  machineSummary.value = res.data;
-  bpdbConnected.value = res.data.bpdbConnected;
-  applyEnvelope(res.data);
-};
-
-const openMachineDetail = async (machineCode: string) => {
-  const res = await axios.get(`/api/admin/bpdb/machines/${machineCode}/status`);
-  selectedMachine.value = res.data.data;
 };
 
 const fetchChemicalDemand = async () => {
@@ -981,7 +858,6 @@ const fetchActiveTab = async () => {
   try {
     if (activeTab.value === 'overview') await fetchOverview();
     else if (activeTab.value === 'taskLinks') await fetchTaskLinks();
-    else if (activeTab.value === 'machines') await Promise.all([fetchMachines(), fetchMachineSummary()]);
     else if (activeTab.value === 'chemicalDemand') await Promise.all([fetchChemicalDemand(), fetchChemicalDemandSummary()]);
     else if (activeTab.value === 'materialActivity') await fetchMaterialActivity();
     else if (activeTab.value === 'machineFeeding') await fetchMachineFeeding();
@@ -1008,13 +884,12 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 onMounted(async () => {
   await fetchActiveTab();
-  // Cập nhật gần thời gian thực cho tab Máy VD / Nhu cầu bơm hóa chất — 5s theo phương án
-  // MVP (mục 8), backend đã cache 4s nên nhiều trình duyệt cùng mở không dội query trực
-  // tiếp vào BPDB.
+  // Cập nhật gần thời gian thực cho tab "Theo dõi xử lý JIT" / "Nhu cầu bơm hóa chất" — 5s
+  // theo phương án MVP (mục 8), backend đã cache 4s nên nhiều trình duyệt cùng mở không
+  // dội query trực tiếp vào BPDB.
   pollTimer = setInterval(() => {
-    if (activeTab.value === 'machines') {
+    if (activeTab.value === 'transport') {
       fetchMachines();
-      fetchMachineSummary();
     } else if (activeTab.value === 'chemicalDemand') {
       fetchChemicalDemand();
       fetchChemicalDemandSummary();
@@ -1142,33 +1017,6 @@ onUnmounted(() => {
 }
 .flex-header { display: flex; justify-content: space-between; align-items: center; }
 
-.machine-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0.6rem;
-}
-
-.machine-card {
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-left: 4px solid #9ca3af;
-  border-radius: 8px;
-  padding: 0.6rem 0.7rem;
-  background: var(--bg-card, #fff);
-  cursor: pointer;
-  transition: box-shadow 0.15s;
-}
-.machine-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-
-.machine-card.status-processing { border-left-color: #2563eb; }
-.machine-card.status-waiting { border-left-color: #ca8a04; }
-.machine-card.status-transitioning { border-left-color: #9333ea; }
-.machine-card.status-completed_recently { border-left-color: #16a34a; }
-.machine-card.status-cancelled, .machine-card.status-error { border-left-color: #dc2626; }
-.machine-card.status-idle { border-left-color: #9ca3af; }
-.machine-card.status-unknown { border-left-color: #4b5563; }
-
-.machine-card-top { display: flex; justify-content: space-between; align-items: center; }
-
 .op-status-badge {
   font-size: 0.68rem;
   font-weight: 700;
@@ -1182,9 +1030,6 @@ onUnmounted(() => {
 .op-status-badge.status-transitioning { background: rgba(147,51,234,0.12); color: #9333ea; }
 .op-status-badge.status-completed_recently, .op-status-badge.status-ended { background: rgba(22,163,74,0.12); color: #16a34a; }
 .op-status-badge.status-cancelled, .op-status-badge.status-error { background: rgba(220,38,38,0.12); color: #dc2626; }
-
-.machine-card-body { margin-top: 0.4rem; }
-.machine-card-footer { margin-top: 0.4rem; color: var(--text-muted, #6b7280); }
 
 .ma-bar-cell { display: flex; align-items: center; gap: 0.5rem; min-width: 120px; }
 .ma-bar { height: 0.55rem; border-radius: 3px; background: #4f46e5; opacity: 0.75; min-width: 3px; }

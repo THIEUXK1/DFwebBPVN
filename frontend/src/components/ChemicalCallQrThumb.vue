@@ -1,5 +1,11 @@
 <template>
-  <canvas ref="canvasEl" class="chem-call-qr-thumb" :class="{ 'chem-call-qr-thumb--large': size >= 100, 'is-loaded': ready }" :title="text"></canvas>
+  <canvas
+    ref="canvasEl"
+    class="chem-call-qr-thumb"
+    :class="{ 'chem-call-qr-thumb--large': size >= 100, 'is-loaded': ready }"
+    :style="{ '--qr-size': size + 'px' }"
+    :title="text"
+  ></canvas>
 </template>
 
 <script setup lang="ts">
@@ -12,7 +18,11 @@ const ready = ref(false);
 
 function render() {
   if (canvasEl.value) {
-    QRCode.toCanvas(canvasEl.value, props.text, { width: props.size, margin: 1 })
+    // Vẽ ảnh gốc ở độ phân giải cao hơn kích thước hiển thị (x2, theo devicePixelRatio)
+    // rồi để CSS co giãn khung theo --qr-size — tránh vỡ nét/mờ khi ảnh bị phóng to lúc
+    // hover hoặc khi khung chứa co giãn theo kích thước màn hình/trình duyệt.
+    const bufferSize = Math.round(props.size * Math.max(window.devicePixelRatio || 1, 2));
+    QRCode.toCanvas(canvasEl.value, props.text, { width: bufferSize, margin: 1 })
       .then(() => { ready.value = true; })
       .catch((err) => {
         console.error('Chemical call QR render failed', err);
@@ -27,7 +37,14 @@ watch(() => props.size, render);
 
 <style scoped>
 .chem-call-qr-thumb {
-  flex-shrink: 0;
+  /* Canvas được vẽ ở độ phân giải cao hơn (xem render()); hiển thị theo --qr-size nhưng
+     luôn co lại vừa khung chứa (max-width: 100%) để không tràn/vỡ khi thu nhỏ trình
+     duyệt hoặc màn hình hẹp. */
+  width: var(--qr-size);
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  flex-shrink: 1;
   border-radius: 4px;
   background: #fff;
   cursor: zoom-in;

@@ -154,6 +154,133 @@ class BpdbMachineMonitoringService
         ];
     }
 
+    /**
+     * Dữ liệu cho biểu đồ Gantt "Máy VD" (mục yêu cầu 2026-07-29) — 1 nhóm (group) mỗi
+     * Máy VD, 1 thanh (item) mỗi task đã THỰC SỰ bắt đầu (có WorkStartTime) trong
+     * khoảng thời gian lọc. Task còn ở WAITING (chưa có WorkStartTime) không có mốc bắt
+     * đầu thật nên KHÔNG vẽ thanh (đúng nguyên tắc "chỉ hiển thị dữ liệu có bằng chứng",
+     * không suy diễn/bịa thời điểm bắt đầu).
+     *
+     * Mã màu/mã hàng lấy bằng cách tách TaskTitle (format "{color}-{code} {yyyymmddhhmm}"
+     * — cùng quy tắc đã xác nhận tại BpdbTaskMatcherService/BpdbSupStoricoService::
+     * deriveLotFromTaskTitle) tại dấu '-' ĐẦU TIÊN. Nếu bản thân mã màu chứa dấu '-', kết
+     * quả tách sẽ sai — hiển thị nguyên taskTitle gốc trong tooltip để người dùng tự đối
+     * chiếu khi nghi ngờ.
+     */
+    public function getGanttTimeline(?string $from, ?string $to): array
+    {
+        $registry = $this->getMachineRegistry();
+
+        // Mỗi Máy VD là 1 group cha (nestedGroups), mỗi Tank thật của máy đó là 1 group
+        // con riêng — 1 machine_id (DyeMachines.MachineId) LUÔN thuộc đúng 1 tank, dùng
+        // trực tiếp làm khóa tra group con, không cần đoán/gộp.
+        $machineIdToTankGroup = [];
+        $groups = [];
+        $order = 0;
+
+        foreach ($registry as $code => $variant) {
+            $tankGroupIds = [];
+            $seenTankGroups = [];
+
+            foreach ($variant['variants'] as $v) {
+                $tankLabel = TankCodeMapper::toLetterCode($v['tank']) ?? ('Tank #' . $v['tank']);
+                $tankGroupId = $code . '::' . $tankLabel;
+
+                if (!isset($seenTankGroups[$tankGroupId])) {
+                    $seenTankGroups[$tankGroupId] = true;
+                    $tankGroupIds[] = $tankGroupId;
+                    $groups[] = ['id' => $tankGroupId, 'content' => $tankLabel, 'order' => ++$order];
+                }
+
+                $machineIdToTankGroup[$v['machine_id']] = $tankGroupId;
+            }
+
+            $groups[] = [
+                'id' => $code,
+                'content' => $variant['display_name'],
+                'nestedGroups' => $tankGroupIds,
+                'order' => ++$order,
+            ];
+        }
+
+        $allMachineIds = array_keys($machineIdToTankGroup);
+
+        $fromDt = $from ? Carbon::parse($from, 'Asia/Ho_Chi_Minh')->startOfDay() : now('Asia/Ho_Chi_Minh')->subDays(7)->startOfDay();
+        $toDt = $to ? Carbon::parse($to, 'Asia/Ho_Chi_Minh')->endOfDay() : now('Asia/Ho_Chi_Minh')->endOfDay();
+
+        $bpdbConnected = true;
+        $items = [];
+
+        try {
+            $placeholders = implode(',', array_fill(0, count($allMachineIds), '?'));
+            $rows = $this->client->select(
+                "SELECT Id, Machine, TaskTitle, TaskStatus, IsDeleted, CreateTime, WorkStartTime, FinishTime, ErrorMsg
+                 FROM dbo.SUP_Tasks
+                 WHERE Machine IN ($placeholders)
+                   AND WorkStartTime IS NOT NULL
+                   AND WorkStartTime BETWEEN ? AND ?
+                 ORDER BY WorkStartTime ASC",
+                [...$allMachineIds, $fromDt->format('Y-m-d H:i:s'), $toDt->format('Y-m-d H:i:s')]
+            );
+
+            $now = now();
+            foreach ($rows as $row) {
+                $tankGroupId = $machineIdToTankGroup[$row['Machine']] ?? null;
+                if ($tankGroupId === null) {
+                    continue;
+                }
+
+                $isDeleted = (bool) ($row['IsDeleted'] ?? false);
+                $status = (int) $row['TaskStatus'];
+                $uncompleted = empty($row['FinishTime']) && $status !== 99 && !$isDeleted;
+                $end = $uncompleted ? $now : Carbon::parse($row['FinishTime'], 'Asia/Ho_Chi_Minh');
+
+                [$color, $productCode] = $this->splitColorProductFromTitle($row['TaskTitle']);
+
+                $items[] = [
+                    'id' => $row['Id'],
+                    'group' => $tankGroupId,
+                    'taskTitle' => $row['TaskTitle'],
+                    'color' => $color,
+                    'productCode' => $productCode,
+                    'taskStatus' => $status,
+                    'isDeleted' => $isDeleted,
+                    'uncompleted' => $uncompleted,
+                    'errorMessage' => $row['ErrorMsg'] ?: null,
+                    'start' => Carbon::parse($row['WorkStartTime'], 'Asia/Ho_Chi_Minh')->toIso8601String(),
+                    'end' => $end->toIso8601String(),
+                ];
+            }
+        } catch (\Throwable $e) {
+            $bpdbConnected = false;
+            Log::warning('BpdbMachineMonitoringService: BPDB unavailable, cannot build Gantt timeline', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return [
+            'groups' => $groups,
+            'items' => $items,
+            'totalRecords' => count($items),
+            'bpdb_connected' => $bpdbConnected,
+            'fetched_at' => now()->toIso8601String(),
+        ];
+    }
+
+    /** @return array{0: ?string, 1: ?string} [color, productCode] — null nếu không tách được. */
+    private function splitColorProductFromTitle(?string $title): array
+    {
+        if (!$title) {
+            return [null, null];
+        }
+        $lot = preg_replace('/\s+\d{12}$/', '', $title);
+        $parts = explode('-', $lot, 2);
+        if (count($parts) !== 2 || $parts[0] === '' || $parts[1] === '') {
+            return [null, null];
+        }
+        return [trim($parts[0]), trim($parts[1])];
+    }
+
     /** Timeline hoạt động — chỉ đọc khi người dùng yêu cầu, giới hạn khoảng thời gian. */
     public function getMachineTimeline(string $machineCode, ?string $from, ?string $to, int $limit = 50): array
     {

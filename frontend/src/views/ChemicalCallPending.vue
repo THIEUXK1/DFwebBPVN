@@ -35,7 +35,7 @@
           <div class="pending-card-body">
             <span class="channel-number-pill">{{ c.machine_code }} — Thùng {{ c.channel_number }}</span>
             <span class="chem-formula">{{ c.chemical_code }}</span>
-            <span class="font-xs text-muted">Gọi lúc {{ c.current_request ? formatTime(c.current_request.requested_at) : '-' }}</span>
+            <span class="font-xs text-muted call-time">Gọi lúc {{ c.current_request ? formatTime(c.current_request.requested_at) : '-' }}</span>
             <button
               @click="toggleChannel(c, $event)"
               class="btn btn-sm py-1 font-semibold toggle-btn btn-danger"
@@ -226,11 +226,11 @@ onUnmounted(() => {
 .pending-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--space-lg);
+  gap: var(--space-md);
   margin-top: var(--space-md);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 480px) {
   .pending-list {
     grid-template-columns: 1fr;
   }
@@ -241,18 +241,19 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  padding: var(--space-lg) var(--space-md);
+  padding: var(--space-md) var(--space-sm);
   border-radius: var(--radius-md);
   background-color: rgba(239, 68, 68, 0.08);
   border-left: 4px solid #ef4444;
   text-align: center;
+  min-width: 0;
 }
 
 .pending-card-qr {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 180px;
+  width: 100%;
 }
 
 .no-qr-hint {
@@ -265,10 +266,17 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   width: 100%;
+  /* Không có dòng này thì flex item không co được nhỏ hơn nội dung bên trong (mặc định
+     min-width: auto) — chữ dài (mã máy/công thức) sẽ tràn ra ngoài thẻ thay vì bị cắt
+     gọn bằng ellipsis khi thẻ bị thu hẹp. */
+  min-width: 0;
 }
 
 .channel-number-pill {
   display: inline-block;
+  max-width: 100%;
+  white-space: normal;
+  word-break: break-word;
   font-weight: 700;
   font-size: 1.05rem;
   color: var(--text-title);
@@ -281,8 +289,8 @@ onUnmounted(() => {
 .chem-formula {
   display: inline-block;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
   font-family: 'JetBrains Mono', monospace;
   font-size: 1.1rem;
   font-weight: 700;
@@ -291,6 +299,12 @@ onUnmounted(() => {
   border: 1px solid var(--status-blue-border);
   padding: 4px 10px;
   border-radius: var(--radius-md);
+}
+
+.call-time {
+  max-width: 100%;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .toggle-btn {

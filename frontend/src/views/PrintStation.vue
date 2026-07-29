@@ -119,19 +119,18 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Mã Lô</th>
                 <th>Màu</th>
                 <th>Mã hàng</th>
                 <th>Máy</th>
                 <th>Thùng</th>
                 <th>Mực nước</th>
                 <th>Trạng thái</th>
-                <th>Thao tác</th>
+                <th>Mã Lô</th>
+                <th class="actions-col">Thao tác</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="d in col" :key="d.id" class="row-not-printed">
-                <td class="highlight-code">{{ d.batch?.legacy_batch_id }}</td>
                 <td>{{ d.batch?.color }}</td>
                 <td>{{ d.batch?.product_code }}</td>
                 <td><span class="machine-tag">{{ d.batch?.machine?.code || 'N/A' }}</span></td>
@@ -140,7 +139,8 @@
                 <td>
                   <span class="badge badge-red">Chưa in</span>
                 </td>
-                <td class="actions-cell">
+                <td class="highlight-code">{{ d.batch?.legacy_batch_id }}</td>
+                <td class="actions-cell actions-col">
                   <button
                     @click="confirmAndPrint(d)"
                     class="btn btn-primary btn-sm"
@@ -1201,12 +1201,24 @@ onUnmounted(() => {
   overflow-x: auto;
   border-radius: var(--radius-lg);
 }
+/* Bảng hàng chờ in đè lại padding mặc định khá rộng của .data-table (16px/24px) —
+   thu gọn để hiện được nhiều dòng hơn trong 1 màn hình, đỡ phải cuộn (yêu cầu
+   2026-07-28: "thông tin sát nhau hơn để tiết kiệm diện tích"). Chỉ áp dụng trong
+   bảng hàng chờ vì style ở đây là scoped, không ảnh hưởng data-table ở trang khác. */
+.table-container-fixed .data-table th,
+.table-container-fixed .data-table td {
+  padding: 6px var(--space-md);
+  font-size: 0.9rem;
+}
 /* 8 cột trong mỗi bảng con (queue-columns) vẫn có thể vượt quá bề rộng cột khi zoom
    trình duyệt lớn dù đã chia cột thích ứng -> cột "Thao tác" (In nhanh/Xem trước) bị
    đẩy ra ngoài, phải cuộn ngang mới thấy, người dùng tưởng nút biến mất. Ghim cột này
-   bên phải để luôn thấy nút thao tác dù các cột khác có cuộn ngang hay không. */
-.table-container-fixed .data-table th:last-child,
-.table-container-fixed .data-table td:last-child {
+   bên phải để luôn thấy nút thao tác dù các cột khác có cuộn ngang hay không.
+   Lưu ý: PHẢI target đúng .actions-col (class riêng), không dùng :last-child — cột
+   "Mã Lô" được thêm vào SAU cột Thao tác nên mới là cột cuối cùng trong bảng, dùng
+   :last-child sẽ ghim nhầm Mã Lô thay vì nút thao tác (bug phát hiện 2026-07-28). */
+.table-container-fixed .data-table th.actions-col,
+.table-container-fixed .data-table td.actions-col {
   position: sticky;
   right: 0;
   z-index: 1;
@@ -1217,7 +1229,7 @@ onUnmounted(() => {
   /* Số cột lấy từ queueColumnCount (JS, phản ứng theo bề rộng cửa sổ thật) thay vì
      media query cố định, để luôn khớp với số mảng đã chia trong queueColumns. */
   grid-template-columns: repeat(v-bind(queueColumnCount), 1fr);
-  gap: var(--space-lg);
+  gap: var(--space-md);
 }
 .highlight-code {
   color: var(--primary-hover);
