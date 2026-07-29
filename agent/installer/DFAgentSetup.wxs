@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Bộ cài Windows Installer (.msi) cho DF Local Agent — đóng gói bằng WiX Toolset v5
+  (đã có sẵn trong môi trường qua `dotnet tool`, không cần tải thêm). Cài file exe độc
+  lập (self-contained, không cần .NET runtime riêng) + appsettings.json vào
+  Program Files\DFAgent, đăng ký và khởi động Windows Service tên "DFAgent".
+
+  Yêu cầu 2026-07-22: cho phép nhanh chóng cài Local Agent lên bất kỳ máy tính nào để
+  máy đó tự phát hiện máy in cài sẵn và báo cáo lên backend (PrinterDiscovery.cs +
+  Worker.cs), phục vụ chọn máy in ngay tại /print-station thay vì phải build/chạy tay
+  bằng dotnet như trước.
+
+  Quyết định 2026-07-24: theo yêu cầu người dùng, appsettings.json đóng gói sẵn trong MSI
+  này TRỎ CHUNG VÀO 1 TRẠM DUY NHẤT (WS-PRINT-01, token thật đã cấp) và Backend:Url LAN
+  thật (10.0.200.248:8500) — cài xong dùng luôn, không cần sửa tay. Đánh đổi đã được xác
+  nhận: KHÔNG dùng đồng thời Agent ở 2 máy trở lên cùng lúc — mọi máy cùng báo cáo vào 1
+  workstation_id nên (1) máy báo cáo sau ghi đè danh sách máy in của máy trước, (2) MỌI
+  máy đang chạy đều tự poll & IN TRÙNG cùng 1 lệnh in tem (không có cơ chế khóa "chỉ 1
+  máy nhận job"), (3) audit log không phân biệt được lệnh in thực sự xuất phát từ máy vật
+  lý nào. Nếu cần nhiều trạm in chạy song song thật sự, phải quay lại cấp token riêng
+  từng máy (xem lịch sử file này trước 2026-07-24) — không dùng bản build này.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="DF Local Agent"
+           Manufacturer="DF Factory Systems"
+           Version="1.1.0.0"
+           UpgradeCode="CD108F1A-FCE9-46F2-B991-372D89E0E9D1"
+           Language="1033"
+           Scope="perMachine"
+           InstallerVersion="500"
+           Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="Đã có bản mới hơn của DF Local Agent được cài trên máy này." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="DFAgent">
+
+        <Component Id="MainExecutable" Guid="57612DD8-1695-4C9D-BA12-50A1C09E972E" Bitness="always64">
+          <File Id="DFAgentExe" Source="..\publish\DFAgent.exe" KeyPath="yes" />
+
+          <ServiceInstall Id="DFAgentServiceInstall"
+                          Name="DFAgent"
+                          DisplayName="DF Local Agent"
+                          Description="Bao cao may in/can, in tem TSPL cho he thong DF (khong dung dau co dau de tranh loi encoding Service Control Manager)."
+                          Type="ownProcess"
+                          Start="auto"
+                          ErrorControl="normal"
+                          Account="LocalSystem" />
+
+          <ServiceControl Id="DFAgentServiceControl"
+                           Name="DFAgent"
+                           Start="install"
+                           Stop="both"
+                           Remove="uninstall"
+                           Wait="yes" />
+        </Component>
+
+        <Component Id="AppSettingsConfig" Guid="AEDB51B0-A39F-498D-9C25-BF8E612DF1E0" Bitness="always64">
+          <!--
+            LƯU Ý: cài lại/upgrade bộ cài này SẼ GHI ĐÈ appsettings.json về giá trị đóng
+            gói sẵn (WS-PRINT-01, xem ghi chú đầu file) — nếu máy nào đã bị sửa tay sang
+            cấu hình khác, cài lại MSI sẽ mất cấu hình tay đó.
+          -->
+          <File Id="AppSettingsJson" Source="..\publish\appsettings.json" KeyPath="yes" />
+        </Component>
+
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="DF Local Agent" Level="1">
+      <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="AppSettingsConfig" />
+    </Feature>
+
+  </Package>
+</Wix>

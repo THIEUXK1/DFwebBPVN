@@ -16,5 +16,16 @@
 
   <ItemGroup>
     <Compile Remove="DFAgent.Tests\**\*.cs" />
+    <!-- Worker SDK gộp mọi file không phải .cs dưới thư mục project (kể cả thư mục con
+         DFAgent.Tests/ và installer/) làm Content ngầm định — publish trước đây từng lẫn
+         rác build lồng nhau của DFAgent.Tests và cả script cài đặt vào bản publish thật. -->
+    <Content Remove="DFAgent.Tests\**" />
+    <None Remove="DFAgent.Tests\**" />
+    <Content Remove="installer\**" />
+    <None Remove="installer\**" />
+    <Content Remove="publish\**" />
+    <None Remove="publish\**" />
+    <Content Remove="publish_release\**" />
+    <None Remove="publish_release\**" />
   </ItemGroup>
 </Project>

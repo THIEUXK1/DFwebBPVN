@@ -38,6 +38,13 @@ Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/workstations/handshake', [WorkstationRegistrationController::class, 'handshake']);
 Route::post('/kiosk/session', [KioskSessionController::class, 'establishSession']);
 
+// Public — biểu đồ Gantt "Máy VD" (yêu cầu 2026-07-29: xem qua link, không cần đăng
+// nhập, ví dụ cho màn hình TV treo xưởng). Cố ý tách endpoint riêng ngoài nhóm
+// role:ADMIN thay vì gỡ middleware của route /admin/bpdb/machines/gantt — để không
+// vô tình mở luôn các endpoint BPDB admin khác nếu sau này có ai copy-paste nhầm route
+// này vào trong group admin. Cùng 1 controller action, không lặp logic.
+Route::get('/public/bpdb-machines-gantt', [BpdbMachineController::class, 'gantt']);
+
 // Protected Auth Routes
 Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);

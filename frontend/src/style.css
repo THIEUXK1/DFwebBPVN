@@ -31,82 +31,14 @@
   --radius-full: 9999px;
 }
 
-[data-theme="dark"] {
-  /* HSL Sleek Dark Mode (Obsidian Industrial Theme) */
-  --bg-main: hsl(222, 20%, 8%);
-  --bg-sidebar: hsl(222, 20%, 10%);
-  --bg-topbar: hsla(222, 20%, 10%, 0.85);
-  --bg-card: hsl(222, 20%, 13%);
-  --bg-card-hover: hsl(222, 20%, 15%);
-  --bg-popover: hsl(222, 20%, 12%);
-  
-  /* Borders and Dividers */
-  --border-card: hsl(222, 12%, 18%);
-  --border-card-hover: hsl(222, 12%, 25%);
-  --border-divider: hsl(222, 12%, 15%);
-  
-  /* Accent Colors */
-  --primary: hsl(250, 100%, 65%);
-  --primary-hover: hsl(250, 100%, 58%);
-  --primary-bg: hsla(250, 100%, 65%, 0.1);
-  --primary-shadow: rgba(99, 102, 241, 0.25);
-  --primary-shadow-focus: rgba(99, 102, 241, 0.15);
-
-  --secondary: hsl(270, 90%, 60%);
-  --secondary-hover: hsl(270, 90%, 53%);
-  
-  /* Status Colors */
-  --status-grey: hsl(220, 10%, 60%);
-  --status-grey-bg: hsla(220, 10%, 60%, 0.1);
-  --status-grey-border: hsla(220, 10%, 60%, 0.25);
-
-  --status-blue: hsl(210, 100%, 55%);
-  --status-blue-bg: hsla(210, 100%, 55%, 0.1);
-  --status-blue-border: hsla(210, 100%, 55%, 0.25);
-
-  --status-yellow: hsl(38, 92%, 50%);
-  --status-yellow-bg: hsla(38, 92%, 50%, 0.1);
-  --status-yellow-border: hsla(38, 92%, 50%, 0.25);
-
-  --status-green: hsl(142, 70%, 50%);
-  --status-green-bg: hsla(142, 70%, 50%, 0.1);
-  --status-green-border: hsla(142, 70%, 50%, 0.25);
-
-  --status-orange: hsl(25, 95%, 55%);
-  --status-orange-bg: hsla(25, 95%, 55%, 0.1);
-  --status-orange-border: hsla(25, 95%, 55%, 0.25);
-
-  --status-red: hsl(355, 85%, 55%);
-  --status-red-bg: hsla(355, 85%, 55%, 0.1);
-  --status-red-border: hsla(355, 85%, 55%, 0.25);
-
-  --status-purple: hsl(271, 91%, 65%);
-  --status-purple-bg: hsla(271, 91%, 65%, 0.1);
-  --status-purple-border: hsla(271, 91%, 65%, 0.25);
-
-  /* Form Elements */
-  --input-bg: hsl(222, 20%, 9%);
-  --input-bg-focus: hsl(222, 20%, 11%);
-  --input-border: hsl(222, 12%, 18%);
-  --input-border-focus: hsl(250, 100%, 65%);
-  
-  /* Text Palettes */
-  --text-title: hsl(220, 20%, 96%);
-  --text-body: hsl(220, 15%, 85%);
-  --text-muted: hsl(220, 10%, 62%);
-  --text-disabled: hsl(220, 10%, 45%);
-  --text-white: hsl(0, 0%, 100%);
-
-  /* Shadows (đậm hơn cho nền tối) */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
-  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
-}
-
 /* Theme mặc định = sáng (data-theme được services/theme.ts set lên <html> ngay lúc
    khởi động app, trước khi mount, để tránh nháy sai theme). :root đứng cùng
-   [data-theme="light"] để trang vẫn có màu đúng ngay cả khi JS chưa kịp chạy. */
+   [data-theme="light"] để trang vẫn có màu đúng ngay cả khi JS chưa kịp chạy.
+   QUAN TRỌNG: khối này PHẢI đứng TRƯỚC [data-theme="dark"] trong file — ":root" luôn
+   khớp bất kể giá trị data-theme là gì, nên nếu đứng SAU khối dark (cùng specificity),
+   nó sẽ ghi đè ngược lại toàn bộ biến màu dark theo thứ tự cascade, khiến nút chuyển
+   sáng/tối trông như "không hoạt động" (đổi data-theme nhưng màu không đổi) — đúng lỗi
+   đã xác nhận 2026-07-29, đây là lỗi toàn app chứ không riêng trang nào. */
 :root, [data-theme="light"] {
   /* Backgrounds */
   --bg-main: hsl(220, 25%, 97%);
@@ -178,6 +110,79 @@
   --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -1px rgba(15, 23, 42, 0.06);
   --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.1), 0 4px 6px -2px rgba(15, 23, 42, 0.08);
   --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.12);
+}
+
+[data-theme="dark"] {
+  /* HSL Sleek Dark Mode (Obsidian Industrial Theme) */
+  --bg-main: hsl(222, 20%, 8%);
+  --bg-sidebar: hsl(222, 20%, 10%);
+  --bg-topbar: hsla(222, 20%, 10%, 0.85);
+  --bg-card: hsl(222, 20%, 13%);
+  --bg-card-hover: hsl(222, 20%, 15%);
+  --bg-popover: hsl(222, 20%, 12%);
+
+  /* Borders and Dividers */
+  --border-card: hsl(222, 12%, 18%);
+  --border-card-hover: hsl(222, 12%, 25%);
+  --border-divider: hsl(222, 12%, 15%);
+
+  /* Accent Colors */
+  --primary: hsl(250, 100%, 65%);
+  --primary-hover: hsl(250, 100%, 58%);
+  --primary-bg: hsla(250, 100%, 65%, 0.1);
+  --primary-shadow: rgba(99, 102, 241, 0.25);
+  --primary-shadow-focus: rgba(99, 102, 241, 0.15);
+
+  --secondary: hsl(270, 90%, 60%);
+  --secondary-hover: hsl(270, 90%, 53%);
+
+  /* Status Colors */
+  --status-grey: hsl(220, 10%, 60%);
+  --status-grey-bg: hsla(220, 10%, 60%, 0.1);
+  --status-grey-border: hsla(220, 10%, 60%, 0.25);
+
+  --status-blue: hsl(210, 100%, 55%);
+  --status-blue-bg: hsla(210, 100%, 55%, 0.1);
+  --status-blue-border: hsla(210, 100%, 55%, 0.25);
+
+  --status-yellow: hsl(38, 92%, 50%);
+  --status-yellow-bg: hsla(38, 92%, 50%, 0.1);
+  --status-yellow-border: hsla(38, 92%, 50%, 0.25);
+
+  --status-green: hsl(142, 70%, 50%);
+  --status-green-bg: hsla(142, 70%, 50%, 0.1);
+  --status-green-border: hsla(142, 70%, 50%, 0.25);
+
+  --status-orange: hsl(25, 95%, 55%);
+  --status-orange-bg: hsla(25, 95%, 55%, 0.1);
+  --status-orange-border: hsla(25, 95%, 55%, 0.25);
+
+  --status-red: hsl(355, 85%, 55%);
+  --status-red-bg: hsla(355, 85%, 55%, 0.1);
+  --status-red-border: hsla(355, 85%, 55%, 0.25);
+
+  --status-purple: hsl(271, 91%, 65%);
+  --status-purple-bg: hsla(271, 91%, 65%, 0.1);
+  --status-purple-border: hsla(271, 91%, 65%, 0.25);
+
+  /* Form Elements */
+  --input-bg: hsl(222, 20%, 9%);
+  --input-bg-focus: hsl(222, 20%, 11%);
+  --input-border: hsl(222, 12%, 18%);
+  --input-border-focus: hsl(250, 100%, 65%);
+
+  /* Text Palettes */
+  --text-title: hsl(220, 20%, 96%);
+  --text-body: hsl(220, 15%, 85%);
+  --text-muted: hsl(220, 10%, 62%);
+  --text-disabled: hsl(220, 10%, 45%);
+  --text-white: hsl(0, 0%, 100%);
+
+  /* Shadows (đậm hơn cho nền tối) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
 }
 
 /* Global Reset and Preflight */

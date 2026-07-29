@@ -25,6 +25,15 @@
         <button class="btn btn-secondary btn-sm" @click="moveToNow">🕐 Về hiện tại</button>
         <label class="realtime-toggle"><input type="checkbox" v-model="autoMove" /> Auto cuộn</label>
         <label class="realtime-toggle"><input type="checkbox" v-model="autoRefresh" /> Auto tải lại 30s</label>
+        <!-- Trang này không bọc AppLayout (route public, xem qua link không đăng nhập -
+             App.vue) nên không có nút chuyển theme ở topbar chung, phải tự có nút riêng. -->
+        <button
+          class="btn btn-secondary btn-sm theme-toggle-btn"
+          @click="toggleTheme"
+          :title="theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'"
+        >
+          <SvgIcon :name="theme === 'dark' ? 'sun' : 'moon'" size="16" />
+        </button>
       </div>
     </div>
 
@@ -43,6 +52,8 @@ import axios from 'axios';
 import { Timeline, DataSet } from 'vis-timeline/standalone';
 import 'vis-timeline/styles/vis-timeline-graph2d.min.css';
 import { isFullscreen } from '../services/layout';
+import { theme, toggleTheme } from '../services/theme';
+import SvgIcon from '../components/SvgIcon.vue';
 
 const RAW_TASK_STATUS_LABELS: Record<string, string> = {
   '10': 'Chờ hệ thống xử lý',
@@ -112,7 +123,7 @@ const buildTooltip = (item: any) => {
 };
 
 const fetchGantt = async () => {
-  const res = await axios.get('/api/admin/bpdb/machines/gantt', { params: { fromDate: fromDate.value, toDate: toDate.value } });
+  const res = await axios.get('/api/public/bpdb-machines-gantt', { params: { fromDate: fromDate.value, toDate: toDate.value } });
   bpdbConnected.value = res.data.bpdbConnected;
   lastSyncedAt.value = res.data.lastSyncedAt ?? null;
   dataAgeSeconds.value = Math.round(res.data.dataAgeSeconds ?? 0);

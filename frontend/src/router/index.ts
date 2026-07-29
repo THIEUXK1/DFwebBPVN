@@ -195,13 +195,17 @@ const routes = [
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
-    // Lazy-load riêng route này — vis-timeline (~600KB) chỉ Admin dùng, không nên cộng
-    // vào bundle chính mà mọi trạm kiosk vận hành đều phải tải (xem CLAUDE.md mục "Wide
-    // Layout... tối ưu hiển thị nhà xưởng").
+    // Lazy-load riêng route này — vis-timeline (~600KB) không nên cộng vào bundle
+    // chính mà mọi trạm kiosk vận hành đều phải tải (xem CLAUDE.md mục "Wide Layout...
+    // tối ưu hiển thị nhà xưởng"). requiresAuth:false theo yêu cầu 2026-07-29 — trang
+    // xem công khai qua link, không cần đăng nhập (App.vue vì vậy KHÔNG bọc AppLayout
+    // cho route này -> không sidebar/topbar, trang tự lo giao diện của chính nó). API
+    // BPDB tương ứng cũng phải là endpoint /api/public/... (xem routes/api.php) vì
+    // endpoint admin cũ vẫn yêu cầu đăng nhập ở tầng backend.
     path: '/bpdb-machines/gantt',
     name: 'BpdbMachinesGantt',
     component: () => import('../views/BpdbMachinesGantt.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true }
+    meta: { requiresAuth: false }
   },
   // Fallback redirect
   {
