@@ -224,6 +224,14 @@ class BpdbMachineMonitoringService
             );
 
             $now = now();
+            // Task "chưa kết thúc" (FinishTime rỗng, kể cả case TaskStatus=40 nhưng BPDB
+            // thiếu FinishTime — dữ liệu nguồn không nhất quán, xem detectStuckWarning()
+            // DATA_INCONSISTENT) mà đã treo quá ngưỡng này thì ẨN khỏi Gantt thay vì vẽ
+            // thanh kéo dài vô hạn tới hiện tại (báo cáo 2026-07-29: EP69725-L18032 ở
+            // VD003/D4 không thấy thời gian kết thúc — thanh Gantt trông như đang chạy vô
+            // thời hạn dù thực tế đã xong từ lâu).
+            $hideUncompletedAfterMinutes = $this->stuckThresholdMinutes('bpdb_gantt_hide_uncompleted_after_minutes', 24 * 60);
+
             foreach ($rows as $row) {
                 $tankGroupId = $machineIdToTankGroup[$row['Machine']] ?? null;
                 if ($tankGroupId === null) {
@@ -233,6 +241,14 @@ class BpdbMachineMonitoringService
                 $isDeleted = (bool) ($row['IsDeleted'] ?? false);
                 $status = (int) $row['TaskStatus'];
                 $uncompleted = empty($row['FinishTime']) && $status !== 99 && !$isDeleted;
+
+                if ($uncompleted) {
+                    $runningMinutes = $now->diffInMinutes(Carbon::parse($row['WorkStartTime'], 'Asia/Ho_Chi_Minh'), true);
+                    if ($runningMinutes >= $hideUncompletedAfterMinutes) {
+                        continue;
+                    }
+                }
+
                 $end = $uncompleted ? $now : Carbon::parse($row['FinishTime'], 'Asia/Ho_Chi_Minh');
 
                 [$color, $productCode] = $this->splitColorProductFromTitle($row['TaskTitle']);
