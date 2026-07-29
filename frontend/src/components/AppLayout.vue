@@ -273,11 +273,14 @@ const router = useRouter();
 const route = useRoute();
 
 // File cài đặt Local Agent được backend serve tĩnh từ public/downloads/ (xem
-// backend/public/downloads/DFAgentSetup.exe, đóng gói bằng Inno Setup — agent/installer/
-// DFAgentSetup.iss) — dùng đúng host mà trình duyệt đang mở trang (giống main.ts) để máy
-// trạm trong LAN tải đúng từ máy chủ. Cài đặt tự hỏi Mã trạm/Token/URL Backend/đường dẫn
-// PuTTY log ngay trong wizard, tự đăng ký + khởi động Windows Service "DFAgent".
-const agentInstallerUrl = `http://${window.location.hostname}:8500/downloads/DFAgentSetup.exe`;
+// backend/public/downloads/DFAgentSetup.msi, đóng gói bằng WiX Toolset — agent/installer/
+// DFAgentSetup.wxs) — dùng đúng host mà trình duyệt đang mở trang (giống main.ts) để máy
+// trạm trong LAN tải đúng từ máy chủ. Dùng dinh dang MSI (khong phai Inno Setup .exe) vi
+// ban .exe cu bi Windows Defender gan nham nhan "Program:Win32/Wacapew.A!ml" va tu xoa
+// ngay sau khi tai — MSI + ServiceInstall/ServiceControl native khong bi qua. Cai dat tu
+// hoi Ma tram/Token/URL Backend/duong dan PuTTY log ngay trong wizard, tu dang ky + khoi
+// dong Windows Service "DFAgent".
+const agentInstallerUrl = `http://${window.location.hostname}:8500/downloads/DFAgentSetup.msi`;
 
 // Station-scoped account (WS-001) HOẶC phiên kiosk (link riêng máy, không đăng nhập):
 // công đoạn được cố định theo tài khoản/link, không cho đổi tay qua dropdown.

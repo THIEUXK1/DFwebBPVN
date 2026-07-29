@@ -22,6 +22,8 @@ public class Worker : BackgroundService
     private readonly string _backendUrl;
     private readonly string _workstationId;
     private readonly int _pollIntervalMs;
+    private readonly bool _scaleEnabled;
+    private readonly bool _printEnabled;
 
     // Danh sách máy in cài sẵn hiếm khi đổi — không cần báo cáo mỗi vòng lặp 500ms
     // như số cân. Báo lại mỗi 60 giây (đủ nhanh để phát hiện máy in mới cắm vào).
@@ -46,6 +48,14 @@ public class Worker : BackgroundService
         _backendUrl = _config.GetValue<string>("Backend:Url", "http://localhost:8500/api") ?? "http://localhost:8500/api";
         _workstationId = _config.GetValue<string>("Workstation:Id", "WS-01") ?? "WS-01";
         _pollIntervalMs = _config.GetValue<int>("Scale:PollIntervalMs", 500);
+
+        // Role quyet dinh vong lap nao chay — mot may vat ly chi gan 1 loai thiet bi
+        // (may in HOAC can), khong can ca 2. Mac dinh BOTH de tuong thich nguoc voi
+        // cau hinh cu chua co truong nay. Xem DFAgentSetup.wxs (dropdown chon vai tro
+        // luc cai) va session-log.md muc lien quan (2026-07-29).
+        string role = _config.GetValue<string>("Workstation:Role", "BOTH") ?? "BOTH";
+        _scaleEnabled = role is "BOTH" or "SCALE_ONLY";
+        _printEnabled = role is "BOTH" or "PRINT_ONLY";
 
         _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
 
@@ -73,39 +83,45 @@ public class Worker : BackgroundService
         {
             try
             {
-                // 1. Read scale weight (kèm cờ ổn định thật, thay cho hard-code stable=true
-                // trước đây ở tầng frontend — PB-2, xem ScaleReader.StableFilter)
-                var (currentWeight, isStable) = _scaleReader.ReadCurrentWeightWithStability();
-
-                // TV6 (p0-c-scale-algorithm.md Mục A.10): currentWeight=null nghĩa là lỗi đọc/dữ
-                // liệu rác — KHÔNG push lên backend để tránh ghi đè cache đang giữ giá trị hợp lệ
-                // gần nhất bằng "0.0 giả". Backend cache có TTL 15s tự đóng vai trò "giữ nguyên
-                // giá trị hiển thị cũ" tương đương VBA (ReadLastLineFast/PushRawToForm im lặng bỏ
-                // qua khi không có số hợp lệ), không cần Agent tự làm việc này.
-                if (currentWeight.HasValue)
+                if (_scaleEnabled)
                 {
-                    if (Math.Abs(currentWeight.Value - lastLoggedWeight) > 0.05)
+                    // 1. Read scale weight (kèm cờ ổn định thật, thay cho hard-code stable=true
+                    // trước đây ở tầng frontend — PB-2, xem ScaleReader.StableFilter)
+                    var (currentWeight, isStable) = _scaleReader.ReadCurrentWeightWithStability();
+
+                    // TV6 (p0-c-scale-algorithm.md Mục A.10): currentWeight=null nghĩa là lỗi đọc/dữ
+                    // liệu rác — KHÔNG push lên backend để tránh ghi đè cache đang giữ giá trị hợp lệ
+                    // gần nhất bằng "0.0 giả". Backend cache có TTL 15s tự đóng vai trò "giữ nguyên
+                    // giá trị hiển thị cũ" tương đương VBA (ReadLastLineFast/PushRawToForm im lặng bỏ
+                    // qua khi không có số hợp lệ), không cần Agent tự làm việc này.
+                    if (currentWeight.HasValue)
                     {
-                        _logger.LogInformation("Scale Weight Changed: {W} kg (Stable: {Stable})", currentWeight.Value, isStable);
-                        lastLoggedWeight = currentWeight.Value;
+                        if (Math.Abs(currentWeight.Value - lastLoggedWeight) > 0.05)
+                        {
+                            _logger.LogInformation("Scale Weight Changed: {W} kg (Stable: {Stable})", currentWeight.Value, isStable);
+                            lastLoggedWeight = currentWeight.Value;
+                        }
+
+                        // 2. Push weight to API
+                        await PushWeightToBackendAsync(currentWeight.Value, isStable);
                     }
-
-                    // 2. Push weight to API
-                    await PushWeightToBackendAsync(currentWeight.Value, isStable);
-                }
-                else
-                {
-                    _logger.LogDebug("Scale read returned no valid data this cycle — keeping last known value (not pushed).");
+                    else
+                    {
+                        _logger.LogDebug("Scale read returned no valid data this cycle — keeping last known value (not pushed).");
+                    }
                 }
 
-                // 3. Fetch and process pending print jobs
-                await ProcessPendingPrintJobsAsync();
-
-                // 4. Report installed printers to backend (throttled — xem PrinterReportInterval)
-                if (DateTime.UtcNow >= _nextPrinterReportAt)
+                if (_printEnabled)
                 {
-                    await ReportInstalledPrintersAsync();
-                    _nextPrinterReportAt = DateTime.UtcNow.Add(PrinterReportInterval);
+                    // 3. Fetch and process pending print jobs
+                    await ProcessPendingPrintJobsAsync();
+
+                    // 4. Report installed printers to backend (throttled — xem PrinterReportInterval)
+                    if (DateTime.UtcNow >= _nextPrinterReportAt)
+                    {
+                        await ReportInstalledPrintersAsync();
+                        _nextPrinterReportAt = DateTime.UtcNow.Add(PrinterReportInterval);
+                    }
                 }
             }
             catch (Exception ex)

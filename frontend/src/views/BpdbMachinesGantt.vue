@@ -1,4 +1,14 @@
 <template>
+  <!-- pageWrapper là hằng số (không phải ref/computed đổi được sau khi mount) — quyết định
+       CHỈ 1 LẦN lúc khởi tạo component, KHÔNG đổi trong suốt vòng đời trang. Trước đó từng
+       dùng 1 ref đổi được (showAdminNav) để bật/tắt việc bọc AppLayout — mỗi lần đổi buộc
+       Vue hủy+dựng lại toàn bộ cây con bên trong, làm DOM chứa vis-timeline (.gantt-canvas)
+       bị thay bằng node rỗng mới -> biểu đồ mất trắng (đúng lỗi báo cáo "mở layout lên thì
+       k thấy gì"). Cố định pageWrapper ngay từ đầu (Admin luôn được bọc sẵn AppLayout,
+       chỉ ẩn/hiện sidebar+topbar qua isFullscreen — xem services/layout.ts) loại bỏ hẳn
+       nguy cơ remount này, đồng thời tái dùng đúng menu điều hướng quen thuộc của cả hệ
+       thống thay vì tự làm 1 panel riêng. -->
+  <component :is="pageWrapper">
   <div class="gantt-page">
     <p v-if="errorMsg" class="text-error mt-2">❌ {{ errorMsg }}</p>
     <div v-if="!bpdbConnected" class="stale-banner error-banner mt-2">
@@ -29,14 +39,35 @@
         <button class="btn btn-secondary btn-sm" @click="moveToNow">🕐 Về hiện tại</button>
         <label class="realtime-toggle"><input type="checkbox" v-model="autoMove" /> Auto cuộn</label>
         <label class="realtime-toggle"><input type="checkbox" v-model="autoRefresh" /> Auto tải lại 30s</label>
-        <!-- Trang này không bọc AppLayout (route public, xem qua link không đăng nhập -
-             App.vue) nên không có nút chuyển theme ở topbar chung, phải tự có nút riêng. -->
+        <!-- Người xem công khai (không phải Admin) không có AppLayout nên không có nút
+             chuyển theme ở topbar chung — trang tự có nút riêng, dùng chung cho cả 2
+             trường hợp (kể cả khi Admin đã lộ AppLayout, đỡ phải rẽ nhánh UI). -->
         <button
           class="btn btn-secondary btn-sm theme-toggle-btn"
           @click="toggleTheme"
           :title="theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'"
         >
           <SvgIcon :name="theme === 'dark' ? 'sun' : 'moon'" size="16" />
+        </button>
+        <button
+          class="btn btn-secondary btn-sm theme-toggle-btn"
+          @click="toggleBrowserFullscreen"
+          :title="isBrowserFullscreen ? 'Thoát toàn màn hình (F11)' : 'Toàn màn hình (F11)'"
+        >
+          {{ isBrowserFullscreen ? '⤢' : '⛶' }}
+        </button>
+        <!-- Trang public mặc định không sidebar/topbar. Với Admin đã đăng nhập, trang được
+             bọc sẵn AppLayout (ẩn qua isFullscreen) — nút này chỉ bật isFullscreen=false để
+             lộ ra đúng menu điều hướng quen thuộc của cả hệ thống (yêu cầu 2026-07-29: "mở
+             layout hay dùng ấy, mà dữ liệu vẫn nhìn thấy"). Không hiện với người xem công
+             khai (không phải Admin, lúc đó pageWrapper = 'div', không có AppLayout để mở). -->
+        <button
+          v-if="isAdminUser"
+          class="btn btn-secondary btn-sm theme-toggle-btn"
+          @click="isFullscreen = !isFullscreen"
+          :title="isFullscreen ? 'Mở menu điều hướng (Admin)' : 'Ẩn menu điều hướng'"
+        >
+          <SvgIcon name="menu" size="16" />
         </button>
       </div>
     </div>
@@ -48,16 +79,45 @@
     </div>
     <p class="footnote">Tổng số task hiển thị: <strong>{{ totalRecords }}</strong> · viền đỏ nhấp nháy = mẻ đang chạy, chưa kết thúc</p>
   </div>
+  </component>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import axios from 'axios';
 import { Timeline, DataSet } from 'vis-timeline/standalone';
 import 'vis-timeline/styles/vis-timeline-graph2d.min.css';
 import { isFullscreen } from '../services/layout';
 import { theme, toggleTheme } from '../services/theme';
 import SvgIcon from '../components/SvgIcon.vue';
+import AppLayout from '../components/AppLayout.vue';
+import { useAuthStore } from '../stores/auth';
+
+const authStore = useAuthStore();
+// Snapshot MỘT LẦN lúc khởi tạo — KHÔNG dùng ref/computed. Trạng thái đăng nhập không đổi
+// trong vòng đời trang này (không có luồng login/logout ngay trên trang Gantt), nên chốt
+// cứng giá trị này đảm bảo pageWrapper bên dưới không bao giờ đổi sau khi mount (xem lý do
+// tại ghi chú trong <template>).
+const isAdminUser = authStore.isAdmin;
+const pageWrapper = isAdminUser ? AppLayout : 'div';
+
+// Toàn màn hình trình duyệt thật (Fullscreen API, tương đương phím F11) — khác với
+// services/layout.ts isFullscreen (cơ chế ẩn/hiện sidebar+topbar của AppLayout, dùng cho
+// nút "Mở menu điều hướng" ở trên).
+const isBrowserFullscreen = ref(!!document.fullscreenElement);
+const syncBrowserFullscreenState = () => {
+  isBrowserFullscreen.value = !!document.fullscreenElement;
+  // Khung nhìn đổi kích thước khi vào/thoát fullscreen — vis-timeline không tự vẽ lại
+  // (cùng lý do với watch(isFullscreen) bên dưới, đợi 1 nhịp cho reflow xong).
+  setTimeout(() => timeline?.redraw(), 60);
+};
+const toggleBrowserFullscreen = () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen().catch(() => {});
+  }
+};
 
 const RAW_TASK_STATUS_LABELS: Record<string, string> = {
   '10': 'Chờ hệ thống xử lý',
@@ -74,8 +134,17 @@ const MIN_VISUAL_DURATION_MS = 2 * 60 * 60 * 1000;
 // Độ rộng cột tên máy/tank — mã máy (vd "VD006") và tên tank (vd "1A") đều ngắn, 170px dư
 // quá nhiều diện tích lẽ ra dành cho phần vẽ Gantt (yêu cầu 2026-07-29). Một hằng số dùng
 // chung cho cả CSS (qua v-bind trong <style>) lẫn tính vị trí kim đỏ (calculateNeedle) và
-// header tìm máy, để không bao giờ bị lệch nhau.
-const LABEL_COLUMN_WIDTH = 100;
+// header tìm máy, để không bao giờ bị lệch nhau. KHÔNG hạ xuống dưới ~120px: đã kiểm chứng
+// bằng thực nghiệm (chụp màn hình headless Chromium, cuộn thật) rằng ép cột nhãn xuống đúng
+// khoảng 100-115px khiến vis-timeline tính sai layout nội bộ cho các hàng Máy VD CHƯA từng
+// lọt vào khung nhìn — tên máy biến mất hoàn toàn khỏi pixel vẽ ra dù DOM/computed style vẫn
+// báo bình thường (đúng lỗi báo cáo 2026-07-29 "chỉ máy đầu tiên có tên, các máy sau trống",
+// tái hiện được ở TOÀN BỘ máy nằm ngoài khung nhìn ban đầu, không riêng máy đầu). 130px đã
+// test ổn định qua nhiều lần cuộn sâu, còn 100-115px vỡ gần như luôn luôn — không phải lỗi
+// ngẫu nhiên/paint mà là ngưỡng cứng của thư viện, nên đừng chỉnh lại con số này về gần 100
+// nếu chưa test lại đúng cách (cuộn bằng chuột thật xuống hết danh sách, không phải chỉ xem
+// vài máy đầu).
+const LABEL_COLUMN_WIDTH = 130;
 const labelColumnWidthCss = `${LABEL_COLUMN_WIDTH}px`;
 
 const toDateInput = (d: Date) => d.toISOString().slice(0, 10);
@@ -239,6 +308,13 @@ const applyMachineFilter = () => {
     return {
       ...g,
       order: isPinned ? g.order - 100000 : g.order,
+      // Chỉ ghim tên máy (sticky, xem CSS .gantt-machine-sticky) khi máy có > 2 Tank —
+      // máy chỉ 1-2 Tank thì toàn bộ Tank đã vừa khung nhìn, ghim không có tác dụng, mà
+      // lại làm Tank đầu tiên (vd "1A") bị dính/che dưới thanh tên máy mỗi khi cuộn nhẹ
+      // qua machine đó (đúng lỗi báo cáo "A1 tank đang bị khuất", 2026-07-29). Máy nhiều
+      // Tank vẫn ghim bình thường vì lợi ích thấy tên máy khi cuộn sâu lớn hơn nhược điểm
+      // che thoáng qua đúng 1 Tank đầu trong lúc cuộn.
+      className: g.nestedGroups.length > 2 ? 'gantt-machine-sticky' : '',
       content: `<span class="gantt-machine-row"><span class="gantt-machine-name">${g.content}</span><span class="gantt-pin-btn${isPinned ? ' is-pinned' : ''}" data-machine-id="${g.id}" title="${isPinned ? 'Bỏ ghim' : 'Ghim lên đầu'}">📌</span></span>`,
     };
   });
@@ -299,6 +375,27 @@ const initTimeline = () => {
     // Tên option đúng là overflowMethod, không phải overflow (console cảnh báo "Unknown
     // option detected" trước khi sửa) — 'flip' để tooltip tự lật sang trái khi sát mép phải.
     tooltip: { followMouse: true, overflowMethod: 'flip' },
+    // vis-timeline mặc định lọc XSS trên MỌI content HTML tự cung cấp (group content, item
+    // content, item title/tooltip) — bộ lọc mặc định của thư viện `xss` xóa sạch class/
+    // data-*/title, khiến .gantt-machine-row/.gantt-machine-name/.gantt-pin-btn và
+    // data-machine-id biến mất khỏi DOM thật dù HTML string vẫn đúng (đúng lỗi báo cáo
+    // 2026-07-29: icon ghim bấm không ăn — do data-machine-id đã bị lọc mất, không phải do
+    // logic click sai). Phải khai báo rõ whiteList đủ các thẻ/thuộc tính đang thực sự dùng
+    // (span cho group content + <span class="gantt-blink">, div/strong/br cho item content
+    // và tooltip trong buildTooltip()) thay vì tắt hẳn xss — tắt hẳn sẽ mất luôn bảo vệ cho
+    // nội dung có lẫn dữ liệu từ BPDB (taskTitle/errorMessage) hiển thị trong tooltip. Thiếu
+    // 1 thẻ nào trong whiteList sẽ khiến thẻ đó hiện ra dạng chữ HTML thô thay vì bị render
+    // (đã gặp khi mới thêm whiteList chỉ có span — content thanh Gantt vỡ thành text thô).
+    xss: {
+      filterOptions: {
+        whiteList: {
+          span: ['class', 'title', 'data-machine-id'],
+          div: ['class', 'style'],
+          strong: ['class'],
+          br: [],
+        },
+      },
+    },
   } as any);
   timeline.on('rangechange', calculateNeedle);
   timeline.on('rangechanged', calculateNeedle);
@@ -354,15 +451,25 @@ const moveToNow = () => {
   );
 };
 
-// Không còn nút Toàn màn hình riêng ở trang này (đã bỏ banner để tiết kiệm không gian,
-// dùng chung nút ⛶ có sẵn ở topbar AppLayout) — vẫn cần vẽ lại timeline khi kích thước
-// khung đổi do bật/tắt Toàn màn hình, nếu không vis-timeline giữ nguyên layout cũ.
+// Chỉ có hiệu lực thị giác khi isAdminUser (trang được bọc AppLayout) — bật/tắt
+// isFullscreen đổi kích thước khung .content-container (ẩn/hiện sidebar+topbar), vis-timeline
+// không tự vẽ lại theo nên phải ép redraw().
 watch(isFullscreen, () => setTimeout(() => timeline?.redraw(), 60));
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 let moveTimer: ReturnType<typeof setInterval> | null = null;
+// isFullscreen là singleton DÙNG CHUNG toàn app (services/layout.ts) — nếu Admin điều
+// hướng sang trang Gantt bằng router-link từ trang khác (không reload trang, singleton giữ
+// nguyên giá trị cũ), phải lưu lại giá trị đó để khôi phục khi rời trang, tránh làm "rò rỉ"
+// trạng thái ẩn/hiện sidebar sang các trang khác trong cùng phiên SPA.
+const previousIsFullscreen = isFullscreen.value;
 
 onMounted(async () => {
+  if (isAdminUser) {
+    // Mặc định ẩn sidebar+topbar khi vừa vào trang Gantt — giữ đúng giao diện gọn quen
+    // thuộc của trang public, chỉ lộ ra khi Admin bấm nút "Mở menu điều hướng".
+    isFullscreen.value = true;
+  }
   await loadGantt();
   refreshTimer = setInterval(() => {
     if (autoRefresh.value) loadGantt();
@@ -370,11 +477,14 @@ onMounted(async () => {
   moveTimer = setInterval(() => {
     if (autoMove.value && timeline) moveToNow();
   }, 5000);
+  document.addEventListener('fullscreenchange', syncBrowserFullscreenState);
 });
 
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer);
   if (moveTimer) clearInterval(moveTimer);
+  document.removeEventListener('fullscreenchange', syncBrowserFullscreenState);
+  if (isAdminUser) isFullscreen.value = previousIsFullscreen;
   timeline?.destroy();
 });
 </script>
@@ -467,8 +577,16 @@ onUnmounted(() => {
    không ép rõ ràng, tên Máy VD/Tank kế thừa màu chữ từ theme tối (gần trắng) trong khi
    panel nhãn của thư viện vẫn nền trắng mặc định -> chữ trắng trên nền trắng, không đọc
    được (đúng lỗi báo cáo 2026-07-29 "không nhìn thấy tên của các tank"). */
-:deep(.vis-labelset .vis-label),
-:deep(.vis-labelset) { width: v-bind(labelColumnWidthCss) !important; min-width: v-bind(labelColumnWidthCss) !important; max-width: v-bind(labelColumnWidthCss) !important; }
+/* Ép độ rộng cột nhãn qua .vis-panel.vis-left (khung cuộn dọc thật) — CỐ Ý KHÔNG ép qua
+   .vis-labelset/.vis-label như bản trước đó. Đã kiểm chứng bằng thực nghiệm: ép width lên
+   chính .vis-labelset và/hoặc từng .vis-label (dù dùng !important hay không, dù ép ở mức
+   nào ~100-115px) khiến vis-timeline tính sai layout nội bộ cho các hàng nhóm CHƯA từng
+   render trong khung nhìn ban đầu — tên máy biến mất khỏi pixel vẽ ra (DOM/computed style
+   vẫn đúng, chỉ paint sai) ngay khi cuộn chuột thật xuống tới chúng, xem ghi chú tại
+   LABEL_COLUMN_WIDTH phía trên. Ép ở .vis-panel.vis-left thay vào đó (để vis-timeline tự do
+   tính toán .vis-labelset/.vis-label bên trong theo cách riêng của nó) tránh được lỗi này
+   hoàn toàn qua nhiều lần test cuộn sâu. */
+:deep(.vis-panel.vis-left) { width: v-bind(labelColumnWidthCss) !important; }
 :deep(.vis-panel) { background-color: var(--bg-card, #fff) !important; }
 :deep(.vis-label),
 :deep(.vis-label .vis-inner) {
@@ -476,21 +594,45 @@ onUnmounted(() => {
   color: var(--text-title, #111827) !important;
 }
 :deep(.vis-nesting-group) { font-weight: 700; }
+/* z-index (KHÔNG kèm position:sticky) trên MỌI hàng tên Máy VD — bắt buộc phải có, không
+   phải để ghim/hiệu ứng thị giác. Đã kiểm chứng bằng thực nghiệm (Chromium headless, cuộn
+   chuột thật, lặp lại nhiều lần): thiếu z-index này, vis-timeline vẽ SAI hoàn toàn các hàng
+   Máy VD (không riêng máy nào) CHƯA từng lọt vào khung nhìn ban đầu — tên máy biến mất khỏi
+   pixel vẽ ra dù DOM/computed style vẫn báo bình thường (đúng lỗi báo cáo 2026-07-29 "từ
+   VD006 => VD013 không thấy tên máy", tái diễn ở BẤT KỲ máy nào ngoài khung nhìn lúc mở
+   trang, không cố định ở VD006-013 — vị trí cụ thể phụ thuộc kích thước màn hình/vị trí
+   cuộn). Chỉ z-index đơn thuần (Chromium tự thăng cấp compositing layer) là đủ để buộc
+   trình duyệt vẽ lại đúng — KHÔNG cần position:sticky cho việc này (đã thử width nhỏ hơn,
+   translateZ, will-change trên container: đều không ăn thua; chỉ z-index trên chính hàng
+   mới hết). Xem thêm ghi chú tại LABEL_COLUMN_WIDTH phía trên <script>. */
+:deep(.vis-nesting-group) { z-index: 6; }
 /* Ghim tên Máy VD ở đầu khung nhìn khi cuộn qua các Tank con của nó (yêu cầu 2026-07-29) —
    group cha (có nestedGroups) là hàng .vis-label thường (không absolute-position, chỉ
    append vào .vis-labelset theo flow bình thường — xem Group._create trong vis-timeline),
    nên position:sticky áp được thẳng lên nó, dính vào mép trên của .vis-panel.vis-left
-   (panel cuộn dọc thật khi verticalScroll:true) tới khi nhóm kế tiếp đẩy nó lên. */
-:deep(.vis-label.vis-nesting-group) {
+   (panel cuộn dọc thật khi verticalScroll:true) tới khi nhóm kế tiếp đẩy nó lên. Đây là hiệu
+   ứng UI THUẦN TÚY (khác hẳn z-index ở rule ngay trên — rule đó là fix bug bắt buộc áp dụng
+   toàn bộ, rule này là tính năng chỉ áp cho máy đủ lớn) nên vẫn giữ đúng như cũ: CHỈ áp dụng
+   cho máy có class .gantt-machine-sticky (>2 Tank, gán ở applyMachineFilter) — máy 1-2 Tank
+   không ghim vì phần .vis-label thường (không sticky) của Tank đầu tiên (vd "1A") nằm ngay
+   dưới header trong luồng bình thường, khi header dính lại (sticky) nó sẽ đè lên đúng Tank
+   đó khiến Tank bị khuất hoàn toàn trong lúc cuộn qua máy — không có Tank nào khác đủ xa để
+   bù lại, khác với máy nhiều Tank (lỗi báo cáo "A1 tank đang bị khuất", 2026-07-29). Đã kiểm
+   chứng lại: nếu bỏ điều kiện >2 Tank này và ghim sticky cho TẤT CẢ (kể cả máy 1 Tank như
+   VDG01-08), Tank duy nhất của các máy đó biến mất khỏi màn hình hoàn toàn trong lúc cuộn —
+   đúng lỗi cũ tái diễn — nên tuyệt đối không gộp chung với rule z-index-cho-tất-cả phía trên. */
+:deep(.vis-label.vis-nesting-group.gantt-machine-sticky) {
   position: sticky;
   top: 0;
   z-index: 6;
 }
-/* .vis-inner mặc định inline-block, co theo nội dung — ép block/full-width để
-   .gantt-machine-row bên trong dùng justify-content:space-between đẩy được icon ghim
-   ra sát mép phải cột, cách xa mũi tên đóng/mở ở đầu dòng (yêu cầu 2026-07-29: "để icon
-   ghim ra chỗ dễ ấn, bên phải tên máy" thay vì đứng chen ngay sau mũi tên). */
-:deep(.vis-nesting-group .vis-inner) { display: block; width: 100%; box-sizing: border-box; }
+/* .vis-inner mặc định inline-block, co theo nội dung — ép width cố định (đúng bằng cột
+   nhãn) để .gantt-machine-row bên trong dùng justify-content:space-between đẩy được icon
+   ghim ra sát mép phải cột, cách xa mũi tên đóng/mở ở đầu dòng (yêu cầu 2026-07-29: "để
+   icon ghim ra chỗ dễ ấn, bên phải tên máy"). Giữ nguyên display mặc định (inline-block vẫn
+   tôn trọng width tường minh, không cần đổi sang block) — xem ghi chú đầy đủ về ngưỡng width
+   an toàn tại LABEL_COLUMN_WIDTH phía trên <script>. */
+:deep(.vis-nesting-group .vis-inner) { width: v-bind(labelColumnWidthCss); box-sizing: border-box; }
 :deep(.gantt-machine-row) {
   display: flex;
   align-items: center;
@@ -515,6 +657,15 @@ onUnmounted(() => {
 :deep(.gantt-pin-btn:hover) { opacity: 0.75; }
 :deep(.gantt-pin-btn.is-pinned) { opacity: 1; }
 :deep(.vis-label .vis-inner) { padding: 0 10px !important; font-size: 0.82rem; }
+/* Tên Tank (1A, 2B...) căn xuống MÉP DƯỚI của hàng thay vì mặc định nằm sát mép trên
+   (yêu cầu 2026-07-29) — hàng Tank co giãn chiều cao theo số mẻ chồng lên nhau trong cùng
+   khung giờ (stack:false vẫn tính chiều cao theo mẻ dài nhất còn hiển thị lúc đó), nên khi
+   hàng cao hơn 20px mặc định, tên Tank cần dính xuống dưới để luôn ngang hàng với thanh
+   Gantt mới nhất/gần trục thời gian nhất thay vì trôi lên đầu hàng trống phía trên. Parent
+   .vis-label đã sẵn position:relative (CSS gốc vis-timeline), chỉ cần định vị tuyệt đối
+   .vis-inner theo mép dưới. CHỈ áp dụng cho Tank con (.vis-nested-group) — tên Máy VD giữ
+   nguyên canh giữa dọc như cũ, không đổi. */
+:deep(.vis-nested-group .vis-inner) { position: absolute; left: 0; bottom: 0; }
 :deep(.vis-time-axis .vis-text) { color: var(--text-body, #374151) !important; font-size: 0.78rem; }
 :deep(.vis-time-axis .vis-grid.vis-minor) { border-color: var(--border-divider, #e2e8f0) !important; }
 :deep(.vis-time-axis .vis-grid.vis-major) { border-color: var(--border-color, #cbd5e1) !important; }
@@ -569,4 +720,5 @@ onUnmounted(() => {
   to { box-shadow: 0 0 14px rgba(239,68,68,0.9); opacity: 1; }
 }
 :deep(.gantt-blink) { color: #f43f5e; font-weight: 700; }
+
 </style>

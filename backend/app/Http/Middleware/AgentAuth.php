@@ -28,42 +28,62 @@ class AgentAuth
         }
 
         $token = $request->header('X-Workstation-Token');
+        $claimedId = $request->route('workstation_id')
+            ?? $request->route('device_id')
+            ?? $request->input('workstation_id');
 
-        if (!$token) {
-            return response()->json([
-                'status' => 'ERROR',
-                'message' => 'Thiếu X-Workstation-Token — Local Agent phải xác thực bằng token workstation đã đăng ký.'
-            ], 401);
+        if ($token) {
+            $workstation = Workstation::where('registration_token_hash', hash('sha256', $token))->first();
+
+            if (!$workstation) {
+                return response()->json([
+                    'status' => 'ERROR',
+                    'message' => 'Token workstation không hợp lệ.'
+                ], 401);
+            }
+
+            if (!$workstation->active) {
+                return response()->json([
+                    'status' => 'ERROR',
+                    'message' => "Máy trạm '{$workstation->code}' đã bị vô hiệu hóa."
+                ], 403);
+            }
+
+            // Whitelist: workstation_id gửi trong route/body phải khớp đúng workstation
+            // sở hữu token này — chống trường hợp token của trạm A bị lộ và dùng để ghi
+            // dữ liệu giả mạo dưới workstation_id của trạm B.
+            if ($claimedId !== null && (string)$claimedId !== (string)$workstation->code && (string)$claimedId !== (string)$workstation->id) {
+                return response()->json([
+                    'status' => 'ERROR',
+                    'message' => 'workstation_id không khớp với token đã xác thực.'
+                ], 403);
+            }
+
+            $request->attributes->set('agent_workstation', $workstation);
+
+            return $next($request);
         }
 
-        $workstation = Workstation::where('registration_token_hash', hash('sha256', $token))->first();
+        // Khong co token: tu dang ky/nhan workstation theo workstation_id (2026-07-29,
+        // theo yeu cau trien khai MSI zero-config — 3 ma tram co dinh chon qua dropdown
+        // luc cai, khong go tay Token). Danh doi bao mat da duoc nguoi dung xac nhan ro:
+        // bat ky may nao trong LAN cham duoc backend deu co the tu xung danh 1 trong cac
+        // workstation_id nay ma khong con duoc token bao ve — xem session-log.md.
+        if ($claimedId) {
+            $workstation = Workstation::firstOrCreate(
+                ['code' => (string) $claimedId],
+                ['name' => (string) $claimedId, 'type' => 'AUTO_REGISTERED']
+            );
 
-        if (!$workstation) {
-            return response()->json([
-                'status' => 'ERROR',
-                'message' => 'Token workstation không hợp lệ.'
-            ], 401);
+            if (!$workstation->active) {
+                return response()->json([
+                    'status' => 'ERROR',
+                    'message' => "Máy trạm '{$workstation->code}' đã bị vô hiệu hóa."
+                ], 403);
+            }
+
+            $request->attributes->set('agent_workstation', $workstation);
         }
-
-        if (!$workstation->active) {
-            return response()->json([
-                'status' => 'ERROR',
-                'message' => "Máy trạm '{$workstation->code}' đã bị vô hiệu hóa."
-            ], 403);
-        }
-
-        // Whitelist: workstation_id gửi trong route/body phải khớp đúng workstation
-        // sở hữu token này — chống trường hợp token của trạm A bị lộ và dùng để ghi
-        // dữ liệu giả mạo dưới workstation_id của trạm B.
-        $claimedId = $request->route('workstation_id') ?? $request->input('workstation_id');
-        if ($claimedId !== null && (string)$claimedId !== (string)$workstation->code && (string)$claimedId !== (string)$workstation->id) {
-            return response()->json([
-                'status' => 'ERROR',
-                'message' => 'workstation_id không khớp với token đã xác thực.'
-            ], 403);
-        }
-
-        $request->attributes->set('agent_workstation', $workstation);
 
         return $next($request);
     }

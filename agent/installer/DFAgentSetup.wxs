@@ -1,77 +1,173 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Bộ cài Windows Installer (.msi) cho DF Local Agent — đóng gói bằng WiX Toolset v5
-  (đã có sẵn trong môi trường qua `dotnet tool`, không cần tải thêm). Cài file exe độc
-  lập (self-contained, không cần .NET runtime riêng) + appsettings.json vào
-  Program Files\DFAgent, đăng ký và khởi động Windows Service tên "DFAgent".
+  Bo cai Windows Installer (.msi) cho DF Local Agent - dong goi bang WiX Toolset v5.
+  Dung dinh dang MSI + ServiceInstall/ServiceControl native (khong shell ra sc.exe an cua
+  so nhu ban Inno Setup .exe) de giam nguy co bi Windows Defender gan nhan heuristic
+  "dropper" (Program:Win32/Wacapew.A!ml) - xem session-log.md muc lien quan toi 404 tai
+  cong cu DF Agent (2026-07-29).
 
-  Yêu cầu 2026-07-22: cho phép nhanh chóng cài Local Agent lên bất kỳ máy tính nào để
-  máy đó tự phát hiện máy in cài sẵn và báo cáo lên backend (PrinterDiscovery.cs +
-  Worker.cs), phục vụ chọn máy in ngay tại /print-station thay vì phải build/chạy tay
-  bằng dotnet như trước.
-
-  Quyết định 2026-07-24: theo yêu cầu người dùng, appsettings.json đóng gói sẵn trong MSI
-  này TRỎ CHUNG VÀO 1 TRẠM DUY NHẤT (WS-PRINT-01, token thật đã cấp) và Backend:Url LAN
-  thật (10.0.200.248:8500) — cài xong dùng luôn, không cần sửa tay. Đánh đổi đã được xác
-  nhận: KHÔNG dùng đồng thời Agent ở 2 máy trở lên cùng lúc — mọi máy cùng báo cáo vào 1
-  workstation_id nên (1) máy báo cáo sau ghi đè danh sách máy in của máy trước, (2) MỌI
-  máy đang chạy đều tự poll & IN TRÙNG cùng 1 lệnh in tem (không có cơ chế khóa "chỉ 1
-  máy nhận job"), (3) audit log không phân biệt được lệnh in thực sự xuất phát từ máy vật
-  lý nào. Nếu cần nhiều trạm in chạy song song thật sự, phải quay lại cấp token riêng
-  từng máy (xem lịch sử file này trước 2026-07-24) — không dùng bản build này.
+  Wizard cai dat co 1 man hinh "ConfigDlg" voi DUY NHAT 1 dropdown chon vai tro tram (May in
+  - Print Station / May in - Weighing Station / May can - Weighing Station) - khong go tay
+  Ma tram/Token/Backend URL/PuTTY log nua (yeu cau 2026-07-29: "cai la dung thoi, khong can
+  cau hinh gi ca"). Ma tram va Role duoc suy ra thang tu lua chon dropdown, sinh
+  appsettings.json qua Custom Action PowerShell (generate-appsettings.ps1) luc cai xong phan
+  File. Khong con Token — backend (AgentAuth middleware) tu tao/nhan Workstation theo
+  workstation_id khi khong co token, danh doi bao mat da duoc nguoi dung xac nhan (xem
+  session-log.md). Backend URL va duong dan PuTTY log dung gia tri mac dinh co dinh, khong
+  hoi trong wizard.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent"
            Manufacturer="DF Factory Systems"
-           Version="1.1.0.0"
+           Version="1.2.0.0"
            UpgradeCode="CD108F1A-FCE9-46F2-B991-372D89E0E9D1"
            Language="1033"
            Scope="perMachine"
            InstallerVersion="500"
            Compressed="yes">
 
-    <MajorUpgrade DowngradeErrorMessage="Đã có bản mới hơn của DF Local Agent được cài trên máy này." />
+    <MajorUpgrade DowngradeErrorMessage="Da co ban moi hon cua DF Local Agent duoc cai tren may nay." />
     <MediaTemplate EmbedCab="yes" />
 
+    <Property Id="WORKSTATIONID" Value="WS-PRINT-STATION" Secure="yes" />
+    <Property Id="STATIONROLE" Value="PRINT_ONLY" Secure="yes" />
+    <Property Id="BACKENDURL" Value="http://10.0.200.248:8500/api" />
+    <Property Id="PUTTYLOGPATH" Value="D:\SCALE\putty_log.txt" />
+    <Property Id="POWERSHELLEXE" Value="powershell.exe" />
+
+    <CustomAction Id="SetPowerShellExe" Property="POWERSHELLEXE" Value="[System64Folder]WindowsPowerShell\v1.0\powershell.exe" />
+
+    <!-- Suy ra Role tu ma tram da chon trong dropdown ConfigDlg — WS-WEIGH-SCALE la
+         tram duy nhat dung Role can (SCALE_ONLY), 2 tram con lai la may in (PRINT_ONLY). -->
+    <CustomAction Id="SetRoleScale" Property="STATIONROLE" Value="SCALE_ONLY" />
+    <CustomAction Id="SetRolePrint" Property="STATIONROLE" Value="PRINT_ONLY" />
+
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="DFAgent">
-
-        <Component Id="MainExecutable" Guid="57612DD8-1695-4C9D-BA12-50A1C09E972E" Bitness="always64">
-          <File Id="DFAgentExe" Source="..\publish\DFAgent.exe" KeyPath="yes" />
-
-          <ServiceInstall Id="DFAgentServiceInstall"
-                          Name="DFAgent"
-                          DisplayName="DF Local Agent"
-                          Description="Bao cao may in/can, in tem TSPL cho he thong DF (khong dung dau co dau de tranh loi encoding Service Control Manager)."
-                          Type="ownProcess"
-                          Start="auto"
-                          ErrorControl="normal"
-                          Account="LocalSystem" />
-
-          <ServiceControl Id="DFAgentServiceControl"
-                           Name="DFAgent"
-                           Start="install"
-                           Stop="both"
-                           Remove="uninstall"
-                           Wait="yes" />
-        </Component>
-
-        <Component Id="AppSettingsConfig" Guid="AEDB51B0-A39F-498D-9C25-BF8E612DF1E0" Bitness="always64">
-          <!--
-            LƯU Ý: cài lại/upgrade bộ cài này SẼ GHI ĐÈ appsettings.json về giá trị đóng
-            gói sẵn (WS-PRINT-01, xem ghi chú đầu file) — nếu máy nào đã bị sửa tay sang
-            cấu hình khác, cài lại MSI sẽ mất cấu hình tay đó.
-          -->
-          <File Id="AppSettingsJson" Source="..\publish\appsettings.json" KeyPath="yes" />
-        </Component>
-
-      </Directory>
+      <Directory Id="INSTALLFOLDER" Name="DFAgent" />
     </StandardDirectory>
 
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Files Include="..\publish_release\**">
+        <Exclude Files="..\publish_release\DFAgent.exe" />
+        <Exclude Files="..\publish_release\appsettings.json" />
+      </Files>
+    </ComponentGroup>
+
+    <Component Id="MainExecutable" Directory="INSTALLFOLDER" Guid="57612DD8-1695-4C9D-BA12-50A1C09E972E" Bitness="always64">
+      <File Id="DFAgentExe" Source="..\publish_release\DFAgent.exe" KeyPath="yes" />
+
+      <ServiceInstall Id="DFAgentServiceInstall"
+                      Name="DFAgent"
+                      DisplayName="DF Local Agent"
+                      Description="Bao cao may in/can, in tem TSPL cho he thong DF (khong dung dau co dau de tranh loi encoding Service Control Manager)."
+                      Type="ownProcess"
+                      Start="auto"
+                      ErrorControl="normal"
+                      Account="LocalSystem" />
+
+      <ServiceControl Id="DFAgentServiceControl"
+                       Name="DFAgent"
+                       Start="install"
+                       Stop="both"
+                       Remove="uninstall"
+                       Wait="yes" />
+    </Component>
+
+    <Component Id="InstallerHelpers" Directory="INSTALLFOLDER" Guid="8A2C7E14-9B3D-4F6A-8C1E-2D5B7A9F0E3C" Bitness="always64">
+      <File Id="GenerateAppSettingsPs1" Source="generate-appsettings.ps1" KeyPath="yes" />
+      <File Id="AppSettingsTemplateJson" Source="appsettings.template.json" />
+    </Component>
+
     <Feature Id="MainFeature" Title="DF Local Agent" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
       <ComponentRef Id="MainExecutable" />
-      <ComponentRef Id="AppSettingsConfig" />
+      <ComponentRef Id="InstallerHelpers" />
     </Feature>
 
+    <!-- Sinh appsettings.json theo lua chon dropdown trong ConfigDlg. Value cua
+         SetGenerateAppSettings duoc WiX relay qua token [~] vao ExeCommand cua custom
+         action deferred (day la co che chinh thuc de truyen du lieu cho deferred custom
+         action - deferred CA khong doc truc tiep duoc Property table). -->
+    <CustomAction Id="SetGenerateAppSettings"
+                  Property="GenerateAppSettings"
+                  Value="[WORKSTATIONID]|[STATIONROLE]|[BACKENDURL]|[PUTTYLOGPATH]|[INSTALLFOLDER]" />
+
+    <CustomAction Id="GenerateAppSettings"
+                  Property="POWERSHELLEXE"
+                  ExeCommand="-NoProfile -ExecutionPolicy Bypass -File &quot;[#GenerateAppSettingsPs1]&quot; -TemplatePath &quot;[#AppSettingsTemplateJson]&quot; -Data &quot;[~]&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <InstallExecuteSequence>
+      <Custom Action="SetPowerShellExe" Before="InstallFiles" />
+      <Custom Action="SetRoleScale" Before="SetGenerateAppSettings" Condition="WORKSTATIONID = &quot;WS-WEIGH-SCALE&quot;" />
+      <Custom Action="SetRolePrint" Before="SetGenerateAppSettings" Condition="WORKSTATIONID &lt;&gt; &quot;WS-WEIGH-SCALE&quot;" />
+      <Custom Action="SetGenerateAppSettings" Before="GenerateAppSettings" Condition="WORKSTATIONID" />
+      <Custom Action="GenerateAppSettings" After="InstallFiles" Condition="WORKSTATIONID" />
+    </InstallExecuteSequence>
+
+    <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+
+    <UI>
+    <UIRef Id="WixUI_Common" />
+
+    <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+    <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+    <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+
+    <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <DialogRef Id="ErrorDlg" />
+    <DialogRef Id="ExitDialog" />
+    <DialogRef Id="FatalError" />
+    <DialogRef Id="FilesInUse" />
+    <DialogRef Id="MsiRMFilesInUse" />
+    <DialogRef Id="PrepareDlg" />
+    <DialogRef Id="ProgressDlg" />
+    <DialogRef Id="ResumeDlg" />
+    <DialogRef Id="UserExit" />
+    <DialogRef Id="WelcomeDlg" />
+
+    <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" Condition="1" />
+
+    <!-- Chen ConfigDlg vao ngay sau man hinh Welcome, bo qua han man hinh License (khong
+         can dieu khoan rieng cho cong cu noi bo). Next cua ConfigDlg tu ket thuc UI
+         sequence (EndDialog Return) de vao thang Progress, giong het co che cac dialog
+         cuoi cung khac trong WixUI_Minimal. -->
+    <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="ConfigDlg" Order="2" Condition="1" />
+    </UI>
+
   </Package>
+
+  <Fragment>
+   <UI>
+   <Dialog Id="ConfigDlg" Width="370" Height="270" Title="Chon vai tro tram">
+      <Control Id="Title" Type="Text" X="15" Y="15" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Chon vai tro cho MAY NAY" />
+      <Control Id="Description" Type="Text" X="15" Y="40" Width="340" Height="50" Transparent="yes" NoPrefix="yes" Text="May nay se cai dat lam dung 1 trong 3 vai tro sau. Khong can nhap Ma tram/Token — chon dung vai tro roi bam Next la xong, Agent tu dang ky voi backend." />
+
+      <Control Id="RoleLabel" Type="Text" X="15" Y="100" Width="340" Height="12" Text="Vai tro cua may nay:" />
+      <Control Id="RoleCombo" Type="ComboBox" X="15" Y="114" Width="340" Height="17" Property="WORKSTATIONID" ComboList="yes" Sorted="no" />
+
+      <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+      <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back">
+        <Publish Event="NewDialog" Value="WelcomeDlg" Condition="1" />
+      </Control>
+      <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next">
+        <Publish Event="EndDialog" Value="Return" Condition="1" />
+      </Control>
+      <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+        <Publish Event="SpawnDialog" Value="CancelDlg" Condition="1" />
+      </Control>
+   </Dialog>
+
+   <ComboBox Property="WORKSTATIONID">
+     <ListItem Text="May in - Print Station (/print-station)" Value="WS-PRINT-STATION" />
+     <ListItem Text="May in - Weighing Station (/weighing-station)" Value="WS-WEIGH-PRINTER" />
+     <ListItem Text="May can - Weighing Station (/weighing-station)" Value="WS-WEIGH-SCALE" />
+   </ComboBox>
+   </UI>
+  </Fragment>
 </Wix>
