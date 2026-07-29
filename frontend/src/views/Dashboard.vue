@@ -27,50 +27,60 @@
       <div v-if="activeTab === 'overview'" class="tab-panel">
         <div class="panel-header mb-4">
           <h3>📊 Điều độ sản xuất &amp; Giám sát máy nhuộm</h3>
-          <p class="text-muted">Trạng thái hoạt động thời gian thực của máy nhuộm VD01 - VD18.</p>
+          <p class="text-muted" v-if="authStore.isAdmin">Trạng thái vận hành thời gian thực máy VD — nguồn BPDB (chỉ đọc).</p>
+          <p class="text-muted" v-else>Trạng thái hoạt động thời gian thực của máy nhuộm VD01 - VD18.</p>
         </div>
 
-        <div class="machines-grid">
-          <div 
-            v-for="m in overviewData" 
-            :key="m.machine_id" 
-            class="machine-card" 
-            :class="['card-state-' + m.status.toLowerCase(), { 'has-alert': m.alerts.length > 0 }]"
-            @click="viewMachineDetails(m)"
-          >
-            <!-- Card Header -->
-            <div class="m-card-header">
-              <span class="m-code">{{ m.machine_code }}</span>
-              <span :class="['m-connection-dot', m.status === 'IDLE' ? 'conn-idle' : 'conn-running']"></span>
+        <div class="overview-status-layout">
+          <!-- Trạng thái máy thật lấy trực tiếp từ BPDB (giống /bpdb-machines) — chỉ Admin
+               thấy vì endpoint /admin/bpdb/machines/status yêu cầu role:ADMIN ở backend (xác
+               nhận 2026-07-29). Chỉ hiển thị icon + trạng thái, không kèm chi tiết task/tank
+               (chi tiết đầy đủ đã có sẵn ở /bpdb-machines). -->
+          <div v-if="authStore.isAdmin" class="machines-grid-simple">
+            <div
+              v-for="m in bpdbMachines"
+              :key="m.machineCode"
+              class="machine-status-tile"
+              :class="'bpdb-status-' + m.operationalStatus.toLowerCase()"
+            >
+              <span class="tile-icon">{{ bpdbStatusIcon(m.operationalStatus) }}</span>
+              <span class="tile-code">{{ m.displayName }}</span>
+              <span class="tile-status">{{ m.operationalStatus }}</span>
             </div>
+            <p v-if="!bpdbMachines.length" class="text-muted font-sm">Không có dữ liệu máy VD.</p>
+          </div>
 
-            <!-- Card Body -->
-            <div class="m-card-body">
-              <div v-if="m.current_batch" class="m-batch-info">
-                <div class="m-batch-id" @click.stop="openBatchTimeline(m.current_batch.id)">
-                  Lô: <strong class="code-link">{{ m.current_batch.legacy_batch_id }}</strong>
-                </div>
-                <div class="m-meta-text">Màu: {{ m.current_batch.color }}</div>
-                <div class="m-meta-text">Hàng: {{ m.current_batch.product_code }}</div>
-                <div class="m-meta-text" v-if="m.current_batch.tank_code">Thùng: {{ m.current_batch.tank_code }}</div>
-                
-                <!-- Progress bar -->
-                <div class="progress-bar-container mt-2">
-                  <div class="progress-bar-fill" :style="{ width: getProgressPercent(m.current_batch.status) + '%' }"></div>
-                </div>
-                <div class="progress-label">{{ m.current_batch.status }} ({{ getProgressPercent(m.current_batch.status) }}%)</div>
-              </div>
-              <div v-else class="m-idle-state">
-                <span class="idle-icon">🌀</span>
-                <span class="idle-text">MÁY TRỐNG (IDLE)</span>
-              </div>
-            </div>
-
-            <!-- Card Footer (Alerts count) -->
-            <div class="m-card-footer" v-if="m.alerts.length > 0">
-              <span class="m-alert-badge">⚠️ {{ m.alerts.length }} Cảnh báo</span>
+          <!-- Fallback: trạng thái nội bộ (app.machines) cho tài khoản không phải Admin — vẫn
+               giữ nguyên hành vi cũ vì họ không gọi được endpoint BPDB. -->
+          <div v-else class="machines-grid-simple">
+            <div
+              v-for="m in overviewData"
+              :key="m.machine_id"
+              class="machine-status-tile"
+              :class="'card-state-' + m.status.toLowerCase()"
+            >
+              <span class="tile-icon">{{ appStatusIcon(m.status) }}</span>
+              <span class="tile-code">{{ m.machine_code }}</span>
+              <span class="tile-status">{{ m.status }}</span>
             </div>
           </div>
+
+          <!-- Bảng chú thích trạng thái, bên phải lưới máy (yêu cầu 2026-07-29) -->
+          <aside class="status-legend">
+            <h4 class="legend-title">Chú thích trạng thái</h4>
+            <ul class="legend-list">
+              <li v-for="item in (authStore.isAdmin ? bpdbStatusLegend : appStatusLegend)" :key="item.status" class="legend-item">
+                <span class="legend-icon">{{ item.icon }}</span>
+                <div class="legend-text">
+                  <div class="legend-head">
+                    <strong>{{ item.label }}</strong>
+                    <span class="legend-code">{{ item.status }}</span>
+                  </div>
+                  <p class="legend-desc">{{ item.desc }}</p>
+                </div>
+              </li>
+            </ul>
+          </aside>
         </div>
       </div>
 
@@ -433,6 +443,73 @@ const printing = ref(false);
 const printMessage = ref('');
 const printSuccess = ref(true);
 
+// BPDB real machine status (Admin only — TAB 1 overview, chỉ icon + trạng thái) — cùng
+// nguồn API với BpdbMachines.vue (/bpdb-machines) nhưng nhúng gọn vào Dashboard theo yêu
+// cầu 2026-07-29 (không cần chi tiết task/tank, chỉ cần biết máy "đang là gì").
+const bpdbMachines = ref<any[]>([]);
+
+const fetchBpdbMachines = async () => {
+  try {
+    const res = await axios.get('/api/admin/bpdb/machines/status');
+    bpdbMachines.value = res.data.data;
+  } catch (err) {
+    console.error('Failed to load BPDB machine status:', err);
+  }
+};
+
+let bpdbPollTimer: ReturnType<typeof setInterval> | null = null;
+
+// Icon theo trạng thái BPDB (operationalStatus) và trạng thái nội bộ (app.machines) — chỉ
+// mang tính minh họa nhanh trên Dashboard, không thay thế nhãn chữ đứng cạnh.
+const bpdbStatusIcon = (status: string) => {
+  const mapping: Record<string, string> = {
+    PROCESSING: '⚙️',
+    WAITING: '⏳',
+    TRANSITIONING: '🔄',
+    COMPLETED_RECENTLY: '✅',
+    CANCELLED: '🚫',
+    ERROR: '❌',
+    IDLE: '💤',
+  };
+  return mapping[status] || '❔';
+};
+
+const appStatusIcon = (status: string) => {
+  const mapping: Record<string, string> = {
+    IDLE: '💤',
+    NEW: '🆕',
+    READY_TO_WEIGH: '⚖️',
+    WEIGHING: '⚖️',
+    WEIGHED: '✅',
+    SENT: '🚀',
+    DONE: '🏁',
+  };
+  return mapping[status] || '❔';
+};
+
+// Chú thích trạng thái hiển thị cạnh lưới máy — BPDB: khớp logic suy luận operationalStatus
+// ở BpdbMachineMonitoringService::reduceMachineStatus (backend); nội bộ: khớp state machine
+// Batch trong .claude/rules/architecture-workflow.md.
+const bpdbStatusLegend = [
+  { status: 'PROCESSING', icon: '⚙️', label: 'Đang xử lý', desc: 'Máy đang chạy task, BPDB đang xử lý.' },
+  { status: 'WAITING', icon: '⏳', label: 'Đang chờ', desc: 'Task đã tạo nhưng chưa bắt đầu chạy.' },
+  { status: 'TRANSITIONING', icon: '🔄', label: 'Chuyển trạng thái', desc: 'Task đang ở bước chuyển tiếp giữa các giai đoạn xử lý.' },
+  { status: 'COMPLETED_RECENTLY', icon: '✅', label: 'Vừa hoàn thành', desc: 'Task vừa kết thúc gần đây, máy sắp trống.' },
+  { status: 'CANCELLED', icon: '🚫', label: 'Đã hủy', desc: 'Task gần nhất bị hủy/xóa.' },
+  { status: 'ERROR', icon: '❌', label: 'Lỗi', desc: 'Task hiện tại phát sinh lỗi.' },
+  { status: 'IDLE', icon: '💤', label: 'Nhàn rỗi', desc: 'Không có task nào — máy đang trống.' },
+];
+
+const appStatusLegend = [
+  { status: 'IDLE', icon: '💤', label: 'Nhàn rỗi', desc: 'Máy chưa có lệnh sản xuất nào.' },
+  { status: 'NEW', icon: '🆕', label: 'Lệnh mới', desc: 'Lệnh sản xuất vừa tạo, chưa cân.' },
+  { status: 'READY_TO_WEIGH', icon: '⚖️', label: 'Sẵn sàng cân', desc: 'Lệnh đủ điều kiện để bắt đầu cân nguyên liệu.' },
+  { status: 'WEIGHING', icon: '⚖️', label: 'Đang cân', desc: 'Đang trong quá trình cân nguyên liệu.' },
+  { status: 'WEIGHED', icon: '✅', label: 'Đã cân xong', desc: 'Đã cân xong, chờ vận chuyển/nạp máy.' },
+  { status: 'SENT', icon: '🚀', label: 'Đã gửi lệnh máy', desc: 'Đã gửi lệnh nạp vào máy nhuộm.' },
+  { status: 'DONE', icon: '🏁', label: 'Hoàn tất', desc: 'Mẻ đã hoàn tất toàn bộ quy trình.' },
+];
+
 // Modals State
 const timelineOpen = ref(false);
 const activeTimelineData = ref<any | null>(null);
@@ -516,12 +593,22 @@ onMounted(() => {
   fetchAlertsSnapshot();
   fetchManagementKpiSnapshot();
 
+  if (authStore.isAdmin) {
+    fetchBpdbMachines();
+    // 5s theo đúng cadence của BpdbMachines.vue — backend đã cache ~4s nên nhiều tab admin
+    // mở cùng lúc không dội query trực tiếp vào BPDB.
+    bpdbPollTimer = setInterval(fetchBpdbMachines, 5000);
+  }
+
   disposeRealtime = initRealtimeConnection();
 });
 
 onUnmounted(() => {
   if (disposeRealtime) {
     disposeRealtime();
+  }
+  if (bpdbPollTimer) {
+    clearInterval(bpdbPollTimer);
   }
 });
 
@@ -653,18 +740,6 @@ const triggerMockPrint = async () => {
 };
 
 // Helper status formatters
-const getProgressPercent = (status: string) => {
-  const mapping: Record<string, number> = {
-    'NEW': 15,
-    'READY_TO_WEIGH': 35,
-    'WEIGHING': 55,
-    'WEIGHED': 75,
-    'SENT': 90,
-    'DONE': 100
-  };
-  return mapping[status] || 0;
-};
-
 const getStatusBadgeClass = (status: string) => {
   const mapping: Record<string, string> = {
     'NEW': 'badge-grey',
@@ -694,11 +769,6 @@ const formatTime = (dateStr: string) => {
   return d.toLocaleString('vi-VN', { hour12: false });
 };
 
-const viewMachineDetails = (m: any) => {
-  if (m.current_batch) {
-    openBatchTimeline(m.current_batch.id);
-  }
-};
 </script>
 
 <style scoped>
@@ -921,6 +991,116 @@ const viewMachineDetails = (m: any) => {
   border-radius: var(--radius-sm);
   display: inline-block;
 }
+
+/* Bố cục Tab 1: lưới trạng thái máy bên trái + bảng chú thích bên phải (yêu cầu
+   2026-07-29). wrap để tự xuống dòng trên màn hình hẹp/tablet dọc thay vì bị bóp méo. */
+.overview-status-layout {
+  display: flex;
+  gap: var(--space-xl);
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.overview-status-layout .machines-grid-simple {
+  flex: 3 1 480px;
+}
+
+.status-legend {
+  flex: 1 1 240px;
+  max-width: 320px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+}
+
+.legend-title {
+  font-size: 0.85rem;
+  color: var(--text-title);
+  margin-bottom: var(--space-md);
+}
+
+.legend-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.legend-item {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-start;
+}
+
+.legend-icon { font-size: 1.1rem; line-height: 1.3; }
+
+.legend-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.legend-head strong { font-size: 0.82rem; color: var(--text-title); }
+
+.legend-code {
+  font-size: 0.62rem;
+  font-family: monospace;
+  color: var(--text-disabled);
+}
+
+.legend-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Trạng thái máy đơn giản (Tab 1) — chỉ icon + mã máy + nhãn trạng thái, dùng chung cho
+   cả lưới BPDB (Admin) và lưới nội bộ (non-admin), theo yêu cầu 2026-07-29. */
+.machines-grid-simple {
+  display: grid;
+  /* auto-fit (thay vì auto-fill) để ô tự giãn lấp đầy hàng khi ít máy, không để trống
+     cột thừa; clamp() cho min-width co giãn mượt theo bề rộng màn hình/tablet nhà xưởng
+     thay vì nhảy bậc theo breakpoint cố định (yêu cầu "linh động" 2026-07-29). */
+  grid-template-columns: repeat(auto-fit, minmax(clamp(110px, 12vw, 160px), 1fr));
+  gap: clamp(var(--space-sm), 1.5vw, var(--space-md));
+}
+
+.machine-status-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-top: 3px solid var(--status-grey);
+  border-radius: var(--radius-lg);
+  padding: clamp(0.6rem, 1.4vw, var(--space-lg)) var(--space-sm);
+  text-align: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.machine-status-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.tile-icon { font-size: clamp(1.4rem, 2.4vw, 1.9rem); line-height: 1; }
+.tile-code { font-weight: 700; color: var(--text-title); font-size: clamp(0.8rem, 1.1vw, 0.95rem); }
+.tile-status { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.03em; color: var(--text-muted); }
+
+.machine-status-tile.bpdb-status-processing { border-top-color: #2563eb; }
+.machine-status-tile.bpdb-status-waiting { border-top-color: #ca8a04; }
+.machine-status-tile.bpdb-status-transitioning { border-top-color: #9333ea; }
+.machine-status-tile.bpdb-status-completed_recently { border-top-color: #16a34a; }
+.machine-status-tile.bpdb-status-cancelled, .machine-status-tile.bpdb-status-error { border-top-color: #dc2626; }
+.machine-status-tile.bpdb-status-idle { border-top-color: #9ca3af; }
+
+.machine-status-tile.card-state-idle { border-top-color: var(--status-grey); }
+.machine-status-tile.card-state-new, .machine-status-tile.card-state-ready_to_weigh { border-top-color: var(--status-blue); }
+.machine-status-tile.card-state-weighing { border-top-color: var(--status-yellow); }
+.machine-status-tile.card-state-weighed { border-top-color: var(--status-green); }
+.machine-status-tile.card-state-sent { border-top-color: var(--status-orange); }
 
 /* Tab 3: interlocks rows list */
 .machine-status-list {
