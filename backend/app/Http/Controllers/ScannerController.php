@@ -248,11 +248,14 @@ class ScannerController extends Controller
 
                 if ((! $recipe || ! $version) && $jobType === 'DYE' && $rackLines) {
                     // Quyết định nghiệp vụ: đơn chưa có công thức duyệt trong Web (hoặc đơn ad-hoc
-                    // tự tạo từ QR khi không khớp Lô sản xuất nào — xem scanRawDyeQr()) KHÔNG chặn
-                    // thao tác viên — cân tự do lấy đúng rack/mã thuốc/khối lượng in trên tem QR,
-                    // dung sai mở hết cỡ (không có công thức để so target/dung sai thật). Báo cáo
-                    // tiêu hao/dung sai sau này cần lọc riêng các lô cân kiểu này — nhận diện qua
-                    // legacy_batch_id tiền tố "ADHOC-" hoặc không có Recipe khớp color/code.
+                    // tự tạo từ QR khi không khớp Lô sản xuất nào — xem scanRawDyeQr()) — mục tiêu
+                    // (planned_weight) vẫn lấy đúng khối lượng in trên tem QR, và dung sai áp đúng
+                    // ±1% chuẩn (giống nhánh có Recipe bên dưới, đúng gốc VBA
+                    // Mod_UI_processcolor.CheckRange) thay vì mở hết cỡ như trước — nếu không, màu
+                    // LED lúc đang cân luôn báo xanh giả bất kể lệch bao nhiêu, và Save không bao
+                    // giờ đòi override dù cân sai xa mục tiêu. Báo cáo tiêu hao/dung sai sau này cần
+                    // lọc riêng các lô cân kiểu này — nhận diện qua legacy_batch_id tiền tố "ADHOC-"
+                    // hoặc không có Recipe khớp color/code.
                     $job = WeighingJob::create([
                         'production_batch_id' => $batch->id,
                         'job_type' => $jobType,
@@ -270,12 +273,19 @@ class ScannerController extends Controller
                             ['name' => $line['dye'], 'type' => 'DYE']
                         );
 
+                        $adhocTargetWeight = (float) $line['weight'];
+                        // ±1% standard tolerance limit — trước đây để 999999 (gần như vô cực)
+                        // vì "không có công thức để so", nhưng planned_weight vẫn lấy đúng khối
+                        // lượng in trên tem QR nên VẪN là mục tiêu thật, đúng ±1% gốc VBA
+                        // (Mod_UI_processcolor.CheckRange) thay vì tắt hẳn việc so sánh.
+                        $adhocTolerance = $adhocTargetWeight * 0.01;
+
                         WeighingJobItem::create([
                             'weighing_job_id' => $job->id,
                             'material_code' => $material->code,
-                            'planned_weight' => (float) $line['weight'],
-                            'tolerance_minus' => 999999,
-                            'tolerance_plus' => 999999,
+                            'planned_weight' => $adhocTargetWeight,
+                            'tolerance_minus' => $adhocTolerance,
+                            'tolerance_plus' => $adhocTolerance,
                             'sequence_no' => $seq++,
                             'rack_code' => $line['rack'],
                             'status' => 'PENDING',

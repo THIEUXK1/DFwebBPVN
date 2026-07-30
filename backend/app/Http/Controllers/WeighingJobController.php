@@ -33,12 +33,43 @@ class WeighingJobController extends Controller
     }
 
     /**
+     * Lô cân đang dở của 1 trạm cân (workstation) — mỗi trạm chỉ dùng cho đúng 1 máy nên
+     * KHÔNG bao giờ có 2 job "đang chạy" cùng lúc. Dùng để khôi phục lại đúng job đang cân
+     * khi trang /weighing-station được mở lại (F5, mất mạng, tắt máy...) mà KHÔNG bắt thao
+     * tác viên quét lại QR — job đã được lưu xuống DB ngay từ lúc quét (handleOrderScan/
+     * scanRawDyeQr), chỉ có state phía frontend (Vue ref trong RAM) bị mất khi reload.
+     */
+    public function activeForWorkstation(Request $request)
+    {
+        $request->validate([
+            'workstation_id' => 'required|integer|exists:operation_clients,id',
+        ]);
+
+        $job = WeighingJob::with(['batch.machine', 'batch.tank', 'items.material'])
+            ->where('assigned_operation_client_id', $request->input('workstation_id'))
+            ->where('status', '!=', 'COMPLETED')
+            ->orderByDesc('created_at')
+            ->first();
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'data' => [
+                'job' => $job,
+                'batch' => $job?->batch,
+            ],
+        ]);
+    }
+
+    /**
      * Weigh a single item in the job sequence.
      */
     public function weighItem(Request $request, $id)
     {
         $request->validate([
-            'weight' => 'required|numeric|min:0',
+            // Không còn 'min:0' — cân cộng dồn trên cùng 1 đĩa, net = cân gộp - bì có thể ÂM
+            // thật sự khi vật tư bị hao hụt/tràn so với bì đã chốt (phản hồi 2026-07-30); chặn
+            // min:0 ở đây sẽ khiến ca này không bao giờ lưu được kể cả khi override.
+            'weight' => 'required|numeric',
             'scale_device_id' => 'required|string',
             'stable' => 'required|boolean',
             'override_approved' => 'sometimes|boolean',
@@ -60,6 +91,17 @@ class WeighingJobController extends Controller
         $item = WeighingJobItem::with('job.batch')->findOrFail($id);
         $job = $item->job;
         $batch = $job->batch;
+
+        // Vật tư đã cân xong = chốt vĩnh viễn, không cho ghi đè lại bì/kết quả qua endpoint
+        // này nữa (phản hồi 2026-07-30). Đây là hàng rào phía server — hàng rào phía
+        // frontend (WeighingRackTable.vue) chỉ chặn UI, không chặn được ai gọi thẳng API.
+        if ($item->status === 'COMPLETED') {
+            return response()->json([
+                'status' => 'ERROR',
+                'message' => 'Vật tư này đã cân xong — không thể sửa lại bì hoặc cân lại.',
+                'error_code' => 'ITEM_ALREADY_COMPLETED',
+            ], 409);
+        }
 
         $measuredWeight = (float) $request->input('weight');
         $tareWeight = $request->input('tare_weight');
@@ -277,6 +319,100 @@ class WeighingJobController extends Controller
     }
 
     /**
+     * Cân lại từ đầu cả Mẻ nhuộm hiện tại (phản hồi 2026-07-30) — dùng khi thao tác viên
+     * phát hiện sai sót nghiêm trọng (nhầm vật tư, tràn/đổ, cân sai từ đầu...) và muốn bỏ
+     * hết kết quả đã cân của TOÀN BỘ job, quay lại vật tư đầu tiên. Yêu cầu xác nhận rõ ràng
+     * ở frontend (tick checkbox cảnh báo) + bắt buộc nhập lý do, và ghi Audit Log trước/sau
+     * đầy đủ vì đây là hành động HỦY kết quả cân đã lưu (không phải sự cố kỹ thuật thông
+     * thường). KHÔNG đụng tới bảng scale_measurements — lịch sử mỗi lần cân vẫn giữ nguyên
+     * bất biến để đối soát (database-safety.md mục 5), chỉ reset trạng thái/kết quả trên
+     * WeighingJobItem/WeighingJob/ProductionBatch.
+     */
+    public function restart(Request $request, $id)
+    {
+        $request->validate([
+            'reason' => 'required|string|min:5',
+        ]);
+
+        $job = WeighingJob::with(['items', 'batch'])->findOrFail($id);
+        $batch = $job->batch;
+
+        // Vật tư đã rời khỏi trạm cân (đang vận chuyển/đã nạp máy/đã hoàn tất) thì không thể
+        // "cân lại từ đầu" nữa — dữ liệu cân đã được dùng cho các bước sau, sửa ngược lại sẽ
+        // gây sai lệch đối soát.
+        if ($batch && in_array($batch->status, ['IN_TRANSIT', 'ARRIVED_AT_TANK', 'SENT', 'DONE'])) {
+            return response()->json([
+                'status' => 'ERROR',
+                'message' => "Lô {$batch->legacy_batch_id} đã qua công đoạn cân (trạng thái {$batch->status}) — không thể cân lại từ đầu.",
+            ], 409);
+        }
+
+        return DB::transaction(function () use ($job, $batch, $request) {
+            $beforeItems = $job->items->map(fn ($i) => [
+                'id' => $i->id,
+                'material_code' => $i->material_code,
+                'status' => $i->status,
+                'actual_weight' => $i->actual_weight,
+                'rack_code' => $i->rack_code,
+                'override_approved' => $i->override_approved,
+                'override_reason' => $i->override_reason,
+            ])->toArray();
+            $beforeJobStatus = $job->status;
+            $beforeBatchStatus = $batch?->status;
+
+            foreach ($job->items as $item) {
+                $item->status = 'PENDING';
+                $item->actual_weight = null;
+                $item->completed_at = null;
+                $item->override_approved = false;
+                $item->override_reason = null;
+                $item->override_by = null;
+                $item->save();
+            }
+
+            $job->status = 'RECEIVED';
+            $job->completed_at = null;
+            $job->save();
+
+            if ($batch && in_array($batch->status, ['WEIGHED', 'PARTIALLY_WEIGHED'])) {
+                $batch->status = 'WEIGHING';
+                $batch->save();
+            }
+
+            AuditLog::create([
+                'user_id' => auth()->id(),
+                'action' => 'WEIGHING_JOB_RESTART',
+                'entity_type' => 'WeighingJob',
+                'entity_id' => $job->id,
+                'before_data' => [
+                    'job_status' => $beforeJobStatus,
+                    'batch_status' => $beforeBatchStatus,
+                    'items' => $beforeItems,
+                ],
+                'after_data' => [
+                    'job_status' => $job->status,
+                    'batch_status' => $batch?->status,
+                    'reason' => $request->input('reason'),
+                ],
+                'client_ip' => $request->ip(),
+            ]);
+
+            $job->refresh()->load(['items.material', 'batch.machine', 'batch.tank']);
+
+            RealtimeService::publish('weighing_job.restarted', 'WeighingJob', $job->id, $job->toArray(), auth()->id(), $batch?->machine_id, $batch?->id);
+
+            return response()->json([
+                'status' => 'SUCCESS',
+                'message' => 'Đã đặt lại toàn bộ Mẻ nhuộm về trạng thái chưa cân.',
+                'data' => [
+                    'job' => $job,
+                    'batch' => $batch,
+                ],
+            ]);
+        });
+    }
+
+    /**
      * Generate and Print Material QR Label.
      */
     public function printLabel(Request $request, $id)
@@ -436,7 +572,22 @@ class WeighingJobController extends Controller
                 "TEXT 15,100,\"2\",0,1,1,\"MAY: {$machineCode}\"\r\n".
                 'TEXT 15,125,"2",0,1,1,"MUC: '.($batch->level_code ?? '')."\"\r\n";
 
-        $y = 155;
+        // Bảng RACK/DYE CODE/MT/TT/STATUS — cột thẳng hàng theo tọa độ x cố định thay vì gộp
+        // hết vào 1 dòng chữ chạy dài (phản hồi 2026-07-30: "tôi muốn nó là 1 table"), đúng
+        // tinh thần bảng gốc VBA (Label11-14: RACK/DYE CODE/WEIGHT/PROCESS trên scaleform).
+        $colRack = 15;
+        $colDye = 90;
+        $colMt = 260;
+        $colTt = 380;
+        $colStatus = 500;
+
+        $tspl .= "TEXT {$colRack},155,\"1\",0,1,1,\"RACK\"\r\n".
+                 "TEXT {$colDye},155,\"1\",0,1,1,\"DYE CODE\"\r\n".
+                 "TEXT {$colMt},155,\"1\",0,1,1,\"MT\"\r\n".
+                 "TEXT {$colTt},155,\"1\",0,1,1,\"TT\"\r\n".
+                 "TEXT {$colStatus},155,\"1\",0,1,1,\"STATUS\"\r\n";
+
+        $y = 178;
         foreach ($job->items as $idx => $item) {
             if ($item->status === 'COMPLETED') {
                 $statusText = $item->override_approved ? 'OVERRIDE' : 'ACCEPTED';
@@ -445,11 +596,20 @@ class WeighingJobController extends Controller
             } else {
                 $statusText = 'PENDING';
             }
+            // In cả số cân MỤC TIÊU (MT, planned_weight) lẫn số cân THỰC TẾ (TT, actual_weight)
+            // — trước đây chỉ in actual, không đối chiếu được ngay trên tem là cân đủ/thiếu/dư
+            // bao nhiêu so với định mức (phản hồi 2026-07-30).
+            $plannedText = number_format((float) $item->planned_weight, 2).'g';
             $weightText = $item->actual_weight !== null ? number_format((float) $item->actual_weight, 2).'g' : '---';
             $seq = $item->sequence_no ?? ($idx + 1);
             $rackText = $item->rack_code !== null && $item->rack_code !== '' ? $item->rack_code : (string) $seq;
-            $line = "RACK{$rackText} {$item->material_code} {$weightText} {$statusText}";
-            $tspl .= "TEXT 15,{$y},\"1\",0,1,1,\"".str_replace('"', '', $line)."\"\r\n";
+            $dyeText = str_replace('"', '', $item->material_code);
+
+            $tspl .= "TEXT {$colRack},{$y},\"1\",0,1,1,\"".str_replace('"', '', $rackText)."\"\r\n".
+                     "TEXT {$colDye},{$y},\"1\",0,1,1,\"{$dyeText}\"\r\n".
+                     "TEXT {$colMt},{$y},\"1\",0,1,1,\"{$plannedText}\"\r\n".
+                     "TEXT {$colTt},{$y},\"1\",0,1,1,\"{$weightText}\"\r\n".
+                     "TEXT {$colStatus},{$y},\"1\",0,1,1,\"{$statusText}\"\r\n";
             $y += 22;
         }
 

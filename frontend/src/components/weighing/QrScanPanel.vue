@@ -73,6 +73,24 @@
       </div>
     </div>
 
+    <!-- Đơn đang cân dở của đúng trạm này — dự phòng thủ công cho restoreActiveJob() tự
+         động ở WeighingStation.vue (onMounted): nếu vì lý do gì đó job không tự nạp lại
+         được, thao tác viên vẫn bấm tay vào đây để tiếp tục, không cần quét lại QR và
+         không mất các vật tư đã cân xong. Mỗi trạm chỉ dùng cho đúng 1 máy nên tối đa có
+         1 đơn đang dở tại 1 thời điểm (yêu cầu 2026-07-30). -->
+    <div v-if="pendingJob" class="mock-scanner-widget mt-5">
+      <h4>📌 Đơn đang cân dở tại trạm này</h4>
+      <div class="pending-job-card" @click="resumePendingJob">
+        <div class="pending-job-info">
+          <strong>{{ pendingBatch?.legacy_batch_id }}</strong>
+          <span class="text-muted font-sm">
+            {{ pendingBatch?.color }} · {{ pendingBatch?.product_code }} — đã cân {{ pendingCompletedCount }}/{{ pendingJob.items?.length || 0 }} vật tư
+          </span>
+        </div>
+        <button class="btn btn-primary btn-sm">▶️ Tiếp tục cân</button>
+      </div>
+    </div>
+
     <!-- Mock Scanner Tool for Testing -->
     <div class="mock-scanner-widget mt-3">
       <h4>📋 Công cụ Giả lập Quét mã (Dành cho kiểm thử)</h4>
@@ -96,14 +114,49 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import { currentWorkstation } from '../../services/workstation';
 import { scannerService } from '../../services/scanner';
 import echo from '../../services/echo';
 
 defineProps<{ viewOnly: boolean }>();
-const emit = defineEmits<{ (e: 'manual-qr-submit', token: string): void }>();
+const emit = defineEmits<{
+  (e: 'manual-qr-submit', token: string): void;
+  (e: 'resume-job', payload: { job: any; batch: any }): void;
+}>();
+
+// Đơn đang cân dở của đúng trạm này — xem comment ở template. Dùng lại đúng API
+// WeighingJobController::activeForWorkstation (đã có sẵn cho restoreActiveJob() tự động
+// bên WeighingStation.vue), chỉ khác là hiển thị thành thẻ bấm tay thay vì tự nạp ngầm.
+const pendingJob = ref<any | null>(null);
+const pendingBatch = ref<any | null>(null);
+const pendingCompletedCount = computed(() => {
+  if (!pendingJob.value?.items) return 0;
+  return pendingJob.value.items.filter((i: any) => i.status === 'COMPLETED').length;
+});
+
+const fetchPendingJob = async () => {
+  if (!currentWorkstation.value?.id) {
+    pendingJob.value = null;
+    pendingBatch.value = null;
+    return;
+  }
+  try {
+    const res = await axios.get('/api/weighing-jobs/active', {
+      params: { workstation_id: currentWorkstation.value.id },
+    });
+    pendingJob.value = res.data?.data?.job || null;
+    pendingBatch.value = res.data?.data?.batch || null;
+  } catch (err) {
+    console.error('Failed to load pending weighing job:', err);
+  }
+};
+
+const resumePendingJob = () => {
+  if (!pendingJob.value) return;
+  emit('resume-job', { job: pendingJob.value, batch: pendingBatch.value });
+};
 
 // Tự cấu hình cân/máy in ngay tại trạm — không qua Admin (đơn giản hóa 2026-07-18)
 const showScaleConfig = ref(false);
@@ -212,10 +265,14 @@ defineExpose({ fetchWaitingBatches });
 onMounted(() => {
   fetchWaitingBatches();
   fetchInstalledPrinters();
+  fetchPendingJob();
   // Realtime qua Reverb — lô mới được tạo/duyệt ở /production-batches phải xuất hiện
   // ngay trong dropdown "Giả lập Quét mã" ở đây, không cần rời màn hình rồi quay lại.
   echo.channel('production-batches').listen('.updated', fetchWaitingBatches);
-  batchPollInterval = setInterval(fetchWaitingBatches, 15000);
+  batchPollInterval = setInterval(() => {
+    fetchWaitingBatches();
+    fetchPendingJob();
+  }, 15000);
 });
 
 onUnmounted(() => {
@@ -256,5 +313,30 @@ onUnmounted(() => {
 
 .mock-select {
   flex: 2;
+}
+
+.pending-job-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 14px 18px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: background 0.2s ease;
+  text-align: left;
+}
+
+.pending-job-card:hover {
+  background: var(--bg-card-hover, var(--bg-tag));
+}
+
+.pending-job-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 </style>

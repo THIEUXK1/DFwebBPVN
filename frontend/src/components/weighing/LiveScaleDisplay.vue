@@ -91,9 +91,15 @@ const simulatedWeightModel = computed({
   font-family: 'Courier New', monospace;
   font-size: 3.5rem;
   font-weight: 700;
-  color: var(--status-yellow);
-  text-shadow: 0 0 10px rgba(241, 196, 15, 0.5);
+  color: var(--text-muted);
   margin-bottom: 8px;
+}
+
+/* "zero" (cân rỗng, chưa đặt vật tư) phải khác màu với "insufficient" (đã có vật tư
+   nhưng chưa đủ) — trước đây "zero" không có rule riêng nên rơi vào màu vàng mặc định
+   của .led-numbers, trông giống hệt "insufficient" dù ý nghĩa hoàn toàn khác nhau. */
+.led-numbers.zero {
+  color: var(--text-muted);
 }
 
 .led-numbers.in-range {
@@ -113,15 +119,25 @@ const simulatedWeightModel = computed({
   text-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
 }
 
+/* Net âm (cân cộng dồn bị hao hụt so với bì) — cùng mức cảnh báo với over-range nhưng là
+   1 tình huống khác hẳn (mất vật tư, không phải "vượt dung sai"), giữ chung màu đỏ để
+   thao tác viên nhận diện ngay là cần dừng lại kiểm tra. */
+.led-numbers.negative {
+  color: var(--status-red);
+  text-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
+}
+
 .led-status-text {
   font-size: 12px;
   font-weight: 700;
   color: var(--text-muted);
 }
 
+.led-status-text.zero { color: var(--text-muted); }
 .led-status-text.in-range { color: var(--status-green); }
 .led-status-text.insufficient { color: var(--status-yellow); }
 .led-status-text.over-range { color: var(--status-red); }
+.led-status-text.negative { color: var(--status-red); }
 
 .stable-indicator {
   margin-top: 6px;

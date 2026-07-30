@@ -13,8 +13,8 @@
         <tr
           v-for="(item, idx) in items"
           :key="item.id"
-          :class="['rack-row', activeIndex === idx ? 'active' : item.status === 'COMPLETED' ? 'done' : 'pending']"
-          @click="$emit('select', idx)"
+          :class="['rack-row', activeIndex === idx ? 'active' : item.status === 'COMPLETED' ? 'done' : isLocked(idx) ? 'locked' : 'pending']"
+          @click="handleSelect(idx)"
         >
           <td class="col-rack">
             <input
@@ -23,7 +23,7 @@
               class="form-control rack-input"
               :placeholder="'#' + item.sequence_no"
               v-model="item.rack_code"
-              @click.stop="$emit('select', idx)"
+              @click.stop="handleSelect(idx)"
             />
           </td>
           <td>
@@ -41,6 +41,7 @@
               {{ item.override_approved ? '⚠️ Override' : '✅ Đạt' }}
             </span>
             <span v-else-if="activeIndex === idx" class="text-glow-blue">⚖️ Đang cân</span>
+            <span v-else-if="isLocked(idx)" class="text-muted" title="Phải cân xong dòng phía trên mới tới lượt dòng này">🔒 Khóa</span>
             <span v-else class="text-muted">⏳ Chờ</span>
           </td>
         </tr>
@@ -56,8 +57,27 @@
 // NumClick/NumDel gõ vào ô rack đang chọn trong VBA — ở đây dùng input thường với
 // inputmode="numeric" để bật bàn phím số cảm ứng, theo đúng tiền lệ đã chọn ở
 // PrintStation.vue thay vì dựng lại 1 bàn phím ảo riêng).
-defineProps<{ items: any[]; activeIndex: number }>();
-defineEmits<{ (e: 'select', idx: number): void }>();
+const props = defineProps<{ items: any[]; activeIndex: number }>();
+const emit = defineEmits<{ (e: 'select', idx: number): void }>();
+
+// Cân lần lượt từ trên xuống (đúng thứ tự RACK/sequence_no trong scaleform VBA gốc) — dòng
+// nào phía trên còn CHƯA cân xong thì các dòng phía dưới bị khóa, không cho nhảy cóc.
+function isLocked(idx: number): boolean {
+  const item = props.items[idx];
+  if (item.status === 'COMPLETED') return false;
+  return props.items.slice(0, idx).some((i) => i.status !== 'COMPLETED');
+}
+
+function handleSelect(idx: number) {
+  const item = props.items[idx];
+  // Đã cân xong = chốt vĩnh viễn, không cho chọn lại để sửa bì/cân lại nữa (phản hồi
+  // 2026-07-30: "bì phải chốt từ lần đầu, cân 1 được 1 cái rồi thì không sửa được bì
+  // nữa") — muốn cân lại thật sự phải qua nghiệp vụ riêng (hủy/override), không phải chỉ
+  // bấm chọn lại dòng.
+  if (item.status === 'COMPLETED') return;
+  if (isLocked(idx)) return;
+  emit('select', idx);
+}
 </script>
 
 <style scoped>
@@ -76,8 +96,20 @@ defineEmits<{ (e: 'select', idx: number): void }>();
   box-shadow: inset 3px 0 0 var(--status-blue);
 }
 
+.rack-row.done {
+  cursor: default;
+}
+
 .rack-row.done td {
   opacity: 0.8;
+}
+
+.rack-row.locked {
+  cursor: not-allowed;
+}
+
+.rack-row.locked td {
+  opacity: 0.5;
 }
 
 .col-rack {

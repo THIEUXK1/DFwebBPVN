@@ -95,6 +95,7 @@
             <option value="WEIGHED">Đã cân xong (WEIGHED)</option>
             <option value="SENT">Đã gửi máy (SENT)</option>
             <option value="DONE">Hoàn thành (DONE)</option>
+            <option value="CANCELLED">Đã hủy (CANCELLED)</option>
           </select>
         </div>
 
@@ -224,6 +225,7 @@
                   <option value="WEIGHED">WEIGHED</option>
                   <option value="SENT">SENT</option>
                   <option value="DONE">DONE</option>
+                  <option value="CANCELLED">CANCELLED</option>
                 </select>
               </td>
             </tr>
@@ -759,7 +761,8 @@ const getStatusBadgeClass = (status: string) => {
     'WEIGHING': 'badge-yellow',
     'WEIGHED': 'badge-green',
     'SENT': 'badge-orange',
-    'DONE': 'badge-purple'
+    'DONE': 'badge-purple',
+    'CANCELLED': 'badge-grey'
   };
   return mapping[status] || 'badge-grey';
 };

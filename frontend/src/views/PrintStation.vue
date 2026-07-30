@@ -256,17 +256,6 @@
       </div>
     </div>
 
-    <!-- Lịch sử in tem — tương đương tbl_sentlog VBA. Cho phép người vận hành nhìn
-         lại mã hàng nào đã in rồi (khớp yêu cầu 2026-07-18: giữ lịch sử bên dưới). -->
-    <section class="section card-sec print-history-panel mb-4" v-if="!label">
-      <div class="queue-header">
-        <h3>📜 Lịch sử in tem gần đây</h3>
-        <button @click="fetchPrintHistory" class="btn btn-secondary btn-sm">🔄 Làm mới</button>
-      </div>
-
-      <PrintJobHistoryTable :rows="printHistory" :default-printer="resolvedPrinter" :station-code="currentWorkstation?.code" @refresh="fetchPrintHistory" class="mt-3" />
-    </section>
-
     <!-- Wait / Scan screen -->
     <div v-if="!label" class="scanning-wait-screen card-sec text-center">
       <div class="scanner-anim-icon">🏷️</div>
@@ -377,7 +366,6 @@ import echo from '../services/echo';
 import scannerService from '../services/scanner';
 import { currentWorkstation } from '../services/workstation';
 import { useAuthStore } from '../stores/auth';
-import PrintJobHistoryTable from '../components/PrintJobHistoryTable.vue';
 import { parseRackLines } from '../utils/rackParser';
 
 const route = useRoute();
@@ -552,19 +540,6 @@ async function fetchPendingDispatches() {
   }
 }
 
-// Lịch sử in tem (tương đương tbl_sentlog VBA) — đơn đã CONFIRMED, kèm trạng thái
-// PrintJob thật (PENDING/PRINTED/FAILED qua Local Agent ack).
-const printHistory = ref<any[]>([]);
-
-async function fetchPrintHistory() {
-  try {
-    const res = await axios.get('/api/machine-dispatches/history');
-    printHistory.value = res.data.data || [];
-  } catch (err) {
-    console.error('Error fetching print history:', err);
-  }
-}
-
 async function confirmAndPrint(dispatch: any, printerOverride?: string) {
   confirmError.value = '';
   confirmingId.value = dispatch.id;
@@ -579,7 +554,7 @@ async function confirmAndPrint(dispatch: any, printerOverride?: string) {
       printer_type: 'USB',
     }, getRequestConfig());
     scannerService.playBeep(1800, 150);
-    await Promise.all([fetchPendingDispatches(), fetchPrintHistory()]);
+    await fetchPendingDispatches();
   } catch (err: any) {
     confirmError.value = err.response?.data?.message || 'Không thể tạo lệnh in cho đơn này.';
   } finally {
@@ -1057,11 +1032,9 @@ onMounted(async () => {
   }
   fetchInstalledPrinters();
   fetchPendingDispatches();
-  fetchPrintHistory();
   pollTimer = setInterval(() => {
     fetchInstalledPrinters();
     fetchPendingDispatches();
-    fetchPrintHistory();
   }, 8000);
 
   // Realtime qua Reverb — /production-batches và /production-batches/list bắn
@@ -1070,7 +1043,6 @@ onMounted(async () => {
   // polling 8s hay F5.
   echo.channel('production-batches').listen('.updated', () => {
     fetchPendingDispatches();
-    fetchPrintHistory();
   });
 });
 

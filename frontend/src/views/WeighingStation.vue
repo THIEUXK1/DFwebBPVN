@@ -44,9 +44,36 @@
     </div>
 
     <WeighingCheckerModal :show="showChecker" @close="showChecker = false" />
+    <RestartJobModal
+      :show="showRestartModal"
+      :batch-label="activeBatch?.legacy_batch_id || ''"
+      :submitting="restartSubmitting"
+      @close="showRestartModal = false"
+      @confirm="confirmRestartJob"
+    />
+
+    <!-- Xem trước phiếu cân (DF_WEIGHING_SLIP) — giống layout scaleform.btnPrint_Click VBA
+         gốc: MAU/HANG/MAY/MUC + bảng RACK/DYE CODE/WEIGHT/STATUS + giờ in. -->
+    <div v-if="showSlipPreview" class="slip-preview-overlay" @click.self="showSlipPreview = false">
+      <div class="slip-preview-modal card-sec">
+        <div class="slip-preview-header">
+          <h3>🖨️ Xem trước phiếu cân (DF_WEIGHING_SLIP)</h3>
+          <button class="btn btn-secondary btn-sm" @click="showSlipPreview = false">✖ Đóng</button>
+        </div>
+        <p class="text-muted font-sm">Đã gửi phiếu cân sang hàng chờ in — bên dưới là xem trước đúng nội dung/bố cục đã gửi.</p>
+        <div class="slip-preview-box mt-3">
+          <LabelPreview :label-payload="slipPreviewPayload" />
+        </div>
+      </div>
+    </div>
 
     <!-- Wait/Ready Scanning Screen — port scaleform (VBA) chờ quét mã -->
-    <QrScanPanel v-if="!activeJob" :view-only="isImpersonating && remoteMode === 'VIEW_ONLY'" @manual-qr-submit="handleBarcodeScan" />
+    <QrScanPanel
+      v-if="!activeJob"
+      :view-only="isImpersonating && remoteMode === 'VIEW_ONLY'"
+      @manual-qr-submit="handleBarcodeScan"
+      @resume-job="({ job, batch }) => applyActiveJob(job, batch)"
+    />
 
     <!-- Active Weighing Layout -->
     <div v-else class="two-col-grid">
@@ -60,6 +87,29 @@
             <!-- Phiếu cân tổng hợp — port scaleform.btnPrint_Click, không cần chờ job hoàn tất -->
             <button class="btn btn-secondary btn-sm ml-2" @click="printSlip" :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'">
               🖨️ In phiếu cân
+            </button>
+            <!-- Đóng đơn đang xem để quét/nạp đơn khác — KHÔNG xóa hay hủy gì dưới DB, đơn
+                 vẫn giữ nguyên trạng thái đang cân dở, chỉ đưa màn hình về lại màn quét QR.
+                 Muốn quay lại đơn này thì quét lại QR hoặc bấm thẻ "Đơn đang cân dở" ở màn
+                 quét (yêu cầu 2026-07-30: không cần F5 để đổi đơn). -->
+            <button
+              class="btn btn-secondary btn-sm ml-2"
+              @click="clearActiveJob"
+              :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'"
+              title="Đơn này vẫn giữ nguyên trạng thái đang cân dở, chỉ đóng màn hình xem để quét đơn khác"
+            >
+              ✕ Đóng đơn (quét đơn khác)
+            </button>
+            <!-- Hủy toàn bộ kết quả đã cân của mẻ này, quay lại vật tư đầu tiên — hành động
+                 phá hủy dữ liệu đã lưu nên bắt buộc qua modal cảnh báo + tick xác nhận riêng
+                 (RestartJobModal), không cho bấm 1 phát là chạy luôn (yêu cầu 2026-07-30). -->
+            <button
+              class="btn btn-secondary btn-sm ml-2 btn-restart-warn"
+              @click="showRestartModal = true"
+              :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'"
+              title="Xóa toàn bộ kết quả đã cân của mẻ này, cân lại từ vật tư đầu tiên"
+            >
+              🔁 Cân lại từ đầu
             </button>
           </div>
           <h3>Mẻ nhuộm: <span class="text-glow-blue">{{ activeBatch.legacy_batch_id }}</span></h3>
@@ -106,6 +156,8 @@
           v-model:override-approved="overrideApproved"
           v-model:override-reason="overrideReason"
           :view-only="isImpersonating && remoteMode === 'VIEW_ONLY'"
+          @start-weighing="startWeighing"
+          @retare="resetTareForNewSlot"
           @confirm="confirmWeighing"
         />
 
@@ -137,6 +189,8 @@ import LiveScaleDisplay from '../components/weighing/LiveScaleDisplay.vue';
 import WeighingConfirmPanel from '../components/weighing/WeighingConfirmPanel.vue';
 import LabelPrintPanel from '../components/weighing/LabelPrintPanel.vue';
 import WeighingCheckerModal from '../components/weighing/WeighingCheckerModal.vue';
+import RestartJobModal from '../components/weighing/RestartJobModal.vue';
+import LabelPreview from '../components/LabelPreview.vue';
 
 const route = useRoute();
 const authStore = useAuthStore();
@@ -198,11 +252,38 @@ const overrideReason = ref<string>('');
 const tareBaseline = ref<number | null>(null);
 const grossWeight = ref<number>(0);
 
+// Lưu tạm bì (tare) của vật tư ĐANG cân dở vào localStorage — khác với DB (chỉ lưu khi
+// bấm Xác nhận), cái này chỉ để sống sót qua F5/mất mạng/tắt máy giữa chừng, tránh phải
+// đặt lại cốc/khay lên cân và chờ bì lại từ đầu (yêu cầu 2026-07-30). Key theo item.id
+// (UUID ổn định) — mỗi trạm chỉ có 1 vật tư đang cân dở tại 1 thời điểm nên không cần
+// lưu nhiều dòng cùng lúc.
+const TARE_STORAGE_KEY = 'df_weigh_tare_state';
+
+function saveTareToStorage(itemId: string, tare: number) {
+  localStorage.setItem(TARE_STORAGE_KEY, JSON.stringify({ itemId, tare }));
+}
+
+function clearTareStorage() {
+  localStorage.removeItem(TARE_STORAGE_KEY);
+}
+
+function restoreTareFromStorage(itemId: string): number | null {
+  try {
+    const raw = localStorage.getItem(TARE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed.itemId === itemId ? parsed.tare : null;
+  } catch {
+    return null;
+  }
+}
+
 function resetTareForNewSlot() {
   tareBaseline.value = null;
   liveWeight.value = 0;
   grossWeight.value = 0;
   isStable.value = false;
+  clearTareStorage();
 }
 
 /**
@@ -217,14 +298,29 @@ function ingestRawWeight(raw: number, stable: boolean) {
   if (!stable) return;
 
   if (tareBaseline.value === null) {
-    // Lần đọc ổn định ĐẦU TIÊN sau khi bắt đầu vật tư mới = bì — không tính là kết quả,
-    // giữ hiển thị net = 0 (giống VBA: Exit Sub, không cập nhật gì thêm).
-    tareBaseline.value = raw;
-    liveWeight.value = 0;
+    // Chờ thao tác viên chủ động bấm "▶️ Bắt đầu cân" (startWeighing) để xác nhận đây là
+    // bì — KHÔNG tự khóa bì vào lần đọc ổn định đầu tiên nữa (yêu cầu 2026-07-30: đặt
+    // cốc/thau lên cân xong, tự đọc ổn định ngay, nhưng operator cần bấm nút mới chốt bì,
+    // tránh khóa nhầm bì lúc cân chưa kịp đứng đúng ý). Chỉ cập nhật cân gộp để hiển thị.
     return;
   }
 
-  liveWeight.value = Math.abs(raw - tareBaseline.value);
+  // KHÔNG dùng Math.abs() — cân cộng dồn trên cùng 1 đĩa (bì = cân gộp của item trước đó),
+  // nếu vật tư bị lấy bớt ra/đổ tràn/rung lệch làm cân gộp tụt xuống dưới bì, net PHẢI ra
+  // số âm để báo thật sự có bất thường (phản hồi 2026-07-30) — lấy trị tuyệt đối sẽ biến
+  // 1 sai số âm thành nhìn giống "chưa đủ", che mất dấu hiệu mất vật tư.
+  liveWeight.value = raw - tareBaseline.value;
+}
+
+// Xác nhận cân gộp hiện tại (đang đứng ổn định) chính là BÌ — bấm sau khi đặt cốc/khay/thau
+// rỗng lên cân và thấy số đã ổn định, thay vì để hệ thống tự khóa bì vào lần đọc đầu tiên.
+function startWeighing() {
+  if (!isStable.value || tareBaseline.value !== null) return;
+  tareBaseline.value = grossWeight.value;
+  liveWeight.value = 0;
+  if (activeIngredient.value) {
+    saveTareToStorage(activeIngredient.value.id, grossWeight.value);
+  }
 }
 
 let livePoller: any = null;
@@ -249,7 +345,14 @@ onMounted(async () => {
   // (đi qua đúng luồng xử lý DF:ORDER: như quét thật, không phải đường tắt riêng).
   const batchIdParam = route.query.batch_id;
   if (batchIdParam) {
-    handleBarcodeScan(`DF:ORDER:${batchIdParam}`);
+    await handleBarcodeScan(`DF:ORDER:${batchIdParam}`);
+  } else {
+    // Trạm cân này gắn cố định cho đúng 1 máy (1 workstation = 1 nhiệm vụ) — nên tại
+    // mọi thời điểm chỉ có tối đa 1 WeighingJob "đang chạy" cho trạm này. Job đã được
+    // lưu xuống DB ngay lúc quét QR (handleOrderScan/scanRawDyeQr) — chỉ có state phía
+    // Vue (RAM) là mất khi F5/mất mạng/tắt máy. Tự khôi phục lại đây để không bắt thao
+    // tác viên quét lại QR mỗi lần mở trang, cân tiếp được ngay (yêu cầu 2026-07-30).
+    await restoreActiveJob();
   }
 
   // Register scanner callback
@@ -314,6 +417,53 @@ const fetchLiveWeight = async () => {
   }
 };
 
+// Nạp 1 job đang chạy vào state hiển thị — dùng chung cho cả 2 nguồn: quét QR mới
+// (handleBarcodeScan) và khôi phục job đang dở khi mở lại trang (restoreActiveJob).
+function applyActiveJob(job: any, batch: any) {
+  activeJob.value = job;
+  activeBatch.value = batch;
+  lastLabelPayload.value = null;
+
+  // Auto focus on the first pending item
+  const pIdx = job.items.findIndex((i: any) => i.status !== 'COMPLETED');
+  activeIndex.value = pIdx >= 0 ? pIdx : 0;
+  overrideApproved.value = false;
+  overrideReason.value = '';
+
+  // Nếu vật tư đang đứng (sau khi restore) đúng là vật tư đã lỡ lấy bì trước đó (còn lưu
+  // trong localStorage từ trước khi F5/mất mạng) — khôi phục lại bì đó thay vì bắt đặt lại
+  // cốc/khay lên cân từ đầu. Lần đọc cân kế tiếp sẽ tự tính đúng net = |raw - bì cũ|.
+  const currentItem = job.items[activeIndex.value];
+  const savedTare = currentItem ? restoreTareFromStorage(currentItem.id) : null;
+  if (savedTare !== null) {
+    tareBaseline.value = savedTare;
+    grossWeight.value = savedTare;
+    liveWeight.value = 0;
+    isStable.value = false;
+  } else {
+    resetTareForNewSlot(); // vật tư chưa từng lấy bì (hoặc đã chuyển sang vật tư khác) — cân bì lại từ đầu
+  }
+}
+
+// Trạm cân này gắn cố định cho đúng 1 máy — tự khôi phục job đang dở (nếu có) khi mở
+// trang, không bắt quét lại QR. Job vẫn nằm nguyên trong DB từ lúc quét, chỉ mất state
+// Vue khi F5/mất mạng. Xem WeighingJobController::activeForWorkstation.
+const restoreActiveJob = async () => {
+  if (!currentWorkstation.value) return;
+  try {
+    const res = await axios.get('/api/weighing-jobs/active', {
+      params: { workstation_id: currentWorkstation.value.id },
+    });
+    const job = res.data?.data?.job;
+    const batch = res.data?.data?.batch;
+    if (job) {
+      applyActiveJob(job, batch);
+    }
+  } catch (err) {
+    console.error('Failed to restore active weighing job', err);
+  }
+};
+
 // Handle QR Scanner keyboard wedge event
 const handleBarcodeScan = async (token: string) => {
   if (!currentWorkstation.value) return;
@@ -339,16 +489,7 @@ const handleBarcodeScan = async (token: string) => {
         alert(res.data.message);
         return;
       }
-      activeJob.value = data.job;
-      activeBatch.value = data.batch;
-      lastLabelPayload.value = null;
-
-      // Auto focus on the first pending item
-      const pIdx = activeJob.value.items.findIndex((i: any) => i.status !== 'COMPLETED');
-      activeIndex.value = pIdx >= 0 ? pIdx : 0;
-      overrideApproved.value = false;
-      overrideReason.value = '';
-      resetTareForNewSlot(); // vật tư đầu tiên của đơn mới — bắt buộc cân bì lại từ đầu
+      applyActiveJob(data.job, data.batch);
     }
   } catch (err: any) {
     scannerService.playBeep(600, 400); // Error sound
@@ -396,6 +537,9 @@ const toleranceStatus = computed(() => {
   const max = getMaxAllowed();
 
   if (w === 0) return 'zero';
+  // Net âm = bất thường (mất vật tư/tràn/lệch bì cộng dồn), khác hẳn "insufficient" (chưa
+  // đủ, cứ thêm tiếp) — tách riêng để không hiểu lầm là còn thiếu (phản hồi 2026-07-30).
+  if (w < 0) return 'negative';
   if (w < min) return 'insufficient';
   if (w > max) return 'over-range';
   return 'in-range';
@@ -403,13 +547,26 @@ const toleranceStatus = computed(() => {
 
 const statusMessage = computed(() => {
   const status = toleranceStatus.value;
-  if (status === 'zero') return 'CÂN RỖNG - ĐỢI ĐẶT VẬT TƯ';
+  if (status === 'negative') {
+    return `SỐ ÂM (${liveWeight.value.toFixed(2)} g) - VẬT TƯ BỊ HAO HỤT SO VỚI BÌ CỘNG DỒN, KIỂM TRA LẠI`;
+  }
+  if (status === 'zero') {
+    // Cân cộng dồn (cumulative dosing) trên CÙNG 1 đĩa cân — vật tư của item trước vẫn
+    // nằm nguyên trên đĩa khi chuyển sang item kế tiếp (không lấy ra), nên "cân gộp"
+    // (grossWeight) > 0 nghĩa là đĩa đang có sẵn khối lượng cộng dồn, KHÔNG phải đĩa
+    // trống — net=0 chỉ có nghĩa "chưa thêm gì mới cho item này", không phải "chưa có gì
+    // trên cân". Dùng đúng chữ để tránh hiểu lầm (phản hồi 2026-07-30).
+    return grossWeight.value > 0.05
+      ? 'SẴN SÀNG (ĐÃ CÓ NỀN CÂN CỘNG DỒN) - CHƯA THÊM VẬT TƯ MỚI'
+      : 'CÂN RỖNG - ĐỢI ĐẶT VẬT TƯ';
+  }
   if (status === 'insufficient') return 'CHƯA ĐỦ - TIẾP TỤC THÊM VẬT TƯ';
   if (status === 'in-range') return 'ĐẠT DUNG SAI CHO PHÉP';
   return 'VƯỢT DUNG SAI - KIỂM TRA LẠI KHỐI LƯỢNG';
 });
 
 const selectSeqIndex = (idx: number) => {
+  if (idx === activeIndex.value) return; // đang chọn đúng dòng hiện tại — khỏi reset bì vô cớ
   activeIndex.value = idx;
   overrideApproved.value = false;
   overrideReason.value = '';
@@ -420,6 +577,22 @@ const selectSeqIndex = (idx: number) => {
     simulatedWeight.value = 0;
   }
 };
+
+// Cả 1 Mẻ nhuộm chỉ cân bì DUY NHẤT 1 lần — ngay từ vật tư đầu tiên (yêu cầu 2026-07-30:
+// "1 Mẻ nhuộm chỉ cân bì 1 lần đầu thôi"). Từ vật tư thứ 2 trở đi KHÔNG bắt bấm lại
+// "▶️ Bắt đầu cân": vì không lấy gì ra khỏi đĩa, cân gộp hiện tại (đúng lúc vừa xác nhận
+// xong vật tư trước) CHÍNH LÀ bì mới cho vật tư kế tiếp — tự chốt luôn, net về 0 ngay.
+function advanceToNextItem(idx: number) {
+  activeIndex.value = idx;
+  overrideApproved.value = false;
+  overrideReason.value = '';
+  tareBaseline.value = grossWeight.value;
+  liveWeight.value = 0;
+  const nextItem = activeJob.value?.items?.[idx];
+  if (nextItem) {
+    saveTareToStorage(nextItem.id, grossWeight.value);
+  }
+}
 
 // Confirm scale reading action
 const confirmWeighing = async () => {
@@ -458,6 +631,7 @@ const confirmWeighing = async () => {
       // Update local state
       activeIngredient.value.actual_weight = liveWeight.value;
       activeIngredient.value.status = 'COMPLETED';
+      clearTareStorage(); // vật tư này đã lưu xong xuống DB — bì tạm không còn ý nghĩa nữa
 
       const next = res.data.data?.next_item;
       const jobCompleted = res.data.data?.job_completed;
@@ -468,10 +642,11 @@ const confirmWeighing = async () => {
         // Auto trigger label printing
         await printMaterialLabel();
       } else if (next) {
-        // Move to the next item automatically
+        // Move to the next item automatically — cả mẻ chỉ cân bì 1 lần, tự chốt bì mới
+        // luôn (advanceToNextItem), KHÔNG reset về "chờ cân bì lại" như chọn tay 1 dòng.
         const nextIdx = activeJob.value.items.findIndex((i: any) => i.id === next.id);
         if (nextIdx >= 0) {
-          selectSeqIndex(nextIdx);
+          advanceToNextItem(nextIdx);
         }
       }
 
@@ -545,18 +720,65 @@ const resetToScan = () => {
   lastLabelPayload.value = null;
 };
 
+// Đóng đơn ĐANG CÂN DỞ để quét/nạp đơn khác — thay cho việc phải F5 (yêu cầu 2026-07-30).
+// Chỉ đưa màn hình về lại QrScanPanel, KHÔNG đụng gì tới DB: đơn vẫn nguyên trạng thái cũ,
+// và bì (nếu có) vẫn còn trong localStorage — nếu operator quay lại đúng đơn này (quét lại
+// QR hoặc bấm thẻ "Đơn đang cân dở"), tiến độ + bì vẫn khôi phục đúng như restoreActiveJob.
+const clearActiveJob = () => {
+  if (activeJob.value?.status !== 'COMPLETED') {
+    const ok = confirm('Đơn này vẫn đang cân dở, chưa hoàn tất. Đóng lại để quét đơn khác — đơn vẫn giữ nguyên tiến độ, có thể quay lại sau. Tiếp tục?');
+    if (!ok) return;
+  }
+  resetToScan();
+};
+
+// ===== Cân lại từ đầu cả Mẻ nhuộm (yêu cầu 2026-07-30) — hủy kết quả đã cân của TẤT CẢ vật
+// tư, quay lại vật tư đầu tiên. Modal cảnh báo + tick xác nhận bắt buộc (RestartJobModal),
+// backend cũng yêu cầu lý do và tự ghi Audit Log (WeighingJobController::restart). =====
+const showRestartModal = ref(false);
+const restartSubmitting = ref(false);
+
+const confirmRestartJob = async (reason: string) => {
+  if (!activeJob.value) return;
+  restartSubmitting.value = true;
+  try {
+    const res = await axios.post(`/api/weighing-jobs/${activeJob.value.id}/restart`, {
+      reason,
+      workstation_code: currentWorkstation.value?.code,
+    }, getRequestConfig());
+
+    if (res.data?.status === 'SUCCESS') {
+      clearTareStorage(); // đơn đã reset về vật tư đầu — bì cũ (nếu còn sót) không còn hợp lệ nữa
+      applyActiveJob(res.data.data.job, res.data.data.batch);
+      showRestartModal.value = false;
+      scannerService.playBeep(600, 200);
+    }
+  } catch (err: any) {
+    alert(err.response?.data?.message || 'Không thể cân lại từ đầu mẻ này.');
+  } finally {
+    restartSubmitting.value = false;
+  }
+};
+
 // ===== Tra cứu bán thành phẩm — port VBA scaleform.btnCheck_Click → checkform =====
 const showChecker = ref(false);
 
-// ===== Phiếu cân tổng hợp — port VBA scaleform.btnPrint_Click =====
+// ===== Phiếu cân tổng hợp — port VBA scaleform.btnPrint_Click (DF_WEIGHING_SLIP: header
+// MAU/HANG/MAY/MUC + bảng RACK/DYE CODE/WEIGHT/STATUS + giờ in) — nội dung TSPL trả về từ
+// backend giống hệt layout VBA, hiển thị lại bằng LabelPreview (đã có sẵn khả năng vẽ TSPL)
+// để thao tác viên xem trước tem giống thật trước khi cầm tem giấy (yêu cầu 2026-07-30).
+const showSlipPreview = ref(false);
+const slipPreviewPayload = ref<string | null>(null);
+
 const printSlip = async () => {
   if (!activeJob.value || !currentWorkstation.value) return;
   try {
-    await axios.post(`/api/weighing-jobs/${activeJob.value.id}/print-slip`, {
+    const res = await axios.post(`/api/weighing-jobs/${activeJob.value.id}/print-slip`, {
       workstation_code: currentWorkstation.value.code
     }, getRequestConfig());
     scannerService.playBeep(1800, 150);
-    alert('Đã gửi phiếu cân sang hàng chờ in.');
+    slipPreviewPayload.value = res.data?.data?.label_payload || null;
+    showSlipPreview.value = true;
   } catch (err: any) {
     alert(err.response?.data?.message || 'Không thể in phiếu cân.');
   }
@@ -611,6 +833,45 @@ const printSlip = async () => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.btn-restart-warn {
+  color: var(--status-red);
+  border-color: var(--status-red);
+}
+
+.slip-preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  z-index: 1050;
+}
+
+.slip-preview-modal {
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-divider);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  width: 100%;
+  max-width: 460px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.slip-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.slip-preview-box {
+  display: flex;
+  justify-content: center;
 }
 
 /* Weighing Layout */

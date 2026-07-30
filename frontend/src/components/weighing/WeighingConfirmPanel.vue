@@ -24,21 +24,46 @@
       </div>
     </div>
 
-    <!-- Minh bạch trừ bì (tare) — đúng VBA Delta_Begin: lần đọc ổn định đầu tiên sau khi
-         đổi vật tư = bì (cốc/khay/thùng), các lần sau tự trừ. -->
+    <!-- Trừ bì (tare) — CHỦ ĐỘNG bấm nút xác nhận thay vì tự khóa bì vào lần đọc ổn định
+         đầu tiên (yêu cầu 2026-07-30): đặt cốc/khay/thau rỗng lên cân, chờ số đứng ổn định,
+         rồi bấm "Bắt đầu cân" để chốt đây là bì — tránh khóa nhầm khi cân chưa kịp đứng
+         đúng ý thao tác viên. -->
     <div class="tare-info-box mt-3">
-      <span v-if="tareBaseline === null" class="text-muted font-xs">
-        ⏳ Chờ đặt cốc/khay rỗng lên cân để lấy bì...
-      </span>
-      <span v-else class="font-xs text-muted">
-        Bì: <strong>{{ tareBaseline.toFixed(2) }} g</strong> ·
-        Cân gộp: <strong>{{ grossWeight.toFixed(2) }} g</strong> ·
-        Thực (net): <strong class="text-success">{{ liveWeight.toFixed(2) }} g</strong>
-      </span>
+      <div v-if="tareBaseline === null" class="tare-pending-box">
+        <span class="text-muted font-xs">
+          {{ isStable ? `Cân gộp hiện tại: ${grossWeight.toFixed(2)} g — đã đứng ổn định.` : '⏳ Đặt cốc/khay/thau rỗng lên cân, chờ số đứng ổn định...' }}
+        </span>
+        <button
+          @click="$emit('start-weighing')"
+          class="btn btn-secondary btn-sm mt-2"
+          :disabled="!isStable || viewOnly"
+        >
+          ▶️ Bắt đầu cân (chốt bì {{ grossWeight.toFixed(2) }} g)
+        </button>
+      </div>
+      <div v-else class="tare-confirmed-box">
+        <span class="font-xs text-muted">
+          Bì: <strong>{{ tareBaseline.toFixed(2) }} g</strong> ·
+          Cân gộp: <strong>{{ grossWeight.toFixed(2) }} g</strong> ·
+          Thực (net): <strong class="text-success">{{ liveWeight.toFixed(2) }} g</strong>
+        </span>
+        <!-- Lỡ chốt sai bì (đặt lệch, rung lúc bấm, nhầm cốc...) — cân lại từ đầu cho ĐÚNG
+             vật tư đang đứng dở này, không cần chuyển sang vật tư khác rồi quay lại. -->
+        <button
+          @click="$emit('retare')"
+          class="btn btn-secondary btn-sm mt-2"
+          :disabled="viewOnly"
+          title="Bỏ bì hiện tại, đặt lại cốc/khay lên cân và bấm Bắt đầu cân lại từ đầu"
+        >
+          🔄 Cân lại bì
+        </button>
+      </div>
     </div>
 
-    <!-- Exception override triggers -->
-    <div class="override-box mt-3" v-if="toleranceStatus !== 'in-range' && liveWeight > 0">
+    <!-- Exception override triggers — dùng toleranceStatus thay vì "liveWeight > 0" vì net
+         giờ có thể ÂM (cân cộng dồn bị hao hụt so với bì); so sánh > 0 sẽ vô tình ẩn mất
+         khung override đúng lúc cần nó nhất (phản hồi 2026-07-30). -->
+    <div class="override-box mt-3" v-if="toleranceStatus !== 'in-range' && toleranceStatus !== 'zero'">
       <div class="override-checkbox">
         <input type="checkbox" v-model="overrideApprovedModel" id="chk-override" :disabled="viewOnly" />
         <label for="chk-override"><strong>⚠️ Yêu cầu Override Dung sai (Cần QA/QC phê duyệt)</strong></label>
@@ -89,6 +114,8 @@ const emit = defineEmits<{
   (e: 'update:overrideApproved', value: boolean): void;
   (e: 'update:overrideReason', value: string): void;
   (e: 'confirm'): void;
+  (e: 'start-weighing'): void;
+  (e: 'retare'): void;
 }>();
 
 const overrideApprovedModel = computed({
@@ -128,6 +155,20 @@ const overrideReasonModel = computed({
   border: 1px dashed var(--border-divider);
   border-radius: var(--radius-md);
   text-align: center;
+}
+
+.tare-pending-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.tare-confirmed-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
 .weigh-confirm-btn {

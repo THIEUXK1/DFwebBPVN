@@ -4,7 +4,7 @@ namespace App\Events;
 
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -14,8 +14,12 @@ use Illuminate\Queue\SerializesModels;
  * /chemical-call/monitor cùng lắng nghe kênh public "chemical-channels" để tự làm mới
  * NGAY LẬP TỨC thay vì đợi tới lượt polling tiếp theo (yêu cầu 2026-07-20: 2 trang phải
  * "tương thông", đổi ở trang này thấy ngay ở trang kia).
+ *
+ * ShouldBroadcast (queued), KHÔNG ShouldBroadcastNow — xem lý do chi tiết trong
+ * RealtimeEventBroadcast.php (sự cố 2026-07-30: Reverb không tới được làm rollback
+ * transaction nghiệp vụ đang lưu).
  */
-class ChemicalChannelUpdated implements ShouldBroadcastNow
+class ChemicalChannelUpdated implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 

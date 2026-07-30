@@ -98,6 +98,10 @@ class ProductionBatchController extends Controller
 
         if ($request->has('status')) {
             $query->where('status', $request->input('status'));
+        } else {
+            // Lô đã hủy (soft delete qua status=CANCELLED) không hiện ở danh sách mặc định —
+            // vẫn xem lại được bằng cách lọc tường minh status=CANCELLED.
+            $query->where('status', '!=', 'CANCELLED');
         }
 
         if ($request->has('machine_id')) {

@@ -116,8 +116,13 @@ Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
     Route::post('/print-jobs', [PrintJobController::class, 'store']);
 
     // Weighing Jobs & Items (Wave 4)
+    // Route "active" phải khai báo TRƯỚC "{id}" — Laravel khớp route theo thứ tự khai báo,
+    // nếu để sau thì "active" sẽ bị "{id}" nuốt mất (gọi show('active') rồi 404 vì không
+    // phải UUID hợp lệ).
+    Route::get('/weighing-jobs/active', [WeighingJobController::class, 'activeForWorkstation']);
     Route::get('/weighing-jobs/{id}', [WeighingJobController::class, 'show']);
     Route::post('/weighing-jobs/items/{id}/weigh', [WeighingJobController::class, 'weighItem'])->middleware('workstation.guard:WEIGH_ITEM');
+    Route::post('/weighing-jobs/{id}/restart', [WeighingJobController::class, 'restart'])->middleware('workstation.guard:WEIGH_ITEM');
     Route::post('/weighing-jobs/{id}/print', [WeighingJobController::class, 'printLabel'])->middleware('workstation.guard:PRINT_LABEL');
     Route::post('/weighing-jobs/{id}/print-slip', [WeighingJobController::class, 'printSlip'])->middleware('workstation.guard:PRINT_SLIP');
     Route::get('/material-labels/search', [WeighingJobController::class, 'searchLabels']);
