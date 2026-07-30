@@ -6,41 +6,56 @@
   "dropper" (Program:Win32/Wacapew.A!ml) - xem session-log.md muc lien quan toi 404 tai
   cong cu DF Agent (2026-07-29).
 
-  Wizard cai dat co 1 man hinh "ConfigDlg" voi DUY NHAT 1 dropdown chon vai tro tram (May in
-  - Print Station / May in - Weighing Station / May can - Weighing Station) - khong go tay
-  Ma tram/Token/Backend URL/PuTTY log nua (yeu cau 2026-07-29: "cai la dung thoi, khong can
-  cau hinh gi ca"). Ma tram va Role duoc suy ra thang tu lua chon dropdown, sinh
-  appsettings.json qua Custom Action PowerShell (generate-appsettings.ps1) luc cai xong phan
-  File. Khong con Token — backend (AgentAuth middleware) tu tao/nhan Workstation theo
+  KHONG con man hinh cau hinh, KHONG con Custom Action sinh appsettings.json luc cai (da bo
+  sau khi gap MSI error 1721 "A program run as part of the setup did not finish as expected"
+  tren may that 2026-07-30 — deferred Custom Action goi PowerShell qua token [~] khong dang
+  tin cay bang, kho debug tu xa). Vi StationId da co dong san luc build (khong con nguoi
+  dung nhap gi ca), don gian hon nhieu la dong goi THANG 1 file appsettings.<role>.json tinh
+  co san (xem agent/installer/appsettings.print-station.json,
+  appsettings.weighing-printer.json, appsettings.weighing-scale.json) qua bien tien xu ly
+  AppSettingsFile — khong can Custom Action nao het ngoai ServiceInstall/ServiceControl
+  native cua MSI.
+
+  Build 3 file MSI rieng tu cung file .wxs nay qua StationId + AppSettingsFile
+  (xem agent/installer/build-all.ps1):
+    wix build DFAgentSetup.wxs -ext WixToolset.UI.wixext ^
+      -d StationId=WS-PRINT-STATION -d AppSettingsFile=appsettings.print-station.json ^
+      -o DFAgentSetup-PrintStation.msi
+
+  Khong con Token — backend (AgentAuth middleware) tu tao/nhan Workstation theo
   workstation_id khi khong co token, danh doi bao mat da duoc nguoi dung xac nhan (xem
-  session-log.md). Backend URL va duong dan PuTTY log dung gia tri mac dinh co dinh, khong
-  hoi trong wizard.
+  session-log.md).
 -->
+<?ifndef StationId?>
+<?define StationId = "WS-PRINT-STATION"?>
+<?endif?>
+<?ifndef AppSettingsFile?>
+<?define AppSettingsFile = "appsettings.print-station.json"?>
+<?endif?>
+<?ifndef PackageVersion?>
+<?define PackageVersion = "1.4.0.0"?>
+<?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="DF Local Agent"
+  <Package Name="DF Local Agent ($(var.StationId))"
            Manufacturer="DF Factory Systems"
-           Version="1.2.0.0"
+           Version="$(var.PackageVersion)"
            UpgradeCode="CD108F1A-FCE9-46F2-B991-372D89E0E9D1"
            Language="1033"
            Scope="perMachine"
            InstallerVersion="500"
            Compressed="yes">
 
-    <MajorUpgrade DowngradeErrorMessage="Da co ban moi hon cua DF Local Agent duoc cai tren may nay." />
+    <!-- Ca 3 vai tro (Print Station/Weighing Printer/Weighing Scale) dung chung 1
+         UpgradeCode co y: 1 may vat ly chi duoc dung DUNG 1 vai tro tai 1 thoi diem —
+         cai vai tro khac se THAY THE (uninstall+install) vai tro cu thay vi chay song
+         song 2 service "DFAgent" chong ten nhau. Moi vai tro co PackageVersion RIENG
+         (xem build-all.ps1) de MSI luon nhan ra la "phien ban khac" du doi qua lai giua
+         3 vai tro theo huong nao — AllowDowngrades="yes" vi thu tu version khong phan
+         anh "moi/cu" thuc su, chi la nhan dang vai tro khac nhau. Phat hien loi thuc te
+         2026-07-30: 3 file ban dau cung Version 1.4.0.0 nen cai WeighingPrinter tren may
+         da co PrintStation bi MSI coi la "da cai roi", khong thay the gi ca. -->
+    <MajorUpgrade AllowDowngrades="yes" />
     <MediaTemplate EmbedCab="yes" />
-
-    <Property Id="WORKSTATIONID" Value="WS-PRINT-STATION" Secure="yes" />
-    <Property Id="STATIONROLE" Value="PRINT_ONLY" Secure="yes" />
-    <Property Id="BACKENDURL" Value="http://10.0.200.248:8500/api" />
-    <Property Id="PUTTYLOGPATH" Value="D:\SCALE\putty_log.txt" />
-    <Property Id="POWERSHELLEXE" Value="powershell.exe" />
-
-    <CustomAction Id="SetPowerShellExe" Property="POWERSHELLEXE" Value="[System64Folder]WindowsPowerShell\v1.0\powershell.exe" />
-
-    <!-- Suy ra Role tu ma tram da chon trong dropdown ConfigDlg — WS-WEIGH-SCALE la
-         tram duy nhat dung Role can (SCALE_ONLY), 2 tram con lai la may in (PRINT_ONLY). -->
-    <CustomAction Id="SetRoleScale" Property="STATIONROLE" Value="SCALE_ONLY" />
-    <CustomAction Id="SetRolePrint" Property="STATIONROLE" Value="PRINT_ONLY" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="DFAgent" />
@@ -73,39 +88,17 @@
                        Wait="yes" />
     </Component>
 
-    <Component Id="InstallerHelpers" Directory="INSTALLFOLDER" Guid="8A2C7E14-9B3D-4F6A-8C1E-2D5B7A9F0E3C" Bitness="always64">
-      <File Id="GenerateAppSettingsPs1" Source="generate-appsettings.ps1" KeyPath="yes" />
-      <File Id="AppSettingsTemplateJson" Source="appsettings.template.json" />
+    <!-- appsettings.json tinh, dong san dung role/ma tram theo bien AppSettingsFile luc
+         build — khong sinh dong luc cai nua (xem ghi chu dau file). -->
+    <Component Id="AppSettingsConfig" Directory="INSTALLFOLDER" Guid="AEDB51B0-A39F-498D-9C25-BF8E612DF1E0" Bitness="always64">
+      <File Id="AppSettingsJson" Name="appsettings.json" Source="$(var.AppSettingsFile)" KeyPath="yes" />
     </Component>
 
     <Feature Id="MainFeature" Title="DF Local Agent" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
       <ComponentRef Id="MainExecutable" />
-      <ComponentRef Id="InstallerHelpers" />
+      <ComponentRef Id="AppSettingsConfig" />
     </Feature>
-
-    <!-- Sinh appsettings.json theo lua chon dropdown trong ConfigDlg. Value cua
-         SetGenerateAppSettings duoc WiX relay qua token [~] vao ExeCommand cua custom
-         action deferred (day la co che chinh thuc de truyen du lieu cho deferred custom
-         action - deferred CA khong doc truc tiep duoc Property table). -->
-    <CustomAction Id="SetGenerateAppSettings"
-                  Property="GenerateAppSettings"
-                  Value="[WORKSTATIONID]|[STATIONROLE]|[BACKENDURL]|[PUTTYLOGPATH]|[INSTALLFOLDER]" />
-
-    <CustomAction Id="GenerateAppSettings"
-                  Property="POWERSHELLEXE"
-                  ExeCommand="-NoProfile -ExecutionPolicy Bypass -File &quot;[#GenerateAppSettingsPs1]&quot; -TemplatePath &quot;[#AppSettingsTemplateJson]&quot; -Data &quot;[~]&quot;"
-                  Execute="deferred"
-                  Impersonate="no"
-                  Return="check" />
-
-    <InstallExecuteSequence>
-      <Custom Action="SetPowerShellExe" Before="InstallFiles" />
-      <Custom Action="SetRoleScale" Before="SetGenerateAppSettings" Condition="WORKSTATIONID = &quot;WS-WEIGH-SCALE&quot;" />
-      <Custom Action="SetRolePrint" Before="SetGenerateAppSettings" Condition="WORKSTATIONID &lt;&gt; &quot;WS-WEIGH-SCALE&quot;" />
-      <Custom Action="SetGenerateAppSettings" Before="GenerateAppSettings" Condition="WORKSTATIONID" />
-      <Custom Action="GenerateAppSettings" After="InstallFiles" Condition="WORKSTATIONID" />
-    </InstallExecuteSequence>
 
     <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
 
@@ -132,42 +125,10 @@
 
     <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" Condition="1" />
 
-    <!-- Chen ConfigDlg vao ngay sau man hinh Welcome, bo qua han man hinh License (khong
-         can dieu khoan rieng cho cong cu noi bo). Next cua ConfigDlg tu ket thuc UI
-         sequence (EndDialog Return) de vao thang Progress, giong het co che cac dialog
-         cuoi cung khac trong WixUI_Minimal. -->
-    <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="ConfigDlg" Order="2" Condition="1" />
+    <!-- Khong con man hinh cau hinh nao — Welcome.Next ket thuc UI sequence ngay
+         (EndDialog Return) de vao thang Progress. -->
+    <Publish Dialog="WelcomeDlg" Control="Next" Event="EndDialog" Value="Return" Order="2" Condition="1" />
     </UI>
 
   </Package>
-
-  <Fragment>
-   <UI>
-   <Dialog Id="ConfigDlg" Width="370" Height="270" Title="Chon vai tro tram">
-      <Control Id="Title" Type="Text" X="15" Y="15" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Chon vai tro cho MAY NAY" />
-      <Control Id="Description" Type="Text" X="15" Y="40" Width="340" Height="50" Transparent="yes" NoPrefix="yes" Text="May nay se cai dat lam dung 1 trong 3 vai tro sau. Khong can nhap Ma tram/Token — chon dung vai tro roi bam Next la xong, Agent tu dang ky voi backend." />
-
-      <Control Id="RoleLabel" Type="Text" X="15" Y="100" Width="340" Height="12" Text="Vai tro cua may nay:" />
-      <Control Id="RoleCombo" Type="ComboBox" X="15" Y="114" Width="340" Height="17" Property="WORKSTATIONID" ComboList="yes" Sorted="no" />
-
-      <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
-
-      <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back">
-        <Publish Event="NewDialog" Value="WelcomeDlg" Condition="1" />
-      </Control>
-      <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next">
-        <Publish Event="EndDialog" Value="Return" Condition="1" />
-      </Control>
-      <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
-        <Publish Event="SpawnDialog" Value="CancelDlg" Condition="1" />
-      </Control>
-   </Dialog>
-
-   <ComboBox Property="WORKSTATIONID">
-     <ListItem Text="May in - Print Station (/print-station)" Value="WS-PRINT-STATION" />
-     <ListItem Text="May in - Weighing Station (/weighing-station)" Value="WS-WEIGH-PRINTER" />
-     <ListItem Text="May can - Weighing Station (/weighing-station)" Value="WS-WEIGH-SCALE" />
-   </ComboBox>
-   </UI>
-  </Fragment>
 </Wix>

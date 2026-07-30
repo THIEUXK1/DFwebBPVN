@@ -39,6 +39,7 @@
         <button class="btn btn-secondary btn-sm" @click="moveToNow">🕐 Về hiện tại</button>
         <label class="realtime-toggle"><input type="checkbox" v-model="autoMove" /> Auto cuộn</label>
         <label class="realtime-toggle"><input type="checkbox" v-model="autoRefresh" /> Auto tải lại 30s</label>
+        <label class="realtime-toggle"><input type="checkbox" v-model="autoJumpNew" /> Tự nhảy tới mẻ mới</label>
         <!-- Người xem công khai (không phải Admin) không có AppLayout nên không có nút
              chuyển theme ở topbar chung — trang tự có nút riêng, dùng chung cho cả 2
              trường hợp (kể cả khi Admin đã lộ AppLayout, đỡ phải rẽ nhánh UI). -->
@@ -134,16 +135,13 @@ const MIN_VISUAL_DURATION_MS = 2 * 60 * 60 * 1000;
 // Độ rộng cột tên máy/tank — mã máy (vd "VD006") và tên tank (vd "1A") đều ngắn, 170px dư
 // quá nhiều diện tích lẽ ra dành cho phần vẽ Gantt (yêu cầu 2026-07-29). Một hằng số dùng
 // chung cho cả CSS (qua v-bind trong <style>) lẫn tính vị trí kim đỏ (calculateNeedle) và
-// header tìm máy, để không bao giờ bị lệch nhau. KHÔNG hạ xuống dưới ~120px: đã kiểm chứng
-// bằng thực nghiệm (chụp màn hình headless Chromium, cuộn thật) rằng ép cột nhãn xuống đúng
-// khoảng 100-115px khiến vis-timeline tính sai layout nội bộ cho các hàng Máy VD CHƯA từng
-// lọt vào khung nhìn — tên máy biến mất hoàn toàn khỏi pixel vẽ ra dù DOM/computed style vẫn
-// báo bình thường (đúng lỗi báo cáo 2026-07-29 "chỉ máy đầu tiên có tên, các máy sau trống",
-// tái hiện được ở TOÀN BỘ máy nằm ngoài khung nhìn ban đầu, không riêng máy đầu). 130px đã
-// test ổn định qua nhiều lần cuộn sâu, còn 100-115px vỡ gần như luôn luôn — không phải lỗi
-// ngẫu nhiên/paint mà là ngưỡng cứng của thư viện, nên đừng chỉnh lại con số này về gần 100
-// nếu chưa test lại đúng cách (cuộn bằng chuột thật xuống hết danh sách, không phải chỉ xem
-// vài máy đầu).
+// header tìm máy, để không bao giờ bị lệch nhau. Con số này chỉ là lựa chọn thẩm mỹ (đủ chỗ
+// cho mã máy + icon ghim) — KHÔNG liên quan tới lỗi "tên máy biến mất khi cuộn xuống các máy
+// chưa từng vào khung nhìn" (báo cáo 2026-07-29): từng nghi ngờ do width quá hẹp nhưng đã
+// kiểm chứng lại là SAI (bug tái diễn y hệt kể cả ở 250px) — nguyên nhân thật là thiếu
+// z-index trên hàng .vis-nesting-group, xem rule z-index bắt buộc trong <style> (tìm
+// ":deep(.vis-nesting-group) { z-index: 6; }"). Đổi số này thoải mái theo nhu cầu hiển thị,
+// không ảnh hưởng tới bug đó.
 const LABEL_COLUMN_WIDTH = 130;
 const labelColumnWidthCss = `${LABEL_COLUMN_WIDTH}px`;
 
@@ -160,6 +158,10 @@ const dataStale = ref(false);
 const totalRecords = ref(0);
 const autoMove = ref(true);
 const autoRefresh = ref(true);
+// Tự cuộn DỌC tới mẻ vừa mới xuất hiện + đang chạy (viền đỏ nhấp nháy) mỗi lần tải lại —
+// khác với autoMove (chỉ cuộn NGANG trục thời gian về hiện tại) — yêu cầu 2026-07-29: "mẻ
+// nào mới và nhấp nháy thì nhảy xuống chỗ đấy, không cần cuộn chuột". Xem newlyAppearedRunningIds.
+const autoJumpNew = ref(true);
 const machineSearch = ref('');
 
 const timelineEl = ref<HTMLDivElement | null>(null);
@@ -170,6 +172,13 @@ const itemsDataSet = new DataSet<any>();
 // dùng gõ ô tìm máy, không cần gọi lại API.
 let allGroups: any[] = [];
 let allItems: any[] = [];
+// So sánh tập ID mẻ "đang chạy" (uncompleted, viền đỏ nhấp nháy) giữa 2 lần fetch để phát
+// hiện mẻ MỚI vừa xuất hiện (không phải mọi mẻ đang chạy — mẻ đã chạy từ trước, người dùng
+// đã thấy rồi, không cần tự nhảy tới nữa). isFirstFetch=true ở lần tải đầu tiên để không tự
+// nhảy lung tung ngay khi vừa mở trang (lúc đó "mẻ nào cũng là mẻ mới" theo nghĩa kỹ thuật).
+let previousUncompletedIds = new Set<string>();
+let isFirstFetch = true;
+let newlyAppearedRunningIds: string[] = [];
 
 // Mốc "hiện tại" dùng để vẽ kim đỏ + tự cuộn — chốt theo lần đồng bộ dữ liệu gần nhất
 // (lastSyncedAt trả về từ backend), KHÔNG dùng đồng hồ trình duyệt — nhất quán với cách
@@ -258,6 +267,36 @@ const fetchGantt = async () => {
     };
   });
 
+  // Nối liền các mẻ trên CÙNG 1 Tank theo chuỗi, không chừa khoảng trống (yêu cầu
+  // 2026-07-29: "đừng quan tâm thời gian kết thúc, nếu có khoảng trống giữa các mẻ thì sẽ
+  // dài chạm đến cái bên phải gần nhất") — sắp theo giờ bắt đầu (giờ bắt đầu vẫn là giờ
+  // THẬT, không đổi), rồi ép giờ kết thúc HIỂN THỊ của mỗi mẻ = đúng giờ bắt đầu của mẻ kế
+  // tiếp trên cùng Tank, bất kể giờ kết thúc thật là khi nào — vừa lấp khoảng trống (máy
+  // rảnh) vừa tự động hết chồng đè (mẻ trước luôn kết thúc đúng lúc mẻ sau bắt đầu). Mẻ
+  // CUỐI CÙNG của mỗi Tank không có mẻ nào bên phải để chạm tới nên giữ nguyên giờ kết thúc
+  // đã tính ở trên (thật, hoặc kéo dài tối thiểu 2h nếu mẻ quá ngắn). Tooltip vẫn dùng
+  // it.start/realEnd (giờ thật) nên không sai lệch dữ liệu — chỉ đổi bề rộng VẼ.
+  const itemsByTank = new Map<string, typeof items>();
+  for (const item of items) {
+    if (!itemsByTank.has(item.group)) itemsByTank.set(item.group, []);
+    itemsByTank.get(item.group)!.push(item);
+  }
+  for (const tankItems of itemsByTank.values()) {
+    tankItems.sort((a, b) => a.start.getTime() - b.start.getTime());
+    for (let i = 0; i < tankItems.length - 1; i++) {
+      tankItems[i].end = tankItems[i + 1].start;
+    }
+  }
+
+  // Phát hiện mẻ ĐANG CHẠY mới xuất hiện so với lần fetch trước (xem khai báo
+  // newlyAppearedRunningIds phía trên <script>) — dùng cho tính năng "Tự nhảy tới mẻ mới".
+  const currentUncompletedIds = new Set(items.filter(it => it.className === 'gantt-item-running').map(it => it.id));
+  newlyAppearedRunningIds = isFirstFetch
+    ? []
+    : [...currentUncompletedIds].filter(id => !previousUncompletedIds.has(id));
+  previousUncompletedIds = currentUncompletedIds;
+  isFirstFetch = false;
+
   allGroups = groups;
   allItems = items;
   applyMachineFilter();
@@ -282,6 +321,14 @@ const togglePinMachine = (machineId: string) => {
 // không gọi lại API. Đồng thời vẽ lại icon ghim + đẩy máy đã ghim lên đầu danh sách mỗi
 // khi hàm này chạy lại (yêu cầu 2026-07-29).
 const applyMachineFilter = () => {
+  // PHẢI đọc scrollTop NGAY ĐẦU hàm, trước mọi thao tác trên groupsDataSet/itemsDataSet bên
+  // dưới — itemsDataSet.clear()/.add() một mình nó đã đủ khiến vis-timeline tự đổi scrollTop
+  // (đồng bộ lại panel trái/giữa trong lúc vẽ lại item), nên nếu đọc SAU các dòng đó thì giá
+  // trị đọc được đã bị sai từ trước khi kịp lưu (đã đo thực nghiệm bằng cách chặn setter
+  // scrollTop: bug thật nằm ở chỗ đọc trễ, không phải ở chỗ khôi phục trễ như tưởng ban đầu).
+  const savedScrollTop = timeline
+    ? (timelineEl.value?.querySelector('.vis-panel.vis-left') as HTMLElement | null)?.scrollTop ?? 0
+    : 0;
   const q = machineSearch.value.trim().toLowerCase();
   let visibleGroups = allGroups;
   if (q) {
@@ -330,7 +377,33 @@ const applyMachineFilter = () => {
   // tính lại chắc chắn khi gọi setGroups() — API chính thức của vis-timeline để "nạp lại
   // toàn bộ", đảm bảo _orderGroups() chạy lại (đúng lỗi báo cáo: bấm ghim không đẩy máy lên
   // đầu — icon đổi màu nhưng vị trí hàng không đổi).
-  if (timeline) timeline.setGroups(groupsDataSet);
+  if (timeline) {
+    // setGroups() dựng lại DOM panel trái từ đầu -> tự kéo scrollTop dọc về 0, làm mất vị
+    // trí đang xem mỗi lần Auto tải lại 30s chạy ngầm (báo cáo: đang xem máy ở dưới danh
+    // sách, cứ 30s bị kéo ngược lên đầu). Chỉ ảnh hưởng cuộn DỌC (panel trái, danh sách
+    // Máy VD/Tank) — cuộn NGANG (trục thời gian, do "Auto cuộn"/nút "Về hiện tại" điều
+    // khiển riêng qua timeline.setWindow) không liên quan, không đổi. savedScrollTop đã đọc
+    // sẵn ở ĐẦU hàm applyMachineFilter (xem ghi chú tại đó) — dùng lại ở đây, không đọc lại.
+    timeline.setGroups(groupsDataSet);
+    if (savedScrollTop > 0) {
+      // PHẢI truy lại .vis-panel.vis-left SAU setGroups(), không dùng lại tham chiếu cũ —
+      // setGroups() dựng lại panel trái thành node DOM MỚI, gán scrollTop lên node cũ (đã
+      // rời khỏi cây DOM) không có tác dụng gì. Và KHÔNG đủ để chỉ gán 1 lần ngay sau
+      // setGroups()/1 requestAnimationFrame — vis-timeline tự chạy thêm 1 vòng redraw nội bộ
+      // ngay sau đó (đồng bộ lại scroll giữa panel trái và panel giữa) ghi đè scrollTop vừa
+      // set về một giá trị khác (đã đo thực nghiệm: set xong đúng, ~150-200ms sau tự nhảy về
+      // giá trị sai). Phải đợi đúng sự kiện 'changed' (thư viện tự phát sau khi redraw nội bộ
+      // ổn định — xem body.emitter.emit('changed') trong core.js) rồi gán lại LẦN NỮA mới giữ
+      // được, không phải đoán mò theo thời gian (setTimeout cố định dễ vỡ nếu máy chậm/nhanh
+      // khác nhau).
+      const restoreScroll = () => {
+        const freshLeftPanel = timelineEl.value?.querySelector('.vis-panel.vis-left') as HTMLElement | null;
+        if (freshLeftPanel) freshLeftPanel.scrollTop = savedScrollTop;
+      };
+      restoreScroll();
+      timeline.once('changed', restoreScroll);
+    }
+  }
 };
 
 watch(machineSearch, applyMachineFilter);
@@ -345,6 +418,22 @@ const loadGantt = async () => {
       initTimeline();
     }
     calculateNeedle();
+    // Tự cuộn DỌC tới mẻ vừa mới xuất hiện + đang chạy — gọi SAU cùng (sau khi
+    // applyMachineFilter()/setGroups() ở trong fetchGantt() đã chạy xong và đã tự khôi phục
+    // scrollTop cũ) vì focus() cần đi ghi đè lên đúng vị trí khôi phục đó khi có mẻ mới, chứ
+    // không phải tranh chấp/bị khôi phục ghi đè ngược lại. timeline.focus() là API chính
+    // thức của vis-timeline — tự tính cuộn dọc đúng theo Tank đang thuộc (kể cả khi Tank đó
+    // đang ở trong 1 Máy VD đã đóng gọn) và cuộn ngang bám theo mẻ đó, KHÔNG zoom sát vào
+    // (zoom:false) để giữ nguyên độ rộng khung giờ 24h đang xem.
+    if (autoJumpNew.value && newlyAppearedRunningIds.length && timeline) {
+      const idsToFocus = newlyAppearedRunningIds;
+      // Đợi 1 nhịp trước khi focus() — itemsDataSet.add() ở applyMachineFilter() vừa chạy
+      // xong lúc setGroups()/redraw còn đang xử lý bất đồng bộ, mẻ mới có thể CHƯA kịp có
+      // đại diện DOM/nội bộ trong itemSet lúc focus() cần tới (this.itemSet.items[id]) —
+      // gọi ngay lập tức focus() im lặng không cuộn gì cả (đã đo thực nghiệm). requestAnimationFrame
+      // đủ để đợi qua vòng redraw đó.
+      requestAnimationFrame(() => timeline?.focus(idsToFocus, { zoom: false }));
+    }
   } catch (e: any) {
     errorMsg.value = e.response?.data?.message || 'Không tải được dữ liệu Gantt.';
   } finally {
@@ -577,15 +666,11 @@ onUnmounted(() => {
    không ép rõ ràng, tên Máy VD/Tank kế thừa màu chữ từ theme tối (gần trắng) trong khi
    panel nhãn của thư viện vẫn nền trắng mặc định -> chữ trắng trên nền trắng, không đọc
    được (đúng lỗi báo cáo 2026-07-29 "không nhìn thấy tên của các tank"). */
-/* Ép độ rộng cột nhãn qua .vis-panel.vis-left (khung cuộn dọc thật) — CỐ Ý KHÔNG ép qua
-   .vis-labelset/.vis-label như bản trước đó. Đã kiểm chứng bằng thực nghiệm: ép width lên
-   chính .vis-labelset và/hoặc từng .vis-label (dù dùng !important hay không, dù ép ở mức
-   nào ~100-115px) khiến vis-timeline tính sai layout nội bộ cho các hàng nhóm CHƯA từng
-   render trong khung nhìn ban đầu — tên máy biến mất khỏi pixel vẽ ra (DOM/computed style
-   vẫn đúng, chỉ paint sai) ngay khi cuộn chuột thật xuống tới chúng, xem ghi chú tại
-   LABEL_COLUMN_WIDTH phía trên. Ép ở .vis-panel.vis-left thay vào đó (để vis-timeline tự do
-   tính toán .vis-labelset/.vis-label bên trong theo cách riêng của nó) tránh được lỗi này
-   hoàn toàn qua nhiều lần test cuộn sâu. */
+/* Ép độ rộng cột nhãn qua .vis-panel.vis-left (khung cuộn dọc thật) thay vì trực tiếp lên
+   .vis-labelset/.vis-label — chỉ để tránh xung đột với width tường minh mà vis-timeline tự
+   gán cho .vis-label (xem rule .vis-nesting-group .vis-inner phía dưới), không liên quan gì
+   tới lỗi "tên máy biến mất khi cuộn" — lỗi đó do thiếu z-index, xem rule bắt buộc
+   ":deep(.vis-nesting-group) { z-index: 6; }" bên dưới. */
 :deep(.vis-panel.vis-left) { width: v-bind(labelColumnWidthCss) !important; }
 :deep(.vis-panel) { background-color: var(--bg-card, #fff) !important; }
 :deep(.vis-label),
@@ -630,8 +715,10 @@ onUnmounted(() => {
    nhãn) để .gantt-machine-row bên trong dùng justify-content:space-between đẩy được icon
    ghim ra sát mép phải cột, cách xa mũi tên đóng/mở ở đầu dòng (yêu cầu 2026-07-29: "để
    icon ghim ra chỗ dễ ấn, bên phải tên máy"). Giữ nguyên display mặc định (inline-block vẫn
-   tôn trọng width tường minh, không cần đổi sang block) — xem ghi chú đầy đủ về ngưỡng width
-   an toàn tại LABEL_COLUMN_WIDTH phía trên <script>. */
+   tôn trọng width tường minh, KHÔNG cần/KHÔNG được đổi sang display:block — đã thử, đổi
+   sang block là nguyên nhân gốc của lỗi "tên máy biến mất khi cuộn tới các máy chưa từng vào
+   khung nhìn", xem rule z-index bắt buộc ở trên để hiểu lỗi thật, còn width ở đây chỉ đơn
+   thuần đồng bộ với cột nhãn 130px, không phải phần fix bug). */
 :deep(.vis-nesting-group .vis-inner) { width: v-bind(labelColumnWidthCss); box-sizing: border-box; }
 :deep(.gantt-machine-row) {
   display: flex;

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\PrintJob;
 use App\Models\PrintAttempt;
 use App\Models\OperationClient;
+use App\Models\Device;
+use App\Models\OperationClientDevice;
 use App\Services\PrintJobEventService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -42,6 +44,36 @@ class AgentJobsController extends Controller
         $config['printers_reported_at'] = now()->toIso8601String();
         $client->configuration = $config;
         $client->save();
+
+        // Tu dong gan may in chinh (PRIMARY_PRINTER) neu tram chua co (2026-07-30,
+        // "cai la dung thoi") — truoc day chi ghi vao cot configuration (dung cho
+        // /print-station qua resolvedPrinter), hoan toan tach biet voi
+        // assigned_printer_device_id (dung cho /weighing-station qua QrScanPanel.vue),
+        // khien /weighing-station van bao "chua gan may in chinh" du Agent da bao cao
+        // may in that. Ap dung dung co che da co san o
+        // WorkstationLocalConfigController::updateDeviceConfig (nut cau hinh thu cong),
+        // chi tu dong hoa buoc gan.
+        $hasPrinter = OperationClientDevice::where('operation_client_id', $client->id)
+            ->where('device_role', 'PRIMARY_PRINTER')
+            ->exists();
+
+        $printerName = $request->input('default_printer') ?: ($request->input('printers')[0] ?? null);
+
+        if (!$hasPrinter && $printerName) {
+            $device = Device::firstOrCreate(
+                ['code' => $printerName],
+                ['device_type' => 'PRINTER', 'status' => 'ACTIVE']
+            );
+
+            OperationClientDevice::create([
+                'operation_client_id' => $client->id,
+                'device_id' => $device->id,
+                'device_role' => 'PRIMARY_PRINTER',
+                'is_default' => true,
+                'priority' => 1,
+                'enabled' => true,
+            ]);
+        }
 
         return response()->json(['status' => 'SUCCESS']);
     }

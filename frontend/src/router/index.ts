@@ -17,6 +17,7 @@ import Reports from '../views/Reports.vue';
 import AuditLogExplorer from '../views/AuditLogExplorer.vue';
 import WorkstationAdmin from '../views/WorkstationAdmin.vue';
 import PrintHistoryAdmin from '../views/PrintHistoryAdmin.vue';
+import MachinesTanks from '../views/MachinesTanks.vue';
 import BpdbAdmin from '../views/BpdbAdmin.vue';
 import BpdbMachines from '../views/BpdbMachines.vue';
 import OrderScan from '../views/OrderScan.vue';
@@ -156,6 +157,12 @@ const routes = [
     path: '/recipes',
     name: 'Recipes',
     component: Recipes,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/machines-tanks',
+    name: 'MachinesTanks',
+    component: MachinesTanks,
     meta: { requiresAuth: true }
   },
   {

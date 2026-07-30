@@ -63,11 +63,17 @@ Tài liệu này ghi nhận các Quyết định Kiến trúc (ADR - Architectur
 
 ---
 
-## ADR-008: Lựa chọn Server-Sent Events (SSE) cho Kết nối Realtime
+## ADR-008: Lựa chọn Server-Sent Events (SSE) cho Kết nối Realtime — ĐÃ THAY THẾ, xem cập nhật 2026-07-30
 - **Bối cảnh:** Giao diện điều phối nhà máy cần cập nhật trạng thái gần thời gian thực (1-3s). WebSockets yêu cầu cài đặt và vận hành dịch vụ WebSocket Server riêng biệt (Pusher/Soketi/Node.js) và cấu hình proxy phức tạp, dễ bị tường lửa Windows chặn cổng.
-- **Quyết định:** Sử dụng giao thức Server-Sent Events (SSE) qua cổng HTTP chuẩn (`text/event-stream`).
+- **Quyết định (LỊCH SỬ, không còn đúng với code hiện tại):** Sử dụng giao thức Server-Sent Events (SSE) qua cổng HTTP chuẩn (`text/event-stream`).
 - **Lý do:** SSE là một phần của tiêu chuẩn HTML5, hoạt động trực tiếp trên máy chủ PHP/Laravel hiện có mà không cần cài đặt thêm phần mềm dịch vụ nào. Hỗ trợ tự động kết nối lại (reconnect) và gửi `Last-Event-ID` mặc định bởi trình duyệt.
 - **Hệ quả:** SSE chỉ hỗ trợ truyền tải một chiều từ Server xuống Client. Đối với các hành động từ Client lên Server, chúng tôi sử dụng các cuộc gọi HTTP POST/PUT tiêu chuẩn. Điều này hoàn toàn đáp ứng tốt nhu cầu của hệ thống MES/Dyeing.
+
+### Cập nhật 2026-07-30 — Chuyển sang Laravel Reverb (WebSocket)
+- **Phát hiện 2026-07-25:** Cài đặt SSE gốc (`/api/realtime/stream`, vòng lặp `while(true)` giữ 1 HTTP request sống mãi) gây treo toàn bộ server khi chạy bằng `php artisan serve` trên Windows — môi trường này không có concurrency thật (không `fork()`), nên chỉ cần 1 tab trình duyệt mở Dashboard là chiếm request-handling thread vĩnh viễn, mọi request khác (kể cả API khác) bị treo theo.
+- **Quyết định thực tế đang chạy:** Thay bằng Laravel Reverb (`laravel/reverb`, WebSocket server tương thích giao thức Pusher, tự host — không phải dịch vụ SaaS bên thứ ba) — xem `app/Events/RealtimeEventBroadcast.php` (kênh `dashboard-events`, `ShouldBroadcastNow`), cấu hình `BROADCAST_CONNECTION=reverb` trong `.env`.
+- **Hệ quả vận hành quan trọng:** Reverb là 1 tiến trình nền RIÊNG BIỆT, luôn phải chạy song song với `php artisan serve` (`php artisan reverb:start`) — nếu Reverb không chạy, mọi broadcast realtime lỗi "Pusher error: cURL error 7 ... port 8080" (đã gặp thực tế 2026-07-30) dù các API HTTP khác vẫn hoạt động bình thường. Cần thêm Reverb vào quy trình khởi động dev/production tương tự các tiến trình nền khác (không tự khởi động cùng `artisan serve`).
+- **Chưa xác nhận lại:** ADR-009 (Transactional Outbox) và ADR-010 (Fallback Polling) mô tả cơ chế gắn với SSE stream cũ — cần rà soát riêng xem còn áp dụng nguyên vẹn với Reverb hay cũng cần cập nhật, chưa xác minh trong lần sửa này.
 
 ---
 

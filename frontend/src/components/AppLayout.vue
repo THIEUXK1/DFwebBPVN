@@ -36,15 +36,29 @@
            ngoài được, phải tải trực tiếp từ máy chủ qua LAN). -->
       <div class="sidebar-footer">
         <div class="footer-title">TẢI CÔNG CỤ</div>
-        <a
-          :href="agentInstallerUrl"
-          download
-          class="tool-download-link"
-          title="Cài trên máy trạm có gắn cân điện tử / máy in tem"
-        >
-          <SvgIcon name="download" size="16" />
-          <span>DF Agent (Cân &amp; In tem)</span>
-        </a>
+        <div class="tool-download-menu-wrap">
+          <button
+            type="button"
+            class="tool-download-link"
+            title="Cài trên máy trạm có gắn cân điện tử / máy in tem"
+            @click="toolMenuOpen = !toolMenuOpen"
+          >
+            <SvgIcon name="download" size="16" />
+            <span>DF Agent (Cân &amp; In tem)</span>
+          </button>
+          <div v-if="toolMenuOpen" class="tool-download-menu">
+            <a
+              v-for="opt in agentInstallerOptions"
+              :key="opt.role"
+              :href="opt.url"
+              download
+              class="tool-download-menu-item"
+              @click="toolMenuOpen = false"
+            >
+              {{ opt.label }}
+            </a>
+          </div>
+        </div>
       </div>
     </aside>
 
@@ -272,15 +286,29 @@ const authStore = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 
-// File cài đặt Local Agent được backend serve tĩnh từ public/downloads/ (xem
-// backend/public/downloads/DFAgentSetup.msi, đóng gói bằng WiX Toolset — agent/installer/
-// DFAgentSetup.wxs) — dùng đúng host mà trình duyệt đang mở trang (giống main.ts) để máy
-// trạm trong LAN tải đúng từ máy chủ. Dùng dinh dang MSI (khong phai Inno Setup .exe) vi
-// ban .exe cu bi Windows Defender gan nham nhan "Program:Win32/Wacapew.A!ml" va tu xoa
-// ngay sau khi tai — MSI + ServiceInstall/ServiceControl native khong bi qua. Cai dat tu
-// hoi Ma tram/Token/URL Backend/duong dan PuTTY log ngay trong wizard, tu dang ky + khoi
-// dong Windows Service "DFAgent".
-const agentInstallerUrl = `http://${window.location.hostname}:8500/downloads/DFAgentSetup.msi`;
+// 3 file cài đặt Local Agent riêng theo vai trò — mỗi máy vật lý chỉ gắn 1 loại thiết bị
+// (máy in HOẶC cân), backend serve tĩnh từ public/downloads/ (xem agent/installer/
+// DFAgentSetup.wxs, build 3 lần qua biến tiền xử lý StationId — build-all.ps1). Dùng đúng
+// host mà trình duyệt đang mở trang (giống main.ts) để máy trạm trong LAN tải đúng từ máy
+// chủ. Dùng định dạng MSI (không phải Inno Setup .exe) vì bản .exe cũ bị Windows Defender
+// gán nhầm nhãn "Program:Win32/Wacapew.A!ml" và tự xóa ngay sau khi tải — MSI +
+// ServiceInstall/ServiceControl native không bị quét. Không còn hỏi Mã trạm/Token/URL
+// Backend — mỗi file đã đóng cứng sẵn đúng vai trò, cài xong service "DFAgent" chạy ngay.
+//
+// Tải file .cmd (route backend /downloads/agent-launcher/{role}, xem routes/web.php)
+// thay vì .msi trực tiếp — MSI không tự hiện hộp thoại UAC khi tài khoản không phải admin
+// double-click (chỉ báo lỗi "không đủ quyền" rồi dừng, khác .exe), nên phải qua file .cmd
+// nhỏ tự gọi Start-Process -Verb RunAs để bật đúng hộp thoại xin quyền admin.
+const agentInstallerOptions = [
+  { label: 'Máy in — Print Station', role: 'print-station' },
+  { label: 'Máy in riêng — Weighing Station (không kèm cân)', role: 'weighing-printer' },
+  { label: 'Máy cân + máy in — Weighing Station (gộp 1 máy)', role: 'weighing-scale' },
+].map((opt) => ({
+  ...opt,
+  url: `http://${window.location.hostname}:8500/downloads/agent-launcher/${opt.role}`,
+}));
+
+const toolMenuOpen = ref(false);
 
 // Station-scoped account (WS-001) HOẶC phiên kiosk (link riêng máy, không đăng nhập):
 // công đoạn được cố định theo tài khoản/link, không cho đổi tay qua dropdown.
@@ -399,7 +427,8 @@ const menuGroupsRaw = [
       { path: '/machine-queue', label: 'Điều phối máy', icon: 'queue' },
       { path: '/materials', label: 'Vật tư', icon: 'material' },
       { path: '/water-configs', label: 'Cấu hình nước', icon: 'water' },
-      { path: '/recipes', label: 'Công thức', icon: 'recipe' }
+      { path: '/recipes', label: 'Công thức', icon: 'recipe' },
+      { path: '/machines-tanks', label: 'Máy & Thùng trộn', icon: 'batch' }
     ]
   },
   {
@@ -443,6 +472,7 @@ const currentRouteName = computed(() => {
     '/materials': 'Danh mục Vật tư',
     '/water-configs': 'Cấu hình Mực nước',
     '/recipes': 'Công thức sản xuất',
+    '/machines-tanks': 'Danh mục Máy nhuộm & Thùng trộn',
     '/troubleshooting': 'Chẩn đoán Sự cố',
     '/reports': 'Báo cáo & Phân tích',
     '/audit-logs': 'Audit Log Explorer',
@@ -552,10 +582,15 @@ const handleLogout = () => {
   letter-spacing: 0.08em;
 }
 
+.tool-download-menu-wrap {
+  position: relative;
+}
+
 .tool-download-link {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
   height: 40px;
   padding: 0 12px;
   color: var(--text-body);
@@ -563,11 +598,42 @@ const handleLogout = () => {
   border-radius: var(--radius-md);
   font-weight: 500;
   font-size: 0.9rem;
+  font-family: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
 }
 
 .tool-download-link:hover {
+  background-color: var(--bg-card-hover);
+  color: var(--text-title);
+}
+
+.tool-download-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-divider);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  z-index: 20;
+}
+
+.tool-download-menu-item {
+  display: block;
+  padding: 10px 12px;
+  color: var(--text-body);
+  text-decoration: none;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.tool-download-menu-item:hover {
   background-color: var(--bg-card-hover);
   color: var(--text-title);
 }

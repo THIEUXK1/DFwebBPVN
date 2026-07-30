@@ -5,6 +5,8 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use App\Models\Workstation;
+use App\Models\Capability;
+use App\Models\OperationClientCapability;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -70,10 +72,49 @@ class AgentAuth
         // bat ky may nao trong LAN cham duoc backend deu co the tu xung danh 1 trong cac
         // workstation_id nay ma khong con duoc token bao ve — xem session-log.md.
         if ($claimedId) {
+            // 3 ma tram co dinh chon luc build MSI (xem agent/installer/appsettings.*.json)
+            // — gan dung type/default_capability ngay tu luc tu dang ky de QR order scan
+            // (ScannerController::handleOrderScan, chi chap nhan DYE_WEIGHING/
+            // CHEMICAL_WEIGHING/A11_WEIGHING/DLG_WEIGHING) khong bi 403 "chi duoc phep quet
+            // tai cac Tram Can san xuat" nhu voi type='AUTO_REGISTERED' chung chung truoc day
+            // (loi thuc te tren WS-WEIGH-SCALE, 2026-07-30). Ma la kh ong nam trong danh
+            // sach nay (vd tram tu tao ngoai du kien) van roi ve AUTO_REGISTERED nhu cu.
+            $knownStationDefaults = [
+                'WS-WEIGH-SCALE' => ['type' => 'DYE_WEIGHING', 'default_capability' => 'SMALL_SCALE', 'default_route' => '/weighing-station', 'caps' => ['SMALL_SCALE', 'WEIGH', 'PRINT']],
+                'WS-WEIGH-PRINTER' => ['type' => 'QR_LABEL_PRINTING', 'default_capability' => 'QR_LABEL_PRINTING', 'default_route' => '/print-station', 'caps' => ['QR_LABEL_PRINTING', 'PRINT']],
+                'WS-PRINT-STATION' => ['type' => 'QR_LABEL_PRINTING', 'default_capability' => 'QR_LABEL_PRINTING', 'default_route' => '/print-station', 'caps' => ['QR_LABEL_PRINTING', 'PRINT']],
+            ];
+            $defaults = $knownStationDefaults[(string) $claimedId] ?? null;
+
+            // Gan ro status='ACTIVE' ngay trong create-attributes (khong dua vao default
+            // cua cot DB) — phat hien loi thuc te 2026-07-30: firstOrCreate() KHONG tu
+            // refresh attribute status tu DB sau INSERT, nen $workstation->active (accessor
+            // dua vao status) tra false o LAN GOI DAU TIEN cua 1 tram moi tu dang ky, gay
+            // 403 oan du tram hoan toan binh thuong — cac lan goi sau moi dung vi da co
+            // status that trong DB khi fetch lai.
             $workstation = Workstation::firstOrCreate(
                 ['code' => (string) $claimedId],
-                ['name' => (string) $claimedId, 'type' => 'AUTO_REGISTERED']
+                [
+                    'name' => (string) $claimedId,
+                    'type' => $defaults['type'] ?? 'AUTO_REGISTERED',
+                    'workstation_type' => $defaults['type'] ?? 'AUTO_REGISTERED',
+                    'default_capability' => $defaults['default_capability'] ?? null,
+                    'default_route' => $defaults['default_route'] ?? null,
+                    'status' => 'ACTIVE',
+                ]
             );
+
+            if ($workstation->wasRecentlyCreated && $defaults) {
+                foreach (array_merge($defaults['caps'], ['SCAN_QR', 'LOCAL_AGENT']) as $capCode) {
+                    $cap = Capability::where('code', $capCode)->first();
+                    if ($cap) {
+                        OperationClientCapability::updateOrCreate(
+                            ['operation_client_id' => $workstation->id, 'capability_id' => $cap->id],
+                            ['enabled' => true]
+                        );
+                    }
+                }
+            }
 
             if (!$workstation->active) {
                 return response()->json([

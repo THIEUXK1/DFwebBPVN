@@ -12,12 +12,30 @@
         </button>
       </div>
     </div>
-    <!-- Printer warning + tự cấu hình tại chỗ -->
-    <div v-if="!currentWorkstation?.assigned_printer_device_id" class="card warning-card mb-4" style="color:#eab308; border-color:#eab308; background:rgba(234,179,8,0.05); padding:12px; border-radius:8px; border:1px solid rgba(234,179,8,0.2); text-align:left;">
-      ⚠️ Trạm chưa gán máy in chính.
-      <button @click="showPrinterConfig = !showPrinterConfig" class="btn btn-secondary btn-sm ml-2">⚙️ Cấu hình máy in ngay</button>
+    <!-- Máy in — luôn cho đổi (không chỉ khi thiếu), đọc đúng danh sách Agent đã phát
+         hiện thay vì bắt gõ tay tên máy in (dễ gõ sai, in lỗi âm thầm) — giống hệt
+         "⚙️ Đổi máy in" ở /print-station. -->
+    <div class="card mb-4" :class="currentWorkstation?.assigned_printer_device_id ? '' : 'warning-card'" style="padding:12px; border-radius:8px; text-align:left;" :style="currentWorkstation?.assigned_printer_device_id ? 'border:1px solid var(--border-divider);' : 'color:#eab308; border-color:#eab308; background:rgba(234,179,8,0.05); border:1px solid rgba(234,179,8,0.2);'">
+      <template v-if="currentWorkstation?.assigned_printer_device_id">
+        🖨️ Máy in hiện tại: <strong>{{ currentWorkstation.assigned_printer_device_id }}</strong>
+      </template>
+      <template v-else>
+        ⚠️ Trạm chưa gán máy in chính.
+      </template>
+      <button @click="fetchInstalledPrinters" class="btn btn-secondary btn-sm ml-2" :disabled="loadingInstalledPrinters">🔄 Làm mới</button>
+      <button @click="showPrinterConfig = !showPrinterConfig" class="btn btn-secondary btn-sm ml-2">⚙️ Đổi máy in</button>
       <div v-if="showPrinterConfig" class="mt-3 device-config-form">
-        <input v-model="printerConfigForm.deviceId" type="text" class="form-control mb-2" placeholder="Mã máy in, vd: TSC TE200" />
+        <div v-if="loadingInstalledPrinters" class="text-muted font-sm mb-2">Đang tải danh sách máy in đã cài trên máy này...</div>
+        <select v-else-if="installedPrinters.length" v-model="printerConfigForm.deviceId" class="form-select mb-2">
+          <option value="">-- Chọn máy in --</option>
+          <option v-for="p in installedPrinters" :key="p" :value="p">
+            {{ p }}{{ p === defaultInstalledPrinter ? ' (mặc định hệ thống)' : '' }}
+          </option>
+        </select>
+        <div v-else class="text-muted font-sm mb-2">
+          Không phát hiện máy in nào từ Local Agent. Kiểm tra Agent (DF Agent) có đang chạy trên máy này không, hoặc nhập tay mã máy in bên dưới.
+          <input v-model="printerConfigForm.deviceId" type="text" class="form-control mt-2" placeholder="Mã máy in, vd: TSC TE200" />
+        </div>
         <select v-model="printerConfigForm.connectionType" class="form-select mb-2">
           <option value="USB">USB</option>
           <option value="LAN">LAN</option>
@@ -96,6 +114,33 @@ const showPrinterConfig = ref(false);
 const savingPrinterConfig = ref(false);
 const printerConfigForm = reactive({ deviceId: '', connectionType: 'USB', address: '' });
 
+// Danh sách máy in thật do Local Agent phát hiện trên máy này (PrinterDiscovery.cs qua
+// POST /agents/{id}/printers, ghi vào operation_clients.configuration) — cùng nguồn dữ
+// liệu với "⚙️ Đổi máy in" ở /print-station, chỉ đọc lại chứ không gọi API riêng.
+const installedPrinters = ref<string[]>([]);
+const defaultInstalledPrinter = ref<string | null>(null);
+const loadingInstalledPrinters = ref(false);
+
+async function fetchInstalledPrinters() {
+  if (!currentWorkstation.value?.code) return;
+  loadingInstalledPrinters.value = true;
+  try {
+    const res = await axios.get('/api/workstations');
+    const list = res.data.data || res.data;
+    const match = list.find((w: any) => w.code === currentWorkstation.value!.code);
+    const config = match?.configuration || {};
+    installedPrinters.value = config.available_printers || [];
+    defaultInstalledPrinter.value = config.default_printer || null;
+    if (!printerConfigForm.deviceId) {
+      printerConfigForm.deviceId = currentWorkstation.value.assigned_printer_device_id || defaultInstalledPrinter.value || '';
+    }
+  } catch (err) {
+    console.error('Failed to load installed printers:', err);
+  } finally {
+    loadingInstalledPrinters.value = false;
+  }
+}
+
 const saveScaleConfig = async () => {
   if (!currentWorkstation.value || !scaleConfigForm.deviceId) return;
   savingScaleConfig.value = true;
@@ -166,6 +211,7 @@ defineExpose({ fetchWaitingBatches });
 
 onMounted(() => {
   fetchWaitingBatches();
+  fetchInstalledPrinters();
   // Realtime qua Reverb — lô mới được tạo/duyệt ở /production-batches phải xuất hiện
   // ngay trong dropdown "Giả lập Quét mã" ở đây, không cần rời màn hình rồi quay lại.
   echo.channel('production-batches').listen('.updated', fetchWaitingBatches);
