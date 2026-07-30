@@ -25,7 +25,21 @@ Route::get('/downloads/agent-launcher/{role}', function (Request $request, strin
     }
 
     $msiFile = $files[$role];
-    $msiUrl = $request->getSchemeAndHttpHost() . '/downloads/' . $msiFile;
+
+    // Cong 8501 rieng (php -S tinh, khong qua Laravel/artisan serve) chi de phuc vu file
+    // trong public/downloads/ — KHONG dung chung cong 8500 (backend API chinh). Ly do: tren
+    // CS-SERVER, backend API chay bang `php artisan serve` don luong (single-threaded, xem
+    // run-backend.bat) — trong luc truyen file .msi 28MB no khong xu ly duoc request nao
+    // khac, va nguoc lai request khac chen vao lam dut ket noi giua chung file lon (loi that
+    // "An existing connection was forcibly closed by the remote host", 2026-07-30). Tach
+    // rieng downloads server (run-downloads.bat, scheduled task DFWeb-Downloads, firewall
+    // port 8501) de tai file lon khong con dung do/bi dung do boi cac request khac cua he
+    // thong. Dev/localhost KHONG co server 8501 rieng — fallback ve dung cong 8500 nhu cu
+    // (chua can thiet lap them tren may dev, chi may that ngoai xuong moi gap van de nay).
+    $host = $request->getHost();
+    $msiUrl = $host === 'localhost' || $host === '127.0.0.1'
+        ? $request->getSchemeAndHttpHost() . '/downloads/' . $msiFile
+        : $request->getScheme() . '://' . $host . ':8501/' . $msiFile;
 
     // $ProgressPreference='SilentlyContinue' + -UseBasicParsing: Invoke-WebRequest tren
     // Windows PowerShell 5.1 (may tram xuong) ve mac dinh render progress bar rat cham cho
