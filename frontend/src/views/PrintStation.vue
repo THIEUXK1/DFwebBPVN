@@ -666,8 +666,8 @@ async function printDispatchViaBrowser(d: any) {
   // trên tem thật), ô Màu+Mã hàng gộp 1 khung không đường kẻ giữa, QR to hơn.
   const DOT = 8;
   const mmD = (dot: number) => dot / DOT;
-  function boxDot(x1: number, y1: number, x2: number, y2: number, innerHtml: string, noBorder = false): string {
-    return box(mmD(x1), mmD(y1), mmD(x2 - x1), mmD(y2 - y1), innerHtml, noBorder);
+  function boxDot(x1: number, y1: number, x2: number, y2: number, innerHtml: string, noBorder = false, extraClass = ''): string {
+    return box(mmD(x1), mmD(y1), mmD(x2 - x1), mmD(y2 - y1), innerHtml, noBorder, extraClass);
   }
 
   const tableTop = 200, rowHDot = 41, tableBottom = tableTop + rowHDot * 9; // 569
@@ -703,8 +703,8 @@ async function printDispatchViaBrowser(d: any) {
     });
   }
 
-  function box(x: number, y: number, w: number, h: number, innerHtml: string, noBorder = false): string {
-    return `<div class="box${noBorder ? ' noborder' : ''}" style="left:${x}mm;top:${y}mm;width:${w}mm;height:${h}mm;">${innerHtml}</div>`;
+  function box(x: number, y: number, w: number, h: number, innerHtml: string, noBorder = false, extraClass = ''): string {
+    return `<div class="box${noBorder ? ' noborder' : ''}${extraClass ? ' ' + extraClass : ''}" style="left:${x}mm;top:${y}mm;width:${w}mm;height:${h}mm;">${innerHtml}</div>`;
   }
 
   const html = `<!doctype html>
@@ -718,10 +718,17 @@ async function printDispatchViaBrowser(d: any) {
   /* Tem thật chỉ 70x100mm nên trên màn hình to sẽ trông rất bé — phóng to riêng cho
      màn hình (zoom, không phải transform, để layout giãn ra đúng) để xem cho rõ, còn
      lúc in thật (@media print bên dưới) luôn trả về đúng kích thước gốc 1:1. */
-  .slip { position: relative; width: 70mm; height: 100mm; border: 1.2mm solid #000; zoom: 2.6; }
-  .box { position: absolute; border: 0.3mm solid #000; overflow: visible; padding: 0.4mm 0.8mm; white-space: nowrap; }
+  /* Viền cũ 1.2mm (ngoài)/0.3mm (ô)/0.2mm (lưới bảng) quá dày, lại càng dày hơn ở MỌI
+     đường phân cách giữa 2 ô liền kề — mỗi ô tự vẽ border riêng (position:absolute, tọa
+     độ x2 của ô này = x1 của ô sau) nên 2 border 0.3mm cạnh nhau cộng lại nhìn như một
+     đường ~0.6mm, có cảm giác "đè" vào chữ do padding chỉ 0.4-0.8mm không đủ giãn cách
+     (người dùng phản ánh 2026-07-30, có ảnh chụp tem in ra thật). Giảm đều độ dày +
+     tăng padding cho thoáng hơn, không đổi bố cục/tọa độ.
+  */
+  .slip { position: relative; width: 70mm; height: 100mm; border: 0.4mm solid #000; zoom: 2.6; }
+  .box { position: absolute; border: 0.2mm solid #000; overflow: visible; padding: 0.5mm 0.9mm; white-space: nowrap; }
   .box.noborder { border: none; }
-  .gridcell { position: absolute; border: 0.2mm solid #000; }
+  .gridcell { position: absolute; border: 0.15mm solid #000; }
   .label-sm { font-size: 2.3mm; white-space: nowrap; }
   .big { font-size: 3.2mm; font-weight: 700; line-height: 1; white-space: nowrap; }
   .big.code-line { display: block; margin-top: 1.2mm; }
@@ -733,7 +740,15 @@ async function printDispatchViaBrowser(d: any) {
   .qr-block { position: absolute; text-align: center; }
   .qr-block img { width: 100%; height: 100%; object-fit: contain; }
   .qr-block-inline { display: flex; align-items: center; justify-content: center; height: 100%; }
-  .qr-block-inline img { width: 13mm; height: 13mm; }
+  .qr-block-inline img { width: 13.2mm; height: 13.2mm; }
+  /* QR góc trên bên phải (chế độ PROCESS/EXTRA/FB) — người dùng muốn to hơn (2026-07-30).
+     Ô này chỉ chứa ảnh QR (không có chữ) nên bỏ padding chuẩn của .box (0.5mm/0.9mm, dành
+     cho chữ) xuống mức tối thiểu để ảnh chiếm gần hết chiều cao thật của ô (14mm trừ viền/
+     đệm còn ~13.3mm) — ĐÂY LÀ GIỚI HẠN VẬT LÝ của hàng tiêu đề hiện tại (hàng dưới bắt đầu
+     ngay sau, gần như không có khe hở). Muốn to hơn nữa phải nới cao cả hàng tiêu đề, kéo
+     theo phải dịch 2 ô "Thùng"/"Mực nước" của hàng dưới (cùng cột X với QR) xuống theo —
+     chưa làm vì đụng tới vị trí nhiều ô khác, cần xác nhận trước khi đổi bố cục. */
+  .box.mode-qr-cell { padding: 0.15mm; }
   .placeholder { color: #999; font-style: italic; }
   .footnote { margin-top: 3mm; font-size: 2.3mm; color: #666; }
   /* KHÔNG có @page thì trình duyệt in theo khổ giấy mặc định đang chọn sẵn trong driver
@@ -757,7 +772,7 @@ async function printDispatchViaBrowser(d: any) {
   <div class="slip">
     ${boxDot(0, 0, 206, 112, '<span class="label-sm">DF_WEIGHING_SLIP</span>')}
     ${boxDot(206, 0, 391, 112, `<span class="zone${routing.d1Zone ? '' : ' placeholder'}">${routing.d1Zone || '—'}</span>`)}
-    ${boxDot(391, 0, 560, 112, `<div class="qr-block-inline">${modeQrDataUrl ? `<img src="${modeQrDataUrl}" alt="QR mode" />` : ''}</div>`)}
+    ${boxDot(391, 0, 560, 112, `<div class="qr-block-inline">${modeQrDataUrl ? `<img src="${modeQrDataUrl}" alt="QR mode" />` : ''}</div>`, false, 'mode-qr-cell')}
 
     ${boxDot(0, 114, 278, 200, `<span class="big">${b.color || ''}</span><span class="big code-line">${b.product_code || ''}</span>`)}
     ${boxDot(293, 114, 391, 200, `<span class="big">${b.machine?.code || ''}</span>`)}
