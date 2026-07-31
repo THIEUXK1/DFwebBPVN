@@ -810,7 +810,15 @@ async function printDispatchViaBrowser(
   }
   @media print {
     body { padding: 0; display: block; }
-    .slip { zoom: 1; }
+    /* .slip đúng bằng khổ trang 70x100mm + @page margin:0 -> viền ngoài nằm ĐÚNG mép giấy,
+       rơi trọn vào vùng không in được (unprintable margin) của máy in nên mất viền trên +
+       trái (người dùng phản ánh 2026-07-31, mọi máy in đều có vùng này, không chỉnh được
+       bằng driver). Thu toàn bộ tem còn 95% và co vào TÂM (transform-origin:center) —
+       chừa đều ~1.75mm ngang / 2.5mm dọc quanh 4 cạnh mà KHÔNG phải sửa lại toạ độ tuyệt
+       đối bên trong (tất cả ô/lưới/QR scale theo cùng tỉ lệ, bố cục giữ nguyên tỉ lệ gốc).
+       Dùng transform chứ không phải zoom: zoom sẽ tính lại layout (đẩy .slip lệch), còn
+       transform chỉ vẽ lại nên tâm giữ nguyên đúng tâm trang. */
+    .slip { zoom: 1; transform: scale(0.95); transform-origin: center center; }
     .footnote { display: none; }
   }
 </style>
@@ -1021,7 +1029,9 @@ async function printMaterialLabelViaBrowser(l: any, win: Window) {
      giấy mặc định của driver máy in, tem đúng kích cỡ thật nhưng chỉ chiếm 1 góc tờ giấy
      to hơn nhiều, nhìn như bé xíu. */
   @page { size: 80mm 50mm; margin: 0; }
-  @media print { body { padding: 0; } .slip { zoom: 1; } }
+  /* scale 0.95 — cùng lý do như tem dispatch: viền sát mép giấy rơi vào vùng không in
+     được của máy in, mất viền trên/trái (xem chú thích @media print ở printDispatchViaBrowser). */
+  @media print { body { padding: 0; } .slip { zoom: 1; transform: scale(0.95); transform-origin: center center; } }
 </style>
 </head>
 <body>

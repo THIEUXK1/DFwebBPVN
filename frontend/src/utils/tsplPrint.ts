@@ -67,7 +67,11 @@ export async function printTsplViaBrowser(tspl: string, win: Window): Promise<vo
      tem in ra ở /print-station dùng chung cơ chế này). Khai báo khổ trang = đúng khổ tem
      để Chrome/Edge tự yêu cầu đổi khổ giấy khi in. */
   @page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }
-  @media print { body { padding: 0; } .slip { zoom: 1; } }
+  /* scale 0.95: .slip đúng bằng khổ trang + margin:0 -> viền nằm ngay mép giấy, rơi vào
+     vùng không in được (unprintable margin) của máy in nên mất viền trên/trái (lỗi thật
+     2026-07-31 ở /print-station, cùng cơ chế in nên áp luôn ở đây). Co vào tâm để chừa
+     đều 4 cạnh mà không phải sửa toạ độ tuyệt đối bên trong. */
+  @media print { body { padding: 0; } .slip { zoom: 1; transform: scale(0.95); transform-origin: center center; } }
 </style>
 </head>
 <body>
