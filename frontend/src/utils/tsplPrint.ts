@@ -39,7 +39,9 @@ export async function printTsplViaBrowser(tspl: string, win: Window): Promise<vo
     const sizeMm = dotToMm(parseInt(cellWidth, 10) * 20);
     let dataUrl = '';
     try {
-      dataUrl = await QRCode.toDataURL(content, { width: 240, margin: 0 });
+      // 240 -> 960 (2026-07-31): nguồn dư độ phân giải để lúc in luôn là THU NHỎ. Nguồn nhỏ
+      // bị phóng to khi in làm cạnh module QR nhoè xám, máy in nhiệt dither ra lấm tấm/mờ.
+      dataUrl = await QRCode.toDataURL(content, { width: 960, margin: 0 });
     } catch (err) {
       console.error('QR render failed for browser print', err);
     }
@@ -55,11 +57,15 @@ export async function printTsplViaBrowser(tspl: string, win: Window): Promise<vo
 <title>Tem ${widthMm}x${heightMm}mm</title>
 <style>
   * { box-sizing: border-box; }
+  /* print-color-adjust:exact — không cho trình duyệt làm nhạt màu khi in; máy in tem là máy
+     in NHIỆT chỉ có đen/trắng, mọi sắc xám đều bị dither thành lưới chấm thưa -> nhìn mờ. */
+  html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: Arial, sans-serif; margin: 0; padding: 6mm; color: #000; display: flex; justify-content: center; }
   /* Tem thật khá bé trên màn hình to — phóng to riêng cho màn hình (zoom, không phải
-     transform, để layout giãn ra đúng), lúc in luôn trả về kích thước gốc 1:1. */
-  .slip { position: relative; width: ${widthMm}mm; height: ${heightMm}mm; border: 1.2mm solid #000; zoom: 2.6; }
-  .t { position: absolute; white-space: nowrap; line-height: 1; }
+     transform, để layout giãn ra đúng), lúc in luôn trả về kích thước gốc 1:1.
+     border 1.2 -> 0.5mm = 4 dot ở 203dpi (tròn dot -> nét đen đặc, không nhoè). */
+  .slip { position: relative; width: ${widthMm}mm; height: ${heightMm}mm; border: 0.5mm solid #000; zoom: 2.6; }
+  .t { position: absolute; white-space: nowrap; line-height: 1; font-weight: 600; }
   .q { position: absolute; }
   /* Không khai báo @page thì trình duyệt in theo khổ giấy mặc định của driver máy in
      (thường A4/Letter) — .slip vẫn đúng kích thước thật nhưng chỉ chiếm 1 góc nhỏ giữa
@@ -67,11 +73,9 @@ export async function printTsplViaBrowser(tspl: string, win: Window): Promise<vo
      tem in ra ở /print-station dùng chung cơ chế này). Khai báo khổ trang = đúng khổ tem
      để Chrome/Edge tự yêu cầu đổi khổ giấy khi in. */
   @page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }
-  /* scale 0.95: .slip đúng bằng khổ trang + margin:0 -> viền nằm ngay mép giấy, rơi vào
-     vùng không in được (unprintable margin) của máy in nên mất viền trên/trái (lỗi thật
-     2026-07-31 ở /print-station, cùng cơ chế in nên áp luôn ở đây). Co vào tâm để chừa
-     đều 4 cạnh mà không phải sửa toạ độ tuyệt đối bên trong. */
-  @media print { body { padding: 0; } .slip { zoom: 1; transform: scale(0.95); transform-origin: center center; } }
+  /* KHÔNG scale khi in: scale nhân vào cả độ dày nét, làm nét lẻ dot (0.25mm=2dot -> 1.9dot)
+     và rasterize ra đường ĐỨT QUÃNG — lỗi thật ghi nhận 2026-07-31 ở /print-station. */
+  @media print { body { padding: 0; } .slip { zoom: 1; } }
 </style>
 </head>
 <body>

@@ -699,10 +699,14 @@ async function printDispatchViaBrowser(
   let dyeQrDataUrl = '';
   let chemQrDataUrl = '';
   let modeQrDataUrl = '';
+  // width 240/200 -> 960/800 (2026-07-31, tem in ra mờ): QR in ở ~20mm trên máy 203dpi tức
+  // ~160 dot, nhưng trình duyệt render trang in ở DPI cao hơn màn hình nhiều; ảnh nguồn 240px
+  // phải phóng lên khi in -> cạnh module QR nhoè xám -> máy in nhiệt dither thành lấm tấm.
+  // Cho nguồn dư độ phân giải để lúc in luôn là THU NHỎ (nội suy mượt, nét đen giữ đặc).
   try {
-    dyeQrDataUrl = await QRCode.toDataURL(dyeQrText, { width: 240, margin: 0 });
-    chemQrDataUrl = await QRCode.toDataURL(chemQrText, { width: 240, margin: 0 });
-    modeQrDataUrl = await QRCode.toDataURL(modeQrText, { width: 200, margin: 0 });
+    dyeQrDataUrl = await QRCode.toDataURL(dyeQrText, { width: 960, margin: 0 });
+    chemQrDataUrl = await QRCode.toDataURL(chemQrText, { width: 960, margin: 0 });
+    modeQrDataUrl = await QRCode.toDataURL(modeQrText, { width: 800, margin: 0 });
   } catch (err) {
     console.error('Failed to render QR for browser print:', err);
   }
@@ -714,7 +718,19 @@ async function printDispatchViaBrowser(
   // dùng ĐỦ chiều rộng 0-560 dot (trước đó có lề dư 5.25mm/5.375mm trái/phải không có
   // trên tem thật), ô Màu+Mã hàng gộp 1 khung không đường kẻ giữa, QR to hơn.
   const DOT = 8;
-  const mmD = (dot: number) => dot / DOT;
+  // FIT/MARGIN — thu bản vẽ NGAY TỪ LÚC TÍNH TOẠ ĐỘ, thay cho `transform: scale()` (đã gỡ ở
+  // mục 55 vì làm đứt nét) và thay cho việc để trình duyệt tự co trang.
+  // Người dùng xác nhận 2026-07-31: "trước đó căn chưa chuẩn nhưng tem nào cũng NÉT, giờ in
+  // chuẩn vị trí rồi thì bị mờ" -> đúng thủ phạm là @page size = ĐÚNG khổ giấy (mục 42):
+  // vùng in được của máy in luôn NHỎ HƠN khổ giấy, nên Chrome phải co cả trang cho vừa
+  // (fit to printable area) -> mọi nét bị nhân với hệ số lẻ -> lẻ dot -> răng cưa/mờ.
+  // Cách xử lý: tự thu nội dung xuống dưới vùng in được + chừa lề, để trình duyệt KHÔNG
+  // phải co thêm lần nữa. Khác biệt then chốt so với transform: ở đây chỉ TOẠ ĐỘ bị nhân
+  // hệ số, còn ĐỘ DÀY nét và CỠ CHỮ vẫn khai báo bằng mm nguyên (0.375mm = đúng 3 dot) nên
+  // nét vẫn tròn dot, in ra liền mạch.
+  const FIT = 0.955;      // 70mm -> 66.85mm, 100mm -> 95.5mm
+  const MARGIN_MM = 1.6;  // lề chừa quanh tem (mm)
+  const mmD = (dot: number) => (dot / DOT) * FIT;
   function boxDot(x1: number, y1: number, x2: number, y2: number, innerHtml: string, noBorder = false, extraClass = ''): string {
     return box(mmD(x1), mmD(y1), mmD(x2 - x1), mmD(y2 - y1), innerHtml, noBorder, extraClass);
   }
@@ -763,6 +779,10 @@ async function printDispatchViaBrowser(
 <title>Tem ${b.legacy_batch_id || ''}</title>
 <style>
   * { box-sizing: border-box; }
+  /* print-color-adjust:exact — chặn trình duyệt "tối ưu" màu khi in (làm nét đen bị nhạt
+     đi thành xám). Máy in tem là máy in NHIỆT: chỉ có đen/trắng, mọi sắc xám đều bị dithering
+     thành lưới chấm thưa -> nhìn mờ. Toàn bộ tem vì thế phải là #000 đặc, không xám. */
+  html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: Arial, sans-serif; margin: 0; padding: 6mm; color: #000; display: flex; flex-direction: column; align-items: center; }
   /* Tem thật chỉ 70x100mm nên trên màn hình to sẽ trông rất bé — phóng to riêng cho
      màn hình (zoom, không phải transform, để layout giãn ra đúng) để xem cho rõ, còn
@@ -773,20 +793,47 @@ async function printDispatchViaBrowser(
      đường ~0.6mm, có cảm giác "đè" vào chữ do padding chỉ 0.4-0.8mm không đủ giãn cách
      (người dùng phản ánh 2026-07-30, có ảnh chụp tem in ra thật). Giảm đều độ dày +
      tăng padding cho thoáng hơn, không đổi bố cục/tọa độ.
+     2026-07-31 (tem in ra MỜ): độ dày viền phải là bội số của 1 dot = 0.125mm ở máy in tem
+     203dpi. Bản trước 0.15mm/0.2mm = 1.2/1.6 dot -> không tròn dot, trình duyệt khử răng cưa
+     thành nét XÁM, máy in nhiệt (chỉ có đen/trắng) lại dither nét xám thành lưới chấm thưa
+     -> nhìn mờ/đứt nét. Nâng về 0.25mm (2 dot) và 0.5mm (4 dot) cho nét đen đặc. Vẫn mỏng
+     hơn hẳn bản gốc 0.3/1.2mm nên KHÔNG quay lại lỗi "viền to đè chữ" của mục 44 (padding
+     giữ nguyên 0.5/0.9mm).
+     2026-07-31 lần 2 (ảnh tem thật: CHỮ đen đặc sắc nét, chỉ ĐƯỜNG KẺ bị răng cưa/lượn sóng):
+     2 dot vẫn quá mảnh để sống sót qua chuỗi render trang in -> driver máy in nhiệt. Driver
+     TSC nhận ảnh raster ở DPI cao rồi hạ về 203dpi bằng dither: nét mảnh chỉ cần lệch nửa dot
+     là bị chuyển thành chuỗi chấm so le (đúng hình răng cưa trong ảnh), trong khi chữ có nét
+     dày + font hinting nên vẫn ra đen đặc. Nâng đường kẻ lên 0.375mm = ĐÚNG 3 dot: đủ dày để
+     phần lõi luôn đen tuyệt đối kể cả khi 2 cạnh bị khử răng cưa. Vẫn mỏng hơn bản gốc 1.2mm
+     và padding giữ nguyên nên không tái diễn lỗi "viền đè chữ" của mục 44.
   */
-  .slip { position: relative; width: 70mm; height: 100mm; border: 0.4mm solid #000; zoom: 2.6; }
-  .box { position: absolute; border: 0.2mm solid #000; overflow: visible; padding: 0.5mm 0.9mm; white-space: nowrap; }
+  /* Kích thước .slip suy ra từ chính mmD() (đã nhân FIT) + margin chừa lề — KHÔNG hard-code
+     70x100mm nữa, để bản vẽ luôn nhỏ hơn vùng in được và trình duyệt không phải co trang. */
+  .slip { position: relative; width: ${mmD(560)}mm; height: ${mmD(800)}mm; margin: ${MARGIN_MM}mm; border: 0.5mm solid #000; zoom: 2.6; }
+  /* padding ngang 0.9 -> 0.6mm: bản vẽ đã thu 4.5% nên ô hẹp lại, giữ 0.9mm sẽ làm mã dài
+     6 ký tự (Y1019A/R2064G) chạm mép ô. Padding dọc giữ 0.5mm (chiều cao hàng vẫn dư). */
+  .box { position: absolute; border: 0.375mm solid #000; overflow: visible; padding: 0.5mm 0.6mm; white-space: nowrap; }
   .box.noborder { border: none; }
-  .gridcell { position: absolute; border: 0.15mm solid #000; }
-  .label-sm { font-size: 2.3mm; white-space: nowrap; }
+  .gridcell { position: absolute; border: 0.375mm solid #000; }
+  /* Cỡ chữ nhỏ tăng đồng loạt (2026-07-31, ảnh tem thật: chữ/số trong bảng nhoè không đọc
+     được, trong khi chữ to JIT3/LEP70158 vẫn sắc). Ở máy in nhiệt 203dpi, chữ 2.2mm chỉ cao
+     ~17 dot và nét đứng của Arial mảnh hơn 1 dot -> driver dither ra lấm tấm, mất nét. Nét
+     chữ chỉ ổn định khi dày >= 2 dot, tức cỡ chữ phải >= ~2.6mm ở font-weight 700.
+     Chiều cao hàng bảng là 41 dot = 5.125mm, trừ padding 0.5mm x2 còn 4.1mm nên 2.6mm vẫn
+     dư chỗ — KHÔNG phải nới lại bố cục/toạ độ đã khớp tem thật. */
+  .label-sm { font-size: 2.6mm; font-weight: 700; white-space: nowrap; }
   .big { font-size: 3.2mm; font-weight: 700; line-height: 1; white-space: nowrap; }
   .big.code-line { display: block; margin-top: 1.2mm; }
   .zone { font-size: 5.5mm; font-weight: 700; line-height: 1; text-align: center; white-space: nowrap; display: block; width: 100%; }
-  .med { font-size: 2.6mm; white-space: nowrap; }
-  .cellval { font-size: 2.2mm; }
+  .med { font-size: 2.9mm; font-weight: 700; white-space: nowrap; }
+  .cellval { font-size: 2.6mm; font-weight: 700; }
   .cellval-right { display: block; text-align: right; }
-  .title { font-size: 2.4mm; font-weight: 700; }
+  .title { font-size: 2.6mm; font-weight: 700; }
   .qr-block { position: absolute; text-align: center; }
+  /* KHÔNG dùng image-rendering:pixelated cho QR: ảnh QR đang bị THU NHỎ (nguồn px > kích
+     thước in), pixelated lúc downscale sẽ vứt pixel không đều làm méo module QR -> máy quét
+     dễ đọc sai. Cách xử lý đúng cho độ nét là tăng độ phân giải NGUỒN khi sinh QR (xem
+     QRCode.toDataURL bên dưới) rồi để trình duyệt nội suy. */
   .qr-block img { width: 100%; height: 100%; object-fit: contain; }
   .qr-block-inline { display: flex; align-items: flex-start; justify-content: center; height: 100%; }
   .qr-block-inline img { width: 12.5mm; height: 12.5mm; }
@@ -803,22 +850,22 @@ async function printDispatchViaBrowser(
      nhưng chỉ chiếm 1 góc nhỏ giữa tờ giấy to, nhìn như "tem bé xíu" dù kích thước tuyệt
      đối đã đúng. Khai báo khổ trang = đúng khổ tem để Chrome/Edge tự yêu cầu đổi khổ giấy
      khi in (bug thật 2026-07-30, ảnh chụp tem in ra chỉ chiếm góc trên tờ giấy lớn).
-     margin:0 để không cộng thêm lề trắng ngoài viền .slip. */
+     margin:0 để không cộng thêm lề trắng ngoài viền .slip — lề thật do chính .slip tự chừa
+     (MARGIN_MM), như vậy bản vẽ luôn nhỏ hơn vùng in được và trình duyệt không co trang. */
   @page {
     size: 70mm 100mm;
     margin: 0;
   }
   @media print {
     body { padding: 0; display: block; }
-    /* .slip đúng bằng khổ trang 70x100mm + @page margin:0 -> viền ngoài nằm ĐÚNG mép giấy,
-       rơi trọn vào vùng không in được (unprintable margin) của máy in nên mất viền trên +
-       trái (người dùng phản ánh 2026-07-31, mọi máy in đều có vùng này, không chỉnh được
-       bằng driver). Thu toàn bộ tem còn 95% và co vào TÂM (transform-origin:center) —
-       chừa đều ~1.75mm ngang / 2.5mm dọc quanh 4 cạnh mà KHÔNG phải sửa lại toạ độ tuyệt
-       đối bên trong (tất cả ô/lưới/QR scale theo cùng tỉ lệ, bố cục giữ nguyên tỉ lệ gốc).
-       Dùng transform chứ không phải zoom: zoom sẽ tính lại layout (đẩy .slip lệch), còn
-       transform chỉ vẽ lại nên tâm giữ nguyên đúng tâm trang. */
-    .slip { zoom: 1; transform: scale(0.95); transform-origin: center center; }
+    /* KHÔNG dùng transform: scale() ở đây. Bản 2026-07-31 từng thêm scale(0.95) để chừa lề
+       (tránh mất viền trên/trái) nhưng gây lỗi NẶNG hơn: người dùng báo "đường thẳng in ra
+       bị đứt đứt". Lý do: scale nhân vào cả ĐỘ DÀY nét — viền 0.25mm (đúng 2 dot ở 203dpi)
+       thành 0.2375mm = 1.9 dot, không tròn dot; khi rasterize, mỗi đoạn dọc theo đường bị
+       làm tròn khi 1 dot khi 2 dot -> nét đứt quãng. Giữ tỉ lệ 1:1 để mọi nét khai báo theo
+       mm luôn tròn dot và in ra liền mạch. Việc chừa lề mép giấy phải xử lý bằng cách khác
+       (dịch/chỉnh máy in), KHÔNG bằng scale. */
+    .slip { zoom: 1; }
     .footnote { display: none; }
   }
 </style>
@@ -1007,7 +1054,9 @@ async function printMaterialLabelViaBrowser(l: any, win: Window) {
   const qrToken = `DF:MATERIAL_LABEL:${l.id}`;
   let qrDataUrl = '';
   try {
-    qrDataUrl = await QRCode.toDataURL(qrToken, { width: 240, margin: 0 });
+    // 240 -> 960: cùng lý do như QR tem dispatch — nguồn dư độ phân giải để lúc in là thu
+    // nhỏ (nét đen đặc) chứ không phải phóng to (cạnh nhoè xám, in nhiệt ra lấm tấm).
+    qrDataUrl = await QRCode.toDataURL(qrToken, { width: 960, margin: 0 });
   } catch (err) {
     console.error('Failed to render QR for material label print:', err);
   }
@@ -1019,19 +1068,22 @@ async function printMaterialLabelViaBrowser(l: any, win: Window) {
 <title>Tem ${l.batch?.legacy_batch_id || ''}</title>
 <style>
   * { box-sizing: border-box; }
+  html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: Arial, sans-serif; margin: 0; padding: 6mm; color: #000; display: flex; justify-content: center; }
-  .slip { width: 80mm; height: 50mm; border: 0.3mm solid #000; zoom: 2.6; display: flex; align-items: center; gap: 4mm; padding: 3mm; }
+  /* border 0.3 -> 0.25mm = đúng 2 dot ở 203dpi (nét tròn dot -> đen đặc, không bị khử răng
+     cưa thành xám rồi dither ra mờ). Chữ tăng độ đậm cùng lý do như tem dispatch. */
+  .slip { width: 80mm; height: 50mm; border: 0.25mm solid #000; zoom: 2.6; display: flex; align-items: center; gap: 4mm; padding: 3mm; }
   .qr { width: 26mm; height: 26mm; flex-shrink: 0; }
   .qr img { width: 100%; height: 100%; }
-  .info { font-size: 3mm; line-height: 1.5; }
-  .info strong { font-size: 3.4mm; }
+  .info { font-size: 3mm; line-height: 1.5; font-weight: 600; }
+  .info strong { font-size: 3.4mm; font-weight: 700; }
   /* Cùng lý do đã sửa ở printDispatchViaBrowser — không khai báo @page thì in theo khổ
      giấy mặc định của driver máy in, tem đúng kích cỡ thật nhưng chỉ chiếm 1 góc tờ giấy
      to hơn nhiều, nhìn như bé xíu. */
   @page { size: 80mm 50mm; margin: 0; }
-  /* scale 0.95 — cùng lý do như tem dispatch: viền sát mép giấy rơi vào vùng không in
-     được của máy in, mất viền trên/trái (xem chú thích @media print ở printDispatchViaBrowser). */
-  @media print { body { padding: 0; } .slip { zoom: 1; transform: scale(0.95); transform-origin: center center; } }
+  /* Không scale khi in — scale làm độ dày nét lẻ dot khiến đường thẳng in ra đứt quãng
+     (xem chú thích @media print ở printDispatchViaBrowser). */
+  @media print { body { padding: 0; } .slip { zoom: 1; } }
 </style>
 </head>
 <body>
