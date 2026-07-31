@@ -58,15 +58,22 @@ export async function printTsplViaBrowser(tspl: string, win: Window): Promise<vo
 <style>
   * { box-sizing: border-box; }
   /* print-color-adjust:exact — không cho trình duyệt làm nhạt màu khi in; máy in tem là máy
-     in NHIỆT chỉ có đen/trắng, mọi sắc xám đều bị dither thành lưới chấm thưa -> nhìn mờ. */
-  html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+     in NHIỆT chỉ có đen/trắng, mọi sắc xám đều bị dither thành lưới chấm thưa -> nhìn mờ.
+     Tắt khử răng cưa (anti-aliasing) để ép chữ/viền ra màu đen ĐẶC tuyệt đối 100%. */
+  html, body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeSpeed;
+  }
   body { font-family: Arial, sans-serif; margin: 0; padding: 6mm; color: #000; display: flex; justify-content: center; }
   /* Tem thật khá bé trên màn hình to — phóng to riêng cho màn hình (zoom, không phải
      transform, để layout giãn ra đúng), lúc in luôn trả về kích thước gốc 1:1.
-     border 1.2 -> 0.5mm = 4 dot ở 203dpi (tròn dot -> nét đen đặc, không nhoè). */
-  .slip { position: relative; width: ${widthMm}mm; height: ${heightMm}mm; border: 0.5mm solid #000; zoom: 2.6; }
-  .t { position: absolute; white-space: nowrap; line-height: 1; font-weight: 600; }
-  .q { position: absolute; }
+     border 0.25mm = ĐÚNG 2 dot ở 203dpi (tròn dot -> nét đen đặc, không dither/nhoè). */
+  .slip { position: relative; width: ${widthMm}mm; height: ${heightMm}mm; border: 0.25mm solid #000; zoom: 2.6; }
+  .t { position: absolute; white-space: nowrap; line-height: 1; font-weight: 700; letter-spacing: -0.1px; }
+  .q { position: absolute; image-rendering: pixelated; }
   /* Không khai báo @page thì trình duyệt in theo khổ giấy mặc định của driver máy in
      (thường A4/Letter) — .slip vẫn đúng kích thước thật nhưng chỉ chiếm 1 góc nhỏ giữa
      tờ giấy to hơn nhiều, nhìn như "tem bé xíu" (bug thật 2026-07-30, phát hiện qua ảnh
