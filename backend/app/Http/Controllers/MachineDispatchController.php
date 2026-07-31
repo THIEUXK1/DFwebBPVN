@@ -309,6 +309,30 @@ class MachineDispatchController extends Controller
     }
 
     /**
+     * "Đã từng in" (yêu cầu 2026-07-30) — CHỈ đổi 1 cờ hiển thị để hàng chờ ở
+     * /print-station chuyển nền từ đỏ (chưa từng in) sang bình thường ngay sau lần đầu
+     * bấm "⚡ In nhanh"/"🖥️ In qua trình duyệt", KHÔNG phải xác nhận đơn (queue_state vẫn
+     * giữ nguyên, đơn vẫn nằm trong hàng chờ, chỉ "✅ OK" mới thật sự CONFIRMED). Không ghi
+     * Audit Log — không đổi routing/QR/PrintJob thật, chỉ là cờ bookkeeping hiển thị.
+     */
+    public function markEverPrinted(Request $request, $id)
+    {
+        $request->validate([
+            'ever_printed' => 'required|boolean',
+        ]);
+
+        $dispatch = MachineDispatch::find($id);
+        if (!$dispatch) {
+            return response()->json(['status' => 'ERROR', 'message' => 'DISPATCH_NOT_FOUND'], 404);
+        }
+
+        $dispatch->ever_printed = $request->boolean('ever_printed');
+        $dispatch->save();
+
+        return response()->json(['status' => 'SUCCESS', 'data' => $dispatch]);
+    }
+
+    /**
      * In lại tem cho 1 đơn ĐÃ in (yêu cầu 2026-07-18: tier B/C lịch sử in phải phân
      * biệt được lần in đầu và lần in lại + lý do). Không tính lại routing/QR — dùng
      * đúng QrPayload đã sinh lần đầu.
@@ -320,12 +344,16 @@ class MachineDispatchController extends Controller
             'workstation_id' => 'sometimes|string',
             'printer_address' => 'sometimes|string',
             'printer_type' => 'sometimes|string|in:USB,LAN',
+            // Cùng lý do như ở confirm(): tem đã in xong qua hộp thoại trình duyệt rồi,
+            // job chỉ để lưu vết + Audit Log — để status PENDING thì Local Agent sẽ lấy
+            // và in trùng lần nữa xuống máy in vật lý.
+            'printed_via_browser' => 'sometimes|boolean',
         ]);
 
         try {
             $job = app(\App\Services\ConfirmDispatchService::class)->reprint(
                 $id,
-                $request->only(['workstation_id', 'printer_address', 'printer_type', 'reason'])
+                $request->only(['workstation_id', 'printer_address', 'printer_type', 'reason', 'printed_via_browser'])
             );
 
             return response()->json([

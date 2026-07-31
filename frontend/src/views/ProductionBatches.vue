@@ -171,12 +171,12 @@
       </p>
     </section>
 
-    <!-- 10 bản gần nhất — xem nhanh không cần rời trang quét; đầy đủ + lọc/duyệt ở
+    <!-- 30 bản gần nhất — xem nhanh không cần rời trang quét; đầy đủ + lọc/duyệt ở
          /production-batches/list. Dùng chung nguồn `batches` đã fetch cho CHECK trùng
-         (đã sắp created_at desc từ backend, chỉ cần cắt 10 dòng đầu). -->
+         (đã sắp created_at desc từ backend, chỉ cần cắt N dòng đầu — RECENT_BATCH_LIMIT). -->
     <section class="section card-sec recent-batches-panel">
       <div class="recent-header">
-        <h3>🕘 10 lô gần nhất</h3>
+        <h3>🕘 {{ RECENT_BATCH_LIMIT }} lô gần nhất</h3>
         <router-link to="/production-batches/list" class="text-muted font-sm">Xem đầy đủ →</router-link>
       </div>
       <div class="table-container-fixed mt-3">
@@ -380,10 +380,14 @@ import { parseRackLines } from '../utils/rackParser';
 import echo from '../services/echo';
 
 // Danh sách lô gần đây — dùng làm nguồn cho CHECK trùng màu/mã hàng trước khi SAVE
-// (checkDuplicateOrder) VÀ hiển thị nhanh 10 dòng mới nhất cuối trang (recentBatches).
+// (checkDuplicateOrder) VÀ hiển thị nhanh N dòng mới nhất cuối trang (recentBatches).
 // Bảng đầy đủ (lọc/duyệt) vẫn ở /production-batches/list.
+// 10 -> 30 (yêu cầu 2026-07-31): lô đã in xong ở /print-station bị các lô mới quét sau đó
+// đẩy khỏi top 10 quá nhanh, người vận hành không tra lại được. Phải truyền per_page=30
+// cho API (mặc định backend chỉ trả 15/trang) chứ không chỉ nới slice ở client.
+const RECENT_BATCH_LIMIT = 30;
 const batches = ref<any[]>([]);
-const recentBatches = computed(() => batches.value.slice(0, 10));
+const recentBatches = computed(() => batches.value.slice(0, RECENT_BATCH_LIMIT));
 
 // Modal "Chi tiết Lô sản xuất" — giống hệt /production-batches/list, xem DYE/CHEM +
 // duyệt ngay không cần rời trang quét (yêu cầu 2026-07-24).
@@ -419,7 +423,7 @@ const getProgressPercent = (status: string) => {
   return mapping[status] || 0;
 };
 
-// Chọn nhanh Thùng trộn + Duyệt ngay trong bảng "10 lô gần nhất" — cùng cơ chế với
+// Chọn nhanh Thùng trộn + Duyệt ngay trong bảng "lô gần nhất" — cùng cơ chế với
 // /production-batches/list (duyệt giờ bắt buộc có thùng, xem ApproveProductionOrderService).
 const editingTankBatchId = ref<string | null>(null);
 const approvingRecentId = ref<string | null>(null);
@@ -709,7 +713,9 @@ onUnmounted(() => {
 
 const fetchBatches = async () => {
   try {
-    const response = await axios.get('/api/production-batches');
+    const response = await axios.get('/api/production-batches', {
+      params: { per_page: RECENT_BATCH_LIMIT },
+    });
     batches.value = response.data.data;
   } catch (error) {
     console.error('Error fetching batches:', error);
@@ -944,7 +950,7 @@ const formatRecentDate = (dateStr: string) => {
   }
 }
 
-/* 10 lô gần nhất */
+/* Bảng lô gần nhất */
 .recent-header {
   display: flex;
   justify-content: space-between;

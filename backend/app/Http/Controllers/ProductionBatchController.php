@@ -117,7 +117,13 @@ class ProductionBatchController extends Controller
             });
         }
 
-        $batches = $query->orderBy('created_at', 'desc')->paginate(15);
+        // per_page tùy chọn — mặc định giữ nguyên 15 để không đổi hành vi phân trang của
+        // /production-batches/list và các màn hình khác đang dùng chung endpoint này.
+        // Chỉ trang quét đơn (/production-batches) truyền per_page=30 cho bảng "30 lô gần
+        // nhất" (yêu cầu 2026-07-31). Chặn trần 100 để không ai vô tình kéo cả bảng.
+        $perPage = min((int) $request->input('per_page', 15) ?: 15, 100);
+
+        $batches = $query->orderBy('created_at', 'desc')->paginate($perPage);
         return response()->json($batches);
     }
 

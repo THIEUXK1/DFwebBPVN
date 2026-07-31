@@ -85,6 +85,7 @@ Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
     Route::post('/machine-dispatches/{id}/release', [MachineDispatchController::class, 'release']);
     Route::post('/machine-dispatches/{id}/send', [MachineDispatchController::class, 'send']);
     Route::post('/machine-dispatches/{id}/confirm', [MachineDispatchController::class, 'confirm']);
+    Route::patch('/machine-dispatches/{id}/ever-printed', [MachineDispatchController::class, 'markEverPrinted']);
     Route::post('/machine-dispatches/{id}/reprint', [MachineDispatchController::class, 'reprint']);
     Route::get('/machine-dispatches/{id}/preview', [MachineDispatchController::class, 'previewPayload']);
     Route::post('/print-jobs/{id}/cancel', [PrintJobController::class, 'cancel']);

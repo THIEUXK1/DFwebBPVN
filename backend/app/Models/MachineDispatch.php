@@ -45,6 +45,7 @@ class MachineDispatch extends Model
         'originating_station_code',
         'locked_by',
         'locked_at',
+        'ever_printed',
     ];
 
     protected $casts = [
@@ -55,6 +56,7 @@ class MachineDispatch extends Model
         'scale_checked' => 'boolean',
         'locked_at' => 'datetime',
         'created_at' => 'datetime',
+        'ever_printed' => 'boolean',
     ];
 
     public function batch()

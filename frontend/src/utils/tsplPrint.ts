@@ -73,7 +73,13 @@ export async function printTsplViaBrowser(tspl: string, win: Window): Promise<vo
 <body>
   <div class="slip">${bodyHtml}</div>
   <script>
-    window.onload = function () { window.print(); };
+    window.onload = function () {
+      // window.onafterprint không đóng được cửa sổ trong thực tế (xác nhận 2026-07-30) —
+      // window.print() CHẶN (blocking) tới khi hộp thoại in đóng trên Chrome/Edge, nên
+      // gọi window.close() ngay sau là đủ, không cần chờ sự kiện afterprint.
+      window.print();
+      window.close();
+    };
   <\/script>
 </body>
 </html>`;

@@ -67,12 +67,13 @@
                 <th>Thùng</th>
                 <th>Mực nước</th>
                 <th>Trạng thái</th>
+                <th title="Đã từng in ít nhất 1 lần chưa — tự tích khi bấm In nhanh/Xem trước, KHÔNG phải xác nhận xong">Đã từng in</th>
                 <th>Mã Lô</th>
                 <th class="actions-col">Thao tác</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="d in col" :key="d.id" :class="confirmedIds.has(d.id) ? 'row-printed' : 'row-not-printed'">
+              <tr v-for="d in col" :key="d.id" :class="(confirmedIds.has(d.id) || d.ever_printed) ? 'row-printed' : 'row-not-printed'">
                 <td>{{ d.batch?.color }}</td>
                 <td>{{ d.batch?.product_code }}</td>
                 <td><span class="machine-tag">{{ d.batch?.machine?.code || 'N/A' }}</span></td>
@@ -81,6 +82,14 @@
                 <td>
                   <span v-if="confirmedIds.has(d.id)" class="badge badge-green">Đã in</span>
                   <span v-else class="badge badge-red">Chưa in</span>
+                </td>
+                <td class="text-center">
+                  <input
+                    type="checkbox"
+                    :checked="!!d.ever_printed"
+                    @change="toggleEverPrinted(d, ($event.target as HTMLInputElement).checked)"
+                    title="Đã từng in tem này chưa (tick tay được nếu cần sửa lại)"
+                  />
                 </td>
                 <td class="highlight-code">{{ d.batch?.legacy_batch_id }}</td>
                 <td class="actions-cell actions-col">
@@ -109,7 +118,7 @@
                 </td>
               </tr>
               <tr v-if="!col.length">
-                <td colspan="8" class="text-muted text-center">Không có đơn nào ở cột này.</td>
+                <td colspan="9" class="text-muted text-center">Không có đơn nào ở cột này.</td>
               </tr>
             </tbody>
           </table>
@@ -124,8 +133,10 @@
     <section class="section card-sec print-history-panel mb-4" v-if="!label">
       <div class="queue-header">
         <h3>📋 Lịch sử đã in ({{ printHistory.length }})</h3>
-        <span class="text-muted font-sm">Các đơn đã bấm "✅ OK" ở hàng chờ trên.</span>
+        <span class="text-muted font-sm">Các đơn đã bấm "✅ OK" ở hàng chờ trên — vẫn in lại được, có ghi lý do.</span>
       </div>
+
+      <p v-if="historyError" class="text-error mt-2">❌ {{ historyError }}</p>
 
       <div class="table-container-fixed mt-3" v-if="printHistory.length">
         <table class="data-table">
@@ -137,7 +148,9 @@
               <th>Thùng</th>
               <th>Mã Lô</th>
               <th>Thời gian xác nhận</th>
+              <th>Số lần in</th>
               <th>Trạng thái</th>
+              <th class="actions-col">Thao tác</th>
             </tr>
           </thead>
           <tbody>
@@ -148,7 +161,18 @@
               <td>{{ d.batch?.tank?.code || '-' }}</td>
               <td class="highlight-code">{{ d.batch?.legacy_batch_id }}</td>
               <td>{{ formatTime(d.updated_at || d.created_at) }}</td>
+              <td class="text-center">{{ d.print_jobs?.length || 1 }}</td>
               <td><span class="badge badge-green">Đã in</span></td>
+              <td class="actions-cell actions-col">
+                <button
+                  @click="reprintFromHistory(d)"
+                  class="btn btn-secondary btn-sm"
+                  :disabled="reprintingHistoryId === d.id"
+                  title="In lại tem này — bắt buộc nhập lý do, có ghi Audit Log"
+                >
+                  {{ reprintingHistoryId === d.id ? 'Đang xử lý...' : '🖨️ In lại' }}
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -407,6 +431,20 @@ async function fetchPendingDispatches() {
   }
 }
 
+// "Đã từng in" — cờ riêng, KHÁC với "✅ OK" (CONFIRMED, chuyển xuống lịch sử). Chỉ đổi
+// nền hàng chờ từ đỏ sang bình thường để báo "đã in ít nhất 1 lần", đơn vẫn nằm nguyên
+// trong hàng chờ chờ xác nhận thật. Tự tích sau lần in đầu tiên (gọi từ
+// printDispatchViaBrowser); ô tick trong bảng vẫn cho tích/bỏ tích tay nếu cần sửa lại.
+async function toggleEverPrinted(dispatch: any, value: boolean) {
+  dispatch.ever_printed = value;
+  try {
+    await axios.patch(`/api/machine-dispatches/${dispatch.id}/ever-printed`, { ever_printed: value }, getRequestConfig());
+  } catch (err) {
+    console.error('Error updating ever_printed flag:', err);
+    dispatch.ever_printed = !value;
+  }
+}
+
 // Bảng lịch sử — đơn đã bấm "✅ OK" (CONFIRMED), tách khỏi hàng chờ (yêu cầu 2026-07-30:
 // in thoải mái không mất đơn khỏi hàng chờ, chỉ khi bấm OK mới rơi xuống đây). Lọc theo
 // đúng trạm đang đứng để không lẫn lịch sử của trạm khác; admin không đứng trạm nào thì
@@ -589,7 +627,14 @@ function calculateRoutingPreview(machineCode: string, tankCode: string, levelCod
 // LẪN nút "🖥️ In qua trình duyệt" trong modal xem trước (yêu cầu 2026-07-30: người dùng
 // muốn có lại đường tắt in nhanh nhưng vẫn dùng cơ chế trình duyệt, không quay lại
 // TSPL/Local Agent).
-async function printDispatchViaBrowser(d: any) {
+// existingWin: cửa sổ đã được caller mở SẴN (dùng cho luồng in lại từ bảng lịch sử — ở
+// đó phải mở cửa sổ trước khi hỏi lý do in lại, nếu mở sau prompt() thì có nguy cơ mất
+// "user gesture" và bị chặn popup). markEverPrinted=false cho đơn đã nằm ở lịch sử
+// (CONFIRMED rồi, cờ "đã từng in" của hàng chờ không còn ý nghĩa).
+async function printDispatchViaBrowser(
+  d: any,
+  opts: { existingWin?: Window | null; markEverPrinted?: boolean } = {}
+) {
   if (!d) return;
 
   // Mở cửa sổ NGAY (đồng bộ, trước mọi await) — Chrome/Edge chặn window.open() nếu gọi
@@ -597,11 +642,15 @@ async function printDispatchViaBrowser(d: any) {
   // nhanh" không hiện hộp thoại in ngay mà im lặng bị chặn hoặc phải bấm 2 lần (yêu cầu
   // 2026-07-30: "ấn vào đấy ra cái in của trình duyệt luôn"). Ghi HTML thật vào sau khi
   // QR (async) dựng xong.
-  const win = window.open('', '_blank', 'width=780,height=980');
+  const win = opts.existingWin ?? window.open('', '_blank', 'width=780,height=980');
   if (!win) {
     alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
     return;
   }
+
+  // Tự tích "Đã từng in" ngay khi thật sự mở được hộp thoại in (yêu cầu 2026-07-30) — đổi
+  // nền hàng chờ từ đỏ sang bình thường, KHÔNG phải xác nhận xong (chỉ "✅ OK" mới CONFIRMED).
+  if (opts.markEverPrinted !== false && !d.ever_printed) toggleEverPrinted(d, true);
 
   const b = d.batch || {};
   const dyeLines = parseRackLines(b.raw_qr_dye);
@@ -739,16 +788,14 @@ async function printDispatchViaBrowser(d: any) {
   .title { font-size: 2.4mm; font-weight: 700; }
   .qr-block { position: absolute; text-align: center; }
   .qr-block img { width: 100%; height: 100%; object-fit: contain; }
-  .qr-block-inline { display: flex; align-items: center; justify-content: center; height: 100%; }
-  .qr-block-inline img { width: 13.2mm; height: 13.2mm; }
-  /* QR góc trên bên phải (chế độ PROCESS/EXTRA/FB) — người dùng muốn to hơn (2026-07-30).
-     Ô này chỉ chứa ảnh QR (không có chữ) nên bỏ padding chuẩn của .box (0.5mm/0.9mm, dành
-     cho chữ) xuống mức tối thiểu để ảnh chiếm gần hết chiều cao thật của ô (14mm trừ viền/
-     đệm còn ~13.3mm) — ĐÂY LÀ GIỚI HẠN VẬT LÝ của hàng tiêu đề hiện tại (hàng dưới bắt đầu
-     ngay sau, gần như không có khe hở). Muốn to hơn nữa phải nới cao cả hàng tiêu đề, kéo
-     theo phải dịch 2 ô "Thùng"/"Mực nước" của hàng dưới (cùng cột X với QR) xuống theo —
-     chưa làm vì đụng tới vị trí nhiều ô khác, cần xác nhận trước khi đổi bố cục. */
-  .box.mode-qr-cell { padding: 0.15mm; }
+  .qr-block-inline { display: flex; align-items: flex-start; justify-content: center; height: 100%; }
+  .qr-block-inline img { width: 12.5mm; height: 12.5mm; }
+  /* QR góc trên bên phải (chế độ PROCESS/EXTRA/FB) — to hơn theo yêu cầu 2026-07-30, nhưng
+     bản trước (13.2mm, padding đều 0.15mm) gần như dán sát viền TRÊN của tem (chỉ còn
+     ~0.35mm kể cả viền), in ra không còn thấy viền. Người dùng yêu cầu lùi xuống + co nhỏ
+     lại còn ~95%: đổi align-items sang flex-start (neo trên, không canh giữa) + padding
+     TRÊN riêng dày hơn hẳn 3 cạnh còn lại để đẩy ảnh xuống, chừa khe hở rõ với viền trên. */
+  .box.mode-qr-cell { padding: 0.9mm 0.15mm 0.15mm 0.15mm; }
   .placeholder { color: #999; font-style: italic; }
   .footnote { margin-top: 3mm; font-size: 2.3mm; color: #666; }
   /* KHÔNG có @page thì trình duyệt in theo khổ giấy mặc định đang chọn sẵn trong driver
@@ -802,7 +849,16 @@ async function printDispatchViaBrowser(d: any) {
   </p>
 
   <script>
-    window.onload = function () { window.print(); };
+    window.onload = function () {
+      // In xong (bấm In hoặc Hủy trong hộp thoại) thì tự đóng luôn cửa sổ này. Dùng
+      // window.onafterprint không ăn thua trong thực tế (người dùng xác nhận cửa sổ vẫn
+      // còn "about:blank" sau khi in, 2026-07-30) — chuyển sang cách chắc chắn hơn:
+      // window.print() CHẶN (blocking) tới khi hộp thoại in đóng lại trên Chrome/Edge
+      // (2 trình duyệt Windows thực tế đang dùng), nên gọi window.close() ngay dòng kế
+      // tiếp là chạy SAU khi người dùng đã bấm In/Hủy, không cần chờ sự kiện afterprint.
+      window.print();
+      window.close();
+    };
   <\/script>
 </body>
 </html>`;
@@ -823,6 +879,49 @@ async function printPreviewViaBrowser() {
 // người vận hành tin tưởng dữ liệu đúng và muốn in ngay không cần xem lại.
 async function quickPrintViaBrowser(dispatch: any) {
   await printDispatchViaBrowser(dispatch);
+}
+
+// "🖨️ In lại" ở bảng LỊCH SỬ (đơn đã bấm "✅ OK", queue_state=CONFIRMED) — khác hẳn "⚡ In
+// nhanh" ở hàng chờ: in lại tem đã xác nhận xong là hành động NHẠY CẢM, bắt buộc ghi Audit
+// Log kèm lý do theo CLAUDE.md mục 5 ("In lại tem (Reprint) ... phải ghi Audit Log bất
+// biến"). Gọi endpoint reprint sẵn có (tái dùng đúng QrPayload đã sinh lần đầu, ghi
+// PRINT_JOB_REPRINTED + REPRINT_REQUESTED), kèm printed_via_browser để job không rơi vào
+// hàng chờ Local Agent gây in trùng.
+const reprintingHistoryId = ref<string | null>(null);
+const historyError = ref('');
+
+async function reprintFromHistory(dispatch: any) {
+  historyError.value = '';
+
+  // Mở cửa sổ TRƯỚC khi hỏi lý do: prompt() chặn khá lâu (người dùng gõ), nếu mở sau thì
+  // "transient user activation" của cú click có thể đã hết hạn -> trình duyệt chặn popup.
+  const win = window.open('', '_blank', 'width=780,height=980');
+  if (!win) {
+    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    return;
+  }
+
+  const reason = prompt('Lý do in lại tem (bắt buộc, ví dụ: tem bị rách/mất/mờ):');
+  if (!reason || reason.trim().length < 3) {
+    win.close();
+    if (reason !== null) historyError.value = 'Cần nhập lý do in lại (tối thiểu 3 ký tự).';
+    return;
+  }
+
+  reprintingHistoryId.value = dispatch.id;
+  try {
+    await printDispatchViaBrowser(dispatch, { existingWin: win, markEverPrinted: false });
+    await axios.post(`/api/machine-dispatches/${dispatch.id}/reprint`, {
+      reason: reason.trim(),
+      workstation_id: currentWorkstation.value?.code || undefined,
+      printed_via_browser: true,
+    }, getRequestConfig());
+    await fetchHistory();
+  } catch (err: any) {
+    historyError.value = err.response?.data?.message || 'Không ghi nhận được lần in lại (tem vẫn đã in ra).';
+  } finally {
+    reprintingHistoryId.value = null;
+  }
 }
 
 const manualQuery = ref('');
@@ -936,7 +1035,16 @@ async function printMaterialLabelViaBrowser(l: any, win: Window) {
     </div>
   </div>
   <script>
-    window.onload = function () { window.print(); };
+    window.onload = function () {
+      // In xong (bấm In hoặc Hủy trong hộp thoại) thì tự đóng luôn cửa sổ này. Dùng
+      // window.onafterprint không ăn thua trong thực tế (người dùng xác nhận cửa sổ vẫn
+      // còn "about:blank" sau khi in, 2026-07-30) — chuyển sang cách chắc chắn hơn:
+      // window.print() CHẶN (blocking) tới khi hộp thoại in đóng lại trên Chrome/Edge
+      // (2 trình duyệt Windows thực tế đang dùng), nên gọi window.close() ngay dòng kế
+      // tiếp là chạy SAU khi người dùng đã bấm In/Hủy, không cần chờ sự kiện afterprint.
+      window.print();
+      window.close();
+    };
   <\/script>
 </body>
 </html>`;
