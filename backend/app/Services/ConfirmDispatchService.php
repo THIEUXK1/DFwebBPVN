@@ -7,6 +7,7 @@ use App\Models\MachineDispatch;
 use App\Models\DispatchEvent;
 use App\Models\QrPayload;
 use App\Models\PrintJob;
+use App\Models\PrintAttempt;
 use App\Models\AuditLog;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -274,7 +275,12 @@ class ConfirmDispatchService
         if (!empty($options['printer_address'])) {
             $job->printer_address = $options['printer_address'];
         }
-        $job->status = 'PENDING';
+        // printed_via_browser: đã in thật qua hộp thoại Windows/trình duyệt ngay tại thời
+        // điểm confirm (xem MachineDispatchController::confirm) — đánh dấu PRINTED thẳng để
+        // AgentJobsController::getJobs (chỉ lấy status=PENDING) không bao giờ thấy job này,
+        // tránh Agent gửi in lại lần 2 xuống máy in vật lý.
+        $printedViaBrowser = !empty($options['printed_via_browser']);
+        $job->status = $printedViaBrowser ? 'PRINTED' : 'PENDING';
         $job->idempotency_key = $idempotencyKey;
         $job->correlation_id = \Illuminate\Support\Str::uuid();
         $job->expiry = now()->addMinutes(30);
@@ -307,6 +313,25 @@ class ConfirmDispatchService
             // PrintJobEventService).
             $this->eventService->log($job->id, 'JOB_VISIBLE_AT_STATION', $eventContext);
             $this->eventService->log($job->id, 'PRINT_REQUESTED', $eventContext);
+        }
+
+        if ($printedViaBrowser) {
+            // Ghi nhận kết quả in giống hệt AgentJobsController::acknowledgeJob (cùng tạo
+            // PrintAttempt cho tier C lịch sử in, cùng log SENT_TO_PRINTER/PRINT_SUCCEEDED)
+            // — chỉ khác nguồn xác nhận là trình duyệt tự báo ngay lúc confirm, không phải
+            // Agent báo cáo sau khi in TSPL thật.
+            PrintAttempt::create([
+                'print_job_id' => $job->id,
+                'attempt_no' => 1,
+                'status' => 'PRINTED',
+                'started_at' => now(),
+                'finished_at' => now(),
+                'error_detail' => null,
+            ]);
+            $job->processed_at = now();
+            $job->save();
+            $this->eventService->log($job->id, 'SENT_TO_PRINTER', $eventContext);
+            $this->eventService->log($job->id, 'PRINT_SUCCEEDED', $eventContext);
         }
 
         return $job;

@@ -74,7 +74,7 @@ class ReportsTest extends TestCase
         return $user;
     }
 
-    private function makeCompletedWeighingItem(float $planned, float $actual, float $toleranceMinus, float $tolerancePlus, bool $override, ?Carbon $completedAt = null): WeighingJobItem
+    private function makeCompletedWeighingItem(float $planned, float $actual, float $toleranceMinus, float $tolerancePlus, ?Carbon $completedAt = null): WeighingJobItem
     {
         $job = WeighingJob::create([
             'production_batch_id' => $this->batch->id,
@@ -95,16 +95,13 @@ class ReportsTest extends TestCase
             'actual_weight' => $actual,
             'status' => 'COMPLETED',
             'completed_at' => $completedAt ?? now(),
-            'override_approved' => $override,
-            'override_reason' => $override ? 'Sai số máy cân do rung động, đã kiểm tra lại' : null,
-            'override_by' => $override ? $this->supervisor->id : null,
         ]);
     }
 
     public function test_dye_consumption_report_returns_planned_vs_actual_totals(): void
     {
-        $this->makeCompletedWeighingItem(100.0, 102.0, 5.0, 5.0, false);
-        $this->makeCompletedWeighingItem(50.0, 49.0, 5.0, 5.0, false);
+        $this->makeCompletedWeighingItem(100.0, 102.0, 5.0, 5.0);
+        $this->makeCompletedWeighingItem(50.0, 49.0, 5.0, 5.0);
 
         $response = $this->actingAs($this->operator)
             ->getJson('/api/reports/dye-consumption?from=' . now()->subDay()->toDateString() . '&to=' . now()->addDay()->toDateString());
@@ -123,12 +120,16 @@ class ReportsTest extends TestCase
         $this->assertEquals(151.0, $response->json('data.totals.actual_total'));
     }
 
-    public function test_tolerance_stats_report_computes_override_rate(): void
+    /**
+     * Từ 2026-07-30 báo cáo đếm "KHÔNG ĐẠT" suy trực tiếp từ số cân thực tế so với dung sai
+     * đã snapshot trên item (không còn cờ override_approved / trạng thái OUT_OF_TOLERANCE).
+     */
+    public function test_tolerance_stats_report_computes_reject_rate(): void
     {
-        // In-tolerance, no override
-        $this->makeCompletedWeighingItem(100.0, 101.0, 5.0, 5.0, false);
-        // Out of band but approved via override
-        $this->makeCompletedWeighingItem(100.0, 120.0, 5.0, 5.0, true);
+        // Trong dung sai (100 ± 5) -> ACCEPTED
+        $this->makeCompletedWeighingItem(100.0, 101.0, 5.0, 5.0);
+        // Ngoài dung sai -> REJECTED
+        $this->makeCompletedWeighingItem(100.0, 120.0, 5.0, 5.0);
 
         $response = $this->actingAs($this->operator)
             ->getJson('/api/reports/tolerance-stats?from=' . now()->subDay()->toDateString() . '&to=' . now()->addDay()->toDateString());
@@ -137,40 +138,20 @@ class ReportsTest extends TestCase
 
         $summary = $response->json('data.summary');
         $this->assertEquals(2, $summary['total_weighed']);
-        $this->assertEquals(1, $summary['total_override']);
-        $this->assertEquals(50.0, $summary['override_rate_pct']);
+        $this->assertEquals(1, $summary['total_reject']);
+        $this->assertEquals(50.0, $summary['reject_rate_pct']);
 
         $byMaterial = $response->json('data.by_material');
         $this->assertEquals('DYE-REP-01', $byMaterial[0]['material_code']);
-        $this->assertEquals(1, $byMaterial[0]['override_count']);
+        $this->assertEquals(1, $byMaterial[0]['reject_count']);
     }
 
-    public function test_tolerance_stats_counts_pending_out_of_tolerance_items(): void
-    {
-        $job = WeighingJob::create([
-            'production_batch_id' => $this->batch->id,
-            'job_type' => 'DYE',
-            'workstation_type' => 'DYE_WEIGHING',
-            'sequence_no' => 1,
-            'status' => 'IN_PROGRESS',
-        ]);
-
-        WeighingJobItem::create([
-            'weighing_job_id' => $job->id,
-            'material_code' => $this->material->code,
-            'planned_weight' => 100.0,
-            'tolerance_minus' => 5.0,
-            'tolerance_plus' => 5.0,
-            'sequence_no' => 1,
-            'status' => 'OUT_OF_TOLERANCE',
-        ]);
-
-        $response = $this->actingAs($this->operator)->getJson('/api/reports/tolerance-stats');
-        $response->assertStatus(200);
-        $this->assertEquals(1, $response->json('data.summary.pending_resolution_count'));
-    }
-
-    public function test_weigh_item_persists_override_and_writes_audit_log(): void
+    /**
+     * Thay cho test override cũ (đã bỏ cùng luồng override, 2026-07-30): thao tác viên
+     * THƯỜNG lưu được số cân ngoài dung sai, không cần Giám sát duyệt — port đúng VBA
+     * btnSave_Click. Hệ thống chỉ gắn nhãn REJECTED.
+     */
+    public function test_operator_can_save_out_of_tolerance_weight_without_supervisor(): void
     {
         $job = WeighingJob::create([
             'production_batch_id' => $this->batch->id,
@@ -190,36 +171,18 @@ class ReportsTest extends TestCase
             'status' => 'PENDING',
         ]);
 
-        // Operator (non-supervisor) attempting override must be rejected
-        $forbidden = $this->actingAs($this->operator)->postJson("/api/weighing-jobs/items/{$item->id}/weigh", [
+        $ok = $this->actingAs($this->operator)->postJson("/api/weighing-jobs/items/{$item->id}/weigh", [
             'weight' => 130.0,
             'scale_device_id' => 'SCALE-TEST',
             'stable' => true,
-            'override_approved' => true,
-            'override_reason' => 'Lệch do rung động máy cân',
-        ]);
-        $forbidden->assertStatus(403);
-
-        // Supervisor can approve the override, reason gets persisted + audited
-        $ok = $this->actingAs($this->supervisor)->postJson("/api/weighing-jobs/items/{$item->id}/weigh", [
-            'weight' => 130.0,
-            'scale_device_id' => 'SCALE-TEST',
-            'stable' => true,
-            'override_approved' => true,
-            'override_reason' => 'Lệch do rung động máy cân',
         ]);
         $ok->assertStatus(200);
+        $ok->assertJsonPath('data.item.process_status', 'REJECTED');
 
         $item->refresh();
-        $this->assertTrue($item->override_approved);
-        $this->assertEquals('Lệch do rung động máy cân', $item->override_reason);
-        $this->assertEquals($this->supervisor->id, $item->override_by);
-
-        $this->assertDatabaseHas('app.audit_logs', [
-            'action' => 'WEIGH_TOLERANCE_OVERRIDE',
-            'entity_type' => 'WeighingJobItem',
-            'entity_id' => $item->id,
-        ]);
+        $this->assertEquals('COMPLETED', $item->status);
+        $this->assertEquals(130.0, $item->actual_weight);
+        $this->assertEquals('REJECTED', $item->process_status);
     }
 
     public function test_machine_output_report_groups_by_day(): void
@@ -314,7 +277,7 @@ class ReportsTest extends TestCase
 
     public function test_dye_consumption_excel_export_downloads_file(): void
     {
-        $this->makeCompletedWeighingItem(100.0, 101.0, 5.0, 5.0, false);
+        $this->makeCompletedWeighingItem(100.0, 101.0, 5.0, 5.0);
 
         $response = $this->actingAs($this->operator)
             ->get('/api/reports/dye-consumption?format=xlsx&from=' . now()->subDay()->toDateString() . '&to=' . now()->addDay()->toDateString());

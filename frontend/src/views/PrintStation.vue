@@ -31,85 +31,27 @@
         </template>
         <template v-else>
           <h2>Chưa đăng ký trạm (tài khoản Admin)</h2>
-          <div class="text-muted font-sm admin-station-picker">
-            Xem/gán máy in cho trạm:
-            <select
-              class="form-select select-sm"
-              :value="printerStationOverride?.code || ''"
-              @change="onStationOverrideChange(($event.target as HTMLSelectElement).value)"
-            >
-              <option v-for="s in stationOptions" :key="s.code" :value="s.code">{{ s.name }} ({{ s.code }})</option>
-            </select>
-          </div>
         </template>
       </div>
       <div class="banner-right">
         <div class="dev-badge">
-          <span class="dot-pulse" :class="resolvedPrinter ? 'dot-green' : 'dot-red'"></span>
-          <span>Máy in hiện tại: {{ resolvedPrinter || 'Không phát hiện máy in đã cài' }}</span>
+          <span>🖥️ In qua hộp thoại in của trình duyệt — không cần chọn/cài máy in trước.</span>
         </div>
-        <button @click="fetchInstalledPrinters" class="btn btn-secondary btn-sm ml-2" :disabled="loadingInstalledPrinters">🔄 Làm mới</button>
-        <button @click="showPrinterConfig = !showPrinterConfig" class="btn btn-secondary btn-sm ml-2">
-          ⚙️ Đổi máy in
-        </button>
       </div>
-    </div>
-
-    <!-- Cảnh báo — CHỈ xuất hiện trong các trường hợp thật sự cần chú ý (Agent chưa báo
-         cáo, không có máy in nào, hoặc máy in đã lưu không còn tồn tại). Không bao giờ
-         khóa màn hình vận hành chỉ vì chưa gán máy in trong DB. -->
-    <div v-if="printerWarning" class="card error-card mb-4" style="color:var(--status-yellow); border-color:var(--status-yellow-border); background:var(--status-yellow-bg); padding:12px 16px; border-radius:8px;">
-      ⚠️ {{ printerWarning }}
-    </div>
-
-    <div v-if="isVirtualPrinter(resolvedPrinter)" class="card error-card mb-4" style="color:var(--status-blue); border-color:var(--status-blue-border); background:var(--status-blue-bg); padding:12px 16px; border-radius:8px;">
-      ℹ️ "<strong>{{ resolvedPrinter }}</strong>" là máy in ảo của Windows (PDF/OneNote...), không hiểu được lệnh in tem gốc (TSPL) —
-      tem in ra sẽ lỗi/không đọc được (vd "Failed to load PDF document"). Chỉ dùng máy in này để kiểm tra hệ thống có gửi đúng lệnh
-      đến đúng trạm hay không; cần máy in tem thật (TSC/Zebra) để xem đúng nội dung/layout tem.
-    </div>
-
-    <!-- Chọn máy in — CHỈ chọn từ danh sách Agent thật sự phát hiện trên Windows, không
-         nhập tay IP/driver/cổng máy in (yêu cầu 2026-07-18: Local Agent là nguồn xác
-         định duy nhất). -->
-    <div v-if="showPrinterConfig" class="section card-sec printer-config-panel mb-4">
-      <h4>⚙️ Đổi máy in cho trạm này</h4>
-
-      <div v-if="loadingInstalledPrinters" class="text-muted font-sm">Đang tải danh sách máy in đã cài trên máy này...</div>
-
-      <div v-else-if="installedPrinters.length" class="printer-config-form">
-        <div class="form-group flex-2">
-          <label>Máy in đã cài trên máy này</label>
-          <select v-model="selectedPrinterName" class="form-select">
-            <option v-for="p in installedPrinters" :key="p" :value="p">
-              {{ p }}{{ p === defaultInstalledPrinter ? ' (mặc định hệ thống)' : '' }}{{ isVirtualPrinter(p) ? ' — ⚠️ máy in ảo, không đọc được tem thật' : '' }}
-            </option>
-          </select>
-        </div>
-        <button @click="savePreferredPrinter" class="btn btn-primary" :disabled="!selectedPrinterName || savingPrinterConfig">
-          {{ savingPrinterConfig ? 'Đang lưu...' : 'Dùng máy in này' }}
-        </button>
-      </div>
-
-      <div v-else class="text-muted font-sm">
-        <p>Không phát hiện máy in nào đã cài trên máy tính này.</p>
-        <p>Kiểm tra: Local Agent (DF Agent) có đang chạy trên máy này không, và Windows đã cài ít nhất 1 máy in (Cài đặt → Thiết bị → Máy in &amp; máy quét) chưa.</p>
-        <button @click="fetchInstalledPrinters" class="btn btn-secondary btn-sm mt-2">🔄 Làm mới danh sách</button>
-      </div>
-
-      <p class="text-muted font-sm mt-2">Lưu ý: tem in ra dùng đúng mẫu (layout) đã cấu hình sẵn trên chính máy in vật lý này — web chỉ gửi dữ liệu QR, không tự vẽ mẫu tem.</p>
     </div>
 
     <!-- Hàng chờ in tem mới — port đúng TO_SEND.frm/LoadGrid (VBA "3.DF028... jit qr
          sending"): đơn vừa được Duyệt ở máy Nhập đơn xuất hiện ở đây, đúng dữ liệu
          tbl_tosend (color/code/machine/tank). VBA tự làm mới mỗi 15s bằng
          Application.OnTime; web dùng interval ngắn hơn vì không cần tiết kiệm tài
-         nguyên như Excel. Ghi chú theo yêu cầu: tem in ra dùng ĐÚNG mẫu đã cấu hình
-         sẵn trên máy in vật lý (driver/TSPL template cục bộ) — web chỉ gửi dữ liệu
-         QR (DYE/CHEM/PROCESS-EXTRA-FB tuỳ B24), không tự vẽ layout tem. -->
+         nguyên như Excel. "⚡ In nhanh"/"🖥️ In qua trình duyệt" chỉ MỞ hộp thoại in —
+         không xác nhận đơn, nên bấm in được nhiều lần thoải mái (in hỏng/in lại tùy ý)
+         mà không mất đơn khỏi hàng chờ. Chỉ khi bấm "✅ OK" đơn mới được xác nhận
+         (CONFIRMED) và chuyển xuống bảng lịch sử bên dưới (yêu cầu 2026-07-30). -->
     <section class="section card-sec print-queue-panel mb-4" v-if="!label">
       <div class="queue-header">
         <h3>🖨️ Hàng chờ in tem mới ({{ pendingDispatches.length }})</h3>
-        <span class="text-muted font-sm">Tự làm mới mỗi 8 giây — đơn xuất hiện ngay sau khi được Duyệt ở máy Nhập đơn.</span>
+        <span class="text-muted font-sm">Tự làm mới mỗi 8 giây — in thoải mái bằng "⚡ In nhanh"/"👁️ Xem trước", xong bấm "✅ OK" để chuyển xuống lịch sử.</span>
       </div>
 
       <p v-if="confirmError" class="text-error mt-2">❌ {{ confirmError }}</p>
@@ -130,23 +72,24 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="d in col" :key="d.id" class="row-not-printed">
+              <tr v-for="d in col" :key="d.id" :class="confirmedIds.has(d.id) ? 'row-printed' : 'row-not-printed'">
                 <td>{{ d.batch?.color }}</td>
                 <td>{{ d.batch?.product_code }}</td>
                 <td><span class="machine-tag">{{ d.batch?.machine?.code || 'N/A' }}</span></td>
                 <td>{{ d.batch?.tank?.code || '-' }}</td>
                 <td>{{ d.batch?.level_code || 'Mặc định' }}</td>
                 <td>
-                  <span class="badge badge-red">Chưa in</span>
+                  <span v-if="confirmedIds.has(d.id)" class="badge badge-green">Đã in</span>
+                  <span v-else class="badge badge-red">Chưa in</span>
                 </td>
                 <td class="highlight-code">{{ d.batch?.legacy_batch_id }}</td>
                 <td class="actions-cell actions-col">
                   <button
-                    @click="confirmAndPrint(d)"
+                    @click="quickPrintViaBrowser(d)"
                     class="btn btn-primary btn-sm"
                     :disabled="confirmingId === d.id"
                   >
-                    {{ confirmingId === d.id ? 'Đang xử lý...' : '⚡ In nhanh' }}
+                    ⚡ In nhanh
                   </button>
                   <button
                     @click="openPrintPreview(d)"
@@ -154,6 +97,14 @@
                     :disabled="confirmingId === d.id"
                   >
                     👁️ Xem trước
+                  </button>
+                  <button
+                    @click="confirmDone(d)"
+                    class="btn btn-ok btn-sm"
+                    :disabled="confirmingId === d.id"
+                    title="Đã in xong — chuyển đơn này xuống bảng lịch sử"
+                  >
+                    {{ confirmingId === d.id ? 'Đang xử lý...' : '✅ OK' }}
                   </button>
                 </td>
               </tr>
@@ -165,6 +116,44 @@
         </div>
       </div>
       <p v-else class="text-muted text-center mt-3">Không có đơn nào đang chờ in.</p>
+    </section>
+
+    <!-- Bảng lịch sử — đơn đã bấm "✅ OK" (CONFIRMED) rơi xuống đây, tách khỏi hàng chờ
+         phía trên để người vận hành luôn thấy rõ việc nào còn phải làm (yêu cầu
+         2026-07-30: "in thoải mái, có nút ok thì đưa xuống bảng lịch sử"). -->
+    <section class="section card-sec print-history-panel mb-4" v-if="!label">
+      <div class="queue-header">
+        <h3>📋 Lịch sử đã in ({{ printHistory.length }})</h3>
+        <span class="text-muted font-sm">Các đơn đã bấm "✅ OK" ở hàng chờ trên.</span>
+      </div>
+
+      <div class="table-container-fixed mt-3" v-if="printHistory.length">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Màu</th>
+              <th>Mã hàng</th>
+              <th>Máy</th>
+              <th>Thùng</th>
+              <th>Mã Lô</th>
+              <th>Thời gian xác nhận</th>
+              <th>Trạng thái</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="d in printHistory" :key="d.id" class="row-printed">
+              <td>{{ d.batch?.color }}</td>
+              <td>{{ d.batch?.product_code }}</td>
+              <td><span class="machine-tag">{{ d.batch?.machine?.code || 'N/A' }}</span></td>
+              <td>{{ d.batch?.tank?.code || '-' }}</td>
+              <td class="highlight-code">{{ d.batch?.legacy_batch_id }}</td>
+              <td>{{ formatTime(d.updated_at || d.created_at) }}</td>
+              <td><span class="badge badge-green">Đã in</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="text-muted text-center mt-3">Chưa có đơn nào được xác nhận xong.</p>
     </section>
 
     <!-- Xem trước tem trước khi in — layout giống scaleform.frm (VBA gốc): thông tin đầu
@@ -224,34 +213,28 @@
             </div>
           </div>
 
-          <div class="form-group mt-3">
-            <label>Máy in (chỉ cho lần in này)</label>
-            <select v-model="previewSelectedPrinter" class="form-select">
-              <option v-for="p in installedPrinters" :key="p" :value="p">
-                {{ p }}{{ p === resolvedPrinter ? ' (mặc định trạm)' : '' }}
-              </option>
-            </select>
-          </div>
         </div>
 
         <div class="preview-modal-actions">
-          <button class="btn btn-secondary" @click="closePrintPreview">Hủy</button>
-          <button class="btn btn-secondary" @click="printPreviewViaBrowser">
-            🖥️ In qua trình duyệt
-          </button>
+          <button class="btn btn-secondary" @click="closePrintPreview">Đóng</button>
           <button
             class="btn btn-primary"
             :disabled="confirmingId === previewDispatch.id"
-            @click="confirmPrintFromPreview"
+            @click="printPreviewViaBrowser"
           >
-            {{ confirmingId === previewDispatch.id ? 'Đang gửi lệnh in...' : '🖨️ In tem' }}
+            🖥️ In qua trình duyệt
+          </button>
+          <button
+            class="btn btn-ok"
+            :disabled="confirmingId === previewDispatch.id"
+            @click="confirmDone(previewDispatch, true)"
+          >
+            {{ confirmingId === previewDispatch.id ? 'Đang xử lý...' : '✅ OK — Xong, chuyển xuống lịch sử' }}
           </button>
         </div>
+        <p v-if="confirmError" class="text-error mt-2">❌ {{ confirmError }}</p>
         <p class="text-muted font-xs mt-2">
-          "In qua trình duyệt" mở trang in riêng, dùng hộp thoại in của Windows/trình duyệt — chọn được bất kỳ máy in nào đã cài, không cần qua Local Agent.
-        </p>
-        <p v-if="!previewSelectedPrinter" class="text-muted font-xs mt-2 preview-no-printer-hint">
-          ⚠️ Chưa phát hiện máy in nào từ Local Agent — lệnh in vẫn được tạo và xếp hàng chờ, máy in sẽ dùng mặc định của trạm khi Agent kết nối lại.
+          "🖥️ In qua trình duyệt" mở hộp thoại in, bấm được nhiều lần thoải mái (in hỏng cứ in lại). Chỉ khi bấm "✅ OK" đơn mới được xác nhận và chuyển xuống bảng lịch sử.
         </p>
       </div>
     </div>
@@ -372,120 +355,6 @@ const route = useRoute();
 const isImpersonating = computed(() => route.query.impersonate === 'true');
 const targetWsId = computed(() => route.query.target_ws);
 
-// Yêu cầu 2026-07-22: tài khoản ADMIN không gắn cứng 1 trạm nào (currentWorkstation =
-// null, mở được mọi màn hình) — nếu chỉ dựa vào currentWorkstation để biết Local Agent
-// nào vừa báo cáo máy in thì admin sẽ KHÔNG BAO GIỜ thấy được máy in dù Agent đã báo cáo
-// thành công lên đúng trạm thật (bug phát hiện khi test MSI: DB có dữ liệu nhưng trang
-// luôn báo "chưa nhận được" vì fetchInstalledPrinters() return sớm). Thêm lựa chọn trạm
-// thủ công CHỈ dùng khi không có currentWorkstation, để admin tự chỉ định đang xem/quản
-// lý máy in của trạm nào.
-const stationOptions = ref<{ id: number; code: string; name: string }[]>([]);
-const printerStationOverride = ref<{ id: number; code: string; name: string } | null>(null);
-const effectiveStationCode = computed(() => currentWorkstation.value?.code || printerStationOverride.value?.code || null);
-const effectiveStationId = computed(() => currentWorkstation.value?.id || printerStationOverride.value?.id || null);
-
-async function fetchStationOptions() {
-  try {
-    const res = await axios.get('/api/workstations');
-    const list = res.data.data || res.data || [];
-    stationOptions.value = list.filter((w: any) => w.type === 'QR_LABEL_PRINTING' || w.workstation_type === 'QR_LABEL_PRINTING');
-    if (!printerStationOverride.value && stationOptions.value.length) {
-      printerStationOverride.value = stationOptions.value[0];
-    }
-  } catch (err) {
-    console.error('Error fetching station options:', err);
-  }
-}
-
-function onStationOverrideChange(code: string) {
-  printerStationOverride.value = stationOptions.value.find(s => s.code === code) || null;
-  fetchInstalledPrinters();
-}
-
-// Chọn máy in — Local Agent (PrinterDiscovery.cs) là nguồn xác định duy nhất. Không còn
-// cấu hình thủ công IP/driver/cổng (yêu cầu 2026-07-18). Thứ tự ưu tiên khi tự động
-// chọn: (1) máy in đã gán riêng cho trạm này VÀ còn tồn tại trong danh sách Agent vừa
-// báo cáo, (2) máy in mặc định của Windows, (3) máy in đầu tiên trong danh sách.
-const showPrinterConfig = ref(false);
-const savingPrinterConfig = ref(false);
-const selectedPrinterName = ref('');
-
-const installedPrinters = ref<string[]>([]);
-const defaultInstalledPrinter = ref<string | null>(null);
-const assignedPrinterName = ref<string | null>(null);
-const loadingInstalledPrinters = ref(false);
-const agentEverReported = ref(false);
-
-const resolvedPrinter = computed(() => {
-  if (assignedPrinterName.value && installedPrinters.value.includes(assignedPrinterName.value)) {
-    return assignedPrinterName.value;
-  }
-  if (defaultInstalledPrinter.value && installedPrinters.value.includes(defaultInstalledPrinter.value)) {
-    return defaultInstalledPrinter.value;
-  }
-  return installedPrinters.value[0] || null;
-});
-
-const printerWarning = computed(() => {
-  if (!agentEverReported.value) {
-    return 'Chưa nhận được dữ liệu máy in từ Local Agent trên máy này — kiểm tra Agent (DF Agent) có đang chạy không.';
-  }
-  if (installedPrinters.value.length === 0) {
-    return 'Không phát hiện máy in nào đã cài trên máy tính này. Cài máy in trên Windows rồi bấm Làm mới.';
-  }
-  if (assignedPrinterName.value && !installedPrinters.value.includes(assignedPrinterName.value)) {
-    return `Máy in đã lưu trước đó ("${assignedPrinterName.value}") không còn tồn tại trên máy này — đã tự chuyển sang máy in mặc định.`;
-  }
-  return '';
-});
-
-// Máy in ảo của Windows (PDF/OneNote/Fax/XPS...) KHÔNG hiểu lệnh in tem gốc (TSPL) —
-// Agent gửi thẳng byte thô (RAW datatype qua winspool.Drv, xem LabelPrinter.cs) cho máy
-// in tem thật (TSC/Zebra) hiểu được, nhưng driver PDF/OneNote lại mong nhận dữ liệu đã
-// được Windows GDI vẽ sẵn (EMF), không phải văn bản lệnh thô -> file xuất ra hỏng, mở
-// lên báo "Failed to load PDF document." (đúng lỗi 2026-07-18). Đây không phải bug có
-// thể vá bằng code — chỉ có thể dùng máy in ảo để kiểm tra HỆ THỐNG có gửi đúng lệnh
-// đến đúng máy hay không, không dùng để xem đúng nội dung/layout tem thật.
-const VIRTUAL_PRINTER_PATTERNS = /pdf|onenote|xps|fax|opendocument/i;
-function isVirtualPrinter(name: string | null): boolean {
-  return !!name && VIRTUAL_PRINTER_PATTERNS.test(name);
-}
-
-async function fetchInstalledPrinters() {
-  if (!effectiveStationCode.value) return;
-  loadingInstalledPrinters.value = true;
-  try {
-    const res = await axios.get('/api/workstations');
-    const list = res.data.data || res.data;
-    const match = list.find((w: any) => w.code === effectiveStationCode.value);
-    const config = match?.configuration || {};
-    agentEverReported.value = Array.isArray(config.available_printers);
-    installedPrinters.value = config.available_printers || [];
-    defaultInstalledPrinter.value = config.default_printer || null;
-    assignedPrinterName.value = match?.assigned_printer_device_id || null;
-    selectedPrinterName.value = resolvedPrinter.value || '';
-  } catch (err) {
-    console.error('Error fetching installed printers:', err);
-  } finally {
-    loadingInstalledPrinters.value = false;
-  }
-}
-
-const savePreferredPrinter = async () => {
-  if (!effectiveStationId.value || !selectedPrinterName.value) return;
-  savingPrinterConfig.value = true;
-  try {
-    await axios.put(`/api/workstations/${effectiveStationId.value}/local-device-config`, {
-      printer_device_id: selectedPrinterName.value,
-    });
-    assignedPrinterName.value = selectedPrinterName.value;
-    showPrinterConfig.value = false;
-  } catch (err: any) {
-    alert(err.response?.data?.message || 'Không thể lưu lựa chọn máy in.');
-  } finally {
-    savingPrinterConfig.value = false;
-  }
-};
 const remoteMode = ref<'VIEW_ONLY' | 'REMOTE_OPERATE'>('VIEW_ONLY');
 
 const remoteModeClass = computed(() => {
@@ -520,11 +389,9 @@ const viewportWidth = ref(window.innerWidth);
 function onViewportResize() {
   viewportWidth.value = window.innerWidth;
 }
-const queueColumnCount = computed(() => {
-  if (viewportWidth.value < 900) return 1;
-  if (viewportWidth.value < 1600) return 2;
-  return 3;
-});
+// Chỉ chia tối đa 2 bảng (yêu cầu 2026-07-30: 3 bảng làm mỗi cột quá hẹp, đặc biệt sau
+// khi thêm nút "✅ OK" khiến cột Thao tác không đủ chỗ hiển thị đầy đủ 3 nút).
+const queueColumnCount = computed(() => (viewportWidth.value < 900 ? 1 : 2));
 const queueColumns = computed(() => {
   const count = queueColumnCount.value;
   const perCol = Math.ceil(pendingDispatches.value.length / count) || 1;
@@ -540,21 +407,49 @@ async function fetchPendingDispatches() {
   }
 }
 
-async function confirmAndPrint(dispatch: any, printerOverride?: string) {
+// Bảng lịch sử — đơn đã bấm "✅ OK" (CONFIRMED), tách khỏi hàng chờ (yêu cầu 2026-07-30:
+// in thoải mái không mất đơn khỏi hàng chờ, chỉ khi bấm OK mới rơi xuống đây). Lọc theo
+// đúng trạm đang đứng để không lẫn lịch sử của trạm khác; admin không đứng trạm nào thì
+// xem toàn bộ (giống PrintHistoryAdmin.vue).
+const printHistory = ref<any[]>([]);
+async function fetchHistory() {
+  try {
+    const res = await axios.get('/api/machine-dispatches/history', {
+      params: { station_code: currentWorkstation.value?.code || undefined },
+    });
+    printHistory.value = res.data.data || [];
+  } catch (err) {
+    console.error('Error fetching print history:', err);
+  }
+}
+
+// viaBrowser=true: đơn được in qua hộp thoại Windows/trình duyệt (window.print(), xem
+// printPreviewViaBrowser) — CÁCH IN DUY NHẤT còn lại ở màn hình này (bỏ "In nhanh"/"In
+// tem" gửi thẳng Local Agent, 2026-07-30). Báo cho backend qua printed_via_browser để
+// ConfirmDispatchService đánh dấu PrintJob PRINTED ngay, không rơi vào hàng chờ Agent
+// (AgentJobsController::getJobs chỉ lấy status=PENDING) — nếu không, Agent sẽ gửi lệnh
+// TSPL thật xuống máy in vật lý, in trùng bản đã in qua trình duyệt.
+// confirmedIds: đánh dấu ngay các đơn vừa bấm "✅ OK" thành công để badge chuyển "Chưa
+// in" (đỏ) -> "Đã in" (xanh) NGAY trong hàng chờ, cho người vận hành thấy rõ đã xác nhận
+// trước khi dòng thật sự rơi xuống bảng lịch sử (fetchPendingDispatches trễ 600ms).
+const confirmedIds = ref<Set<string>>(new Set());
+
+async function confirmAndPrint(dispatch: any, viaBrowser?: boolean) {
   confirmError.value = '';
   confirmingId.value = dispatch.id;
   try {
     await axios.post(`/api/machine-dispatches/${dispatch.id}/confirm`, {
       idempotency_key: `print_${dispatch.id}_${Date.now()}`,
-      workstation_id: effectiveStationCode.value || undefined,
-      // Gửi đúng tên máy in Windows đã resolve (ưu tiên: chọn tay lúc xem trước > đã gán
-      // > mặc định hệ thống > máy đầu tiên) — Agent dùng tên này in qua Win32 Spooler
-      // theo tên (LabelPrinter.cs::PrintViaUsb), không phải địa chỉ mạng.
-      printer_address: printerOverride || resolvedPrinter.value || undefined,
-      printer_type: 'USB',
+      workstation_id: currentWorkstation.value?.code || undefined,
+      printed_via_browser: viaBrowser || undefined,
     }, getRequestConfig());
+    confirmedIds.value.add(dispatch.id);
     scannerService.playBeep(1800, 150);
-    await fetchPendingDispatches();
+    await fetchHistory();
+    setTimeout(() => {
+      fetchPendingDispatches();
+      confirmedIds.value.delete(dispatch.id);
+    }, 600);
   } catch (err: any) {
     confirmError.value = err.response?.data?.message || 'Không thể tạo lệnh in cho đơn này.';
   } finally {
@@ -562,12 +457,19 @@ async function confirmAndPrint(dispatch: any, printerOverride?: string) {
   }
 }
 
+// "✅ OK" — người vận hành đã in xong (thoải mái in lại bao nhiêu lần tùy ý bằng "⚡ In
+// nhanh"/"🖥️ In qua trình duyệt" phía trên, KHÔNG tự động xác nhận), bấm nút này mới thật
+// sự xác nhận đơn (CONFIRMED) và chuyển xuống bảng lịch sử. closeModal=true khi gọi từ
+// modal xem trước để đóng modal luôn nếu không lỗi.
+async function confirmDone(dispatch: any, closeModal?: boolean) {
+  await confirmAndPrint(dispatch, true);
+  if (closeModal && !confirmError.value) closePrintPreview();
+}
+
 // Xem trước tem — dựng lại QR minh họa + bảng RACK/MÃ/KHỐI LƯỢNG từ chính dữ liệu
 // raw_qr_dye/raw_qr_chemical đã lưu trên batch (KHÔNG gọi endpoint confirm thật, tránh
-// tạo PrintJob/RoutingDecision chỉ để xem trước). Cho phép chọn máy in riêng cho lần in
-// này trước khi thật sự gửi lệnh.
+// tạo PrintJob/RoutingDecision chỉ để xem trước).
 const previewDispatch = ref<any>(null);
-const previewSelectedPrinter = ref('');
 const previewQrCanvas = ref<HTMLCanvasElement | null>(null);
 
 const previewDyeLines = computed(() => parseRackLines(previewDispatch.value?.batch?.raw_qr_dye));
@@ -575,17 +477,10 @@ const previewChemLines = computed(() => parseRackLines(previewDispatch.value?.ba
 
 function openPrintPreview(dispatch: any) {
   previewDispatch.value = dispatch;
-  previewSelectedPrinter.value = resolvedPrinter.value || installedPrinters.value[0] || '';
 }
 
 function closePrintPreview() {
   previewDispatch.value = null;
-}
-
-async function confirmPrintFromPreview() {
-  if (!previewDispatch.value) return;
-  await confirmAndPrint(previewDispatch.value, previewSelectedPrinter.value);
-  if (!confirmError.value) closePrintPreview();
 }
 
 async function renderPreviewQr() {
@@ -610,7 +505,7 @@ watch(previewDispatch, (val) => {
 // xác nhận khớp 100% với code thật Mod_printslip.bas (D1 zone) ngày 2026-07-22. Chỉ
 // dùng để XEM TRƯỚC ở màn hình "In qua trình duyệt" (dispatch chưa confirm nên chưa
 // có RoutingDecision thật) — kết quả này KHÔNG được lưu, không thay thế tính toán thật
-// lúc bấm "In tem" (ConfirmDispatchService/WarehouseRoutingService).
+// lúc bấm "In qua trình duyệt" (ConfirmDispatchService/WarehouseRoutingService).
 function numBetween(v: number, min: number, max: number): boolean {
   return v >= min && v <= max;
 }
@@ -689,10 +584,28 @@ function calculateRoutingPreview(machineCode: string, tankCode: string, levelCod
 // CHƯA confirm nên chưa có RoutingDecision LƯU THẬT trong DB — nhưng khu vực D1/chuỗi
 // B24 tự tính lại ngay tại đây bằng calculateRoutingPreview() (đã đối chiếu khớp 100%
 // với backend + code VBA gốc), nên tem xem trước vẫn hiển thị ĐÚNG giá trị thật.
-async function printPreviewViaBrowser() {
-  const d = previewDispatch.value;
+// Tách riêng khỏi state của modal xem trước (previewDispatch/previewDyeLines/
+// previewChemLines) để dùng chung được cho cả "⚡ In nhanh" ở hàng chờ (không mở modal)
+// LẪN nút "🖥️ In qua trình duyệt" trong modal xem trước (yêu cầu 2026-07-30: người dùng
+// muốn có lại đường tắt in nhanh nhưng vẫn dùng cơ chế trình duyệt, không quay lại
+// TSPL/Local Agent).
+async function printDispatchViaBrowser(d: any) {
   if (!d) return;
+
+  // Mở cửa sổ NGAY (đồng bộ, trước mọi await) — Chrome/Edge chặn window.open() nếu gọi
+  // sau 1 tác vụ bất đồng bộ (mất "user gesture" gắn với cú click), khiến bấm "⚡ In
+  // nhanh" không hiện hộp thoại in ngay mà im lặng bị chặn hoặc phải bấm 2 lần (yêu cầu
+  // 2026-07-30: "ấn vào đấy ra cái in của trình duyệt luôn"). Ghi HTML thật vào sau khi
+  // QR (async) dựng xong.
+  const win = window.open('', '_blank', 'width=780,height=980');
+  if (!win) {
+    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    return;
+  }
+
   const b = d.batch || {};
+  const dyeLines = parseRackLines(b.raw_qr_dye);
+  const chemLines = parseRackLines(b.raw_qr_chemical);
 
   const routing = calculateRoutingPreview(b.machine?.code || '', b.tank?.code || '', b.level_code || '');
 
@@ -710,7 +623,7 @@ async function printPreviewViaBrowser() {
     String(chemRndPreview),
     b.level_code || '',
   ];
-  previewChemLines.value.forEach(r => {
+  chemLines.forEach(r => {
     chemParts.push(r.code);
     chemParts.push(String(r.weight).replace(',', '.'));
   });
@@ -727,7 +640,7 @@ async function printPreviewViaBrowser() {
     const newLevel = (b.tank?.code || '').toUpperCase() === '1A' ? '450' : (b.tank?.code || '').toUpperCase() === '2B' ? '250' : (b.level_code || '');
     modeQrText = `${b.color || ''}-${b.product_code || ''} ${nowStamp('yyyymmddhhmm')}\n\n${b.machine?.code || ''}-${b.tank?.code || ''}-${newLevel}\n\nNylon Dyes`;
   } else if (routing.mode === 'EXTRA') {
-    const totalD = previewDyeLines.value.reduce((sum, r) => sum + (parseFloat(r.weight) || 0), 0);
+    const totalD = dyeLines.reduce((sum, r) => sum + (parseFloat(r.weight) || 0), 0);
     const rnd = 1 + Math.floor(Math.random() * 9);
     modeQrText = `${b.machine?.code || ''}\n${(b.tank?.code || '').charAt(0)}\n${b.color || ''} ${b.product_code || ''}\n${rnd}\n${b.level_code || ''}\n1\n${totalD}`;
   } else {
@@ -763,8 +676,8 @@ async function printPreviewViaBrowser() {
   const dyeColsDot: [number, number][] = [[0, 110], [110, 206], [206, 278]];
   const chemColsDot: [number, number][] = [[293, 391], [391, 498], [498, 560]];
 
-  const dyeRows = previewDyeLines.value;
-  const chemRows = previewChemLines.value;
+  const dyeRows = dyeLines;
+  const chemRows = chemLines;
   let tableCellsHtml = '';
   for (let i = 0; i < 9; i++) {
     const y = tableTop + i * rowHDot;
@@ -805,7 +718,7 @@ async function printPreviewViaBrowser() {
   /* Tem thật chỉ 70x100mm nên trên màn hình to sẽ trông rất bé — phóng to riêng cho
      màn hình (zoom, không phải transform, để layout giãn ra đúng) để xem cho rõ, còn
      lúc in thật (@media print bên dưới) luôn trả về đúng kích thước gốc 1:1. */
-  .slip { position: relative; width: 70mm; height: 100mm; border: 0.3mm solid #000; zoom: 2.6; }
+  .slip { position: relative; width: 70mm; height: 100mm; border: 1.2mm solid #000; zoom: 2.6; }
   .box { position: absolute; border: 0.3mm solid #000; overflow: visible; padding: 0.4mm 0.8mm; white-space: nowrap; }
   .box.noborder { border: none; }
   .gridcell { position: absolute; border: 0.2mm solid #000; }
@@ -819,8 +732,8 @@ async function printPreviewViaBrowser() {
   .title { font-size: 2.4mm; font-weight: 700; }
   .qr-block { position: absolute; text-align: center; }
   .qr-block img { width: 100%; height: 100%; object-fit: contain; }
-  .qr-block-inline { display: flex; flex-direction: column; align-items: center; gap: 0.5mm; height: 100%; justify-content: center; }
-  .qr-block-inline img { width: 10mm; height: 10mm; }
+  .qr-block-inline { display: flex; align-items: center; justify-content: center; height: 100%; }
+  .qr-block-inline img { width: 13mm; height: 13mm; }
   .placeholder { color: #999; font-style: italic; }
   .footnote { margin-top: 3mm; font-size: 2.3mm; color: #666; }
   @media print {
@@ -834,7 +747,7 @@ async function printPreviewViaBrowser() {
   <div class="slip">
     ${boxDot(0, 0, 206, 112, '<span class="label-sm">DF_WEIGHING_SLIP</span>')}
     ${boxDot(206, 0, 391, 112, `<span class="zone${routing.d1Zone ? '' : ' placeholder'}">${routing.d1Zone || '—'}</span>`)}
-    ${boxDot(391, 0, 560, 112, `<div class="qr-block-inline">${modeQrDataUrl ? `<img src="${modeQrDataUrl}" alt="QR mode" />` : ''}<span class="label-sm">${routing.mode}</span></div>`)}
+    ${boxDot(391, 0, 560, 112, `<div class="qr-block-inline">${modeQrDataUrl ? `<img src="${modeQrDataUrl}" alt="QR mode" />` : ''}</div>`)}
 
     ${boxDot(0, 114, 278, 200, `<span class="big">${b.color || ''}</span><span class="big code-line">${b.product_code || ''}</span>`)}
     ${boxDot(293, 114, 391, 200, `<span class="big">${b.machine?.code || ''}</span>`)}
@@ -860,7 +773,7 @@ async function printPreviewViaBrowser() {
   </div>
 
   <p class="footnote">
-    Lô: ${b.legacy_batch_id || ''} — In qua trình duyệt (không qua TSPL/Local Agent), bố cục đo đúng từ sheet DF_WEIGHING_SLIP gốc. Khu vực kho/QR chế độ tự tính lại tại đây (khớp backend) — lúc bấm "In tem" thật, hệ thống tính và LƯU lại chính thức, có thể lệch nếu cấu hình routing (feature flag) thay đổi giữa lúc xem trước và lúc in.
+    Lô: ${b.legacy_batch_id || ''} — In qua trình duyệt (không qua TSPL/Local Agent), bố cục đo đúng từ sheet DF_WEIGHING_SLIP gốc. Khu vực kho/QR chế độ tự tính lại tại đây (khớp backend), có thể lệch nếu cấu hình routing (feature flag) thay đổi giữa lúc in và lúc bấm "✅ OK" xác nhận chính thức.
   </p>
 
   <script>
@@ -869,13 +782,22 @@ async function printPreviewViaBrowser() {
 </body>
 </html>`;
 
-  const win = window.open('', '_blank', 'width=780,height=980');
-  if (!win) {
-    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
-    return;
-  }
   win.document.write(html);
   win.document.close();
+}
+
+// "🖥️ In qua trình duyệt" trong modal xem trước — chỉ MỞ hộp thoại in, không xác nhận
+// đơn, nên bấm được nhiều lần thoải mái; đóng modal riêng qua nút "✅ OK" (confirmDone).
+async function printPreviewViaBrowser() {
+  const d = previewDispatch.value;
+  if (!d) return;
+  await printDispatchViaBrowser(d);
+}
+
+// "⚡ In nhanh" ở hàng chờ — bỏ qua bước xem trước, in thẳng qua trình duyệt, dùng khi
+// người vận hành tin tưởng dữ liệu đúng và muốn in ngay không cần xem lại.
+async function quickPrintViaBrowser(dispatch: any) {
+  await printDispatchViaBrowser(dispatch);
 }
 
 const manualQuery = ref('');
@@ -943,13 +865,70 @@ function selectManualResult(l: any) {
   scannerService.submitManualEntry(`DF:MATERIAL_LABEL:${l.id}`);
 }
 
+// Dựng lại tem vật tư dạng HTML (80x100 QR + 4 dòng text, đúng nội dung TSPL backend
+// WeighingJobController::reprintLabel dựng) rồi gọi window.print() — cùng cơ chế
+// "in qua trình duyệt" như hàng chờ dispatch phía trên, không qua TSPL/Local Agent.
+// Nhận sẵn cửa sổ đã mở (win) từ submitReprint — PHẢI mở window.open() đồng bộ ngay lúc
+// bấm nút, trước khi gọi API xác nhận, nếu không Chrome/Edge sẽ chặn popup vì mất "user
+// gesture" sau await mạng (yêu cầu 2026-07-30: "ấn vào đấy ra cái in của trình duyệt luôn").
+async function printMaterialLabelViaBrowser(l: any, win: Window) {
+  const qrToken = `DF:MATERIAL_LABEL:${l.id}`;
+  let qrDataUrl = '';
+  try {
+    qrDataUrl = await QRCode.toDataURL(qrToken, { width: 240, margin: 0 });
+  } catch (err) {
+    console.error('Failed to render QR for material label print:', err);
+  }
+
+  const html = `<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<title>Tem ${l.batch?.legacy_batch_id || ''}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; margin: 0; padding: 6mm; color: #000; display: flex; justify-content: center; }
+  .slip { width: 80mm; height: 50mm; border: 0.3mm solid #000; zoom: 2.6; display: flex; align-items: center; gap: 4mm; padding: 3mm; }
+  .qr { width: 26mm; height: 26mm; flex-shrink: 0; }
+  .qr img { width: 100%; height: 100%; }
+  .info { font-size: 3mm; line-height: 1.5; }
+  .info strong { font-size: 3.4mm; }
+  @media print { body { padding: 0; } .slip { zoom: 1; } }
+</style>
+</head>
+<body>
+  <div class="slip">
+    <div class="qr">${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" />` : ''}</div>
+    <div class="info">
+      <div><strong>LOT: ${l.batch?.legacy_batch_id || ''} (REPRINT #${l.reprint_count})</strong></div>
+      <div>LOAI: ${l.material_type || ''}</div>
+      <div>KG: ${((l.weight || 0) / 1000).toFixed(2)}</div>
+      <div>MAY: ${l.batch?.machine?.code || 'VD-COMMON'}</div>
+    </div>
+  </div>
+  <script>
+    window.onload = function () { window.print(); };
+  <\/script>
+</body>
+</html>`;
+
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
+
 async function submitReprint() {
   if (!label.value || !currentWorkstation.value) return;
 
-  if (!resolvedPrinter.value) {
-    reprintError.value = "Không phát hiện máy in nào khả dụng trên trạm này. Kiểm tra Local Agent và máy in Windows rồi thử lại.";
+  // Mở cửa sổ NGAY lúc bấm nút (đồng bộ, trước khi gọi API xác nhận) — nếu đợi API trả
+  // về rồi mới window.open(), Chrome/Edge sẽ chặn popup vì đã mất "user gesture" gắn với
+  // cú click (yêu cầu 2026-07-30: "ấn vào đấy ra cái in của trình duyệt luôn").
+  const printWin = window.open('', '_blank', 'width=780,height=520');
+  if (!printWin) {
+    reprintError.value = 'Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.';
     return;
   }
+  printWin.document.write('<p style="font-family:sans-serif;padding:20px;">Đang xử lý...</p>');
 
   let managerPin: string | null = null;
   const authStore = useAuthStore();
@@ -957,6 +936,7 @@ async function submitReprint() {
     managerPin = prompt('Nhập mã PIN của Giám sát (Supervisor) để in lại tem:');
     if (!managerPin) {
       reprintError.value = 'Cần có mã PIN Giám sát để in lại tem.';
+      printWin.close();
       return;
     }
   }
@@ -973,9 +953,11 @@ async function submitReprint() {
     reprintSuccess.value = res.data.message;
     label.value = res.data.data;
     scannerService.playBeep(2200, 200);
+    await printMaterialLabelViaBrowser(label.value, printWin);
     resetTimer = setTimeout(resetScan, 3000);
   } catch (err: any) {
     reprintError.value = err.response?.data?.message || 'Không thể in lại tem.';
+    printWin.close();
   } finally {
     reprinting.value = false;
   }
@@ -1027,13 +1009,9 @@ onMounted(async () => {
     searchManual();
   }
 
-  if (!currentWorkstation.value) {
-    await fetchStationOptions();
-  }
-  fetchInstalledPrinters();
   fetchPendingDispatches();
+  fetchHistory();
   pollTimer = setInterval(() => {
-    fetchInstalledPrinters();
     fetchPendingDispatches();
   }, 8000);
 
@@ -1092,17 +1070,6 @@ onUnmounted(() => {
   border-radius: var(--radius-full);
   margin-bottom: 6px;
 }
-.admin-station-picker {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-}
-.select-sm {
-  padding: 2px 8px;
-  font-size: 0.85rem;
-  width: auto;
-}
 .dev-badge {
   display: flex;
   align-items: center;
@@ -1110,16 +1077,6 @@ onUnmounted(() => {
   gap: 6px;
   font-size: 0.85rem;
   color: var(--text-muted);
-}
-.dot-pulse {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-}
-.dot-green {
-  background-color: var(--status-green);
-  box-shadow: 0 0 8px var(--status-green);
 }
 
 .print-queue-panel,
@@ -1135,27 +1092,6 @@ onUnmounted(() => {
 }
 .row-printed td {
   background-color: var(--status-green-bg);
-}
-
-.printer-config-panel h4 {
-  margin: 0 0 var(--space-md) 0;
-  color: var(--text-title);
-}
-.printer-config-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)) auto;
-  gap: var(--space-lg);
-  align-items: end;
-}
-.printer-config-form .form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.printer-config-form label {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  font-weight: 600;
 }
 .queue-header {
   display: flex;
@@ -1183,7 +1119,7 @@ onUnmounted(() => {
   font-size: 0.9rem;
 }
 /* 8 cột trong mỗi bảng con (queue-columns) vẫn có thể vượt quá bề rộng cột khi zoom
-   trình duyệt lớn dù đã chia cột thích ứng -> cột "Thao tác" (In nhanh/Xem trước) bị
+   trình duyệt lớn dù đã chia cột thích ứng -> cột "Thao tác" (Xem trước) bị
    đẩy ra ngoài, phải cuộn ngang mới thấy, người dùng tưởng nút biến mất. Ghim cột này
    bên phải để luôn thấy nút thao tác dù các cột khác có cuộn ngang hay không.
    Lưu ý: PHẢI target đúng .actions-col (class riêng), không dùng :last-child — cột
@@ -1354,6 +1290,18 @@ onUnmounted(() => {
 
 .actions-cell { display: flex; gap: 6px; flex-wrap: wrap; }
 
+.btn-ok {
+  background-color: var(--status-green);
+  border-color: var(--status-green);
+  color: #fff;
+}
+.btn-ok:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+.btn-ok:disabled {
+  opacity: 0.6;
+}
+
 /* Modal xem trước tem */
 .modal-overlay {
   position: fixed;
@@ -1419,10 +1367,6 @@ onUnmounted(() => {
   padding: var(--space-lg) var(--space-xl);
   border-top: 1px solid var(--border-divider);
 }
-.preview-no-printer-hint {
-  padding: 0 var(--space-xl) var(--space-lg);
-  text-align: right;
-}
 
 /* Bảng RACK/MÃ/KHỐI LƯỢNG tách dòng — layout kiểu scaleform.frm (VBA gốc) */
 .rack-tables-row {
@@ -1445,7 +1389,6 @@ onUnmounted(() => {
 @media (max-width: 768px) {
   .rack-tables-row,
   .preview-header-grid,
-  .printer-config-form,
   .details-grid {
     grid-template-columns: 1fr;
   }

@@ -66,14 +66,11 @@ class WeighingJobController extends Controller
     public function weighItem(Request $request, $id)
     {
         $request->validate([
-            // Không còn 'min:0' — cân cộng dồn trên cùng 1 đĩa, net = cân gộp - bì có thể ÂM
-            // thật sự khi vật tư bị hao hụt/tràn so với bì đã chốt (phản hồi 2026-07-30); chặn
-            // min:0 ở đây sẽ khiến ca này không bao giờ lưu được kể cả khi override.
+            // Không còn 'min:0' — cân cộng dồn trên cùng 1 đĩa, net có thể lệch bất thường so
+            // với bì đã chốt; chặn min:0 ở đây sẽ khiến ca đó không bao giờ lưu được.
             'weight' => 'required|numeric',
             'scale_device_id' => 'required|string',
             'stable' => 'required|boolean',
-            'override_approved' => 'sometimes|boolean',
-            'override_reason' => 'sometimes|nullable|string',
             // Trừ bì (tare/delta) — xác nhận nghiệp vụ 2026-07-18 (CH-BUS-006): cốc/khay/thùng
             // đặt lên cân trước khi cân vật tư coi là bì, phải trừ đi (đúng VBA
             // Mod_delta_raw.Delta_Begin/AutoFlow_OnWeight). Frontend đã tự trừ và gửi 'weight'
@@ -109,8 +106,6 @@ class WeighingJobController extends Controller
         $rackCode = $request->input('rack_code');
         $scaleDeviceId = $request->input('scale_device_id');
         $stable = (bool) $request->input('stable');
-        $overrideApproved = (bool) $request->input('override_approved', false);
-        $overrideReason = $request->input('override_reason');
 
         // p0-c-scale-algorithm.md Mục A.4: trước đây 'stable' chỉ được validate là boolean hợp
         // lệ, KHÔNG có bước chặn nào dùng giá trị này — client có thể gửi thẳng stable:false vẫn
@@ -125,31 +120,12 @@ class WeighingJobController extends Controller
             ], 422);
         }
 
-        // Tolerance Check
-        $target = (float) $item->planned_weight;
-        $toleranceMinus = (float) $item->tolerance_minus;
-        $tolerancePlus = (float) $item->tolerance_plus;
-
-        $minAllowed = $target - $toleranceMinus;
-        $maxAllowed = $target + $tolerancePlus;
-
-        $inRange = ($measuredWeight >= $minAllowed && $measuredWeight <= $maxAllowed);
-
-        if (! $inRange && ! $overrideApproved) {
-            $item->status = 'OUT_OF_TOLERANCE';
-            $item->save();
-
-            return response()->json([
-                'status' => 'ERROR',
-                'message' => "Khối lượng cân ngoài dung sai cho phép! ({$measuredWeight}g vs mục tiêu {$target}g). Cần sự chấp thuận của Shift Leader để ghi đè.",
-                'error_code' => 'OUT_OF_TOLERANCE',
-                'data' => [
-                    'min_allowed' => $minAllowed,
-                    'max_allowed' => $maxAllowed,
-                    'measured' => $measuredWeight,
-                ],
-            ], 422);
-        }
+        // KHÔNG chặn khi ngoài dung sai — port đúng VBA btnSave_Click (yêu cầu 2026-07-30):
+        // thao tác viên lưu được mọi lần cân, hệ thống chỉ GẮN NHÃN ĐẠT/KHÔNG ĐẠT (xem
+        // WeighingJobItem::getProcessStatusAttribute, tương đương cột processColor của Access).
+        // Vì vậy cũng không còn luồng override (PIN Giám sát + lý do + AuditLog
+        // WEIGH_TOLERANCE_OVERRIDE) — không còn hành vi "phê duyệt" nào để ghi nhận. Nhãn vẫn
+        // tái dựng được vĩnh viễn từ planned_weight/tolerance_* đã snapshot trên chính item.
 
         $client = $request->attributes->get('operation_client');
         if (! $client) {
@@ -173,47 +149,7 @@ class WeighingJobController extends Controller
             }
         }
 
-        $isOverride = ! $inRange && $overrideApproved;
-        $overrideUser = null;
-
-        if ($isOverride) {
-            $user = Auth::user();
-
-            if (! $user) {
-                $pin = $request->input('manager_pin');
-                if (! $pin) {
-                    return response()->json([
-                        'status' => 'FORBIDDEN',
-                        'message' => 'Yêu cầu nhập mã PIN của Giám sát (Supervisor) để duyệt override dung sai.',
-                    ], 403);
-                }
-                $user = User::verifyManagerPin($pin);
-                if (! $user) {
-                    return response()->json([
-                        'status' => 'FORBIDDEN',
-                        'message' => 'Mã PIN giám sát không đúng hoặc không có quyền.',
-                    ], 403);
-                }
-            }
-
-            if (! $user->hasRole('SUPERVISOR') && ! $user->hasRole('ADMIN')) {
-                return response()->json([
-                    'status' => 'FORBIDDEN',
-                    'message' => 'Chỉ Giám sát viên (Supervisor) hoặc Admin mới có quyền ký duyệt Override dung sai cân.',
-                ], 403);
-            }
-
-            if (! $overrideReason || strlen(trim($overrideReason)) < 5) {
-                return response()->json([
-                    'status' => 'ERROR',
-                    'message' => 'Vui lòng nhập lý do ghi đè dung sai (tối thiểu 5 ký tự).',
-                    'error_code' => 'OVERRIDE_REASON_REQUIRED',
-                ], 422);
-            }
-            $overrideUser = $user;
-        }
-
-        return DB::transaction(function () use ($item, $job, $batch, $measuredWeight, $tareWeight, $grossWeight, $rackCode, $isOverride, $overrideReason, $request, $overrideUser) {
+        return DB::transaction(function () use ($item, $job, $batch, $measuredWeight, $tareWeight, $grossWeight, $rackCode, $request) {
             // Save to scale measurements (create new for every weigh attempt, no overwrites)
             $measurement = ScaleMeasurement::create([
                 'legacy_source' => 'web_app',
@@ -238,36 +174,7 @@ class WeighingJobController extends Controller
             $item->rack_code = $rackCode;
             $item->status = 'COMPLETED';
             $item->completed_at = Carbon::now();
-
-            if ($isOverride) {
-                $item->override_approved = true;
-                $item->override_reason = $overrideReason;
-                $item->override_by = $overrideUser->id;
-            }
-
             $item->save();
-
-            if ($isOverride) {
-                AuditLog::create([
-                    'user_id' => $overrideUser->id,
-                    'action' => 'WEIGH_TOLERANCE_OVERRIDE',
-                    'entity_type' => 'WeighingJobItem',
-                    'entity_id' => $item->id,
-                    'before_data' => [
-                        'planned_weight' => $item->planned_weight,
-                        'tolerance_minus' => $item->tolerance_minus,
-                        'tolerance_plus' => $item->tolerance_plus,
-                    ],
-                    'after_data' => [
-                        'actual_weight' => $measuredWeight,
-                        'material_code' => $item->material_code,
-                        'rack_code' => $rackCode,
-                        'batch_id' => $batch->id,
-                        'reason' => $overrideReason,
-                    ],
-                    'client_ip' => $request->ip(),
-                ]);
-            }
 
             // Check if job is completed
             $unfinishedItems = WeighingJobItem::where('weighing_job_id', $job->id)
@@ -438,29 +345,7 @@ class WeighingJobController extends Controller
             ], 422);
         }
 
-        // Verify printer configuration
-        $printerDevice = $workstation->devices()
-            ->where('device_type', 'PRINTER')
-            ->where('operation_client_devices.enabled', true)
-            ->where('operation_client_devices.is_default', true)
-            ->first();
-        if (! $printerDevice) {
-            $printerDevice = $workstation->devices()
-                ->where('device_type', 'PRINTER')
-                ->where('operation_client_devices.enabled', true)
-                ->first();
-        }
-
-        if (! $printerDevice) {
-            return response()->json([
-                'status' => 'ERROR',
-                'message' => 'Chưa cấu hình máy in cho máy trạm này.',
-            ], 400);
-        }
-
-        $printerAddress = $printerDevice->code;
-
-        return DB::transaction(function () use ($job, $batch, $workstation, $printerAddress) {
+        return DB::transaction(function () use ($job, $batch, $workstation) {
             $totalWeight = $job->items->sum('actual_weight');
 
             // 1. Create Material Label
@@ -492,18 +377,22 @@ class WeighingJobController extends Controller
                     "TEXT 50,310,\"3\",0,1,1,\"MAY: $machineCode\"\r\n".
                     "PRINT 1\r\n";
 
-            // 3. Spool print job
+            // 3. In qua trình duyệt (window.print(), không qua TSPL/Local Agent, yêu cầu
+            // 2026-07-30) — đánh dấu PRINTED ngay, không để status PENDING vì
+            // AgentJobsController::getJobs sẽ lấy job PENDING của đúng workstation này và
+            // gửi lệnh TSPL thật xuống máy in vật lý, in trùng bản đã in qua trình duyệt.
             $printJob = PrintJob::create([
                 'workstation_id' => $workstation->code,
                 'label_payload' => $tspl,
-                'printer_connection_type' => 'USB',
-                'printer_address' => $printerAddress,
-                'status' => 'PENDING',
+                'printer_connection_type' => 'BROWSER',
+                'printer_address' => 'BROWSER',
+                'status' => 'PRINTED',
+                'processed_at' => now(),
             ]);
 
             return response()->json([
                 'status' => 'SUCCESS',
-                'message' => 'Lệnh in đã được gửi đến Print Agent.',
+                'message' => 'Đã tạo tem — in qua hộp thoại in của trình duyệt.',
                 'data' => [
                     'label_id' => $label->id,
                     'qr_token' => $qrToken,
@@ -518,8 +407,8 @@ class WeighingJobController extends Controller
      * semiauto-small-scale): bảng COLOR/CODE/MACHINE/LEVEL + từng dòng RACK/vật tư/khối
      * lượng/trạng thái. VBA gốc không giới hạn trạng thái job (in được cả khi đang cân dở,
      * dòng chưa cân để trống) — giữ đúng hành vi đó, khác với printLabel() (tem vật tư) vốn
-     * bắt buộc job COMPLETED. Đi qua đúng pipeline PrintJob/Local Agent như mọi lệnh in khác
-     * (CLAUDE.md mục 5 — trình duyệt không được giao tiếp trực tiếp phần cứng).
+     * bắt buộc job COMPLETED. In qua hộp thoại in của trình duyệt (window.print()), không
+     * qua TSPL/Local Agent — xem ghi chú ở printLabel().
      */
     public function printSlip(Request $request, $id)
     {
@@ -536,28 +425,6 @@ class WeighingJobController extends Controller
             return response()->json(['status' => 'ERROR', 'message' => 'Không xác định được mã trạm.'], 400);
         }
         $workstation = OperationClient::where('code', $workstationCode)->firstOrFail();
-
-        // Verify printer configuration (giống printLabel())
-        $printerDevice = $workstation->devices()
-            ->where('device_type', 'PRINTER')
-            ->where('operation_client_devices.enabled', true)
-            ->where('operation_client_devices.is_default', true)
-            ->first();
-        if (! $printerDevice) {
-            $printerDevice = $workstation->devices()
-                ->where('device_type', 'PRINTER')
-                ->where('operation_client_devices.enabled', true)
-                ->first();
-        }
-
-        if (! $printerDevice) {
-            return response()->json([
-                'status' => 'ERROR',
-                'message' => 'Chưa cấu hình máy in cho máy trạm này.',
-            ], 400);
-        }
-
-        $printerAddress = $printerDevice->code;
 
         $machineCode = $batch->machine ? $batch->machine->code : 'N/A';
 
@@ -589,13 +456,9 @@ class WeighingJobController extends Controller
 
         $y = 178;
         foreach ($job->items as $idx => $item) {
-            if ($item->status === 'COMPLETED') {
-                $statusText = $item->override_approved ? 'OVERRIDE' : 'ACCEPTED';
-            } elseif ($item->status === 'OUT_OF_TOLERANCE') {
-                $statusText = 'REJECTED';
-            } else {
-                $statusText = 'PENDING';
-            }
+            // ACCEPTED / REJECTED / PENDING — đúng cột processColor của VBA btnSave_Click,
+            // suy từ chính dung sai đã snapshot trên item (xem WeighingJobItem::process_status).
+            $statusText = $item->process_status;
             // In cả số cân MỤC TIÊU (MT, planned_weight) lẫn số cân THỰC TẾ (TT, actual_weight)
             // — trước đây chỉ in actual, không đối chiếu được ngay trên tem là cân đủ/thiếu/dư
             // bao nhiêu so với định mức (phản hồi 2026-07-30).
@@ -616,17 +479,19 @@ class WeighingJobController extends Controller
         $tspl .= "TEXT 15,{$y},\"1\",0,1,1,\"In luc: ".Carbon::now()->format('d/m/Y H:i:s')."\"\r\n";
         $tspl .= "PRINT 1,1\r\n";
 
+        // In qua trình duyệt (yêu cầu 2026-07-30) — xem ghi chú ở printLabel().
         $printJob = PrintJob::create([
             'workstation_id' => $workstation->code,
             'label_payload' => $tspl,
-            'printer_connection_type' => 'USB',
-            'printer_address' => $printerAddress,
-            'status' => 'PENDING',
+            'printer_connection_type' => 'BROWSER',
+            'printer_address' => 'BROWSER',
+            'status' => 'PRINTED',
+            'processed_at' => now(),
         ]);
 
         return response()->json([
             'status' => 'SUCCESS',
-            'message' => 'Đã gửi phiếu cân sang hàng chờ in.',
+            'message' => 'Đã tạo phiếu cân — in qua hộp thoại in của trình duyệt.',
             'data' => $printJob,
         ], 201);
     }
@@ -706,29 +571,7 @@ class WeighingJobController extends Controller
         }
         $workstation = OperationClient::where('code', $workstationCode)->firstOrFail();
 
-        // Verify printer configuration
-        $printerDevice = $workstation->devices()
-            ->where('device_type', 'PRINTER')
-            ->where('operation_client_devices.enabled', true)
-            ->where('operation_client_devices.is_default', true)
-            ->first();
-        if (! $printerDevice) {
-            $printerDevice = $workstation->devices()
-                ->where('device_type', 'PRINTER')
-                ->where('operation_client_devices.enabled', true)
-                ->first();
-        }
-
-        if (! $printerDevice) {
-            return response()->json([
-                'status' => 'ERROR',
-                'message' => 'Chưa cấu hình máy in cho máy trạm này.',
-            ], 400);
-        }
-
-        $printerAddress = $printerDevice->code;
-
-        return DB::transaction(function () use ($label, $workstation, $request, $user, $printerAddress) {
+        return DB::transaction(function () use ($label, $workstation, $request, $user) {
             $label->reprint_count += 1;
             $label->reprint_reason = $request->input('reason');
             $label->save();
@@ -747,12 +590,17 @@ class WeighingJobController extends Controller
                     "TEXT 50,310,\"3\",0,1,1,\"MAY: $machineCode\"\r\n".
                     "PRINT 1\r\n";
 
+            // In qua trình duyệt (window.print(), không qua TSPL/Local Agent, yêu cầu
+            // 2026-07-30) — đánh dấu PRINTED ngay, không để status PENDING vì
+            // AgentJobsController::getJobs sẽ lấy job PENDING của đúng workstation này và
+            // gửi lệnh TSPL thật xuống máy in vật lý, in trùng bản đã in qua trình duyệt.
             $printJob = PrintJob::create([
                 'workstation_id' => $workstation->code,
                 'label_payload' => $tspl,
-                'printer_connection_type' => 'USB',
-                'printer_address' => $printerAddress,
-                'status' => 'PENDING',
+                'printer_connection_type' => 'BROWSER',
+                'printer_address' => 'BROWSER',
+                'status' => 'PRINTED',
+                'processed_at' => now(),
             ]);
 
             // Save reprint to audit log

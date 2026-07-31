@@ -28,6 +28,13 @@ use Illuminate\Support\Str;
 
 class ScannerController extends Controller
 {
+    // Dung sai cân ±1% mục tiêu — port đúng VBA Mod_UI_processcolor.CheckRange
+    // (ratio = delta/target; 0.99 <= ratio <= 1.01 là ĐẠT). Lưu dạng tuyệt đối
+    // (target * 0.01) vào tolerance_minus/tolerance_plus: tương đương toán học với so ratio,
+    // và snapshot ngay lúc quét nên nhãn ĐẠT/KHÔNG ĐẠT không trôi khi công thức đổi về sau.
+    // Áp dụng đồng nhất cho cả 2 luồng tạo WeighingJobItem (có công thức / ad-hoc).
+    private const TOLERANCE_RATIO = 0.01;
+
     private FormulaCalculationService $calculationService;
 
     public function __construct(FormulaCalculationService $calculationService)
@@ -274,11 +281,10 @@ class ScannerController extends Controller
                         );
 
                         $adhocTargetWeight = (float) $line['weight'];
-                        // ±1% standard tolerance limit — trước đây để 999999 (gần như vô cực)
-                        // vì "không có công thức để so", nhưng planned_weight vẫn lấy đúng khối
-                        // lượng in trên tem QR nên VẪN là mục tiêu thật, đúng ±1% gốc VBA
-                        // (Mod_UI_processcolor.CheckRange) thay vì tắt hẳn việc so sánh.
-                        $adhocTolerance = $adhocTargetWeight * 0.01;
+                        // Dung sai ±1% — trước đây để 999999 (gần như vô cực) vì "không có công
+                        // thức để so", nhưng planned_weight vẫn lấy đúng khối lượng in trên tem
+                        // QR nên VẪN là mục tiêu thật, so đúng ±1% gốc VBA.
+                        $adhocTolerance = $adhocTargetWeight * self::TOLERANCE_RATIO;
 
                         WeighingJobItem::create([
                             'weighing_job_id' => $job->id,
@@ -376,7 +382,7 @@ class ScannerController extends Controller
                 $seq = 1;
                 foreach ($recipeMaterials as $rm) {
                     $targetWeight = $this->calculationService->getPrecisionRoundedWeight($waterVolume, (float) $rm->concentration);
-                    $tolerance = $targetWeight * 0.01; // ±1% standard tolerance limit
+                    $tolerance = $targetWeight * self::TOLERANCE_RATIO; // ±1% đúng VBA CheckRange
 
                     // RACK auto-fill theo vị trí (xem docblock handleOrderScan) — chỉ cho DYE,
                     // vì rack_lines chỉ có ý nghĩa khi tới từ payload qrDye thật.

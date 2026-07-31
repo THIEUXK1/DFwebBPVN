@@ -37,7 +37,7 @@
                 <td>{{ it.weight !== null ? it.weight.toFixed(2) + ' g' : '-' }}</td>
                 <td>{{ it.process_code || '-' }}</td>
                 <td>
-                  <span v-if="it.override_approved" class="text-danger">⚠️ Override</span>
+                  <span v-if="it.process_status === 'REJECTED'" class="text-danger">❌ Không đạt</span>
                   <span v-else class="text-success">✔️ Đạt</span>
                 </td>
               </tr>

@@ -137,7 +137,7 @@ class KioskOperationTest extends TestCase
         $response->assertJsonPath('status', 'ERROR');
     }
 
-    public function test_kiosk_mode_weighing_override_requires_and_verifies_supervisor_pin(): void
+    public function test_kiosk_mode_saves_out_of_tolerance_weight_and_labels_it_rejected(): void
     {
         // 1. Establish session
         $sessionRes = $this->postJson('/api/kiosk/session', [
@@ -184,65 +184,27 @@ class KioskOperationTest extends TestCase
         $item->status = 'PENDING';
         $item->save();
 
-        // Try weighing out of tolerance without override approved flag
         $headers = [
             'Authorization' => 'Bearer ' . $sessionToken,
             'X-Kiosk-Session-Token' => $sessionToken
         ];
 
-        // 1000g target, actual 1200g (out of tolerance)
-        // Verify response requires override
+        // 1000g target, actual 1200g (ngoài dung sai) — từ 2026-07-30 KHÔNG còn bị chặn:
+        // port đúng VBA btnSave_Click, mọi lần cân đều lưu được, hệ thống chỉ gắn nhãn
+        // ĐẠT/KHÔNG ĐẠT. Không còn PIN Giám sát, không còn 422/403.
         $weighRes = $this->postJson("/api/weighing-jobs/items/{$item->id}/weigh", [
             'weight' => 1200.0,
             'scale_device_id' => 'SCALE_TEST_01',
             'stable' => true,
-            'override_approved' => false
-        ], $headers);
-
-        $weighRes->assertStatus(422);
-
-        // Try override but missing PIN
-        $weighRes = $this->postJson("/api/weighing-jobs/items/{$item->id}/weigh", [
-            'weight' => 1200.0,
-            'scale_device_id' => 'SCALE_TEST_01',
-            'stable' => true,
-            'override_approved' => true,
-            'override_reason' => 'Test weight adjustment'
-        ], $headers);
-
-        $weighRes->assertStatus(403);
-        $weighRes->assertJsonPath('status', 'FORBIDDEN');
-
-        // Try override with wrong PIN
-        $weighRes = $this->postJson("/api/weighing-jobs/items/{$item->id}/weigh", [
-            'weight' => 1200.0,
-            'scale_device_id' => 'SCALE_TEST_01',
-            'stable' => true,
-            'override_approved' => true,
-            'override_reason' => 'Test weight adjustment',
-            'manager_pin' => '9999' // wrong
-        ], $headers);
-
-        $weighRes->assertStatus(403);
-
-        // Try override with correct PIN
-        $weighRes = $this->postJson("/api/weighing-jobs/items/{$item->id}/weigh", [
-            'weight' => 1200.0,
-            'scale_device_id' => 'SCALE_TEST_01',
-            'stable' => true,
-            'override_approved' => true,
-            'override_reason' => 'Test weight adjustment',
-            'manager_pin' => '4321' // correct supervisor PIN
         ], $headers);
 
         $weighRes->assertStatus(200);
         $weighRes->assertJsonPath('status', 'SUCCESS');
+        $weighRes->assertJsonPath('data.item.process_status', 'REJECTED');
 
-        // Verify database state
         $item->refresh();
         $this->assertEquals('COMPLETED', $item->status);
         $this->assertEquals(1200.0, $item->actual_weight);
-        $this->assertTrue($item->override_approved);
-        $this->assertEquals($this->supervisor->id, $item->override_by);
+        $this->assertEquals('REJECTED', $item->process_status);
     }
 }

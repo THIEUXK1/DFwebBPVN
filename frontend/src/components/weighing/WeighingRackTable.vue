@@ -37,8 +37,10 @@
             </div>
           </td>
           <td class="col-process">
-            <span v-if="item.status === 'COMPLETED'" :class="item.override_approved ? 'text-danger' : 'text-success'">
-              {{ item.override_approved ? '⚠️ Override' : '✅ Đạt' }}
+            <!-- ĐẠT/KHÔNG ĐẠT lấy từ item.process_status do backend suy ra (tương đương cột
+                 processColor của VBA) — không tự so lại dung sai ở client để tránh lệch. -->
+            <span v-if="item.status === 'COMPLETED'" :class="item.process_status === 'REJECTED' ? 'text-danger' : 'text-success'">
+              {{ item.process_status === 'REJECTED' ? '❌ Không đạt' : '✅ Đạt' }}
             </span>
             <span v-else-if="activeIndex === idx" class="text-glow-blue">⚖️ Đang cân</span>
             <span v-else-if="isLocked(idx)" class="text-muted" title="Phải cân xong dòng phía trên mới tới lượt dòng này">🔒 Khóa</span>

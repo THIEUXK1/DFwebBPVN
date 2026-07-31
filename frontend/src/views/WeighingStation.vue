@@ -52,21 +52,6 @@
       @confirm="confirmRestartJob"
     />
 
-    <!-- Xem trước phiếu cân (DF_WEIGHING_SLIP) — giống layout scaleform.btnPrint_Click VBA
-         gốc: MAU/HANG/MAY/MUC + bảng RACK/DYE CODE/WEIGHT/STATUS + giờ in. -->
-    <div v-if="showSlipPreview" class="slip-preview-overlay" @click.self="showSlipPreview = false">
-      <div class="slip-preview-modal card-sec">
-        <div class="slip-preview-header">
-          <h3>🖨️ Xem trước phiếu cân (DF_WEIGHING_SLIP)</h3>
-          <button class="btn btn-secondary btn-sm" @click="showSlipPreview = false">✖ Đóng</button>
-        </div>
-        <p class="text-muted font-sm">Đã gửi phiếu cân sang hàng chờ in — bên dưới là xem trước đúng nội dung/bố cục đã gửi.</p>
-        <div class="slip-preview-box mt-3">
-          <LabelPreview :label-payload="slipPreviewPayload" />
-        </div>
-      </div>
-    </div>
-
     <!-- Wait/Ready Scanning Screen — port scaleform (VBA) chờ quét mã -->
     <QrScanPanel
       v-if="!activeJob"
@@ -87,6 +72,18 @@
             <!-- Phiếu cân tổng hợp — port scaleform.btnPrint_Click, không cần chờ job hoàn tất -->
             <button class="btn btn-secondary btn-sm ml-2" @click="printSlip" :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'">
               🖨️ In phiếu cân
+            </button>
+            <!-- Thay btn_Out/btn_In của VBA (bắn RACK sang app pha màu ngoài bằng mô phỏng
+                 chuột + clipboard vào toạ độ màn hình cố định) — không port được sang web và
+                 vốn rất mong manh. Yêu cầu 2026-07-30: in danh sách RACK qua trình duyệt để
+                 thao tác viên cầm sang, vẫn giữ đúng cách chia lô 6 rack/lần của VBA. -->
+            <button
+              class="btn btn-secondary btn-sm ml-2"
+              @click="printRackList"
+              :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'"
+              title="In danh sách RACK, chia lô 6 rack mỗi lần đúng như VBA gửi sang app pha màu"
+            >
+              🏷️ In danh sách RACK
             </button>
             <!-- Đóng đơn đang xem để quét/nạp đơn khác — KHÔNG xóa hay hủy gì dưới DB, đơn
                  vẫn giữ nguyên trạng thái đang cân dở, chỉ đưa màn hình về lại màn quét QR.
@@ -153,8 +150,6 @@
           :deviation-percent="deviationPercent"
           :tare-baseline="tareBaseline"
           :gross-weight="grossWeight"
-          v-model:override-approved="overrideApproved"
-          v-model:override-reason="overrideReason"
           :view-only="isImpersonating && remoteMode === 'VIEW_ONLY'"
           @start-weighing="startWeighing"
           @retare="resetTareForNewSlot"
@@ -168,6 +163,7 @@
           :label-payload="lastLabelPayload"
           :view-only="isImpersonating && remoteMode === 'VIEW_ONLY'"
           @reset-to-scan="resetToScan"
+          @print="printLabelViaBrowser"
           @reprint="reprintLabel"
         />
       </div>
@@ -190,7 +186,7 @@ import WeighingConfirmPanel from '../components/weighing/WeighingConfirmPanel.vu
 import LabelPrintPanel from '../components/weighing/LabelPrintPanel.vue';
 import WeighingCheckerModal from '../components/weighing/WeighingCheckerModal.vue';
 import RestartJobModal from '../components/weighing/RestartJobModal.vue';
-import LabelPreview from '../components/LabelPreview.vue';
+import { printTsplViaBrowser } from '../utils/tsplPrint';
 
 const route = useRoute();
 const authStore = useAuthStore();
@@ -239,9 +235,10 @@ const liveWeight = ref<number>(0);
 // từ Agent (ScaleReader.StableFilter) qua /api/devices/readings — xem fetchLiveWeight().
 const isStable = ref<boolean>(true);
 const simulatedWeight = ref<number>(0);
-const useSimValue = ref<boolean>(true);
-const overrideApproved = ref<boolean>(false);
-const overrideReason = ref<string>('');
+// Mặc định TẮT simulator (2026-07-31): khi bật, fetchLiveWeight() thoát ngay ở dòng đầu nên
+// số cân thật do Agent đẩy lên bị bỏ qua hoàn toàn — mặc định bật khiến trạm cắm cân thật
+// vẫn không thấy số mà không có dấu hiệu gì. Vẫn giữ công tắc để demo/UAT khi chưa có cân.
+const useSimValue = ref<boolean>(false);
 
 // Trừ bì (tare/delta) — xác nhận nghiệp vụ 2026-07-18 (CH-BUS-006): cốc/khay/thùng đặt lên
 // cân TRƯỚC khi thêm vật tư coi là bì, phải trừ đi. Đúng VBA Mod_delta_raw:
@@ -305,11 +302,11 @@ function ingestRawWeight(raw: number, stable: boolean) {
     return;
   }
 
-  // KHÔNG dùng Math.abs() — cân cộng dồn trên cùng 1 đĩa (bì = cân gộp của item trước đó),
-  // nếu vật tư bị lấy bớt ra/đổ tràn/rung lệch làm cân gộp tụt xuống dưới bì, net PHẢI ra
-  // số âm để báo thật sự có bất thường (phản hồi 2026-07-30) — lấy trị tuyệt đối sẽ biến
-  // 1 sai số âm thành nhìn giống "chưa đủ", che mất dấu hiệu mất vật tư.
-  liveWeight.value = raw - tareBaseline.value;
+  // Math.abs() — port đúng VBA Mod_delta_raw.AutoFlow_OnWeight (`deltaVal = Abs(rawW -
+  // DeltaBaseWeight)`), theo yêu cầu 2026-07-30 áp y hệt hành vi VBA. Đánh đổi đã biết và
+  // được chấp thuận: lấy bớt vật tư ra khỏi đĩa sẽ hiển thị giống như đang thêm vào, không
+  // còn phân biệt được trường hợp hao hụt so với bì cộng dồn.
+  liveWeight.value = Math.abs(raw - tareBaseline.value);
 }
 
 // Xác nhận cân gộp hiện tại (đang đứng ổn định) chính là BÌ — bấm sau khi đặt cốc/khay/thau
@@ -427,8 +424,6 @@ function applyActiveJob(job: any, batch: any) {
   // Auto focus on the first pending item
   const pIdx = job.items.findIndex((i: any) => i.status !== 'COMPLETED');
   activeIndex.value = pIdx >= 0 ? pIdx : 0;
-  overrideApproved.value = false;
-  overrideReason.value = '';
 
   // Nếu vật tư đang đứng (sau khi restore) đúng là vật tư đã lỡ lấy bì trước đó (còn lưu
   // trong localStorage từ trước khi F5/mất mạng) — khôi phục lại bì đó thay vì bắt đặt lại
@@ -537,9 +532,6 @@ const toleranceStatus = computed(() => {
   const max = getMaxAllowed();
 
   if (w === 0) return 'zero';
-  // Net âm = bất thường (mất vật tư/tràn/lệch bì cộng dồn), khác hẳn "insufficient" (chưa
-  // đủ, cứ thêm tiếp) — tách riêng để không hiểu lầm là còn thiếu (phản hồi 2026-07-30).
-  if (w < 0) return 'negative';
   if (w < min) return 'insufficient';
   if (w > max) return 'over-range';
   return 'in-range';
@@ -547,9 +539,6 @@ const toleranceStatus = computed(() => {
 
 const statusMessage = computed(() => {
   const status = toleranceStatus.value;
-  if (status === 'negative') {
-    return `SỐ ÂM (${liveWeight.value.toFixed(2)} g) - VẬT TƯ BỊ HAO HỤT SO VỚI BÌ CỘNG DỒN, KIỂM TRA LẠI`;
-  }
   if (status === 'zero') {
     // Cân cộng dồn (cumulative dosing) trên CÙNG 1 đĩa cân — vật tư của item trước vẫn
     // nằm nguyên trên đĩa khi chuyển sang item kế tiếp (không lấy ra), nên "cân gộp"
@@ -568,8 +557,6 @@ const statusMessage = computed(() => {
 const selectSeqIndex = (idx: number) => {
   if (idx === activeIndex.value) return; // đang chọn đúng dòng hiện tại — khỏi reset bì vô cớ
   activeIndex.value = idx;
-  overrideApproved.value = false;
-  overrideReason.value = '';
   resetTareForNewSlot(); // đổi vật tư = đặt cốc/khay mới lên cân — phải cân bì lại (Delta_Begin)
   if (useSimValue.value) {
     // Trước đây tự set thẳng slider = mục tiêu (tiện test nhưng bỏ qua bì). Nay set về 0
@@ -584,8 +571,6 @@ const selectSeqIndex = (idx: number) => {
 // xong vật tư trước) CHÍNH LÀ bì mới cho vật tư kế tiếp — tự chốt luôn, net về 0 ngay.
 function advanceToNextItem(idx: number) {
   activeIndex.value = idx;
-  overrideApproved.value = false;
-  overrideReason.value = '';
   tareBaseline.value = grossWeight.value;
   liveWeight.value = 0;
   const nextItem = activeJob.value?.items?.[idx];
@@ -603,15 +588,6 @@ const confirmWeighing = async () => {
     return;
   }
 
-  let managerPin: string | null = null;
-  if (overrideApproved.value && !authStore.user) {
-    managerPin = prompt('Nhập mã PIN của Giám sát (Supervisor) để duyệt override dung sai:');
-    if (!managerPin) {
-      alert('Cần có mã PIN Giám sát để duyệt override dung sai.');
-      return;
-    }
-  }
-
   try {
     const res = await axios.post(`/api/weighing-jobs/items/${activeIngredient.value.id}/weigh`, {
       weight: liveWeight.value, // NET — đã trừ bì
@@ -622,15 +598,14 @@ const confirmWeighing = async () => {
       rack_code: activeIngredient.value.rack_code,
       scale_device_id: currentWorkstation.value?.assigned_scale_device_id || 'MOCK_SCALE',
       stable: isStable.value,
-      override_approved: overrideApproved.value,
-      override_reason: overrideApproved.value ? overrideReason.value : null,
-      manager_pin: managerPin
     }, getRequestConfig());
 
     if (res.data?.status === 'SUCCESS') {
-      // Update local state
+      // Update local state — lấy nhãn ĐẠT/KHÔNG ĐẠT từ chính bản ghi backend trả về, không
+      // tự tính lại phía client (backend là nguồn duy nhất, xem WeighingJobItem::process_status).
       activeIngredient.value.actual_weight = liveWeight.value;
       activeIngredient.value.status = 'COMPLETED';
+      activeIngredient.value.process_status = res.data.data?.item?.process_status ?? 'ACCEPTED';
       clearTareStorage(); // vật tư này đã lưu xong xuống DB — bì tạm không còn ý nghĩa nữa
 
       const next = res.data.data?.next_item;
@@ -649,17 +624,16 @@ const confirmWeighing = async () => {
           advanceToNextItem(nextIdx);
         }
       }
-
-      // Reset override flags
-      overrideApproved.value = false;
-      overrideReason.value = '';
     }
   } catch (err: any) {
     alert(err.response?.data?.message || 'Không thể xác nhận khối lượng cân.');
   }
 };
 
-// Print label trigger
+// Cân xong -> tạo tem (MaterialLabel + PrintJob) và giữ sẵn nội dung TSPL. KHÔNG tự mở
+// hộp thoại in ở đây: hàm này chạy tự động sau khi cân xong, không gắn với cú click nào
+// nên trình duyệt sẽ chặn popup. Người vận hành bấm nút "🖥️ In tem" ở LabelPrintPanel để
+// in (printLabelViaBrowser), in lại bao nhiêu lần tùy ý.
 const printMaterialLabel = async () => {
   if (!activeJob.value || !currentWorkstation.value) return;
   try {
@@ -673,14 +647,21 @@ const printMaterialLabel = async () => {
   }
 };
 
-// Reprint label trigger
-const reprintLabel = async () => {
-  if (!activeJob.value) return;
-
-  if (!currentWorkstation.value?.assigned_printer_device_id) {
-    alert('Lỗi: Máy trạm chưa được cấu hình Thiết bị Máy in. Không thể in lại tem.');
+// "🖥️ In tem" — in qua hộp thoại in của trình duyệt, không qua TSPL/Local Agent. Chỉ dựng
+// lại nội dung tem đã tạo sẵn nên bấm được nhiều lần thoải mái, không sinh thêm bản ghi.
+const printLabelViaBrowser = async () => {
+  if (!lastLabelPayload.value) return;
+  const win = window.open('', '_blank', 'width=780,height=560');
+  if (!win) {
+    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
     return;
   }
+  await printTsplViaBrowser(lastLabelPayload.value, win);
+};
+
+// Reprint label trigger — ghi Audit Log (lý do bắt buộc) rồi in qua trình duyệt.
+const reprintLabel = async () => {
+  if (!activeJob.value) return;
 
   let managerPin: string | null = null;
   if (!authStore.user) {
@@ -697,10 +678,20 @@ const reprintLabel = async () => {
     return;
   }
 
+  const win = window.open('', '_blank', 'width=780,height=560');
+  if (!win) {
+    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    return;
+  }
+  win.document.write('<p style="font-family:sans-serif;padding:20px;">Đang xử lý...</p>');
+
   try {
     // Get label ID from first item
     const labelId = activeJob.value.items[0]?.label_id;
-    if (!labelId) return;
+    if (!labelId) {
+      win.close();
+      return;
+    }
 
     const res = await axios.post(`/api/material-labels/${labelId}/reprint`, {
       reason: reason,
@@ -708,8 +699,9 @@ const reprintLabel = async () => {
       manager_pin: managerPin
     }, getRequestConfig());
     lastLabelPayload.value = res.data?.data?.label_payload || lastLabelPayload.value;
-    alert('Đã gửi yêu cầu in lại tem.');
+    await printTsplViaBrowser(lastLabelPayload.value || '', win);
   } catch (err: any) {
+    win.close();
     alert(err.response?.data?.message || 'Không thể in lại tem.');
   }
 };
@@ -765,23 +757,133 @@ const showChecker = ref(false);
 
 // ===== Phiếu cân tổng hợp — port VBA scaleform.btnPrint_Click (DF_WEIGHING_SLIP: header
 // MAU/HANG/MAY/MUC + bảng RACK/DYE CODE/WEIGHT/STATUS + giờ in) — nội dung TSPL trả về từ
-// backend giống hệt layout VBA, hiển thị lại bằng LabelPreview (đã có sẵn khả năng vẽ TSPL)
-// để thao tác viên xem trước tem giống thật trước khi cầm tem giấy (yêu cầu 2026-07-30).
-const showSlipPreview = ref(false);
-const slipPreviewPayload = ref<string | null>(null);
+// backend giống hệt layout VBA, in thẳng qua hộp thoại in của trình duyệt.
 
 const printSlip = async () => {
   if (!activeJob.value || !currentWorkstation.value) return;
+
+  // Mở cửa sổ NGAY (đồng bộ, trước await) — nếu đợi API trả về rồi mới window.open(),
+  // Chrome/Edge chặn popup vì đã mất "user gesture" gắn với cú click.
+  const win = window.open('', '_blank', 'width=780,height=980');
+  if (!win) {
+    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    return;
+  }
+  win.document.write('<p style="font-family:sans-serif;padding:20px;">Đang xử lý...</p>');
+
   try {
     const res = await axios.post(`/api/weighing-jobs/${activeJob.value.id}/print-slip`, {
       workstation_code: currentWorkstation.value.code
     }, getRequestConfig());
     scannerService.playBeep(1800, 150);
-    slipPreviewPayload.value = res.data?.data?.label_payload || null;
-    showSlipPreview.value = true;
+    await printTsplViaBrowser(res.data?.data?.label_payload || '', win);
   } catch (err: any) {
+    win.close();
     alert(err.response?.data?.message || 'Không thể in phiếu cân.');
   }
+};
+
+// ===== Danh sách RACK — thay btn_Out/btn_In của VBA =====
+// Port đúng Mod_sendRackauto.BuildRackBatch: bỏ rack rỗng và rack "0", rồi chia lô 6 cái mỗi
+// lần (rackBatch1 = 6 rack đầu, rackBatch2 = phần còn lại) — VBA phải chia vì app pha màu bên
+// ngoài chỉ có 6 ô nhập mỗi màn. Web giữ nguyên cách chia để tờ in khớp với thao tác nhập
+// thực tế của người vận hành bên máy kia.
+const RACKS_PER_BATCH = 6;
+
+function buildRackBatches(): { rack: string; dye: string; weight: string }[][] {
+  const items = activeJob.value?.items || [];
+  const rows = items
+    .filter((i: any) => {
+      const v = String(i.rack_code ?? '').trim();
+      return v !== '' && v !== '0';
+    })
+    .map((i: any) => ({
+      rack: String(i.rack_code).trim(),
+      dye: i.material?.name || i.material_code || '',
+      weight: Number(i.planned_weight ?? 0).toFixed(2),
+    }));
+
+  const batches: { rack: string; dye: string; weight: string }[][] = [];
+  for (let i = 0; i < rows.length; i += RACKS_PER_BATCH) {
+    batches.push(rows.slice(i, i + RACKS_PER_BATCH));
+  }
+  return batches;
+}
+
+const printRackList = () => {
+  if (!activeJob.value) return;
+
+  const batches = buildRackBatches();
+  if (!batches.length) {
+    alert('Chưa có RACK nào để in — điền số RACK trên bảng cân trước.');
+    return;
+  }
+
+  // Mở cửa sổ ngay trong handler (đồng bộ) — cùng lý do như printSlip/PrintStation.vue:
+  // Chrome/Edge chặn popup nếu window.open() chạy sau await, mất "user gesture" của cú click.
+  const win = window.open('', '_blank', 'width=780,height=980');
+  if (!win) {
+    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    return;
+  }
+
+  const b = activeBatch.value || {};
+  const batchesHtml = batches
+    .map(
+      (rows, idx) => `
+    <section class="batch">
+      <h2>Lô ${idx + 1} / ${batches.length}</h2>
+      <table>
+        <thead><tr><th>RACK</th><th>DYE CODE</th><th>WEIGHT</th></tr></thead>
+        <tbody>
+          ${rows
+            .map(
+              (r) =>
+                `<tr><td class="rack">${r.rack}</td><td>${r.dye}</td><td class="num">${r.weight} g</td></tr>`
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </section>`
+    )
+    .join('');
+
+  win.document.write(`<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<title>Danh sách RACK ${b.legacy_batch_id || ''}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; margin: 0; padding: 12mm; color: #000; }
+  h1 { font-size: 16pt; margin: 0 0 2mm; }
+  .meta { font-size: 10pt; margin-bottom: 6mm; }
+  .meta span { margin-right: 8mm; }
+  .batch { margin-bottom: 6mm; break-inside: avoid; }
+  .batch h2 { font-size: 11pt; margin: 0 0 1.5mm; }
+  table { border-collapse: collapse; width: 100%; font-size: 10pt; }
+  th, td { border: 0.3mm solid #000; padding: 1.5mm 2.5mm; text-align: left; }
+  th { background: #eee; }
+  .rack { font-weight: 700; width: 20mm; }
+  .num { text-align: right; font-family: monospace; width: 28mm; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+  <h1>DANH SÁCH RACK — ${b.legacy_batch_id || ''}</h1>
+  <div class="meta">
+    <span>Màu: <strong>${b.color || ''}</strong></span>
+    <span>Mã hàng: <strong>${b.product_code || ''}</strong></span>
+    <span>Máy: <strong>${b.machine?.code || 'N/A'}</strong></span>
+    <span>Mức nước: <strong>${b.level_code || '-'}</strong></span>
+  </div>
+  ${batchesHtml}
+  <script>
+    window.onload = function () { window.print(); };
+  <\/script>
+</body>
+</html>`);
+  win.document.close();
 };
 </script>
 
@@ -838,40 +940,6 @@ const printSlip = async () => {
 .btn-restart-warn {
   color: var(--status-red);
   border-color: var(--status-red);
-}
-
-.slip-preview-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 40px 16px;
-  z-index: 1050;
-}
-
-.slip-preview-modal {
-  background-color: var(--bg-sidebar);
-  border: 1px solid var(--border-divider);
-  border-radius: var(--radius-lg);
-  padding: var(--space-xl);
-  width: 100%;
-  max-width: 460px;
-  max-height: 85vh;
-  overflow-y: auto;
-}
-
-.slip-preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.slip-preview-box {
-  display: flex;
-  justify-content: center;
 }
 
 /* Weighing Layout */

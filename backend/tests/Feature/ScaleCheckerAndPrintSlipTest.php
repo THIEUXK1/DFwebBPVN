@@ -144,7 +144,7 @@ class ScaleCheckerAndPrintSlipTest extends TestCase
         $response->assertJsonPath('message', 'KHONG CO DU LIEU');
     }
 
-    public function test_checker_flags_items_saved_via_tolerance_override(): void
+    public function test_checker_flags_items_weighed_outside_tolerance_as_rejected(): void
     {
         Sanctum::actingAs($this->user);
 
@@ -200,10 +200,12 @@ class ScaleCheckerAndPrintSlipTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJsonCount(1, 'data.0.items');
-        $response->assertJsonPath('data.0.items.0.override_approved', true);
+        // 110g so với mục tiêu 100 ± 1 -> KHÔNG ĐẠT (nhãn suy từ WeighingJobItem::process_status,
+        // thay cho cờ override_approved đã bỏ cùng luồng override 2026-07-30).
+        $response->assertJsonPath('data.0.items.0.process_status', 'REJECTED');
     }
 
-    public function test_print_slip_spools_pending_print_job_with_item_status(): void
+    public function test_print_slip_creates_browser_print_job_with_item_status(): void
     {
         Sanctum::actingAs($this->user);
 
@@ -267,7 +269,10 @@ class ScaleCheckerAndPrintSlipTest extends TestCase
 
         $printJob = PrintJob::find($printJobId);
         $this->assertNotNull($printJob);
-        $this->assertEquals('PENDING', $printJob->status);
+        // In qua trình duyệt (2026-07-30) — PrintJob đánh dấu PRINTED ngay để Local Agent
+        // không lấy job PENDING này gửi TSPL xuống máy in vật lý lần nữa.
+        $this->assertEquals('PRINTED', $printJob->status);
+        $this->assertEquals('BROWSER', $printJob->printer_connection_type);
         $this->assertStringContainsString('DF_WEIGHING_SLIP', $printJob->label_payload);
         $this->assertStringContainsString('SLIP-COLOR', $printJob->label_payload);
         $this->assertStringContainsString('DYE-DONE', $printJob->label_payload);

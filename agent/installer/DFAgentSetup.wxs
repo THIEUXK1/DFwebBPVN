@@ -10,30 +10,32 @@
   sau khi gap MSI error 1721 "A program run as part of the setup did not finish as expected"
   tren may that 2026-07-30 — deferred Custom Action goi PowerShell qua token [~] khong dang
   tin cay bang, kho debug tu xa). Vi StationId da co dong san luc build (khong con nguoi
-  dung nhap gi ca), don gian hon nhieu la dong goi THANG 1 file appsettings.<role>.json tinh
-  co san (xem agent/installer/appsettings.print-station.json,
-  appsettings.weighing-printer.json, appsettings.weighing-scale.json) qua bien tien xu ly
-  AppSettingsFile — khong can Custom Action nao het ngoai ServiceInstall/ServiceControl
-  native cua MSI.
+  dung nhap gi ca), don gian hon nhieu la dong goi THANG 1 file appsettings.scale.json tinh
+  co san qua bien tien xu ly AppSettingsFile — khong can Custom Action nao het ngoai
+  ServiceInstall/ServiceControl native cua MSI.
 
-  Build 3 file MSI rieng tu cung file .wxs nay qua StationId + AppSettingsFile
-  (xem agent/installer/build-all.ps1):
-    wix build DFAgentSetup.wxs -ext WixToolset.UI.wixext ^
-      -d StationId=WS-PRINT-STATION -d AppSettingsFile=appsettings.print-station.json ^
-      -o DFAgentSetup-PrintStation.msi
+  Tu 2026-07-31 chi con DUNG 1 vai tro / 1 file MSI: NHAN CAN (SCALE_ONLY). Truoc do co 3
+  vai tro (print-station / weighing-printer / weighing-scale) vi may in di qua Agent; nay ca
+  Print Station lan Weighing Station deu in bang hop thoai in cua trinh duyet nen phan may in
+  cua Agent khong con duoc dung o dau ca. Build:
+    wix build DFAgentSetup.wxs -ext WixToolset.UI.wixext -o DFAgentSetup-Scale.msi
+  (xem agent/installer/build.ps1 — script build ca .NET publish lan MSI)
 
   Khong con Token — backend (AgentAuth middleware) tu tao/nhan Workstation theo
   workstation_id khi khong co token, danh doi bao mat da duoc nguoi dung xac nhan (xem
   session-log.md).
 -->
 <?ifndef StationId?>
-<?define StationId = "WS-PRINT-STATION"?>
+<?define StationId = "WS-WEIGH-SCALE"?>
 <?endif?>
 <?ifndef AppSettingsFile?>
-<?define AppSettingsFile = "appsettings.print-station.json"?>
+<?define AppSettingsFile = "appsettings.scale.json"?>
 <?endif?>
 <?ifndef PackageVersion?>
-<?define PackageVersion = "1.4.0.0"?>
+<!-- 2.0.0.0: moc bo 2 vai tro may in, chi con vai tro nhan can. Version cao hon han 1.4.x
+     cua ca 3 file MSI cu de may tram da cai bat ky vai tro nao cung nang cap thang len
+     duoc (MajorUpgrade tu go ban cu truoc khi cai ban nay). -->
+<?define PackageVersion = "2.0.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.StationId))"
@@ -45,15 +47,10 @@
            InstallerVersion="500"
            Compressed="yes">
 
-    <!-- Ca 3 vai tro (Print Station/Weighing Printer/Weighing Scale) dung chung 1
-         UpgradeCode co y: 1 may vat ly chi duoc dung DUNG 1 vai tro tai 1 thoi diem —
-         cai vai tro khac se THAY THE (uninstall+install) vai tro cu thay vi chay song
-         song 2 service "DFAgent" chong ten nhau. Moi vai tro co PackageVersion RIENG
-         (xem build-all.ps1) de MSI luon nhan ra la "phien ban khac" du doi qua lai giua
-         3 vai tro theo huong nao — AllowDowngrades="yes" vi thu tu version khong phan
-         anh "moi/cu" thuc su, chi la nhan dang vai tro khac nhau. Phat hien loi thuc te
-         2026-07-30: 3 file ban dau cung Version 1.4.0.0 nen cai WeighingPrinter tren may
-         da co PrintStation bi MSI coi la "da cai roi", khong thay the gi ca. -->
+    <!-- Giu nguyen UpgradeCode cu de bo cai nay TU GO 3 ban 1.4.x cua cac vai tro cu
+         (print-station / weighing-printer / weighing-scale) neu may tram da cai — tranh 2
+         service cung ten "DFAgent" chong nhau. AllowDowngrades="yes" giu nguyen tu ban cu:
+         thu tu version giua cac ban cu khong phan anh "moi/cu" that su. -->
     <MajorUpgrade AllowDowngrades="yes" />
     <MediaTemplate EmbedCab="yes" />
 
@@ -74,7 +71,7 @@
       <ServiceInstall Id="DFAgentServiceInstall"
                       Name="DFAgent"
                       DisplayName="DF Local Agent"
-                      Description="Bao cao may in/can, in tem TSPL cho he thong DF (khong dung dau co dau de tranh loi encoding Service Control Manager)."
+                      Description="Doc can dien tu qua cong COM va day so can len he thong DF (khong dung dau co dau de tranh loi encoding Service Control Manager)."
                       Type="ownProcess"
                       Start="auto"
                       ErrorControl="normal"

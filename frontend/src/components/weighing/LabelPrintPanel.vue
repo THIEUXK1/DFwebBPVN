@@ -1,7 +1,7 @@
 <template>
   <div class="printed-label-box mt-4">
     <h3>🏷️ TEM QR VẬT TƯ SAU CÂN</h3>
-    <p class="font-sm text-muted">Cân đã hoàn tất. Tem TSC đã được spool tự động gửi đến máy in.</p>
+    <p class="font-sm text-muted">Cân đã hoàn tất. Bấm "🖥️ In tem" để mở hộp thoại in của trình duyệt — in được nhiều lần thoải mái.</p>
 
     <div class="label-preview-box mt-3">
       <LabelPreview v-if="labelPayload" :label-payload="labelPayload" />
@@ -20,7 +20,10 @@
       <button @click="$emit('reset-to-scan')" class="btn btn-secondary flex-1" :disabled="viewOnly">
         ⬅️ Tiếp tục quét mẻ mới
       </button>
-      <button @click="$emit('reprint')" class="btn btn-primary flex-1" :disabled="viewOnly">
+      <button @click="$emit('print')" class="btn btn-primary flex-1" :disabled="viewOnly || !labelPayload">
+        🖥️ In tem
+      </button>
+      <button @click="$emit('reprint')" class="btn btn-secondary flex-1" :disabled="viewOnly">
         🖨️ In lại tem (Reprint)
       </button>
     </div>
@@ -40,6 +43,7 @@ const props = defineProps<{
 
 defineEmits<{
   (e: 'reset-to-scan'): void;
+  (e: 'print'): void;
   (e: 'reprint'): void;
 }>();
 

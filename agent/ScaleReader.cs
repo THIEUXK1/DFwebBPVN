@@ -60,7 +60,7 @@ public class ScaleReader : IDisposable
         try
         {
             string rawData = _serialPort.ReadExisting();
-            ProcessRawData(rawData);
+            IngestSerialData(rawData);
         }
         catch (Exception ex)
         {
@@ -94,7 +94,86 @@ public class ScaleReader : IDisposable
         {
             return ReadSimulatedWeight();
         }
-        return (null, false); // The serial port uses event-driven reading (OnDataReceived/ProcessRawData)
+
+        // Cổng COM đọc theo sự kiện (OnDataReceived chạy trên thread riêng của SerialPort),
+        // không đọc đồng bộ được trong vòng lặp Worker — nên trả về số đọc mới nhất mà
+        // IngestSerialData() đã chốt. Trước bản vá này chỗ này trả thẳng (null, false), mà
+        // Worker chỉ push lên backend khi Weight.HasValue → cân thật cắm qua RS232 KHÔNG BAO
+        // GIỜ đẩy được số nào lên (lỗi bị che khuất suốt vì cả 3 file appsettings đóng gói
+        // trong MSI đều để Scale:UseSimulation=true, luôn rơi vào nhánh đọc file PuTTY).
+        lock (_serialLock)
+        {
+            return (_latestSerialWeight, _latestSerialStable);
+        }
+    }
+
+    // Số đọc mới nhất chốt từ cổng COM. Không đặt thời hạn hết hiệu lực: giữ giá trị cuối cho
+    // tới khi có số mới — đúng quy ước TV6 và khớp hành vi nhánh đọc file (dòng cuối của log
+    // PuTTY cũng nằm nguyên đó tới khi cân ghi dòng mới). Cache backend TTL 15s vẫn là lớp
+    // chặn cuối nếu Agent chết hẳn.
+    private readonly object _serialLock = new();
+    private double? _latestSerialWeight;
+    private bool _latestSerialStable;
+
+    // Đệm dòng dở dang giữa 2 lần OnDataReceived. SerialPort.ReadExisting() trả về đúng những
+    // gì đang có trong buffer tại thời điểm đó, hoàn toàn có thể CẮT GIỮA một dòng (vd
+    // "12,ST,GS,+00001" | "0.5g\r\n"). Nếu đưa thẳng mảnh cụt vào CleanWeight thì token số
+    // cuối cùng là số cụt ("00001" thay vì 10.5) — sai số cân mà không có dấu hiệu gì. Vì vậy
+    // chỉ xử lý các dòng ĐÃ KẾT THÚC bằng CR/LF, phần đuôi dở giữ lại chờ chunk kế tiếp.
+    private readonly System.Text.StringBuilder _serialBuffer = new();
+
+    /// <summary>
+    /// Số đọc mới nhất đã chốt từ cổng COM — dùng cho unit test và chẩn đoán tại chỗ; luồng
+    /// chạy thật đi qua <see cref="ReadCurrentWeightWithStability"/>.
+    /// </summary>
+    public (double? Weight, bool IsStable) LatestSerialReading
+    {
+        get { lock (_serialLock) { return (_latestSerialWeight, _latestSerialStable); } }
+    }
+
+    /// <summary>
+    /// Tách dữ liệu thô từ cổng COM thành từng dòng trọn vẹn rồi chốt số đọc mới nhất.
+    /// Tách riêng khỏi OnDataReceived để unit test được mà không cần cổng COM thật.
+    /// </summary>
+    public void IngestSerialData(string chunk)
+    {
+        if (string.IsNullOrEmpty(chunk)) return;
+
+        var completedLines = new List<string>();
+
+        lock (_serialLock)
+        {
+            _serialBuffer.Append(chunk);
+            string buffered = _serialBuffer.ToString();
+
+            int lastBreak = buffered.LastIndexOfAny(new[] { '\r', '\n' });
+            if (lastBreak < 0) return; // chưa có dòng nào trọn vẹn — chờ chunk kế tiếp
+
+            string complete = buffered.Substring(0, lastBreak + 1);
+            _serialBuffer.Clear();
+            _serialBuffer.Append(buffered.Substring(lastBreak + 1));
+
+            foreach (string line in complete.Split('\r', '\n'))
+            {
+                if (!string.IsNullOrWhiteSpace(line)) completedLines.Add(line);
+            }
+        }
+
+        // Chạy StableFilter NGOÀI lock: mỗi dòng đọc được là 1 "lần đọc" theo đúng nghĩa của
+        // VBA Mod_delta_raw.StableFilter (2 lần liên tiếp cùng chuỗi thô = ổn định), không
+        // phải mỗi vòng poll của Worker.
+        foreach (string line in completedLines)
+        {
+            var (weight, isStable) = ReadWeightWithStability(line);
+            if (!weight.HasValue) continue; // dòng rác: giữ nguyên số cũ, đúng TV6
+
+            _lastGoodWeight = weight;
+            lock (_serialLock)
+            {
+                _latestSerialWeight = weight;
+                _latestSerialStable = isStable;
+            }
+        }
     }
 
     // Throttle cảnh báo "chưa thấy file log cân" — vòng lặp Worker chạy mỗi
@@ -238,12 +317,6 @@ public class ScaleReader : IDisposable
         }
 
         return false;
-    }
-
-    private void ProcessRawData(string rawData)
-    {
-        var (cleanVal, isStable) = ReadWeightWithStability(rawData);
-        _logger.LogDebug("Received raw serial input: {Raw} -> Cleaned: {Val} kg, Stable: {Stable}", rawData.Trim(), cleanVal, isStable);
     }
 
     public void Dispose()

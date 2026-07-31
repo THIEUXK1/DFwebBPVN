@@ -263,6 +263,13 @@ class MachineDispatchController extends Controller
             'printer_address' => 'sometimes|string',
             'printer_type' => 'sometimes|string|in:USB,LAN',
             'scale_check_policy' => 'sometimes|string',
+            // In qua trình duyệt (window.print()) là đường in DUY NHẤT còn lại ở Print
+            // Station (bỏ "In nhanh"/"In tem" gửi thẳng Local Agent, 2026-07-30) — job vẫn
+            // phải được tạo để lưu vết QR/routing, nhưng KHÔNG được để status PENDING vì
+            // Agent sẽ lấy job đó và gửi lệnh in TSPL thật xuống máy in vật lý, in trùng với
+            // bản đã in qua hộp thoại trình duyệt. Cờ này báo ConfirmDispatchService đánh
+            // dấu job PRINTED ngay, không đi qua hàng chờ Agent.
+            'printed_via_browser' => 'sometimes|boolean',
         ]);
 
         $service = app(\App\Services\ConfirmDispatchService::class);
@@ -271,7 +278,7 @@ class MachineDispatchController extends Controller
             $result = $service->confirm(
                 $id,
                 $request->input('idempotency_key'),
-                $request->only(['workstation_id', 'printer_address', 'printer_type', 'scale_check_policy'])
+                $request->only(['workstation_id', 'printer_address', 'printer_type', 'scale_check_policy', 'printed_via_browser'])
             );
 
             if (request()->header('X-Remote-Operation') === 'true') {

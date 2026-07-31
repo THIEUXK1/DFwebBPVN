@@ -13,18 +13,13 @@ Route::get('/', function () {
 // dung, thay vi hien hop thoai xin mat khau admin nhu ban Inno Setup .exe cu. Sinh dong
 // (khong phai file tinh) de tu lay dung host dang truy cap (localhost luc dev, IP LAN
 // luc that) — giong cach frontend tinh agentInstallerOptions trong AppLayout.vue.
-Route::get('/downloads/agent-launcher/{role}', function (Request $request, string $role) {
-    $files = [
-        'print-station' => 'DFAgentSetup-PrintStation.msi',
-        'weighing-printer' => 'DFAgentSetup-WeighingPrinter.msi',
-        'weighing-scale' => 'DFAgentSetup-WeighingScale.msi',
-    ];
-
-    if (!isset($files[$role])) {
-        abort(404);
-    }
-
-    $msiFile = $files[$role];
+// Tu 2026-07-31 chi con DUNG 1 bo cai: Agent nhan can. Truoc do co 3 vai tro theo tham so
+// {role} (print-station / weighing-printer / weighing-scale) vi may in di qua Agent; nay ca
+// Print Station lan Weighing Station deu in bang hop thoai in cua trinh duyet nen phan may in
+// cua Agent khong con duoc dung o dau — bo luon tham so {role} cho khoi nham.
+Route::get('/downloads/agent-launcher', function (Request $request) {
+    $role = 'scale';
+    $msiFile = 'DFAgentSetup-Scale.msi';
 
     // Cong 8501 rieng (php -S tinh, khong qua Laravel/artisan serve) chi de phuc vu file
     // trong public/downloads/ — KHONG dung chung cong 8500 (backend API chinh). Ly do: tren

@@ -36,29 +36,15 @@
            ngoài được, phải tải trực tiếp từ máy chủ qua LAN). -->
       <div class="sidebar-footer">
         <div class="footer-title">TẢI CÔNG CỤ</div>
-        <div class="tool-download-menu-wrap">
-          <button
-            type="button"
-            class="tool-download-link"
-            title="Cài trên máy trạm có gắn cân điện tử / máy in tem"
-            @click="toolMenuOpen = !toolMenuOpen"
-          >
-            <SvgIcon name="download" size="16" />
-            <span>DF Agent (Cân &amp; In tem)</span>
-          </button>
-          <div v-if="toolMenuOpen" class="tool-download-menu">
-            <a
-              v-for="opt in agentInstallerOptions"
-              :key="opt.role"
-              :href="opt.url"
-              download
-              class="tool-download-menu-item"
-              @click="toolMenuOpen = false"
-            >
-              {{ opt.label }}
-            </a>
-          </div>
-        </div>
+        <a
+          :href="agentInstallerUrl"
+          download
+          class="tool-download-link"
+          title="Cài trên máy trạm có gắn cân điện tử (đọc cân qua cổng COM)"
+        >
+          <SvgIcon name="download" size="16" />
+          <span>DF Agent (Nhận cân)</span>
+        </a>
       </div>
     </aside>
 
@@ -286,29 +272,25 @@ const authStore = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 
-// 3 file cài đặt Local Agent riêng theo vai trò — mỗi máy vật lý chỉ gắn 1 loại thiết bị
-// (máy in HOẶC cân), backend serve tĩnh từ public/downloads/ (xem agent/installer/
-// DFAgentSetup.wxs, build 3 lần qua biến tiền xử lý StationId — build-all.ps1). Dùng đúng
-// host mà trình duyệt đang mở trang (giống main.ts) để máy trạm trong LAN tải đúng từ máy
-// chủ. Dùng định dạng MSI (không phải Inno Setup .exe) vì bản .exe cũ bị Windows Defender
-// gán nhầm nhãn "Program:Win32/Wacapew.A!ml" và tự xóa ngay sau khi tải — MSI +
-// ServiceInstall/ServiceControl native không bị quét. Không còn hỏi Mã trạm/Token/URL
-// Backend — mỗi file đã đóng cứng sẵn đúng vai trò, cài xong service "DFAgent" chạy ngay.
+// CHỈ CÒN 1 bộ cài Local Agent duy nhất: đọc cân điện tử qua cổng COM rồi đẩy số cân lên
+// backend (yêu cầu 2026-07-31). Trước đây có 3 bộ theo vai trò (print-station /
+// weighing-printer / weighing-scale) vì máy in đi qua Agent; nay cả Print Station lẫn
+// Weighing Station đều in bằng hộp thoại in của trình duyệt (window.print(), xem
+// PrintStation.vue + utils/tsplPrint.ts) nên phần máy in của Agent không còn được dùng ở
+// đâu nữa — Agent chỉ còn đúng một việc là nhận cân.
 //
-// Tải file .cmd (route backend /downloads/agent-launcher/{role}, xem routes/web.php)
-// thay vì .msi trực tiếp — MSI không tự hiện hộp thoại UAC khi tài khoản không phải admin
-// double-click (chỉ báo lỗi "không đủ quyền" rồi dừng, khác .exe), nên phải qua file .cmd
-// nhỏ tự gọi Start-Process -Verb RunAs để bật đúng hộp thoại xin quyền admin.
-const agentInstallerOptions = [
-  { label: 'Máy in — Print Station', role: 'print-station' },
-  { label: 'Máy in riêng — Weighing Station (không kèm cân)', role: 'weighing-printer' },
-  { label: 'Máy cân + máy in — Weighing Station (gộp 1 máy)', role: 'weighing-scale' },
-].map((opt) => ({
-  ...opt,
-  url: `http://${window.location.hostname}:8500/downloads/agent-launcher/${opt.role}`,
-}));
-
-const toolMenuOpen = ref(false);
+// Backend serve tĩnh từ public/downloads/ (xem agent/installer/DFAgentSetup.wxs +
+// build.ps1). Dùng đúng host mà trình duyệt đang mở trang (giống main.ts) để máy trạm
+// trong LAN tải đúng từ máy chủ. Dùng định dạng MSI (không phải Inno Setup .exe) vì bản
+// .exe cũ bị Windows Defender gán nhầm nhãn "Program:Win32/Wacapew.A!ml" và tự xóa ngay
+// sau khi tải — MSI + ServiceInstall/ServiceControl native không bị quét. Không hỏi Mã
+// trạm/Token/URL Backend — đã đóng cứng sẵn, cài xong service "DFAgent" chạy ngay.
+//
+// Tải file .cmd (route backend /downloads/agent-launcher, xem routes/web.php) thay vì .msi
+// trực tiếp — MSI không tự hiện hộp thoại UAC khi tài khoản không phải admin double-click
+// (chỉ báo lỗi "không đủ quyền" rồi dừng, khác .exe), nên phải qua file .cmd nhỏ tự gọi
+// Start-Process -Verb RunAs để bật đúng hộp thoại xin quyền admin.
+const agentInstallerUrl = `http://${window.location.hostname}:8500/downloads/agent-launcher`;
 
 // Station-scoped account (WS-001) HOẶC phiên kiosk (link riêng máy, không đăng nhập):
 // công đoạn được cố định theo tài khoản/link, không cho đổi tay qua dropdown.
@@ -582,10 +564,6 @@ const handleLogout = () => {
   letter-spacing: 0.08em;
 }
 
-.tool-download-menu-wrap {
-  position: relative;
-}
-
 .tool-download-link {
   display: flex;
   align-items: center;
@@ -607,33 +585,6 @@ const handleLogout = () => {
 }
 
 .tool-download-link:hover {
-  background-color: var(--bg-card-hover);
-  color: var(--text-title);
-}
-
-.tool-download-menu {
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  background: var(--bg-card);
-  border: 1px solid var(--border-divider);
-  border-radius: var(--radius-md);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-  overflow: hidden;
-  z-index: 20;
-}
-
-.tool-download-menu-item {
-  display: block;
-  padding: 10px 12px;
-  color: var(--text-body);
-  text-decoration: none;
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-
-.tool-download-menu-item:hover {
   background-color: var(--bg-card-hover);
   color: var(--text-title);
 }

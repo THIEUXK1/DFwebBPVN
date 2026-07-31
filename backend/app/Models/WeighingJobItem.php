@@ -42,6 +42,30 @@ class WeighingJobItem extends Model
         'override_approved' => 'boolean',
     ];
 
+    protected $appends = ['process_status'];
+
+    /**
+     * Nhãn ĐẠT/KHÔNG ĐẠT của dòng cân — tương đương cột `processColor` trong Access
+     * (VBA btnSave_Click ghi ACCEPTED/REJECTED theo màu nền ô txt_process).
+     *
+     * SUY RA, không lưu cột riêng: cả 3 giá trị nguồn (planned_weight, tolerance_minus,
+     * tolerance_plus) đều được snapshot lên chính item lúc quét QR, nên nhãn tái dựng được
+     * y nguyên về sau kể cả khi công thức hay hằng dung sai của hệ thống thay đổi.
+     */
+    public function getProcessStatusAttribute(): string
+    {
+        if ($this->status !== 'COMPLETED' || $this->actual_weight === null) {
+            return 'PENDING';
+        }
+
+        $min = (float) $this->planned_weight - (float) $this->tolerance_minus;
+        $max = (float) $this->planned_weight + (float) $this->tolerance_plus;
+
+        return ((float) $this->actual_weight >= $min && (float) $this->actual_weight <= $max)
+            ? 'ACCEPTED'
+            : 'REJECTED';
+    }
+
     protected static function boot()
     {
         parent::boot();

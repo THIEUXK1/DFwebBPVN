@@ -60,29 +60,20 @@
       </div>
     </div>
 
-    <!-- Exception override triggers — dùng toleranceStatus thay vì "liveWeight > 0" vì net
-         giờ có thể ÂM (cân cộng dồn bị hao hụt so với bì); so sánh > 0 sẽ vô tình ẩn mất
-         khung override đúng lúc cần nó nhất (phản hồi 2026-07-30). -->
-    <div class="override-box mt-3" v-if="toleranceStatus !== 'in-range' && toleranceStatus !== 'zero'">
-      <div class="override-checkbox">
-        <input type="checkbox" v-model="overrideApprovedModel" id="chk-override" :disabled="viewOnly" />
-        <label for="chk-override"><strong>⚠️ Yêu cầu Override Dung sai (Cần QA/QC phê duyệt)</strong></label>
-      </div>
-      <textarea
-        v-if="overrideApprovedModel"
-        v-model="overrideReasonModel"
-        placeholder="Nhập lý do override dung sai..."
-        class="form-input mt-2"
-        rows="2"
-      ></textarea>
+    <!-- Cảnh báo ngoài dung sai — chỉ BÁO, không chặn lưu: port đúng VBA btnSave_Click, thao
+         tác viên lưu được mọi lần cân, hệ thống gắn nhãn ĐẠT/KHÔNG ĐẠT (yêu cầu 2026-07-30).
+         Không còn luồng override (checkbox + lý do + PIN Giám sát). -->
+    <div class="reject-warn-box mt-3" v-if="toleranceStatus !== 'in-range' && toleranceStatus !== 'zero'">
+      <strong>⚠️ Ngoài dung sai — dòng này sẽ được lưu với nhãn KHÔNG ĐẠT.</strong>
     </div>
 
-    <!-- Confirm button -->
+    <!-- Confirm button — chỉ còn chặn khi số cân chưa ổn định (StableFilter), đúng VBA:
+         CheckRange/lưu chỉ chạy trên số đã ổn định 2 lần đọc liên tiếp. -->
     <div class="action-buttons-group mt-4">
       <button
         @click="$emit('confirm')"
         class="weigh-confirm-btn"
-        :disabled="(toleranceStatus !== 'in-range' && !overrideApprovedModel) || viewOnly || !isStable"
+        :disabled="viewOnly || !isStable"
         :title="!isStable ? 'Số cân chưa ổn định — chờ 2 lần đọc liên tiếp giống nhau (PB-2)' : ''"
       >
         ⚖️ Xác nhận lưu số cân (Save Weight)
@@ -92,9 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-
-const props = defineProps<{
+defineProps<{
   activeIngredient: any | null;
   liveWeight: number;
   isStable: boolean;
@@ -105,28 +94,14 @@ const props = defineProps<{
   deviationPercent: number;
   tareBaseline: number | null;
   grossWeight: number;
-  overrideApproved: boolean;
-  overrideReason: string;
   viewOnly: boolean;
 }>();
 
-const emit = defineEmits<{
-  (e: 'update:overrideApproved', value: boolean): void;
-  (e: 'update:overrideReason', value: string): void;
+defineEmits<{
   (e: 'confirm'): void;
   (e: 'start-weighing'): void;
   (e: 'retare'): void;
 }>();
-
-const overrideApprovedModel = computed({
-  get: () => props.overrideApproved,
-  set: (v: boolean) => emit('update:overrideApproved', v),
-});
-
-const overrideReasonModel = computed({
-  get: () => props.overrideReason,
-  set: (v: string) => emit('update:overrideReason', v),
-});
 </script>
 
 <style scoped>
@@ -197,17 +172,12 @@ const overrideReasonModel = computed({
   cursor: not-allowed;
 }
 
-.override-box {
+.reject-warn-box {
   background-color: rgba(231, 76, 60, 0.05);
   border: 1px dashed var(--status-red);
+  color: var(--status-red);
   padding: 12px;
   border-radius: var(--radius-md);
-}
-
-.override-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
+  font-size: 0.9rem;
 }
 </style>

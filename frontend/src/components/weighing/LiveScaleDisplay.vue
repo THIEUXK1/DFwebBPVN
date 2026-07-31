@@ -119,14 +119,6 @@ const simulatedWeightModel = computed({
   text-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
 }
 
-/* Net âm (cân cộng dồn bị hao hụt so với bì) — cùng mức cảnh báo với over-range nhưng là
-   1 tình huống khác hẳn (mất vật tư, không phải "vượt dung sai"), giữ chung màu đỏ để
-   thao tác viên nhận diện ngay là cần dừng lại kiểm tra. */
-.led-numbers.negative {
-  color: var(--status-red);
-  text-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
-}
-
 .led-status-text {
   font-size: 12px;
   font-weight: 700;
@@ -137,7 +129,6 @@ const simulatedWeightModel = computed({
 .led-status-text.in-range { color: var(--status-green); }
 .led-status-text.insufficient { color: var(--status-yellow); }
 .led-status-text.over-range { color: var(--status-red); }
-.led-status-text.negative { color: var(--status-red); }
 
 .stable-indicator {
   margin-top: 6px;

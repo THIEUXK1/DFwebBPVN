@@ -76,11 +76,10 @@ class ScaleMeasurementController extends Controller
      * trực tiếp theo `legacy_batch_id` vì schema `scale_measurements` đã phẳng hóa đủ
      * (mỗi dòng tự mang color/product_code, không cần tách dòng header/detail như Access).
      *
-     * Không có cột "processColor" thật ở hệ mới (cột `process_color` tồn tại nhưng chưa
-     * từng được ghi ở bất kỳ luồng nào — xem p0-c-scale-algorithm.md) — thay vào đó suy ra
-     * "có Override hay không" từ `weighing_job_items.override_approved` của item liên kết,
-     * vì trong hệ mới một `ScaleMeasurement` chỉ được tạo khi đã lưu thành công (trong dung
-     * sai hoặc được Override phê duyệt), không tồn tại "REJECTED đã lưu" như Access cũ.
+     * Cột `process_color` của schema mới chưa từng được ghi ở bất kỳ luồng nào (xem
+     * p0-c-scale-algorithm.md) — nhãn ACCEPTED/REJECTED lấy từ
+     * `WeighingJobItem::process_status` của item liên kết, tương đương đúng cột
+     * `processColor` mà VBA btnSave_Click ghi xuống Access.
      */
     public function checker(Request $request)
     {
@@ -128,7 +127,7 @@ class ScaleMeasurementController extends Controller
                             'dye_code' => $m->dye_code,
                             'weight' => $m->weight !== null ? (float) $m->weight : null,
                             'process_code' => $m->process_code,
-                            'override_approved' => (bool) optional($m->weighingJobItem)->override_approved,
+                            'process_status' => optional($m->weighingJobItem)->process_status ?? 'ACCEPTED',
                         ];
                     })->values(),
                 ];

@@ -38,7 +38,22 @@ public class PrinterDiscovery
 
         try
         {
-            printers = RunPowerShell("Get-Printer | Select-Object -ExpandProperty Name");
+            // Get-Printer một mình CHỈ thấy máy in "máy-wide" (cài cho mọi người dùng) vì
+            // Agent chạy dưới Windows Service (tài khoản Local System, xem Program.cs
+            // UseWindowsService) — máy in mạng/LAN được người vận hành tự cài qua "Add
+            // a printer" bình thường (không tick "cho mọi người dùng") lại lưu dạng kết nối
+            // riêng theo profile (HKCU\Printers\Connections), SYSTEM không đọc được HKCU của
+            // user khác. Quét thêm HKEY_USERS\<SID>\Printers\Connections của mọi user đã
+            // đăng nhập (profile hive đang load) để không bị thiếu máy in kiểu này (lỗi thật
+            // 2026-07-30: máy in đã cài trên máy nhưng dropdown thiếu).
+            printers = RunPowerShell(
+                "$printers = @(Get-Printer | Select-Object -ExpandProperty Name); " +
+                "Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | " +
+                "Where-Object { $_.PSChildName -match '^S-1-5-21-\\d+-\\d+-\\d+-\\d+$' } | " +
+                "ForEach-Object { $p = 'Registry::HKEY_USERS\\' + $_.PSChildName + '\\Printers\\Connections'; " +
+                "if (Test-Path $p) { $printers += (Get-ChildItem $p -ErrorAction SilentlyContinue | " +
+                "ForEach-Object { $_.PSChildName -replace ',', '\\' }) } }; " +
+                "$printers | Sort-Object -Unique");
             var defaultResult = RunPowerShell(
                 "(Get-CimInstance -ClassName Win32_Printer -Filter \"Default=true\").Name");
             defaultPrinter = defaultResult.FirstOrDefault();

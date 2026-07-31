@@ -108,7 +108,8 @@
       </div>
     </div>
 
-    <!-- TAB 2: Tolerance & Override -->
+    <!-- TAB 2: Dung sai & Không đạt — từ 2026-07-30 không còn luồng override có phê duyệt
+         (port y hệt VBA), mọi lần cân đều lưu được và chỉ gắn nhãn ĐẠT/KHÔNG ĐẠT. -->
     <div v-if="activeTab === 'tolerance'" class="tab-panel">
       <div class="kpi-detail-grid mb-4">
         <div class="card kpi-detail-card">
@@ -116,26 +117,22 @@
           <div class="kpi-detail-value text-info">{{ tolerance?.summary?.total_weighed ?? 0 }}</div>
         </div>
         <div class="card kpi-detail-card">
-          <span class="text-muted">Lượt Override</span>
-          <div class="kpi-detail-value text-warning">{{ tolerance?.summary?.total_override ?? 0 }}</div>
+          <span class="text-muted">Lượt Không đạt</span>
+          <div class="kpi-detail-value text-warning">{{ tolerance?.summary?.total_reject ?? 0 }}</div>
         </div>
         <div class="card kpi-detail-card">
-          <span class="text-muted">Tỉ lệ Override</span>
-          <div class="kpi-detail-value text-warning">{{ tolerance?.summary?.override_rate_pct ?? 0 }}%</div>
-        </div>
-        <div class="card kpi-detail-card">
-          <span class="text-muted">Đang chờ xử lý (ngoài dung sai)</span>
-          <div class="kpi-detail-value text-error">{{ tolerance?.summary?.pending_resolution_count ?? 0 }}</div>
+          <span class="text-muted">Tỉ lệ Không đạt</span>
+          <div class="kpi-detail-value text-warning">{{ tolerance?.summary?.reject_rate_pct ?? 0 }}%</div>
         </div>
       </div>
 
       <div class="card chart-card mb-4">
-        <h4 class="chart-title">Số lượt cân vs Số lượt Override theo vật tư</h4>
+        <h4 class="chart-title">Số lượt cân vs Số lượt Không đạt theo vật tư</h4>
         <SimpleBarChart
           :categories="(tolerance?.by_material || []).map((r: any) => r.material_code)"
           :series="[
             { name: 'Tổng lượt cân', color: '#3987e5', values: (tolerance?.by_material || []).map((r: any) => r.total_weighed) },
-            { name: 'Override', color: '#e66767', values: (tolerance?.by_material || []).map((r: any) => r.override_count) },
+            { name: 'Không đạt', color: '#e66767', values: (tolerance?.by_material || []).map((r: any) => r.reject_count) },
           ]"
         />
       </div>
@@ -144,15 +141,15 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead>
-              <tr><th>Mã vật tư</th><th>Tên</th><th>Số lần cân</th><th>Override</th><th>Tỉ lệ Override (%)</th><th>Sai số TB (%)</th><th>Sai số Max (%)</th></tr>
+              <tr><th>Mã vật tư</th><th>Tên</th><th>Số lần cân</th><th>Không đạt</th><th>Tỉ lệ Không đạt (%)</th><th>Sai số TB (%)</th><th>Sai số Max (%)</th></tr>
             </thead>
             <tbody>
               <tr v-for="row in tolerance?.by_material" :key="row.material_code">
                 <td>{{ row.material_code }}</td>
                 <td>{{ row.material_name }}</td>
                 <td>{{ row.total_weighed }}</td>
-                <td>{{ row.override_count }}</td>
-                <td><span :class="['badge', row.override_rate_pct > 10 ? 'badge-red' : 'badge-green']">{{ row.override_rate_pct }}%</span></td>
+                <td>{{ row.reject_count }}</td>
+                <td><span :class="['badge', row.reject_rate_pct > 10 ? 'badge-red' : 'badge-green']">{{ row.reject_rate_pct }}%</span></td>
                 <td>{{ row.avg_deviation_pct ?? '—' }}%</td>
                 <td>{{ row.max_deviation_pct ?? '—' }}%</td>
               </tr>
@@ -166,13 +163,13 @@
         <h4 class="chart-title">Theo máy nhuộm</h4>
         <div class="table-responsive">
           <table class="data-table">
-            <thead><tr><th>Máy</th><th>Số lần cân</th><th>Override</th><th>Tỉ lệ Override (%)</th></tr></thead>
+            <thead><tr><th>Máy</th><th>Số lần cân</th><th>Không đạt</th><th>Tỉ lệ Không đạt (%)</th></tr></thead>
             <tbody>
               <tr v-for="row in tolerance?.by_machine" :key="row.machine_code">
                 <td>{{ row.machine_code }}</td>
                 <td>{{ row.total_weighed }}</td>
-                <td>{{ row.override_count }}</td>
-                <td>{{ row.override_rate_pct }}%</td>
+                <td>{{ row.reject_count }}</td>
+                <td>{{ row.reject_rate_pct }}%</td>
               </tr>
               <tr v-if="!tolerance?.by_machine?.length"><td colspan="4" class="text-muted text-center">Không có dữ liệu.</td></tr>
             </tbody>
@@ -292,7 +289,7 @@ import ParetoChart from '../components/charts/ParetoChart.vue';
 
 const tabs = [
   { id: 'consumption', name: 'Tiêu hao', icon: '🧪' },
-  { id: 'tolerance', name: 'Dung sai & Override', icon: '⚖️' },
+  { id: 'tolerance', name: 'Dung sai & Không đạt', icon: '⚖️' },
   { id: 'output', name: 'Sản lượng', icon: '🏭' },
   { id: 'pareto', name: 'Pareto Sự cố', icon: '📈' },
 ];

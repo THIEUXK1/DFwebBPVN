@@ -123,10 +123,13 @@ class ReportController extends Controller
     }
 
     /**
-     * Report 2: Sai số dung sai cân bột màu/hóa chất và tỉ lệ override.
-     * An item only reaches COMPLETED outside its tolerance band when a supervisor override was approved
-     * (see WeighingJobController::weighItem), so override_count here reflects real approved overrides,
-     * not just any out-of-band measurement.
+     * Report 2: Sai số dung sai cân bột màu/hóa chất và tỉ lệ KHÔNG ĐẠT.
+     *
+     * Từ 2026-07-30 (port y hệt VBA btnSave_Click) không còn luồng override có phê duyệt —
+     * mọi lần cân đều lưu được, hệ thống chỉ gắn nhãn ĐẠT/KHÔNG ĐẠT. Vì vậy cột đếm ở đây
+     * suy trực tiếp từ số cân thực tế so với dung sai đã snapshot trên item, thay cho cờ
+     * `override_approved` (vĩnh viễn false) và trạng thái `OUT_OF_TOLERANCE` (không còn được
+     * set nữa). Cùng công thức với WeighingJobItem::getProcessStatusAttribute.
      */
     public function toleranceStats(Request $request)
     {
@@ -150,21 +153,24 @@ class ReportController extends Controller
 
         $deviationPctExpr = "AVG(ABS(wji.actual_weight - wji.planned_weight) / NULLIF(wji.planned_weight, 0) * 100)";
         $maxDeviationExpr = "MAX(ABS(wji.actual_weight - wji.planned_weight) / NULLIF(wji.planned_weight, 0) * 100)";
+        // KHÔNG ĐẠT = số cân thực tế nằm ngoài [planned - tolerance_minus, planned + tolerance_plus]
+        $rejectCountExpr = 'SUM(CASE WHEN wji.actual_weight < wji.planned_weight - wji.tolerance_minus'
+            .' OR wji.actual_weight > wji.planned_weight + wji.tolerance_plus THEN 1 ELSE 0 END)';
 
         $byMaterial = (clone $base)
             ->select(
                 'wji.material_code',
                 DB::raw('COALESCE(m.name, wji.material_code) as material_name'),
                 DB::raw('COUNT(*) as total_weighed'),
-                DB::raw('SUM(CASE WHEN wji.override_approved THEN 1 ELSE 0 END) as override_count'),
+                DB::raw("$rejectCountExpr as reject_count"),
                 DB::raw("$deviationPctExpr as avg_deviation_pct"),
                 DB::raw("$maxDeviationExpr as max_deviation_pct")
             )
             ->groupBy('wji.material_code', 'm.name')
-            ->orderByDesc(DB::raw('SUM(CASE WHEN wji.override_approved THEN 1 ELSE 0 END)'))
+            ->orderByDesc(DB::raw($rejectCountExpr))
             ->get()
             ->map(function ($row) {
-                $row->override_rate_pct = $row->total_weighed > 0 ? round($row->override_count / $row->total_weighed * 100, 2) : 0;
+                $row->reject_rate_pct = $row->total_weighed > 0 ? round($row->reject_count / $row->total_weighed * 100, 2) : 0;
                 $row->avg_deviation_pct = $row->avg_deviation_pct !== null ? round((float) $row->avg_deviation_pct, 3) : null;
                 $row->max_deviation_pct = $row->max_deviation_pct !== null ? round((float) $row->max_deviation_pct, 3) : null;
                 return $row;
@@ -175,45 +181,41 @@ class ReportController extends Controller
             ->select(
                 'mac.code as machine_code',
                 DB::raw('COUNT(*) as total_weighed'),
-                DB::raw('SUM(CASE WHEN wji.override_approved THEN 1 ELSE 0 END) as override_count')
+                DB::raw("$rejectCountExpr as reject_count")
             )
             ->groupBy('mac.code')
-            ->orderByDesc(DB::raw('SUM(CASE WHEN wji.override_approved THEN 1 ELSE 0 END)'))
+            ->orderByDesc(DB::raw($rejectCountExpr))
             ->get()
             ->map(function ($row) {
-                $row->override_rate_pct = $row->total_weighed > 0 ? round($row->override_count / $row->total_weighed * 100, 2) : 0;
+                $row->reject_rate_pct = $row->total_weighed > 0 ? round($row->reject_count / $row->total_weighed * 100, 2) : 0;
                 return $row;
             });
 
         $totalWeighed = (int) $byMaterial->sum('total_weighed');
-        $totalOverride = (int) $byMaterial->sum('override_count');
-
-        // Items currently blocked waiting for a resolution/override, not yet completed.
-        $pendingResolution = DB::table('weighing_job_items as wji')
-            ->join('weighing_jobs as wj', 'wj.id', '=', 'wji.weighing_job_id')
-            ->where('wji.status', 'OUT_OF_TOLERANCE')
-            ->count();
+        $totalReject = (int) $byMaterial->sum('reject_count');
 
         $summary = [
             'total_weighed' => $totalWeighed,
-            'total_override' => $totalOverride,
-            'override_rate_pct' => $totalWeighed > 0 ? round($totalOverride / $totalWeighed * 100, 2) : 0,
-            'pending_resolution_count' => $pendingResolution,
+            'total_reject' => $totalReject,
+            'reject_rate_pct' => $totalWeighed > 0 ? round($totalReject / $totalWeighed * 100, 2) : 0,
         ];
+
+        $exportHeaders = ['Mã vật tư', 'Tên vật tư', 'Số lần cân', 'Số lần Không đạt', 'Tỉ lệ Không đạt (%)', 'Sai số TB (%)', 'Sai số Max (%)'];
+        $exportRows = $byMaterial->map(fn ($r) => [$r->material_code, $r->material_name, $r->total_weighed, $r->reject_count, $r->reject_rate_pct, $r->avg_deviation_pct, $r->max_deviation_pct])->toArray();
 
         if ($request->input('format') === 'xlsx') {
             return $this->exportExcel(
                 'Bao_cao_dung_sai_' . $from->format('Ymd') . '_' . $to->format('Ymd'),
-                ['Mã vật tư', 'Tên vật tư', 'Số lần cân', 'Số lần Override', 'Tỉ lệ Override (%)', 'Sai số TB (%)', 'Sai số Max (%)'],
-                $byMaterial->map(fn ($r) => [$r->material_code, $r->material_name, $r->total_weighed, $r->override_count, $r->override_rate_pct, $r->avg_deviation_pct, $r->max_deviation_pct])->toArray()
+                $exportHeaders,
+                $exportRows
             );
         }
         if ($request->input('format') === 'pdf') {
             return $this->exportPdf(
-                'Báo cáo sai số dung sai cân và tỉ lệ Override',
+                'Báo cáo sai số dung sai cân và tỉ lệ Không đạt',
                 "Từ {$from->format('d/m/Y')} đến {$to->format('d/m/Y')}",
-                ['Mã vật tư', 'Tên vật tư', 'Số lần cân', 'Số lần Override', 'Tỉ lệ Override (%)', 'Sai số TB (%)', 'Sai số Max (%)'],
-                $byMaterial->map(fn ($r) => [$r->material_code, $r->material_name, $r->total_weighed, $r->override_count, $r->override_rate_pct, $r->avg_deviation_pct, $r->max_deviation_pct])->toArray(),
+                $exportHeaders,
+                $exportRows,
                 'bao-cao-dung-sai'
             );
         }
