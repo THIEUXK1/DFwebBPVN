@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git fetch*)",
+      "PowerShell(git add *)",
+      "PowerShell(git commit *)",
+      "PowerShell(git push *)",
+      "PowerShell(git status*)",
+      "PowerShell(git diff*)",
+      "PowerShell(git log*)",
+      "PowerShell(git fetch*)",
+
+      "Bash(npm run build*)",
+      "PowerShell(npm run build*)",
+      "PowerShell(cd c:\\laragon\\www\\DFwed\\frontend; npm run build*)",
+      "Bash(php -l *)",
+      "PowerShell(php -l *)",
+      "Bash(dotnet build*)",
+      "PowerShell(dotnet build*)",
+      "PowerShell(cd c:\\laragon\\www\\DFwed\\agent; dotnet build*)",
+
+      "PowerShell(ssh -i ~/.ssh/df_server_key color@10.0.60.209 \"cd /d C:\\DFwebBPVN && git -c safe.directory=C:/DFwebBPVN pull origin main\")",
+      "PowerShell(ssh -i ~/.ssh/df_server_key color@10.0.60.209 \"set PATH=C:\\web\\tools\\node;%PATH% && cd /d C:\\DFwebBPVN\\frontend && node C:\\web\\tools\\node\\node_modules\\npm\\bin\\npm-cli.js run build\")",
+      "PowerShell(ssh -i ~/.ssh/df_server_key color@10.0.60.209 \"schtasks /end /tn DFWeb-Backend & schtasks /end /tn DFWeb-Reverb & schtasks /end /tn DFWeb-Frontend\")",
+      "PowerShell(ssh -i ~/.ssh/df_server_key color@10.0.60.209 \"schtasks /run /tn DFWeb-Backend & schtasks /run /tn DFWeb-Reverb & schtasks /run /tn DFWeb-Frontend\")",
+      "PowerShell(ssh -i ~/.ssh/df_server_key color@10.0.60.209 \"schtasks /end /tn DFWeb-Frontend & schtasks /run /tn DFWeb-Frontend\")",
+      "PowerShell(ssh -i ~/.ssh/df_server_key color@10.0.60.209 \"schtasks /run /tn DFWeb-Queue\")",
+      "PowerShell(ssh -i ~/.ssh/df_server_key color@10.0.60.209 \"schtasks /end /tn DFWeb-Queue & schtasks /run /tn DFWeb-Queue\")",
+
+      "PowerShell(ssh -i ~/.ssh/df_server_key color@10.0.60.209 \"cd /d C:\\DFwebBPVN && git -c safe.directory=C:/DFwebBPVN status\")",
+      "PowerShell(ssh -i ~/.ssh/df_server_key color@10.0.60.209 \"schtasks /query*)",
+      "PowerShell(ssh -i ~/.ssh/df_server_key color@10.0.60.209 \"type C:\\DFwebBPVN\\tools\\logs\\*)",
+      "PowerShell(ssh -i ~/.ssh/df_server_key color@10.0.60.209 \"powershell -NoProfile -Command Get-Content -Tail * C:\\DFwebBPVN\\tools\\logs\\*)"
+    ]
+  }
+}

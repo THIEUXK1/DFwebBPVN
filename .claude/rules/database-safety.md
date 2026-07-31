@@ -49,3 +49,8 @@
 - Môi trường phát triển/kiểm thử phải cô lập hoàn toàn với mạng sản xuất thực tế.
 - Mọi thao tác SSH/DB trên server production, kể cả các lệnh chỉ đọc nhìn "an toàn", cần được xác nhận lại với người dùng trong phiên hiện tại trước khi thực thi — một lần đồng ý trước đó không tự động áp dụng cho phiên/lệnh khác.
 - Trước khi chạy bất kỳ lệnh nào có khả năng ghi vào Git hoặc filesystem (kể cả trên môi trường dev), chạy `git status` để không vô tình ghi đè công việc đang dang dở của người khác.
+
+### Ngoại lệ: allowlist quy trình deploy thường quy lên CS-SERVER (xác nhận 31/07/2026)
+- Đúng các lệnh trong quy trình deploy thường quy (git push GitHub, SSH `git pull` code trên CS-SERVER, `npm run build` frontend cục bộ và trên server, dừng/khởi động 4 scheduled task `DFWeb-Backend`/`DFWeb-Reverb`/`DFWeb-Frontend`/`DFWeb-Queue`, đọc log/trạng thái task) được khai báo allowlist tại `.claude/settings.json` — KHÔNG cần hỏi xác nhận lại mỗi phiên nữa, theo yêu cầu rõ ràng của người dùng.
+- Allowlist này CHỈ khớp đúng các câu lệnh cụ thể trong quy trình deploy nêu trên (chủ yếu exact-match, không dùng wildcard rộng). Mọi thao tác khác trên production — migration DB (`php artisan migrate`), DDL/DML trực tiếp, SSH ngoài phạm vi deploy thường quy, thay đổi cấu hình server — vẫn phải xác nhận lại mỗi phiên như quy tắc gốc ở trên, không nằm trong ngoại lệ này.
+- Nếu quy trình deploy thay đổi (thêm bước mới, đổi tên task, đổi server), cập nhật lại cả `.claude/settings.json` lẫn mục này.
