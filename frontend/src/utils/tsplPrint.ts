@@ -61,6 +61,12 @@ export async function printTsplViaBrowser(tspl: string, win: Window): Promise<vo
   .slip { position: relative; width: ${widthMm}mm; height: ${heightMm}mm; border: 1.2mm solid #000; zoom: 2.6; }
   .t { position: absolute; white-space: nowrap; line-height: 1; }
   .q { position: absolute; }
+  /* Không khai báo @page thì trình duyệt in theo khổ giấy mặc định của driver máy in
+     (thường A4/Letter) — .slip vẫn đúng kích thước thật nhưng chỉ chiếm 1 góc nhỏ giữa
+     tờ giấy to hơn nhiều, nhìn như "tem bé xíu" (bug thật 2026-07-30, phát hiện qua ảnh
+     tem in ra ở /print-station dùng chung cơ chế này). Khai báo khổ trang = đúng khổ tem
+     để Chrome/Edge tự yêu cầu đổi khổ giấy khi in. */
+  @page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }
   @media print { body { padding: 0; } .slip { zoom: 1; } }
 </style>
 </head>

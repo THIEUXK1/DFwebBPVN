@@ -736,6 +736,16 @@ async function printDispatchViaBrowser(d: any) {
   .qr-block-inline img { width: 13mm; height: 13mm; }
   .placeholder { color: #999; font-style: italic; }
   .footnote { margin-top: 3mm; font-size: 2.3mm; color: #666; }
+  /* KHÔNG có @page thì trình duyệt in theo khổ giấy mặc định đang chọn sẵn trong driver
+     máy in (thường A4/Letter) — .slip vẫn đúng 70x100mm THẬT (đo đúng, không bị co giãn)
+     nhưng chỉ chiếm 1 góc nhỏ giữa tờ giấy to, nhìn như "tem bé xíu" dù kích thước tuyệt
+     đối đã đúng. Khai báo khổ trang = đúng khổ tem để Chrome/Edge tự yêu cầu đổi khổ giấy
+     khi in (bug thật 2026-07-30, ảnh chụp tem in ra chỉ chiếm góc trên tờ giấy lớn).
+     margin:0 để không cộng thêm lề trắng ngoài viền .slip. */
+  @page {
+    size: 70mm 100mm;
+    margin: 0;
+  }
   @media print {
     body { padding: 0; display: block; }
     .slip { zoom: 1; }
@@ -893,6 +903,10 @@ async function printMaterialLabelViaBrowser(l: any, win: Window) {
   .qr img { width: 100%; height: 100%; }
   .info { font-size: 3mm; line-height: 1.5; }
   .info strong { font-size: 3.4mm; }
+  /* Cùng lý do đã sửa ở printDispatchViaBrowser — không khai báo @page thì in theo khổ
+     giấy mặc định của driver máy in, tem đúng kích cỡ thật nhưng chỉ chiếm 1 góc tờ giấy
+     to hơn nhiều, nhìn như bé xíu. */
+  @page { size: 80mm 50mm; margin: 0; }
   @media print { body { padding: 0; } .slip { zoom: 1; } }
 </style>
 </head>
