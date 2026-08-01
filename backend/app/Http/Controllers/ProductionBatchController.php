@@ -94,7 +94,9 @@ class ProductionBatchController extends Controller
      */
     public function index(Request $request)
     {
-        $query = ProductionBatch::query()->with(['machine', 'tank']);
+        // 'dispatches' (queue_state) can thiet de frontend biet lo nao da CONFIRMED
+        // (da bam OK o /print-station) ma an di khoi bang "lo gan nhat" (yeu cau 2026-07-31).
+        $query = ProductionBatch::query()->with(['machine', 'tank', 'dispatches']);
 
         if ($request->has('status')) {
             $query->where('status', $request->input('status'));

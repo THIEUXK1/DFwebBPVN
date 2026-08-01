@@ -158,6 +158,178 @@ class ScaleLiveWeightTest extends TestCase
     }
 
     /**
+     * Số cân cũ còn nằm trong cache (TTL 15s) phải phân biệt được với số vừa đọc xong. Thiếu
+     * thông tin này thì /weighing-station-v2 chốt BÌ tự động vào một số đọc từ nhiều giây
+     * trước, và màn hình hiển thị số đứng yên như thể cân vẫn đang chạy khi Agent đã chết.
+     */
+    public function test_get_reading_reports_age_of_last_push(): void
+    {
+        Cache::forget('scale_live_weight_WS-AGE');
+        Cache::forget('scale_live_weight_stable_WS-AGE');
+        Cache::forget('scale_live_weight_timestamp_WS-AGE');
+
+        $this->postJson('/api/devices/readings', [
+            'workstation_id' => 'WS-AGE',
+            'weight' => 7.5,
+            'is_stable' => true,
+        ])->assertStatus(200);
+
+        $fresh = $this->actingAs($this->operator)->getJson('/api/devices/readings/WS-AGE');
+        $fresh->assertStatus(200);
+        $fresh->assertJsonPath('has_reading', true);
+        $this->assertLessThan(1500, $fresh->json('age_ms'), 'Số vừa đẩy lên phải được coi là còn tươi');
+
+        // Mô phỏng Agent im lặng 10 giây: giá trị cân vẫn trong cache (TTL 15s) nhưng đã cũ.
+        Cache::put('scale_live_weight_timestamp_WS-AGE', microtime(true) - 10, 3600);
+
+        $stale = $this->actingAs($this->operator)->getJson('/api/devices/readings/WS-AGE');
+        $stale->assertJsonPath('has_reading', true);
+        $this->assertGreaterThan(9000, $stale->json('age_ms'));
+    }
+
+    /**
+     * Cache hết hạn hoàn toàn: `weight` vẫn trả 0.0 cho tương thích ngược với V1, nhưng
+     * `has_reading` phải là false — nếu không, "mất tín hiệu cân" và "cân đang rỗng" hiển thị
+     * y hệt nhau (đúng lớp lỗi TV6 đã vá ở Agent nhưng backend lại tự tái tạo).
+     */
+    public function test_get_reading_flags_missing_reading_instead_of_faking_zero(): void
+    {
+        Cache::forget('scale_live_weight_WS-GONE');
+        Cache::forget('scale_live_weight_stable_WS-GONE');
+        Cache::forget('scale_live_weight_timestamp_WS-GONE');
+
+        $response = $this->actingAs($this->operator)->getJson('/api/devices/readings/WS-GONE');
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('weight', 0.0);
+        $response->assertJsonPath('has_reading', false);
+        $response->assertJsonPath('age_ms', null);
+    }
+
+    /**
+     * Agent đẩy số cân theo MÃ trạm ("WS-WEIGH-SCALE"), còn frontend gọi
+     * /api/devices/readings/{id} với KHÓA CHÍNH DẠNG SỐ — trước bản vá 2026-08-01 hai khóa cache
+     * này không bao giờ gặp nhau, nên màn hình cân KHÔNG BAO GIỜ nhận được số từ cân thật. Lỗi bị
+     * che khuất vì getReading trả mặc định 0.0 khi cache trống, nhìn y hệt một cái cân rỗng.
+     */
+    public function test_get_reading_accepts_numeric_workstation_id_not_only_code(): void
+    {
+        Cache::forget('scale_live_weight_WS-BY-ID');
+        Cache::forget('scale_live_weight_stable_WS-BY-ID');
+        Cache::forget('scale_live_weight_timestamp_WS-BY-ID');
+
+        $station = Workstation::create([
+            'code' => 'WS-BY-ID',
+            'name' => 'Tram can tra theo id',
+            'type' => 'SMALL_SCALE',
+            'active' => true,
+        ]);
+
+        // Agent đẩy theo MÃ trạm — đúng như appsettings.json của Agent thật.
+        $this->postJson('/api/devices/readings', [
+            'workstation_id' => 'WS-BY-ID',
+            'weight' => 12.75,
+            'is_stable' => true,
+        ])->assertStatus(200);
+
+        // Frontend hỏi theo ID SỐ.
+        $response = $this->actingAs($this->operator)
+            ->getJson("/api/devices/readings/{$station->id}");
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('weight', 12.75);
+        $response->assertJsonPath('is_stable', true);
+        $response->assertJsonPath('has_reading', true);
+    }
+
+    /** Trạm không tồn tại thì vẫn phải trả 200 + has_reading=false, không được lỗi 500. */
+    public function test_get_reading_with_unknown_numeric_id_reports_no_reading(): void
+    {
+        $response = $this->actingAs($this->operator)->getJson('/api/devices/readings/99999999');
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('has_reading', false);
+    }
+
+    /**
+     * Bộ cài MSI đóng cứng Workstation:Id cho MỌI máy, nên hai trạm cân chạy cùng lúc ghi đè lên
+     * đúng một khóa cache và mỗi màn hình đọc phải số của trạm kia — cân sai mà vẫn tô xanh ĐẠT.
+     * `?local=1` ghép cặp theo IP nguồn (Agent và trình duyệt chạy cùng máy trạm, cùng gọi thẳng
+     * backend không qua proxy) để cài y hệt nhau lên bao nhiêu máy cũng đúng, khỏi sửa tay từng máy.
+     */
+    public function test_local_flag_isolates_two_machines_sharing_one_workstation_code(): void
+    {
+        foreach (['scale_live_weight_', 'scale_live_weight_stable_', 'scale_live_weight_timestamp_'] as $p) {
+            Cache::forget($p.'WS-SHARED');
+            Cache::forget($p.'machine_10_0_0_55');
+            Cache::forget($p.'machine_10_0_0_66');
+        }
+
+        $this->postJson('/api/devices/readings',
+            ['workstation_id' => 'WS-SHARED', 'weight' => 12.34, 'is_stable' => true],
+            ['REMOTE_ADDR' => '10.0.0.55'])->assertStatus(200);
+
+        // Máy B đẩy SAU => khóa chung theo mã trạm mang số của máy B và luôn "tươi" hơn. Đây đúng
+        // là lý do không thể chọn theo "bản nào tươi hơn" — máy đang ngồi phải thắng tuyệt đối.
+        $this->postJson('/api/devices/readings',
+            ['workstation_id' => 'WS-SHARED', 'weight' => 98.76, 'is_stable' => true],
+            ['REMOTE_ADDR' => '10.0.0.66'])->assertStatus(200);
+
+        $this->actingAs($this->operator)
+            ->getJson('/api/devices/readings/WS-SHARED?local=1', ['REMOTE_ADDR' => '10.0.0.55'])
+            ->assertJsonPath('weight', 12.34)
+            ->assertJsonPath('source', 'MACHINE');
+
+        $this->actingAs($this->operator)
+            ->getJson('/api/devices/readings/WS-SHARED?local=1', ['REMOTE_ADDR' => '10.0.0.66'])
+            ->assertJsonPath('weight', 98.76)
+            ->assertJsonPath('source', 'MACHINE');
+
+        // Máy không có Agent: không có bản theo IP nên lui về khóa mã trạm như trước bản vá —
+        // các trạm đã cấu hình tay từ trước không bị ảnh hưởng.
+        $this->actingAs($this->operator)
+            ->getJson('/api/devices/readings/WS-SHARED?local=1', ['REMOTE_ADDR' => '10.0.0.77'])
+            ->assertJsonPath('weight', 98.76)
+            ->assertJsonPath('source', 'WORKSTATION');
+
+        // Dashboard KHÔNG gửi local=1 (nó xem nhiều trạm từ xa) — hành vi phải y như cũ.
+        $this->actingAs($this->operator)
+            ->getJson('/api/devices/readings/WS-SHARED', ['REMOTE_ADDR' => '10.0.0.55'])
+            ->assertJsonPath('weight', 98.76)
+            ->assertJsonPath('source', 'WORKSTATION');
+    }
+
+    /**
+     * Agent/PuTTY chết ở máy này: số cân hết TTL 15s nhưng mốc thời gian (TTL 1 giờ) vẫn còn, đủ để
+     * biết "máy này CÓ cân". Phải báo mất tín hiệu, TUYỆT ĐỐI không âm thầm tụt về khóa mã trạm và
+     * hiển thị số cân của trạm khác — cân sai mà vẫn tô xanh ĐẠT nguy hiểm hơn hẳn mất số.
+     */
+    public function test_local_machine_with_dead_agent_reports_no_reading_instead_of_other_scale(): void
+    {
+        foreach (['scale_live_weight_', 'scale_live_weight_stable_', 'scale_live_weight_timestamp_'] as $p) {
+            Cache::forget($p.'WS-DEAD');
+            Cache::forget($p.'machine_10_0_0_88');
+        }
+
+        $this->postJson('/api/devices/readings',
+            ['workstation_id' => 'WS-DEAD', 'weight' => 55.5, 'is_stable' => true],
+            ['REMOTE_ADDR' => '10.0.0.99'])->assertStatus(200);
+
+        $this->postJson('/api/devices/readings',
+            ['workstation_id' => 'WS-DEAD', 'weight' => 11.1, 'is_stable' => true],
+            ['REMOTE_ADDR' => '10.0.0.88'])->assertStatus(200);
+
+        // TTL 15s của giá trị cân trôi qua, mốc thời gian TTL 3600s thì chưa.
+        Cache::forget('scale_live_weight_machine_10_0_0_88');
+        Cache::forget('scale_live_weight_stable_machine_10_0_0_88');
+
+        $this->actingAs($this->operator)
+            ->getJson('/api/devices/readings/WS-DEAD?local=1', ['REMOTE_ADDR' => '10.0.0.88'])
+            ->assertJsonPath('has_reading', false)
+            ->assertJsonPath('source', 'MACHINE');
+    }
+
+    /**
      * Test storing completed scale measurements.
      */
     public function test_store_completed_scale_measurement(): void

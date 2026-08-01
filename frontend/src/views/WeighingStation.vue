@@ -402,7 +402,11 @@ const fetchLiveWeight = async () => {
     // is_stable}), không lồng thêm 1 lớp "data" — code cũ đọc res.data.data?.weight nên
     // luôn nhận undefined→0 khi thật sự dùng cân thật (bug bị che khuất vì useSimValue mặc
     // định true nên nhánh này ít khi chạy tới trong demo/test thủ công).
-    const res = await axios.get(`/api/devices/readings/${currentWorkstation.value.id}`);
+    // local=1 (2026-08-01): ưu tiên cân cắm ở CHÍNH máy đang mở màn hình, nhận diện qua IP
+    // nguồn — cùng lý do và cùng cơ chế với V2, xem composables/useScaleFeed.ts. Bắt buộc phải
+    // sửa cả ở đây: bộ cài MSI đóng cứng Workstation:Id cho mọi máy nên nếu chỉ V2 được sửa
+    // thì hai trạm chạy V1 vẫn đè số cân của nhau.
+    const res = await axios.get(`/api/devices/readings/${currentWorkstation.value.id}?local=1`);
     if (res.data?.status === 'SUCCESS') {
       const rawWeight = parseFloat(res.data.weight ?? 0);
       const rawStable = Boolean(res.data.is_stable);

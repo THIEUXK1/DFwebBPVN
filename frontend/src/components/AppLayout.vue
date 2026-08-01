@@ -393,6 +393,11 @@ const menuGroupsRaw = [
       { path: '/', label: 'Giám sát', icon: 'dashboard' },
       { path: '/order-scan', label: 'Quét đơn QR', icon: 'search' },
       { path: '/weighing-station', label: 'Trạm cân', icon: 'scale' },
+      // Bản dựng lại của Trạm cân, đang làm dở — để adminOnly vì tài khoản vận hành bị
+      // khóa cứng vào đúng 1 màn hình (router guard), bấm vào chỉ bị đá ngược về màn hình
+      // cũ. Bỏ cờ adminOnly khi bản mới chạy chính thức thay bản cũ.
+      { path: '/weighing-station-v2', label: 'Trạm cân (V2)', icon: 'scale', adminOnly: true },
+      { path: '/weighing-history', label: 'Lịch sử cân', icon: 'scale', adminOnly: true },
       { path: '/print-station', label: 'In tem', icon: 'recipe' },
       { path: '/material-transports', label: 'Vận chuyển', icon: 'transfer' },
       { path: '/feeding-monitor', label: 'Cấp máy', icon: 'feed' },
@@ -446,6 +451,8 @@ const currentRouteName = computed(() => {
   const nameMap: Record<string, string> = {
     '/': 'Giám sát trạm cân',
     '/weighing-station': 'Quản lý Trạm cân',
+    '/weighing-station-v2': 'Trạm cân (V2 — đang dựng lại)',
+    '/weighing-history': 'Lịch sử cân',
     '/material-transports': 'Giám sát Vận chuyển',
     '/feeding-monitor': 'Kiểm soát Cấp máy',
     '/production-batches': 'Trạm Quét đơn sản xuất',

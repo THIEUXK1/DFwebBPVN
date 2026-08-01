@@ -49,6 +49,12 @@ class DashboardController extends Controller
                 ] : null,
                 'alerts' => $activeAlerts,
                 'status' => $currentBatch ? $currentBatch->status : 'IDLE',
+                // Mốc để tính "máy đã ở trạng thái này bao lâu". Bảng production_batches
+                // KHÔNG có cột status_changed_at riêng, nên đây là XẤP XỈ theo lần cập
+                // nhật gần nhất của mẻ — giao diện phải nói rõ là ước tính. Máy trống
+                // không có mốc nào đáng tin -> null (không xác định, không phải 0).
+                'status_since' => $currentBatch?->updated_at?->toIso8601String(),
+                'status_since_source' => $currentBatch ? 'BATCH_UPDATED_AT' : null,
             ];
         });
 

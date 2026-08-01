@@ -29,6 +29,9 @@ export const ROUTE_CAPABILITY_MAP: Record<string, string[]> = {
   '/print-station': ['QR_LABEL_PRINTING'],
   '/production-batches': ['PRODUCTION_ORDER'],
   '/weighing-station': ['SMALL_SCALE', 'LARGE_SCALE'],
+  // Bản dựng lại — cùng ràng buộc capability với bản cũ để không lọt dữ liệu sang trạm
+  // không phải trạm cân.
+  '/weighing-station-v2': ['SMALL_SCALE', 'LARGE_SCALE'],
   '/chemical-call': ['CHEMICAL_CALL'],
 };
 
@@ -95,6 +98,37 @@ export function setWorkstation(ws: Workstation | null) {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem('df_workstation_config');
     localStorage.removeItem('df_workstation_token');
+  }
+}
+
+/**
+ * Tự nhận trạm của CHÍNH máy này: hỏi backend "máy tôi đang ngồi là trạm nào?", backend tra
+ * theo IP nguồn ra trạm mà Agent chạy trên máy này đã tự đăng ký.
+ *
+ * Nhờ vậy cài bộ MSI y hệt nhau lên bao nhiêu máy cũng xong — mỗi máy tự có trạm riêng, không
+ * phải khai tay trong Quản lý Workstation cũng không phải chọn trong danh sách mỗi lần mở máy.
+ *
+ * KHÔNG đụng tới tài khoản/phiên kiosk đã gắn cứng trạm (`df_workstation_config`): ở đó trạm là
+ * do quản trị chỉ định có chủ đích, đè lên là phá đúng thứ WS-001 dựng ra để chặn chọn nhầm.
+ * Trả về true nếu đã đổi sang trạm của máy.
+ */
+export async function adoptLocalWorkstation(): Promise<boolean> {
+  if (localStorage.getItem('df_workstation_config')) return false;
+
+  try {
+    const res = await axios.get('/api/workstations/whoami');
+    const ws = res.data?.data;
+    // data=null là trạng thái BÌNH THƯỜNG (máy chưa cài Agent, hoặc PuTTY chưa bật nên Agent
+    // chưa đẩy số nào) — giữ nguyên trạm đang chọn, không báo lỗi.
+    if (!ws?.id) return false;
+    if (currentWorkstation.value?.id === ws.id) return false;
+
+    setWorkstation(ws);
+
+    return true;
+  } catch {
+    // Backend cũ chưa có endpoint này -> 404. Không phải lỗi người dùng cần biết.
+    return false;
   }
 }
 

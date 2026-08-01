@@ -32,10 +32,21 @@
 <?define AppSettingsFile = "appsettings.scale.json"?>
 <?endif?>
 <?ifndef PackageVersion?>
-<!-- 2.0.0.0: moc bo 2 vai tro may in, chi con vai tro nhan can. Version cao hon han 1.4.x
+<!-- 2.1.0.0 (2026-08-01): doi han cach doc can — doc duoi file log PuTTY (Scale:Source=
+     PUTTY_LOG, dung cach he Excel VBA cu) o nhip 10ms, tach nhip DOC khoi nhip DAY len
+     backend. Phai tang version vi may pilot dang cai 2.0.0.0; giu nguyen so thi MajorUpgrade
+     khong nang cap sach duoc.
+
+     2.0.0.0: moc bo 2 vai tro may in, chi con vai tro nhan can. Version cao hon han 1.4.x
      cua ca 3 file MSI cu de may tram da cai bat ky vai tro nao cung nang cap thang len
      duoc (MajorUpgrade tu go ban cu truoc khi cai ban nay). -->
-<?define PackageVersion = "2.0.0.0"?>
+<!-- 2.2.0.0 (2026-08-01): mot bo cai dung cho MOI may — Workstation:Id de trong, Agent tu sinh
+     ma tram tu TEN MAY ("WS-SCALE-<TEN-MAY>", xem Worker.ResolveWorkstationId). Truoc do file
+     nay dong cung mot ma tram cho moi may nen hai tram can chay cung luc ghi de so can cua
+     nhau. Agent gui kem role + machine_name de backend tu tao ban ghi tram dung loai ngay o
+     lan day so dau tien (AgentAuth), va trinh duyet tren chinh may do tu nhan ra tram cua minh
+     qua /api/workstations/whoami. -->
+<?define PackageVersion = "2.2.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.StationId))"

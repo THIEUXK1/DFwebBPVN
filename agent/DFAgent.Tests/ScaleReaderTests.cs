@@ -145,4 +145,158 @@ public class ScaleReaderTests
         reader.IngestSerialData("12,ST,GS,+000010.5g\r\n");
         Assert.True(reader.LatestSerialReading.IsStable);
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Đọc đuôi file log PuTTY (chế độ Scale:Source=PUTTY_LOG — cách hệ Excel VBA cũ vẫn chạy).
+    // Nhịp đọc nay là 10ms nên mọi khiếm khuyết của hàm đọc file đều bị nhân lên 100 lần/giây.
+    // ---------------------------------------------------------------------------------------
+
+    private static ScaleReader NewReaderWith(params (string Key, string Value)[] settings)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings.Select(s => new KeyValuePair<string, string?>(s.Key, s.Value)))
+            .Build();
+        return new ScaleReader(NullLogger<ScaleReader>.Instance, config);
+    }
+
+    /// <summary>
+    /// Đường dẫn file log PuTTY trên máy trạm cân, người dùng chốt 2026-08-01. Khoá lại để việc
+    /// đổi đường dẫn phải là hành động có chủ ý, không trôi đi lúc refactor.
+    /// </summary>
+    [Fact]
+    public void DuongDanLogMacDinh_DungTramCan()
+    {
+        Assert.Equal(@"D:\scale\putty_log.txt", ScaleReader.DefaultLogFilePath);
+    }
+
+    /// <summary>
+    /// Máy đã cài đang dùng khoá cũ SimulationFilePath. Sau khi cập nhật Agent, khoá cũ vẫn phải
+    /// có hiệu lực — nếu không, Agent sẽ âm thầm quay về đường dẫn mặc định và đọc nhầm file.
+    /// </summary>
+    [Fact]
+    public void CauHinhCu_SimulationFilePath_VanCoHieuLuc()
+    {
+        string path = WriteTempLog("12,ST,GS,+000010.5g\r\n");
+        try
+        {
+            var reader = NewReaderWith(
+                ("Scale:Source", "PUTTY_LOG"),
+                ("Scale:SimulationFilePath", path));
+
+            Assert.Equal(10.5, reader.ReadCurrentWeightWithStability().Weight!.Value, precision: 6);
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>LogFilePath (khoá mới) phải thắng SimulationFilePath khi có cả hai.</summary>
+    [Fact]
+    public void LogFilePath_UuTienHonKhoaCu()
+    {
+        string moi = WriteTempLog("12,ST,GS,+000010.5g\r\n");
+        string cu = WriteTempLog("12,ST,GS,+000099.9g\r\n");
+        try
+        {
+            var reader = NewReaderWith(
+                ("Scale:Source", "PUTTY_LOG"),
+                ("Scale:LogFilePath", moi),
+                ("Scale:SimulationFilePath", cu));
+
+            Assert.Equal(10.5, reader.ReadCurrentWeightWithStability().Weight!.Value, precision: 6);
+        }
+        finally { File.Delete(moi); File.Delete(cu); }
+    }
+
+    private static string WriteTempLog(string content)
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"df_putty_{Guid.NewGuid():N}.log");
+        File.WriteAllText(path, content);
+        return path;
+    }
+
+    [Fact]
+    public void PuttyLog_LayDongCuoiCungKhongRong()
+    {
+        string path = WriteTempLog("12,ST,GS,+000009.1g\r\n12,ST,GS,+000010.5g\r\n");
+        try
+        {
+            Assert.Equal("12,ST,GS,+000010.5g", ScaleReader.ReadLastCompleteLine(path));
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>
+    /// Khác biệt A.1 với VBA (p0-c-scale-algorithm.md): VBA ReadLastLineFast bỏ qua dòng rỗng
+    /// (`If Len(s) > 0`), bản .NET cũ lấy dòng vật lý cuối nên trả về "" khi file kết thúc bằng
+    /// dòng trắng — rồi bị hiểu thành "cân đọc 0kg".
+    /// </summary>
+    [Fact]
+    public void PuttyLog_FileKetThucBangDongTrang_VanLayDuocSoThat()
+    {
+        string path = WriteTempLog("12,ST,GS,+000010.5g\r\n\r\n\r\n");
+        try
+        {
+            Assert.Equal("12,ST,GS,+000010.5g", ScaleReader.ReadLastCompleteLine(path));
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>
+    /// Điểm rủi ro lớn nhất của nhịp 10ms: chộp đúng lúc PuTTY mới ghi được nửa dòng. Mảnh cụt
+    /// "12,ST,GS,+0000" sẽ được CleanWeight parse thành 0 — một số cân HỢP LỆ nhưng SAI. Phải
+    /// bỏ qua đuôi chưa có ký tự xuống dòng và giữ nguyên dòng trọn vẹn trước đó.
+    /// </summary>
+    [Fact]
+    public void PuttyLog_DongCuoiDangGhiDo_BoQuaMangCut()
+    {
+        string path = WriteTempLog("12,ST,GS,+000010.5g\r\n12,ST,GS,+0000");
+        try
+        {
+            string line = ScaleReader.ReadLastCompleteLine(path);
+            Assert.Equal("12,ST,GS,+000010.5g", line);
+            Assert.Equal(10.5, NewReader().CleanWeight(line)!.Value, precision: 6);
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>
+    /// File log PuTTY phình dần suốt ca. Chi phí đọc phải KHÔNG phụ thuộc kích thước file, nếu
+    /// không thì nhịp 10ms sẽ làm nghẹt I/O máy trạm (bản cũ dùng File.ReadAllLines đọc cả file).
+    /// </summary>
+    [Fact]
+    public void PuttyLog_FileRatLon_VanLayDungDongCuoiVaNhanh()
+    {
+        var big = new System.Text.StringBuilder();
+        for (int i = 0; i < 200_000; i++) big.Append("12,ST,GS,+000001.0g\r\n");
+        big.Append("12,ST,GS,+000010.5g\r\n");
+
+        string path = WriteTempLog(big.ToString());
+        try
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            for (int i = 0; i < 100; i++) ScaleReader.ReadLastCompleteLine(path);
+            sw.Stop();
+
+            Assert.Equal("12,ST,GS,+000010.5g", ScaleReader.ReadLastCompleteLine(path));
+            // 100 lần đọc = đúng 1 giây chạy thật ở nhịp 10ms. File ~4MB: bản đọc cả file mất
+            // hàng giây, bản seek-tới-cuối phải xong trong vài chục ms.
+            Assert.True(sw.ElapsedMilliseconds < 500, $"100 lần đọc mất {sw.ElapsedMilliseconds}ms — quá chậm cho nhịp 10ms");
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>
+    /// PuTTY giữ file mở để ghi trong suốt phiên — mở với FileShare mặc định sẽ ném
+    /// IOException ngay lần đọc đầu tiên và Agent không bao giờ thấy số cân nào.
+    /// </summary>
+    [Fact]
+    public void PuttyLog_FileDangDuocGhiBoiTienTrinhKhac_VanDocDuoc()
+    {
+        string path = WriteTempLog("12,ST,GS,+000010.5g\r\n");
+        try
+        {
+            using var writer = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read);
+            Assert.Equal("12,ST,GS,+000010.5g", ScaleReader.ReadLastCompleteLine(path));
+        }
+        finally { File.Delete(path); }
+    }
 }

@@ -9,7 +9,7 @@
        nguy cơ remount này, đồng thời tái dùng đúng menu điều hướng quen thuộc của cả hệ
        thống thay vì tự làm 1 panel riêng. -->
   <component :is="pageWrapper">
-  <div class="gantt-page">
+  <div class="gantt-page" :class="{ 'is-immersive': isBrowserFullscreen }">
     <p v-if="errorMsg" class="text-error mt-2">❌ {{ errorMsg }}</p>
     <div v-if="!bpdbConnected" class="stale-banner error-banner mt-2">
       ⚠️ BPDB mất kết nối — biểu đồ đang hiển thị dữ liệu cache gần nhất (lúc {{ formatTime(lastSyncedAt) }}).
@@ -18,7 +18,9 @@
       ⏱️ Dữ liệu có thể đã cũ — lần đồng bộ gần nhất lúc {{ formatTime(lastSyncedAt) }} ({{ dataAgeSeconds }}s trước).
     </div>
 
-    <div class="toolbar mt-2">
+    <!-- v-show (không phải v-if): giữ nguyên DOM + state của các ô lọc ngày/tìm máy khi
+         vào/ra fullscreen, tránh mất giá trị người dùng đang gõ dở. -->
+    <div class="toolbar mt-2" v-show="!isBrowserFullscreen">
       <div class="toolbar-group">
         <label class="field">
           <span class="field-label">Từ ngày</span>
@@ -79,12 +81,29 @@
       <p v-if="!loading && totalRecords === 0" class="gantt-empty">Không có task nào khớp trong khoảng ngày/tên máy đã chọn.</p>
     </div>
     <p class="footnote">Tổng số task hiển thị: <strong>{{ totalRecords }}</strong> · viền đỏ nhấp nháy = mẻ đang chạy, chưa kết thúc</p>
+
+    <!-- Đồng hồ nổi góc trên trái — chỉ hiện khi toàn màn hình (che mất đồng hồ hệ điều hành). -->
+    <div v-show="isBrowserFullscreen" class="fs-clock">
+      <div class="fs-clock-time">{{ clockTime }}</div>
+      <div class="fs-clock-date">{{ clockDate }}</div>
+    </div>
+
+    <!-- Nút thoát nổi góc dưới phải — chỉ hiện khi đang toàn màn hình, vì lúc đó thanh công
+         cụ (chứa nút ⛶) đã bị ẩn, không còn đường nào khác để thoát bằng chuột. -->
+    <div v-show="isBrowserFullscreen" class="fs-exit">
+      <span v-if="showF11Hint" class="fs-exit-hint">
+        Trình duyệt chỉ cho thoát bằng phím <kbd>F11</kbd>
+      </span>
+      <button class="fs-exit-btn" @click="exitFullscreenView" title="Thoát toàn màn hình">
+        <span aria-hidden="true">⤢</span> Thoát toàn màn hình
+      </button>
+    </div>
   </div>
   </component>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import axios from 'axios';
 import { Timeline, DataSet } from 'vis-timeline/standalone';
 import 'vis-timeline/styles/vis-timeline-graph2d.min.css';
@@ -105,13 +124,73 @@ const pageWrapper = isAdminUser ? AppLayout : 'div';
 // Toàn màn hình trình duyệt thật (Fullscreen API, tương đương phím F11) — khác với
 // services/layout.ts isFullscreen (cơ chế ẩn/hiện sidebar+topbar của AppLayout, dùng cho
 // nút "Mở menu điều hướng" ở trên).
-const isBrowserFullscreen = ref(!!document.fullscreenElement);
+// QUAN TRỌNG: toàn màn hình bằng phím F11 KHÔNG set document.fullscreenElement (chỉ
+// Fullscreen API mới set) — nếu chỉ dựa vào nó thì bấm F11 xong trang không hề biết mình
+// đang fullscreen. Media query (display-mode: fullscreen) bắt được CẢ HAI đường vào, nên
+// dùng nó làm nguồn nhận biết chính.
+const fullscreenMedia = window.matchMedia('(display-mode: fullscreen)');
+const isBrowserFullscreen = ref(!!document.fullscreenElement || fullscreenMedia.matches);
+// Nhắc phím F11 khi người dùng bấm nút thoát mà không thoát được — xem exitFullscreenView.
+const showF11Hint = ref(false);
+
 const syncBrowserFullscreenState = () => {
-  isBrowserFullscreen.value = !!document.fullscreenElement;
+  const wasFullscreen = isBrowserFullscreen.value;
+  isBrowserFullscreen.value = !!document.fullscreenElement || fullscreenMedia.matches;
+
+  // Vào fullscreen thì thu gọn luôn sidebar+topbar của AppLayout (Admin có thể đang mở
+  // menu điều hướng) — fullscreen mà vẫn còn menu che thì mất hết ý nghĩa.
+  if (isAdminUser && !wasFullscreen && isBrowserFullscreen.value) {
+    isFullscreen.value = true;
+  }
+  if (!isBrowserFullscreen.value) showF11Hint.value = false;
+
   // Khung nhìn đổi kích thước khi vào/thoát fullscreen — vis-timeline không tự vẽ lại
   // (cùng lý do với watch(isFullscreen) bên dưới, đợi 1 nhịp cho reflow xong).
   setTimeout(() => timeline?.redraw(), 60);
 };
+
+/**
+ * Thoát toàn màn hình từ nút nổi góc dưới phải.
+ * Chỉ thoát được bằng JS nếu ĐÃ VÀO bằng Fullscreen API (nút ⛶ trên thanh công cụ).
+ * Nếu người dùng vào bằng phím F11, chuẩn bảo mật của trình duyệt KHÔNG cho script thoát —
+ * document.exitFullscreen() sẽ không làm gì cả, nên phải nhắc đúng phím thay vì im lặng.
+ */
+const exitFullscreenView = () => {
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+    return;
+  }
+  showF11Hint.value = true;
+  setTimeout(() => (showF11Hint.value = false), 4000);
+};
+
+// Đồng hồ góc trên trái — chỉ có ý nghĩa ở chế độ toàn màn hình: lúc đó taskbar/đồng hồ của
+// hệ điều hành bị che hết, mà đây là màn hình treo theo dõi sản xuất cả ngày nên người đứng
+// xa vẫn cần đọc được giờ. Timer chỉ chạy khi đang fullscreen, không để nó tick vô ích 24/7
+// trên trang vốn đã nặng vì vis-timeline.
+const clockNow = ref(new Date());
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+
+const startClock = () => {
+  if (clockTimer) return;
+  clockNow.value = new Date();
+  clockTimer = setInterval(() => (clockNow.value = new Date()), 1000);
+};
+const stopClock = () => {
+  if (!clockTimer) return;
+  clearInterval(clockTimer);
+  clockTimer = null;
+};
+
+const clockTime = computed(() => clockNow.value.toLocaleTimeString('vi-VN', { hour12: false }));
+const clockDate = computed(() => clockNow.value.toLocaleDateString('vi-VN', {
+  weekday: 'long',
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+}));
+
+watch(isBrowserFullscreen, (on) => (on ? startClock() : stopClock()), { immediate: true });
 const toggleBrowserFullscreen = () => {
   if (!document.fullscreenElement) {
     document.documentElement.requestFullscreen().catch(() => {});
@@ -195,13 +274,26 @@ const formatTime = (iso: string | null) => {
 
 const rawTaskStatusLabel = (status: number) => RAW_TASK_STATUS_LABELS[String(status)] || `Không xác định (${status})`;
 
-// Màu thanh Gantt sinh theo hash (mã máy+màu+mã hàng) — chỉ để phân biệt trực quan các
-// mẻ khác nhau, không mang ý nghĩa nghiệp vụ.
-const barColor = (seed: string) => {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-  return `hsl(${Math.abs(hash) % 360}, 70%, 42%)`;
+// Màu thanh Gantt = màu ĐẠI DIỆN HỌ MÀU của mẻ, do backend suy ra từ mã màu
+// (xem ColorCodePalette.php: BPDB/MES đều không lưu RGB thật cho chuyền VD). Nếu backend
+// không giải mã được thì trả về màu xám trung tính.
+const FALLBACK_BAR_COLOR = '#9AA0A6';
+
+// Màu họ trải từ pastel rất nhạt (#EACBD1) tới gần đen (#252729) nên chữ trắng cố định sẽ
+// mất hút trên các mẻ nhạt — chọn chữ đen/trắng theo độ sáng cảm nhận (công thức luminance
+// của WCAG) để nhãn luôn đọc được.
+const labelColorOn = (hex: string) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return '#fff';
+  const n = parseInt(m[1], 16);
+  const [r, g, b] = [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#1a1a1a' : '#fff';
 };
+
+// Đổ bóng cùng tông với nền (sáng viền sáng / tối viền tối) để chữ tách khỏi nền ở cả hai đầu
+// dải sáng — dùng chung một bóng tối như trước sẽ làm chữ đen trên nền pastel bị nhoè.
+const labelShadowFor = (textColor: string) =>
+  textColor === '#fff' ? '0 1px 2px rgba(0,0,0,0.6)' : '0 1px 2px rgba(255,255,255,0.7)';
 
 const buildTooltip = (item: any) => {
   // group id có dạng "{machineCode}::{tankLabel}" (xem BpdbMachineMonitoringService::
@@ -250,19 +342,21 @@ const fetchGantt = async () => {
       ? new Date(start.getTime() + MIN_VISUAL_DURATION_MS)
       : realEnd;
     const label = it.color && it.productCode ? `${it.color}-${it.productCode}` : (it.taskTitle || '—');
-    const color = barColor(it.group + it.color + it.productCode);
+    const color = it.colorHex || FALLBACK_BAR_COLOR;
+    const textColor = labelColorOn(color);
+    const textShadow = labelShadowFor(textColor);
     return {
       id: it.id,
       group: it.group,
       start,
       end: displayEnd,
       className: it.uncompleted ? 'gantt-item-running' : '',
-      style: `background-color: ${color};`,
+      style: `background-color: ${color}; color: ${textColor};`,
       // Nền màu đặt luôn trên nhãn (thẻ) chứ không chỉ trên thanh ngoài — phòng trường hợp
       // zoom quá xa khiến 2h vẫn chưa đủ chỗ cho nhãn (xem CSS .vis-item min-width và
       // .vis-item-overflow overflow:visible bên dưới); nếu không tô lại màu ở đây, phần chữ
       // tràn ra sẽ không có nền, trông như bị "hụt" nền so với chữ.
-      content: `<div class="gantt-item-label" style="background-color: ${color};">${label}</div>`,
+      content: `<div class="gantt-item-label" style="background-color: ${color}; color: ${textColor}; text-shadow: ${textShadow};">${label}</div>`,
       title: buildTooltip({ ...it, end: realEnd }),
     };
   });
@@ -567,12 +661,15 @@ onMounted(async () => {
     if (autoMove.value && timeline) moveToNow();
   }, 5000);
   document.addEventListener('fullscreenchange', syncBrowserFullscreenState);
+  fullscreenMedia.addEventListener('change', syncBrowserFullscreenState);
 });
 
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer);
   if (moveTimer) clearInterval(moveTimer);
   document.removeEventListener('fullscreenchange', syncBrowserFullscreenState);
+  fullscreenMedia.removeEventListener('change', syncBrowserFullscreenState);
+  stopClock();
   if (isAdminUser) isFullscreen.value = previousIsFullscreen;
   timeline?.destroy();
 });
@@ -580,6 +677,89 @@ onUnmounted(() => {
 
 <style scoped>
 .gantt-page { padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+
+/* Nút thoát toàn màn hình — position: fixed để bám góc màn hình chứ không trôi theo trang.
+   z-index phải cao hơn mọi lớp của vis-timeline (cao nhất trong file này là 6 ở
+   .vis-nesting-group) và hơn cả tooltip, nếu không sẽ bị thanh Gantt đè mất. */
+/* Đồng hồ toàn màn hình. Cùng z-index với nút thoát để luôn nổi trên vis-timeline.
+   font-variant-numeric: tabular-nums giữ bề rộng chữ số cố định — thiếu nó thì đồng hồ
+   giật ngang mỗi giây khi chữ số đổi (1 hẹp hơn 8 ở font Inter). */
+.fs-clock {
+  position: fixed;
+  left: 18px;
+  top: 14px;
+  z-index: 3000;
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  box-shadow: var(--shadow-lg);
+  opacity: 0.9;
+  text-align: center;
+  pointer-events: none;
+}
+.fs-clock-time {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-title);
+}
+.fs-clock-date {
+  margin-top: 2px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.fs-exit {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fs-exit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card);
+  color: var(--text-title);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  /* Mờ sẵn để không che dữ liệu khi treo màn hình theo dõi cả ngày, rõ hẳn khi rê chuột. */
+  opacity: 0.5;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.fs-exit-btn:hover { opacity: 1; transform: translateY(-1px); }
+.fs-exit-hint {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg-popover);
+  border: 1px solid var(--border-card);
+  color: var(--text-body);
+  font-size: 0.8rem;
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+}
+.fs-exit-hint kbd {
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-card-hover);
+  background: var(--bg-main);
+  font-family: inherit;
+  font-weight: 700;
+}
 
 .stale-banner {
   background: rgba(202, 138, 4, 0.12);
@@ -623,6 +803,34 @@ onUnmounted(() => {
   position: relative;
   height: calc(100vh - 180px);
   min-height: 560px;
+}
+
+/* Toàn màn hình: trang tự trải kín viewport thay vì giữ chiều cao tính theo công thức cố
+   định (calc(100vh - 180px) trừ hao cho thanh công cụ — mà thanh công cụ lúc này đã ẩn, để
+   nguyên sẽ chừa một dải trống vô nghĩa ở đáy).
+
+   Dùng position: fixed + inset: 0 chứ không phải height: 100vh, vì trang có 2 kiểu bọc khác
+   nhau (Admin nằm trong AppLayout .content-container có padding 24px và overflow riêng;
+   người xem công khai thì không) — height: 100vh trong khung có padding sẽ tràn ra ngoài
+   gây thanh cuộn. inset: 0 bám thẳng viewport nên đúng cho cả hai.
+
+   z-index 2500: cao hơn nút "✕ Thoát toàn màn hình" của AppLayout (2000) để nó không hiện
+   chồng lên — nếu không sẽ có 2 nút thoát gần trùng tên ở 2 góc, gây rối. Nút thoát của
+   trang này (.fs-exit, z-index 3000) là con của .gantt-page nên vẫn nổi lên trên. */
+.gantt-page.is-immersive {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  padding: 0.5rem;
+  gap: 0.35rem;
+  background: var(--bg-main);
+}
+.gantt-page.is-immersive .gantt-container {
+  flex: 1 1 auto;
+  height: auto;
+  /* Bỏ min-height 560px: trên màn hình thấp nó sẽ đẩy nội dung vượt khỏi viewport.
+     min-height: 0 là bắt buộc để flex item co được nhỏ hơn nội dung bên trong. */
+  min-height: 0;
 }
 .gantt-canvas { width: 100%; height: 100%; }
 .gantt-empty {
@@ -781,8 +989,9 @@ onUnmounted(() => {
   width: max-content;
   border-radius: 4px;
   padding: 3px 7px;
-  color: #fff;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  /* color + text-shadow đặt inline theo độ sáng của màu mẻ (labelColorOn) — thanh Gantt nay
+     mang màu thật của họ màu, trải từ pastel rất nhạt tới gần đen, nên không thể cố định
+     chữ trắng + đổ bóng tối như trước. */
   white-space: nowrap;
   position: relative;
   z-index: 1;

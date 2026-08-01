@@ -387,7 +387,23 @@ import echo from '../services/echo';
 // cho API (mặc định backend chỉ trả 15/trang) chứ không chỉ nới slice ở client.
 const RECENT_BATCH_LIMIT = 30;
 const batches = ref<any[]>([]);
-const recentBatches = computed(() => batches.value.slice(0, RECENT_BATCH_LIMIT));
+// Lô đã CONFIRMED bên /print-station (đã bấm "✅ OK" — đã in xong, rơi xuống bảng
+// lịch sử bên đó) không cần hiện lại ở đây nữa (yêu cầu 2026-07-31) — nhận biết qua
+// machine_dispatches.queue_state (batch.dispatches do backend eager-load kèm theo,
+// xem ProductionBatchController::index), KHÔNG dùng batch.status vì trạng thái lô
+// độc lập với trạng thái in (xem điều tra lô ADHOC cùng ngày).
+const isPrintConfirmed = (batch: any): boolean =>
+  Array.isArray(batch.dispatches) && batch.dispatches.some((d: any) => d.queue_state === 'CONFIRMED');
+
+// Chưa duyệt (NEW) lên đầu, đã duyệt (mọi status khác) đẩy xuống dưới (yêu cầu
+// 2026-07-31) — sort ổn định (Array.sort đảm bảo stable từ ES2019) nên trong từng
+// nhóm vẫn giữ nguyên thứ tự created_at desc đã có sẵn từ backend.
+const recentBatches = computed(() =>
+  [...batches.value]
+    .filter(b => !isPrintConfirmed(b))
+    .sort((a, b) => (a.status === 'NEW' ? 0 : 1) - (b.status === 'NEW' ? 0 : 1))
+    .slice(0, RECENT_BATCH_LIMIT)
+);
 
 // Modal "Chi tiết Lô sản xuất" — giống hệt /production-batches/list, xem DYE/CHEM +
 // duyệt ngay không cần rời trang quét (yêu cầu 2026-07-24).

@@ -810,9 +810,16 @@ async function printDispatchViaBrowser(
   /* Kích thước .slip suy ra từ chính mmD() (đã nhân FIT) + margin chừa lề — KHÔNG hard-code
      70x100mm nữa, để bản vẽ luôn nhỏ hơn vùng in được và trình duyệt không phải co trang. */
   .slip { position: relative; width: ${mmD(560)}mm; height: ${mmD(800)}mm; margin: ${MARGIN_MM}mm; border: 0.5mm solid #000; zoom: 2.6; }
-  /* padding ngang 0.9 -> 0.6mm: bản vẽ đã thu 4.5% nên ô hẹp lại, giữ 0.9mm sẽ làm mã dài
-     6 ký tự (Y1019A/R2064G) chạm mép ô. Padding dọc giữ 0.5mm (chiều cao hàng vẫn dư). */
-  .box { position: absolute; border: 0.375mm solid #000; overflow: visible; padding: 0.5mm 0.6mm; white-space: nowrap; }
+  /* padding ngang 0.9 -> 0.6 -> 0.45mm: bản vẽ đã thu 4.5% nên ô hẹp lại, padding rộng làm
+     mã dài 6 ký tự (Y1019A/R2064G) và mã máy chạm mép ô. Padding dọc giữ 0.5mm (hàng vẫn dư).
+     Canh giữa cả 2 chiều + KHÔNG cho chữ tràn ra ngoài ô (yêu cầu 2026-07-31: "chữ đừng
+     dài quá đè vào vạch kẻ, căn giữa trên dưới trái phải"). Trước đây overflow:visible nên
+     nhãn dài (DF_WEIGHING_SLIP) tràn hẳn sang ô bên cạnh, chữ lại luôn dính mép trên-trái.
+     flex-direction:column (không phải row) vì ô Màu+Mã hàng chứa 2 span xếp chồng — để row
+     thì 2 span nằm cạnh nhau, vỡ bố cục. padding ngang 0.6 -> 0.45mm lấy thêm chỗ cho mã máy
+     5 ký tự (VD003 ở cỡ 3.2mm rộng ~9.8mm, ô chỉ hở 9.75mm nếu giữ padding cũ). */
+  .box { position: absolute; border: 0.375mm solid #000; overflow: hidden; padding: 0.5mm 0.45mm; white-space: nowrap;
+         display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .box.noborder { border: none; }
   .gridcell { position: absolute; border: 0.375mm solid #000; }
   /* Cỡ chữ nhỏ tăng đồng loạt (2026-07-31, ảnh tem thật: chữ/số trong bảng nhoè không đọc
@@ -821,13 +828,22 @@ async function printDispatchViaBrowser(
      chữ chỉ ổn định khi dày >= 2 dot, tức cỡ chữ phải >= ~2.6mm ở font-weight 700.
      Chiều cao hàng bảng là 41 dot = 5.125mm, trừ padding 0.5mm x2 còn 4.1mm nên 2.6mm vẫn
      dư chỗ — KHÔNG phải nới lại bố cục/toạ độ đã khớp tem thật. */
-  .label-sm { font-size: 2.6mm; font-weight: 700; white-space: nowrap; }
+  /* Arial Narrow riêng cho nhãn này: "DF_WEIGHING_SLIP" (16 ký tự) ở Arial Bold 2.6mm rộng
+     ~25.6mm, trong khi ô chỉ hở ~22.9mm -> luôn tràn đè vạch kẻ. Font hẹp co bề NGANG ~18%
+     (còn ~21mm, vừa ô) nhưng GIỮ NGUYÊN chiều cao chữ 2.6mm, nên nét đứng vẫn dày >= 2 dot
+     ở máy in nhiệt 203dpi — không tái diễn lỗi chữ nhoè của mục "cỡ chữ nhỏ" phía trên.
+     Thu nhỏ font là cách sai ở đây: 2.3mm mới vừa ô nhưng nét mảnh dưới 2 dot sẽ bị dither. */
+  .label-sm { font-size: 2.6mm; font-weight: 700; white-space: nowrap;
+              font-family: 'Arial Narrow', 'Liberation Sans Narrow', Arial, sans-serif; }
   .big { font-size: 3.2mm; font-weight: 700; line-height: 1; white-space: nowrap; }
   .big.code-line { display: block; margin-top: 1.2mm; }
   .zone { font-size: 5.5mm; font-weight: 700; line-height: 1; text-align: center; white-space: nowrap; display: block; width: 100%; }
   .med { font-size: 2.9mm; font-weight: 700; white-space: nowrap; }
-  .cellval { font-size: 2.6mm; font-weight: 700; }
-  .cellval-right { display: block; text-align: right; }
+  /* Ô trong bảng: giữ nguyên canh ngang như tem thật (RACK/mã căn trái, khối lượng căn phải)
+     — chỉ hưởng canh giữa theo CHIỀU DỌC từ .box. align-self:stretch để span chiếm đủ bề
+     ngang ô (trong flex column, mặc định span co lại bằng nội dung nên text-align mất tác dụng). */
+  .cellval { font-size: 2.6mm; font-weight: 700; align-self: stretch; text-align: left; }
+  .cellval-right { text-align: right; }
   .title { font-size: 2.6mm; font-weight: 700; }
   .qr-block { position: absolute; text-align: center; }
   /* KHÔNG dùng image-rendering:pixelated cho QR: ảnh QR đang bị THU NHỎ (nguồn px > kích
@@ -835,14 +851,14 @@ async function printDispatchViaBrowser(
      dễ đọc sai. Cách xử lý đúng cho độ nét là tăng độ phân giải NGUỒN khi sinh QR (xem
      QRCode.toDataURL bên dưới) rồi để trình duyệt nội suy. */
   .qr-block img { width: 100%; height: 100%; object-fit: contain; }
-  .qr-block-inline { display: flex; align-items: flex-start; justify-content: center; height: 100%; }
-  .qr-block-inline img { width: 12.5mm; height: 12.5mm; }
-  /* QR góc trên bên phải (chế độ PROCESS/EXTRA/FB) — to hơn theo yêu cầu 2026-07-30, nhưng
-     bản trước (13.2mm, padding đều 0.15mm) gần như dán sát viền TRÊN của tem (chỉ còn
-     ~0.35mm kể cả viền), in ra không còn thấy viền. Người dùng yêu cầu lùi xuống + co nhỏ
-     lại còn ~95%: đổi align-items sang flex-start (neo trên, không canh giữa) + padding
-     TRÊN riêng dày hơn hẳn 3 cạnh còn lại để đẩy ảnh xuống, chừa khe hở rõ với viền trên. */
-  .box.mode-qr-cell { padding: 0.9mm 0.15mm 0.15mm 0.15mm; }
+  /* QR chế độ: 12.5mm trong ô cao 13.37mm (trừ 2 viền còn 12.62mm) chỉ hở 0.06mm mỗi bên —
+     in ra dính sát vạch kẻ. Co còn 11.6mm để hở đều ~0.5mm trên/dưới, canh giữa do .box lo. */
+  .qr-block-inline { display: flex; align-items: center; justify-content: center; }
+  .qr-block-inline img { width: 11.6mm; height: 11.6mm; }
+  /* QR góc trên bên phải (chế độ PROCESS/EXTRA/FB). Bản 2026-07-30 phải neo trên (flex-start)
+     + padding trên dày 0.9mm để đẩy QR 12.5mm rời khỏi viền; nay QR đã co còn 11.6mm và .box
+     tự canh giữa 2 chiều nên padding trả về đều 4 cạnh, khe hở trên/dưới bằng nhau. */
+  .box.mode-qr-cell { padding: 0.3mm; }
   .placeholder { color: #999; font-style: italic; }
   .footnote { margin-top: 3mm; font-size: 2.3mm; color: #666; }
   /* KHÔNG có @page thì trình duyệt in theo khổ giấy mặc định đang chọn sẵn trong driver

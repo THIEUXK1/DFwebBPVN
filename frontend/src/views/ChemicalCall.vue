@@ -809,8 +809,10 @@ onUnmounted(() => {
   border-radius: var(--radius-md);
 }
 
+/* Bảng này cố ý tối ở CẢ hai theme (không dùng biến --bg-card) nên phải tự chỉnh sang tông
+   navy cho khớp dark theme mới — để nguyên #111827 sẽ thành mảng đen lạc tông giữa nền xanh. */
 .table-dark {
-  background-color: #111827;
+  background-color: hsl(217, 40%, 13%);
   color: #f3f4f6;
   margin-bottom: 0;
   width: 100%;
@@ -819,13 +821,13 @@ onUnmounted(() => {
 
 .table th, .table td {
   padding: 10px 14px;
-  border-bottom: 1px solid #1f2937;
+  border-bottom: 1px solid hsl(217, 30%, 24%);
   font-size: 0.85rem;
   text-align: left;
 }
 
 .table th {
-  background-color: #1f2937;
+  background-color: hsl(217, 30%, 24%);
   color: #9ca3af;
   font-size: 0.75rem;
   text-transform: uppercase;

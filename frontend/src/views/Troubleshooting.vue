@@ -878,7 +878,9 @@ const handleLogout = async () => {
   z-index: 1000;
 }
 .modal-card {
-  background: #111827;
+  /* Cũng là nền tối cố định ở cả hai theme — đổi sang navy cho khớp dark theme.
+     (Việc modal này tối cả khi đang ở theme sáng là chuyện có sẵn, chưa đụng tới.) */
+  background: hsl(217, 40%, 13%);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);

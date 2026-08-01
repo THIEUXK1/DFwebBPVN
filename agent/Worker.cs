@@ -21,7 +21,10 @@ public class Worker : BackgroundService
     private readonly HttpClient _httpClient;
     private readonly string _backendUrl;
     private readonly string _workstationId;
-    private readonly int _pollIntervalMs;
+    private readonly string _role;
+    private readonly int _readIntervalMs;
+    private readonly int _pushIntervalMs;
+    private readonly int _printPollIntervalMs;
     private readonly bool _scaleEnabled;
     private readonly bool _printEnabled;
 
@@ -46,16 +49,38 @@ public class Worker : BackgroundService
         _printerDiscovery = printerDiscovery;
 
         _backendUrl = _config.GetValue<string>("Backend:Url", "http://localhost:8500/api") ?? "http://localhost:8500/api";
-        _workstationId = _config.GetValue<string>("Workstation:Id", "WS-01") ?? "WS-01";
-        _pollIntervalMs = _config.GetValue<int>("Scale:PollIntervalMs", 500);
+        _workstationId = ResolveWorkstationId(_config);
+        // NHỊP ĐỌC tách khỏi NHỊP ĐẨY (2026-08-01). Trước đây một giá trị PollIntervalMs điều
+        // khiển cả hai, buộc phải đánh đổi giữa độ chính xác và tải mạng — thực ra hai việc này
+        // có chi phí hoàn toàn khác nhau:
+        //
+        //   ĐỌC  (10ms): đọc đuôi file cục bộ / lấy biến đã chốt từ cổng COM — gần như miễn phí,
+        //                đúng nhịp VBA StartFastLoop. Đây là nhịp quyết định StableFilter:
+        //                "ổn định" = 2 lần đọc liên tiếp giống nhau = 20ms, ĐÚNG BẰNG VBA
+        //                (trước đây ở 500ms là 1 GIÂY mới dám báo ổn định).
+        //   ĐẨY (200ms): mỗi lần là một HTTP request + một vòng bootstrap Laravel phía backend —
+        //                đây mới là thứ đắt, và cũng là thứ duy nhất cần cân nhắc khi nhân số trạm.
+        //
+        // LƯU Ý TRIỂN KHAI: đổi mặc định ở đây KHÔNG tự áp dụng cho máy đã cài — appsettings.json
+        // tại C:\Program Files\DFAgent\ ghi đè. Phải sửa tay hoặc cài lại MSI.
+        //
+        // PollIntervalMs (tên cũ) vẫn được đọc làm giá trị dự phòng cho nhịp ĐẨY, để cấu hình cũ
+        // trên máy đã cài không bị bỏ qua im lặng sau khi cập nhật Agent.
+        int legacyPollMs = _config.GetValue<int>("Scale:PollIntervalMs", 200);
+        _readIntervalMs = Math.Max(1, _config.GetValue<int>("Scale:ReadIntervalMs", 10));
+        _pushIntervalMs = Math.Max(_readIntervalMs, _config.GetValue<int>("Scale:PushIntervalMs", legacyPollMs));
+
+        // Lệnh in không liên quan gì tới nhịp đọc cân — trước đây bị buộc chung vòng lặp, nếu để
+        // vòng lặp chạy 10ms mà không tách ra thì sẽ thành 100 request lấy lệnh in mỗi giây.
+        _printPollIntervalMs = Math.Max(200, _config.GetValue<int>("Printer:PollIntervalMs", 1000));
 
         // Role quyet dinh vong lap nao chay — mot may vat ly chi gan 1 loai thiet bi
         // (may in HOAC can), khong can ca 2. Mac dinh BOTH de tuong thich nguoc voi
         // cau hinh cu chua co truong nay. Xem DFAgentSetup.wxs (dropdown chon vai tro
         // luc cai) va session-log.md muc lien quan (2026-07-29).
-        string role = _config.GetValue<string>("Workstation:Role", "BOTH") ?? "BOTH";
-        _scaleEnabled = role is "BOTH" or "SCALE_ONLY";
-        _printEnabled = role is "BOTH" or "PRINT_ONLY";
+        _role = _config.GetValue<string>("Workstation:Role", "BOTH") ?? "BOTH";
+        _scaleEnabled = _role is "BOTH" or "SCALE_ONLY";
+        _printEnabled = _role is "BOTH" or "PRINT_ONLY";
 
         _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
 
@@ -73,20 +98,71 @@ public class Worker : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Mã trạm của MÁY NÀY. Để trống Workstation:Id trong cấu hình thì tự sinh từ TÊN MÁY —
+    /// nhờ đó một bộ cài MSI duy nhất cài lên bao nhiêu máy cũng ra mã khác nhau, không phải
+    /// sửa tay từng máy sau khi cài.
+    ///
+    /// Trước 2026-08-01 bộ cài đóng cứng cùng một mã cho mọi máy, nên hai trạm cân chạy cùng
+    /// lúc ghi đè số cân của nhau. Điền Workstation:Id tường minh vẫn được ưu tiên — máy đã
+    /// cài từ trước giữ nguyên hành vi cũ, không bị đổi mã sau khi cập nhật Agent.
+    ///
+    /// Tên máy Windows chỉ gồm chữ/số/dấu '-' nên gần như luôn qua bộ lọc nguyên vẹn; bộ lọc
+    /// chỉ để phòng tên máy lạ (ký tự Unicode) làm hỏng mã trạm dùng làm khóa cache/URL.
+    /// </summary>
+    public static string ResolveWorkstationId(IConfiguration config)
+    {
+        string? configured = config.GetValue<string>("Workstation:Id");
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            return configured.Trim();
+        }
+
+        var sb = new System.Text.StringBuilder();
+        foreach (char c in Environment.MachineName.ToUpperInvariant())
+        {
+            sb.Append(char.IsLetterOrDigit(c) ? c : '-');
+        }
+
+        string machine = sb.ToString().Trim('-');
+
+        return machine.Length == 0 ? "WS-SCALE-UNKNOWN" : "WS-SCALE-" + machine;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("DF Local Agent started for Workstation: {WS}", _workstationId);
+        _logger.LogInformation(
+            "DF Local Agent started for Workstation: {WS} (đọc cân mỗi {Read}ms, đẩy lên backend mỗi {Push}ms)",
+            _workstationId, _readIntervalMs, _pushIntervalMs);
 
         double lastLoggedWeight = 0.0;
+        DateTime nextPushAt = DateTime.MinValue;
+        DateTime nextPrintPollAt = DateTime.MinValue;
 
+        // Việc mạng chạy RỜI khỏi vòng đọc. Nếu await thẳng trong vòng lặp, một lần backend
+        // không phản hồi sẽ giữ vòng lặp lại đúng bằng thời gian chờ (HttpClient timeout 5 giây)
+        // — tức Agent NGỪNG ĐỌC CÂN 5 giây, làm nhịp 10ms thành vô nghĩa đúng lúc cần nhất.
+        // Giữ tối đa 1 việc mỗi loại đang bay: nếu lần trước chưa xong thì bỏ qua lượt này thay
+        // vì xếp hàng chồng chất (số cân cũ không đáng để gửi bù, luôn có số mới hơn ngay sau).
+        Task? pushInFlight = null;
+        Task? printPollInFlight = null;
+
+        static bool Idle(Task? t) => t is null || t.IsCompleted;
+
+        // Vòng lặp chạy ở NHỊP ĐỌC (10ms) — port đúng ModRead_putty_log.StartFastLoop của VBA.
+        // Mọi việc đắt tiền (HTTP) đều tự cổng theo mốc thời gian riêng bên dưới, nên nhịp lặp
+        // nhanh KHÔNG kéo theo tải mạng.
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 if (_scaleEnabled)
                 {
-                    // 1. Read scale weight (kèm cờ ổn định thật, thay cho hard-code stable=true
-                    // trước đây ở tầng frontend — PB-2, xem ScaleReader.StableFilter)
+                    // Nạp MỌI lần đọc vào StableFilter, kể cả khi giá trị không đổi — chính việc
+                    // đọc lặp lại là thứ làm nên định nghĩa "ổn định" của VBA (2 lần liên tiếp
+                    // giống nhau). VBA cũng làm vậy: điều kiện `If s <> rawline` trong
+                    // StartFastLoop so chuỗi THÔ với `rawline` vốn đã bị gán giá trị ĐÃ LỌC, nên
+                    // gần như luôn đúng và thực tế vòng lặp đẩy mỗi 10ms.
                     var (currentWeight, isStable) = _scaleReader.ReadCurrentWeightWithStability();
 
                     // TV6 (p0-c-scale-algorithm.md Mục A.10): currentWeight=null nghĩa là lỗi đọc/dữ
@@ -102,26 +178,19 @@ public class Worker : BackgroundService
                             lastLoggedWeight = currentWeight.Value;
                         }
 
-                        // 2. Push weight to API
-                        await PushWeightToBackendAsync(currentWeight.Value, isStable);
-                    }
-                    else
-                    {
-                        _logger.LogDebug("Scale read returned no valid data this cycle — keeping last known value (not pushed).");
+                        if (DateTime.UtcNow >= nextPushAt && Idle(pushInFlight))
+                        {
+                            // Không await — xem ghi chú Task? pushInFlight ở trên.
+                            pushInFlight = PushWeightToBackendAsync(currentWeight.Value, isStable);
+                            nextPushAt = DateTime.UtcNow.AddMilliseconds(_pushIntervalMs);
+                        }
                     }
                 }
 
-                if (_printEnabled)
+                if (_printEnabled && DateTime.UtcNow >= nextPrintPollAt && Idle(printPollInFlight))
                 {
-                    // 3. Fetch and process pending print jobs
-                    await ProcessPendingPrintJobsAsync();
-
-                    // 4. Report installed printers to backend (throttled — xem PrinterReportInterval)
-                    if (DateTime.UtcNow >= _nextPrinterReportAt)
-                    {
-                        await ReportInstalledPrintersAsync();
-                        _nextPrinterReportAt = DateTime.UtcNow.Add(PrinterReportInterval);
-                    }
+                    printPollInFlight = ProcessPrintWorkAsync();
+                    nextPrintPollAt = DateTime.UtcNow.AddMilliseconds(_printPollIntervalMs);
                 }
             }
             catch (Exception ex)
@@ -129,7 +198,23 @@ public class Worker : BackgroundService
                 _logger.LogWarning("Loop execution warning: {Msg}", ex.Message);
             }
 
-            await Task.Delay(_pollIntervalMs, stoppingToken);
+            await Task.Delay(_readIntervalMs, stoppingToken);
+        }
+    }
+
+    /// <summary>
+    /// Gộp 2 việc mạng của máy in vào 1 task để vòng đọc cân chỉ phải theo dõi đúng 1 handle.
+    /// Bản thân 2 hàm bên trong đã tự bắt hết ngoại lệ nên task này không bao giờ faulted —
+    /// quan trọng, vì nó chạy rời khỏi vòng lặp, không có ai await để nhận lỗi.
+    /// </summary>
+    private async Task ProcessPrintWorkAsync()
+    {
+        await ProcessPendingPrintJobsAsync();
+
+        if (DateTime.UtcNow >= _nextPrinterReportAt)
+        {
+            await ReportInstalledPrintersAsync();
+            _nextPrinterReportAt = DateTime.UtcNow.Add(PrinterReportInterval);
         }
     }
 
@@ -142,7 +227,13 @@ public class Worker : BackgroundService
                 workstation_id = _workstationId,
                 weight = weight,
                 is_stable = isStable,
-                timestamp = DateTime.UtcNow
+                timestamp = DateTime.UtcNow,
+                // Gửi kèm để backend TỰ ĐĂNG KÝ đúng loại trạm cho mã trạm sinh từ tên máy
+                // (AgentAuth): thiếu role thì trạm mới rơi về type AUTO_REGISTERED và
+                // ScannerController::handleOrderScan chặn 403 "chỉ được quét tại các Trạm Cân".
+                // machine_name chỉ để hiển thị cho người quản trị nhận ra máy nào là máy nào.
+                role = _role,
+                machine_name = Environment.MachineName
             };
 
             HttpResponseMessage response = await _httpClient.PostAsJsonAsync($"{_backendUrl}/devices/readings", payload);

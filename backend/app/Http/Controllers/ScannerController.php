@@ -238,9 +238,60 @@ class ScannerController extends Controller
         return DB::transaction(function () use ($batchId, $workstation, $jobType, $rackLines) {
             $batch = ProductionBatch::with(['machine', 'tank'])->findOrFail($batchId);
 
-            // Fetch or create the WeighingJob for this batch and type
+            // Ghi nhận các máy KHÁC cũng đang cân đúng đơn này, để báo cho thao tác viên biết —
+            // thuần thông tin, không chặn và không ảnh hưởng số liệu (mỗi máy một vòng cân
+            // riêng, xem truy vấn tìm job bên dưới). Phải tính TRƯỚC khi tạo/tìm job của máy
+            // này, vì nhánh cân tự do phía dưới thoát sớm bằng return riêng.
+            // Loại cả COMPLETED lẫn CANCELLED: vòng cân đã hủy (xem WeighingJobController::cancel)
+            // không phải "đang được cân", báo lẫn vào đây sẽ là thông tin sai.
+            $mayKhac = WeighingJob::where('production_batch_id', $batch->id)
+                ->where('job_type', $jobType)
+                ->whereNotIn('status', ['COMPLETED', 'CANCELLED'])
+                ->whereNotNull('assigned_workstation_id')
+                ->where('assigned_workstation_id', '!=', $workstation->id)
+                ->pluck('assigned_workstation_id')
+                ->unique();
+
+            $notice = $mayKhac->isEmpty() ? null : sprintf(
+                'Đơn này cũng đang được cân ở %s. Mẻ của bạn ghi riêng, hai bên không ảnh hưởng nhau.',
+                Workstation::whereIn('id', $mayKhac)->pluck('name')->implode(', ') ?: 'máy khác'
+            );
+
+            // Fetch or create the WeighingJob for this batch and type.
+            //
+            // BỎ QUA job đã COMPLETED (2026-08-01): quét lại đúng mã đó sau khi đã SAVE nghĩa là
+            // thao tác viên muốn CÂN LẠI TỪ ĐẦU — không phải mở lại mẻ cũ để xem. Nếu tái dùng
+            // job đã xong thì 9 dòng hiện nguyên số cũ và server chặn ghi đè (weighBatch bỏ qua
+            // dòng COMPLETED), thành ra màn hình đứng im không cân được gì.
+            //
+            // Job cũ GIỮ NGUYÊN, không sửa/không xoá — vòng cân mới là một WeighingJob mới, đúng
+            // nguyên tắc không xoá vật lý dữ liệu giao dịch (CLAUDE.md mục 3). Hệ quả có chủ ý:
+            // 1 lô có thể có nhiều vòng cân, và trạng thái lô quay về PARTIALLY_WEIGHED trong lúc
+            // vòng mới đang chạy rồi trở lại WEIGHED khi xong (WeighingItemRecorder tự cascade).
+            // Báo cáo tiêu hao vì vậy phải cộng dồn theo VÒNG, không giả định 1 lô = 1 lần cân.
+            // CHỈ tái dùng vòng cân CỦA CHÍNH MÁY NÀY (2026-08-01). Trước đó truy vấn không lọc
+            // theo trạm nên hai máy quét cùng một đơn nhận về CÙNG một WeighingJob: cân song
+            // song rồi máy bấm SAVE sau bị bỏ qua những dòng máy kia đã ghi (weighBatch bỏ dòng
+            // COMPLETED) — mất số mà không ai biết.
+            //
+            // Quyết định nghiệp vụ: mỗi máy một vòng cân riêng, cả hai đều lưu được đầy đủ, hai
+            // bản ghi song song là chấp nhận được. Hệ quả có chủ ý: một lô có thể có nhiều vòng
+            // cân cùng lúc, nên báo cáo tiêu hao phải cộng dồn THEO VÒNG chứ không giả định 1 lô
+            // = 1 lần cân.
+            //
+            // Lọc chặt theo đúng trạm, KHÔNG nhận job có assigned_workstation_id rỗng: nhận job
+            // rỗng thì hai máy lại cùng vớ phải một job và quay về đúng lỗi trên. Job cũ (nếu có)
+            // giữ nguyên, không sửa/không xoá — đúng nguyên tắc không xoá vật lý dữ liệu giao
+            // dịch (CLAUDE.md mục 3).
+            //
+            // Loại cả CANCELLED (2026-08-01, WeighingJobController::cancel): job đã bị thao tác
+            // viên hủy trắng (quét nhầm rồi bỏ đi, chưa cân dòng nào) không được tái dùng — coi
+            // như chưa từng có, quét lại là mở một vòng cân hoàn toàn mới.
             $job = WeighingJob::where('production_batch_id', $batch->id)
                 ->where('job_type', $jobType)
+                ->whereNotIn('status', ['COMPLETED', 'CANCELLED'])
+                ->where('assigned_workstation_id', $workstation->id)
+                ->orderByDesc('created_at')
                 ->first();
 
             if (! $job) {
@@ -273,13 +324,34 @@ class ScannerController extends Controller
                         'started_at' => Carbon::now(),
                     ]);
 
+                    // Tra 1 lần cho CẢ 9 mã thay vì firstOrCreate trong vòng lặp (9 lượt đi-về
+                    // DB, mỗi lượt ~20ms khi backend không nằm cùng máy với DB → tự nó đã gần
+                    // 200ms trước khi làm được việc gì). Mã chưa có thì chèn 1 lần bằng insert
+                    // gộp — vẫn giữ đúng ngữ nghĩa firstOrCreate: không đụng vào mã đã tồn tại.
+                    $dyeCodes = array_values(array_unique(array_column($rackLines, 'dye')));
+                    $existingCodes = Material::whereIn('code', $dyeCodes)->pluck('code')->all();
+                    $missingCodes = array_diff($dyeCodes, $existingCodes);
+
+                    if ($missingCodes) {
+                        // Điền created_at/updated_at tường minh: insert() gộp đi thẳng query
+                        // builder nên KHÔNG tự đóng dấu thời gian như firstOrCreate. Cột là
+                        // nullable nên không lỗi, chỉ âm thầm để rỗng — mất dấu vết mã vật tư
+                        // này được tự tạo lúc nào.
+                        $now = Carbon::now();
+                        Material::insert(array_map(
+                            fn ($code) => [
+                                'code' => $code,
+                                'name' => $code,
+                                'type' => 'DYE',
+                                'created_at' => $now,
+                                'updated_at' => $now,
+                            ],
+                            array_values($missingCodes)
+                        ));
+                    }
+
                     $seq = 1;
                     foreach ($rackLines as $line) {
-                        $material = Material::firstOrCreate(
-                            ['code' => $line['dye']],
-                            ['name' => $line['dye'], 'type' => 'DYE']
-                        );
-
                         $adhocTargetWeight = (float) $line['weight'];
                         // Dung sai ±1% — trước đây để 999999 (gần như vô cực) vì "không có công
                         // thức để so", nhưng planned_weight vẫn lấy đúng khối lượng in trên tem
@@ -288,7 +360,7 @@ class ScannerController extends Controller
 
                         WeighingJobItem::create([
                             'weighing_job_id' => $job->id,
-                            'material_code' => $material->code,
+                            'material_code' => $line['dye'],
                             'planned_weight' => $adhocTargetWeight,
                             'tolerance_minus' => $adhocTolerance,
                             'tolerance_plus' => $adhocTolerance,
@@ -309,6 +381,7 @@ class ScannerController extends Controller
                     return response()->json([
                         'status' => 'SUCCESS',
                         'message' => "Quét đơn thành công (cân tự do — không có công thức). Đã nạp danh sách cân của Trạm {$workstation->code}.",
+                        'notice' => $notice,
                         'data' => [
                             'job' => $job->load('items.material'),
                             'batch' => $batch,
@@ -426,6 +499,7 @@ class ScannerController extends Controller
             return response()->json([
                 'status' => 'SUCCESS',
                 'message' => "Quét đơn thành công. Đã nạp danh sách cân của Trạm {$workstation->code}.",
+                'notice' => $notice,
                 'data' => [
                     'job' => $job->load('items.material'),
                     'batch' => $batch,

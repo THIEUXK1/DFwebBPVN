@@ -8,6 +8,9 @@ namespace DFAgent;
 
 public class ScaleReader : IDisposable
 {
+    // Đường dẫn file log PuTTY trên máy trạm cân (xác nhận với người dùng 2026-08-01).
+    public const string DefaultLogFilePath = @"D:\scale\putty_log.txt";
+
     private readonly ILogger<ScaleReader> _logger;
     private readonly IConfiguration _config;
     private SerialPort? _serialPort;
@@ -18,8 +21,25 @@ public class ScaleReader : IDisposable
     {
         _logger = logger;
         _config = config;
-        _useSimulation = _config.GetValue<bool>("Scale:UseSimulation", true);
-        _simulationFilePath = _config.GetValue<string>("Scale:SimulationFilePath", "D:\\SCALE\\putty_log.txt");
+        // Scale:Source là cờ chính thức (2026-08-01): "PUTTY_LOG" = đọc đuôi file log PuTTY,
+        // đúng cách hệ Excel VBA cũ vẫn chạy ở xưởng; "SERIAL" = mở thẳng cổng COM.
+        //
+        // Trước đây chỉ có cờ UseSimulation, đặt tên sai bản chất: đọc file PuTTY là cách vận
+        // hành THẬT của xưởng suốt nhiều năm, không phải chế độ giả lập. Người vận hành phải bật
+        // một cờ tên "UseSimulation" để chạy sản xuất thật là chỗ rất dễ hiểu nhầm và dễ bị ai đó
+        // tắt đi vì tưởng là đồ demo. Vẫn đọc cờ cũ làm dự phòng để máy đã cài không đổi hành vi
+        // sau khi cập nhật Agent.
+        string? source = _config.GetValue<string>("Scale:Source");
+        _useSimulation = string.IsNullOrWhiteSpace(source)
+            ? _config.GetValue<bool>("Scale:UseSimulation", true)
+            : !string.Equals(source, "SERIAL", StringComparison.OrdinalIgnoreCase);
+
+        // LogFilePath là tên khoá chính thức; SimulationFilePath giữ làm dự phòng cho cấu hình cũ
+        // trên máy đã cài (cùng lý do với Source/UseSimulation ở trên — file log PuTTY là đường
+        // chạy THẬT của xưởng, không phải đồ giả lập).
+        _simulationFilePath = _config.GetValue<string>("Scale:LogFilePath")
+                              ?? _config.GetValue<string>("Scale:SimulationFilePath")
+                              ?? DefaultLogFilePath;
 
         if (!_useSimulation)
         {
@@ -27,7 +47,7 @@ public class ScaleReader : IDisposable
         }
         else
         {
-            _logger.LogInformation("Scale Reader is running in SIMULATION mode reading file: {Path}", _simulationFilePath);
+            _logger.LogInformation("Đọc cân từ file log PuTTY (cách cũ, giống Excel VBA): {Path}", _simulationFilePath);
         }
     }
 
@@ -176,8 +196,8 @@ public class ScaleReader : IDisposable
         }
     }
 
-    // Throttle cảnh báo "chưa thấy file log cân" — vòng lặp Worker chạy mỗi
-    // PollIntervalMs (mặc định 500ms), log mỗi vòng sẽ spam log file vô ích.
+    // Throttle cảnh báo "chưa thấy file log cân" — vòng lặp Worker nay chạy mỗi ReadIntervalMs
+    // (mặc định 10ms), log mỗi vòng sẽ ghi 100 dòng/giây và làm ngập file log.
     private DateTime _nextMissingFileWarnAt = DateTime.MinValue;
     private static readonly TimeSpan MissingFileWarnInterval = TimeSpan.FromSeconds(30);
 
@@ -202,13 +222,9 @@ public class ScaleReader : IDisposable
                 return (null, false);
             }
 
-            // Read the last line of the file (mimicking putty log tail) — giữ nguyên hành vi
-            // "lấy dòng vật lý cuối" hiện có; VBA gốc còn bỏ qua dòng rỗng (ReadLastLineFast)
-            // nhưng đó là khác biệt A.1 riêng, chưa sửa trong đợt này (không phải PB-1/PB-2).
-            string[] lines = File.ReadAllLines(_simulationFilePath);
-            if (lines.Length > 0)
+            string lastLine = ReadLastCompleteLine(_simulationFilePath);
+            if (lastLine.Length > 0)
             {
-                string lastLine = lines[^1];
                 var (weight, isStable) = ReadWeightWithStability(lastLine);
                 if (weight.HasValue)
                 {
@@ -222,6 +238,65 @@ public class ScaleReader : IDisposable
             _logger.LogWarning("Failed to read simulated weight: {Msg}", ex.Message);
         }
         return (null, false);
+    }
+
+    // Cửa sổ đọc đuôi file. Dòng dữ liệu cân dài vài chục ký tự nên 4KB thừa sức chứa nhiều
+    // dòng cuối; không bao giờ cần đọc quá số này dù file log đã phình tới hàng chục MB.
+    private const int TailWindowBytes = 4096;
+
+    private static readonly char[] LineBreakChars = { '\r', '\n' };
+
+    /// <summary>
+    /// Lấy dòng cuối cùng KHÔNG RỖNG và ĐÃ KẾT THÚC của file log PuTTY.
+    ///
+    /// Thay cho <c>File.ReadAllLines</c> trước đây (đọc TOÀN BỘ file rồi lấy phần tử cuối). Ở
+    /// nhịp 500ms cách cũ còn chịu được, nhưng nhịp đọc nay là 10ms (bám đúng VBA
+    /// <c>StartFastLoop</c>) trong khi file log PuTTY phình dần suốt ca — đọc cả file 100
+    /// lần/giây sẽ làm nghẹt I/O máy trạm. Ở đây seek thẳng tới cuối file, chỉ đọc
+    /// <see cref="TailWindowBytes"/> byte cuối, nên chi phí không phụ thuộc kích thước file.
+    ///
+    /// BỎ QUA phần đuôi chưa có ký tự xuống dòng: ở 10ms, xác suất chộp đúng lúc PuTTY mới ghi
+    /// được nửa dòng ("12,ST,GS,+0000") cao gấp ~50 lần so với 500ms, mà CleanWeight sẽ parse
+    /// mảnh cụt đó thành một con số HỢP LỆ nhưng SAI. Đánh đổi: chậm hơn đúng một dòng (cân
+    /// thường phát ~5-10 dòng/giây) để không bao giờ đọc phải số cụt.
+    ///
+    /// Cũng vá luôn khác biệt A.1 với VBA (p0-c-scale-algorithm.md): VBA
+    /// <c>ReadLastLineFast</c> bỏ qua dòng rỗng (<c>If Len(s) &gt; 0</c>), bản .NET cũ lấy dòng
+    /// vật lý cuối bất kể rỗng hay không.
+    ///
+    /// FileShare.ReadWrite|Delete là bắt buộc: PuTTY đang giữ file mở để ghi.
+    /// </summary>
+    public static string ReadLastCompleteLine(string path)
+    {
+        using var fs = new FileStream(
+            path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+
+        long len = fs.Length;
+        if (len == 0) return string.Empty;
+
+        int window = (int) Math.Min(TailWindowBytes, len);
+        fs.Seek(len - window, SeekOrigin.Begin);
+
+        var buf = new byte[window];
+        int read = fs.Read(buf, 0, window);
+        if (read <= 0) return string.Empty;
+
+        // ASCII: dữ liệu cân chỉ có số/dấu/chữ cái ASCII. Dùng ASCII tránh việc cửa sổ cắt
+        // giữa một ký tự nhiều byte làm hỏng cả chuỗi giải mã.
+        string text = System.Text.Encoding.ASCII.GetString(buf, 0, read);
+
+        int lastBreak = text.LastIndexOfAny(LineBreakChars);
+        if (lastBreak < 0) return string.Empty; // chưa có dòng nào kết thúc trong cửa sổ
+
+        string[] lines = text.Substring(0, lastBreak).Split(LineBreakChars, StringSplitOptions.RemoveEmptyEntries);
+        for (int i = lines.Length - 1; i >= 0; i--)
+        {
+            string t = lines[i].Trim();
+            if (t.Length > 0) return t;
+        }
+
+        return string.Empty;
     }
 
     // Trạng thái StableFilter (tương đương biến Static trong VBA Mod_delta_raw.StableFilter) —

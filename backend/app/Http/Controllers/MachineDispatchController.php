@@ -18,7 +18,11 @@ class MachineDispatchController extends Controller
     {
         $query = MachineDispatch::query()
             ->with(['batch.machine', 'batch.tank', 'lockedByUser'])
-            ->whereIn('queue_state', ['INPUT', 'WAITING', 'TO_SEND', 'PROCESSING', 'ERROR']);
+            ->whereIn('queue_state', ['INPUT', 'WAITING', 'TO_SEND', 'PROCESSING', 'ERROR'])
+            // Lô đã hủy (soft delete qua status=CANCELLED) thì hàng chờ in của nó cũng phải
+            // biến mất — trước đây chỉ lọc theo queue_state của dispatch nên hủy lô bên
+            // /production-batches xong đơn vẫn nằm nguyên ở Trạm in (phát hiện 2026-07-31).
+            ->whereHas('batch', fn ($b) => $b->where('status', '!=', 'CANCELLED'));
 
         if ($request->has('machine_id')) {
             $machineId = $request->input('machine_id');
@@ -54,7 +58,9 @@ class MachineDispatchController extends Controller
                 'printJobs.attempts',
                 'printJobs.events' => fn ($q) => $q->orderBy('event_time', 'asc'),
             ])
-            ->where('queue_state', 'CONFIRMED');
+            ->where('queue_state', 'CONFIRMED')
+            // Cùng lý do với index(): lô đã hủy thì không còn hiện ở bảng lịch sử in nữa.
+            ->whereHas('batch', fn ($b) => $b->where('status', '!=', 'CANCELLED'));
 
         if ($request->has('machine_id')) {
             $machineId = $request->input('machine_id');

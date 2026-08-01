@@ -82,6 +82,69 @@
             </ul>
           </aside>
         </div>
+
+        <!-- Báo cáo "máy đã ở trạng thái hiện tại bao lâu rồi" (yêu cầu 2026-08-01) —
+             đặt ngay dưới lưới trạng thái vì trả lời đúng câu hỏi tiếp theo mà lưới icon
+             không trả lời được: máy nào đang đứng/chờ/chạy lâu bất thường. -->
+        <section class="status-duration-report mt-4">
+          <div class="report-head">
+            <div>
+              <h4 class="report-title">⏱️ Máy đã ở trạng thái hiện tại bao lâu rồi</h4>
+              <p class="report-sub" v-if="authStore.isAdmin">
+                Đếm từ mốc thật của task quyết định trạng thái trong BPDB (bắt đầu chạy / tạo task / kết thúc).
+                Máy trống không có task nào trong 30 ngày ghi là “&gt; 30 ngày”.
+              </p>
+              <p class="report-sub" v-else>
+                Ước tính theo lần cập nhật gần nhất của mẻ đang chạy — bảng dữ liệu nội bộ chưa có mốc đổi trạng thái riêng.
+              </p>
+            </div>
+            <label class="report-filter">
+              <input type="checkbox" v-model="onlyStuckMachines" />
+              <span>Chỉ hiện máy có cảnh báo kéo dài</span>
+            </label>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Máy</th>
+                  <th>Trạng thái</th>
+                  <th>Đã kéo dài</th>
+                  <th>Từ lúc</th>
+                  <th v-if="authStore.isAdmin">Đếm từ mốc</th>
+                  <th v-if="authStore.isAdmin">Task / Lô hiện tại</th>
+                  <th>Cảnh báo</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in statusDurationRows"
+                  :key="row.code"
+                  :class="row.rowClass"
+                >
+                  <td class="bold-text">{{ row.code }}</td>
+                  <td>
+                    <span class="dur-status">{{ row.icon }} {{ row.status }}</span>
+                  </td>
+                  <td class="dur-value">{{ row.durationText }}</td>
+                  <td class="dur-since">{{ row.sinceText }}</td>
+                  <td v-if="authStore.isAdmin" class="dur-anchor">{{ row.anchorLabel }}</td>
+                  <td v-if="authStore.isAdmin" class="dur-task">{{ row.taskTitle || '—' }}</td>
+                  <td>
+                    <span v-if="row.warningText" class="dur-warn-tag">{{ row.warningText }}</span>
+                    <span v-else class="text-muted">—</span>
+                  </td>
+                </tr>
+                <tr v-if="statusDurationRows.length === 0">
+                  <td :colspan="authStore.isAdmin ? 7 : 4" class="text-center text-muted">
+                    {{ onlyStuckMachines ? 'Không có máy nào đang bị cảnh báo kéo dài.' : 'Chưa có dữ liệu trạng thái máy.' }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
 
       <!-- TAB 2: WEIGHING ROOM -->
@@ -386,7 +449,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, reactive } from 'vue';
+import { ref, computed, onMounted, onUnmounted, reactive } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import axios from 'axios';
 import SvgIcon from '../components/SvgIcon.vue';
@@ -448,16 +511,125 @@ const printSuccess = ref(true);
 // cầu 2026-07-29 (không cần chi tiết task/tank, chỉ cần biết máy "đang là gì").
 const bpdbMachines = ref<any[]>([]);
 
+// Thời điểm (đồng hồ máy trạm) nhận được snapshot BPDB gần nhất — dùng để cộng dồn cho
+// statusDurationSeconds do server tính, thay vì lấy hiệu new Date() - statusSince. Máy
+// trạm nhà xưởng thường lệch giờ so với server/BPDB, nếu trừ trực tiếp sẽ ra số âm hoặc
+// vống lên hàng giờ.
+const bpdbFetchedAtLocal = ref<number | null>(null);
+
 const fetchBpdbMachines = async () => {
   try {
     const res = await axios.get('/api/admin/bpdb/machines/status');
     bpdbMachines.value = res.data.data;
+    bpdbFetchedAtLocal.value = Date.now();
   } catch (err) {
     console.error('Failed to load BPDB machine status:', err);
   }
 };
 
 let bpdbPollTimer: ReturnType<typeof setInterval> | null = null;
+
+// Báo cáo "đã ở trạng thái này bao lâu" — đồng hồ nhích mỗi giây để người vận hành thấy
+// số đang chạy thật, không phải bảng chết chỉ đổi mỗi 5s theo nhịp poll.
+const nowTick = ref(Date.now());
+let durationTicker: ReturnType<typeof setInterval> | null = null;
+const onlyStuckMachines = ref(false);
+
+const formatDuration = (totalSeconds: number | null): string => {
+  if (totalSeconds === null) return 'Không xác định';
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const days = Math.floor(s / 86400);
+  const hours = Math.floor((s % 86400) / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const seconds = s % 60;
+  if (days > 0) return `${days} ngày ${hours} giờ`;
+  if (hours > 0) return `${hours} giờ ${minutes} phút`;
+  if (minutes > 0) return `${minutes} phút ${seconds} giây`;
+  return `${seconds} giây`;
+};
+
+const anchorLabels: Record<string, string> = {
+  WORK_START: 'Bắt đầu chạy task',
+  CREATE: 'Tạo task',
+  FINISH: 'Kết thúc task',
+  LAST_ACTIVITY: 'Hoạt động cuối cùng',
+  BATCH_UPDATED_AT: 'Cập nhật mẻ gần nhất',
+};
+
+const warningLabel = (w: any): string => {
+  if (!w) return '';
+  const minutes = w.minutes != null ? Math.round(w.minutes) : null;
+  switch (w.code) {
+    case 'WAITING_TOO_LONG':
+      return `Chờ quá lâu (${minutes} phút / ngưỡng ${w.threshold})`;
+    case 'TRANSITION_STUCK':
+      return `Kẹt chuyển trạng thái (${minutes} phút / ngưỡng ${w.threshold})`;
+    case 'PROCESSING_TOO_LONG':
+      return `Chạy quá lâu (${minutes} phút / ngưỡng ${w.threshold})`;
+    case 'ABORTED_OR_STALE':
+      return 'Task đang chạy nhưng đã bị xóa/hủy';
+    case 'DATA_INCONSISTENT':
+      return 'Dữ liệu BPDB thiếu mốc thời gian';
+    default:
+      return w.code;
+  }
+};
+
+// So sánh mã máy theo thứ tự tự nhiên: "VD9" phải đứng trước "VD10", không phải sau như
+// khi so sánh chuỗi thuần. Mã hiện tại có padding số ("VD003") nên chuỗi thuần vẫn đúng,
+// nhưng numeric:true để không vỡ nếu sau này có mã không padding.
+const compareMachineCode = (a: string, b: string) =>
+  String(a).localeCompare(String(b), 'vi', { numeric: true, sensitivity: 'base' });
+
+const statusDurationRows = computed(() => {
+  const elapsedSinceFetch = bpdbFetchedAtLocal.value
+    ? Math.floor((nowTick.value - bpdbFetchedAtLocal.value) / 1000)
+    : 0;
+
+  const rows = authStore.isAdmin
+    ? bpdbMachines.value.map((m: any) => {
+        const base = m.statusDurationSeconds;
+        const idleNoData = m.operationalStatus === 'IDLE' && !m.statusSince;
+        const seconds = base != null ? base + elapsedSinceFetch : null;
+
+        return {
+          code: m.displayName || m.machineCode,
+          status: m.operationalStatus,
+          icon: bpdbStatusIcon(m.operationalStatus),
+          durationText: idleNoData ? '> 30 ngày' : formatDuration(seconds),
+          sinceText: m.statusSince ? formatTime(m.statusSince) : (idleNoData ? 'Không có task trong 30 ngày' : '—'),
+          anchorLabel: anchorLabels[m.statusSinceSource] || '—',
+          taskTitle: m.currentTask?.taskTitle || null,
+          warningText: warningLabel(m.stuckWarning),
+          hasWarning: !!m.stuckWarning || m.operationalStatus === 'ERROR',
+          rowClass: m.operationalStatus === 'ERROR'
+            ? 'dur-row-danger'
+            : (m.stuckWarning ? 'dur-row-warn' : ''),
+        };
+      })
+    : overviewData.value.map((m: any) => {
+        const seconds = m.status_since
+          ? Math.max(0, Math.floor((nowTick.value - new Date(m.status_since).getTime()) / 1000))
+          : null;
+
+        return {
+          code: m.machine_code,
+          status: m.status,
+          icon: appStatusIcon(m.status),
+          durationText: formatDuration(seconds),
+          sinceText: m.status_since ? formatTime(m.status_since) : '—',
+          anchorLabel: anchorLabels[m.status_since_source] || '—',
+          taskTitle: m.current_batch?.legacy_batch_id || null,
+          warningText: '',
+          hasWarning: false,
+          rowClass: '',
+        };
+      });
+
+  return rows
+    .filter((r) => !onlyStuckMachines.value || r.hasWarning)
+    .sort((a, b) => compareMachineCode(a.code, b.code));
+});
 
 // Icon theo trạng thái BPDB (operationalStatus) và trạng thái nội bộ (app.machines) — chỉ
 // mang tính minh họa nhanh trên Dashboard, không thay thế nhãn chữ đứng cạnh.
@@ -601,6 +773,7 @@ onMounted(() => {
   }
 
   disposeRealtime = initRealtimeConnection();
+  durationTicker = setInterval(() => { nowTick.value = Date.now(); }, 1000);
 });
 
 onUnmounted(() => {
@@ -609,6 +782,9 @@ onUnmounted(() => {
   }
   if (bpdbPollTimer) {
     clearInterval(bpdbPollTimer);
+  }
+  if (durationTicker) {
+    clearInterval(durationTicker);
   }
 });
 
@@ -1101,6 +1277,89 @@ const formatTime = (dateStr: string) => {
 .machine-status-tile.card-state-weighing { border-top-color: var(--status-yellow); }
 .machine-status-tile.card-state-weighed { border-top-color: var(--status-green); }
 .machine-status-tile.card-state-sent { border-top-color: var(--status-orange); }
+
+/* Báo cáo thời lượng trạng thái máy (dưới lưới Tab 1) */
+.status-duration-report {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg) var(--space-xl);
+}
+
+.report-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-md);
+}
+
+.report-title {
+  font-size: 0.95rem;
+  color: var(--text-title);
+}
+
+.report-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  max-width: 70ch;
+}
+
+.report-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dur-status {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.dur-value {
+  font-family: monospace;
+  font-weight: 700;
+  color: var(--text-title);
+  white-space: nowrap;
+}
+
+.dur-since, .dur-anchor {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.dur-task {
+  font-size: 0.75rem;
+  color: var(--text-body);
+}
+
+.dur-warn-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  background-color: var(--status-yellow-bg);
+  border: 1px solid var(--status-yellow-border);
+  color: var(--status-yellow);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.dur-row-warn td { background-color: var(--status-yellow-bg); }
+
+.dur-row-danger td { background-color: var(--status-red-bg); }
+.dur-row-danger .dur-warn-tag {
+  background-color: var(--status-red-bg);
+  border-color: var(--status-red-border);
+  color: var(--status-red);
+}
 
 /* Tab 3: interlocks rows list */
 .machine-status-list {

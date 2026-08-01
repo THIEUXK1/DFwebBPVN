@@ -10,6 +10,8 @@ import ProductionBatches from '../views/ProductionBatches.vue';
 import ProductionBatchesList from '../views/ProductionBatchesList.vue';
 import MachineQueue from '../views/MachineQueue.vue';
 import WeighingStation from '../views/WeighingStation.vue';
+import WeighingStationV2 from '../views/WeighingStationV2.vue';
+import WeighingHistory from '../views/WeighingHistory.vue';
 import MaterialTransfer from '../views/MaterialTransfer.vue';
 import FeedingMonitor from '../views/FeedingMonitor.vue';
 import Troubleshooting from '../views/Troubleshooting.vue';
@@ -115,6 +117,20 @@ const routes = [
     path: '/weighing-station',
     name: 'WeighingStation',
     component: WeighingStation,
+    meta: { requiresAuth: true }
+  },
+  // Bản dựng lại của màn hình cân, chạy song song với /weighing-station (bản cũ giữ nguyên
+  // để đối chiếu và để sản xuất vẫn dùng được trong lúc bản mới còn dang dở).
+  {
+    path: '/weighing-station-v2',
+    name: 'WeighingStationV2',
+    component: WeighingStationV2,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/weighing-history',
+    name: 'WeighingHistory',
+    component: WeighingHistory,
     meta: { requiresAuth: true }
   },
   {

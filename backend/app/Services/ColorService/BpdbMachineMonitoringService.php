@@ -31,8 +31,17 @@ class BpdbMachineMonitoringService
     private const REGISTRY_CACHE_TTL = 300; // 5 phút — danh mục máy đổi rất chậm
     private const STATUS_CACHE_TTL = 4;     // giây — tránh mỗi trình duyệt tự query BPDB
 
-    public function __construct(private readonly BpdbReadOnlyClient $client)
-    {
+    // Mốc "máy nhàn rỗi từ bao giờ" — query gộp riêng vì query trạng thái chính chỉ lấy
+    // task active + 24h gần nhất, không đủ để biết máy IDLE đã trống bao lâu. Cache dài
+    // hơn (60s) vì độ chính xác từng giây không có ý nghĩa với máy đang trống, trong khi
+    // aggregate 30 ngày đắt hơn nhiều query trạng thái.
+    private const IDLE_LOOKBACK_DAYS = 30;
+    private const LAST_ACTIVITY_CACHE_TTL = 60;
+
+    public function __construct(
+        private readonly BpdbReadOnlyClient $client,
+        private readonly ColorCodePalette $palette,
+    ) {
     }
 
     /**
@@ -258,6 +267,9 @@ class BpdbMachineMonitoringService
                     'group' => $tankGroupId,
                     'taskTitle' => $row['TaskTitle'],
                     'color' => $color,
+                    // Màu ĐẠI DIỆN họ màu suy từ mã màu — BPDB không lưu RGB thật.
+                    // Xem ColorCodePalette để biết vì sao phải suy ra và độ chính xác tới đâu.
+                    'colorHex' => $this->palette->hexFor($color),
                     'productCode' => $productCode,
                     'taskStatus' => $status,
                     'isDeleted' => $isDeleted,
@@ -364,17 +376,38 @@ class BpdbMachineMonitoringService
             ]);
         }
 
-        $machines = [];
+        $tasksByMachineCode = [];
+        $hasIdleMachine = false;
         foreach ($registry as $machineCode => $variant) {
-            $tasksForThisMachine = [];
+            $tasksByMachineCode[$machineCode] = [];
             foreach ($variant['variants'] as $v) {
                 foreach ($tasksByMachineId[$v['machine_id']] ?? [] as $t) {
-                    $tasksForThisMachine[] = $t;
+                    $tasksByMachineCode[$machineCode][] = $t;
+                }
+            }
+            $hasIdleMachine = $hasIdleMachine || empty($tasksByMachineCode[$machineCode]);
+        }
+
+        // Chỉ trả giá cho query aggregate 30 ngày khi thật sự có máy trống cần biết "trống
+        // từ bao giờ" — lúc nhà máy chạy full thì bỏ qua hoàn toàn.
+        $lastActivityByMachineId = ($bpdbConnected && $hasIdleMachine)
+            ? $this->getLastActivityByMachineId($allMachineIds)
+            : [];
+
+        $machines = [];
+        foreach ($registry as $machineCode => $variant) {
+            $idleSince = null;
+            foreach ($variant['variants'] as $v) {
+                // Máy vật lý gồm nhiều dòng DyeMachines (Machine+Tank+Mức nước) — mốc
+                // nhàn rỗi của máy là lần hoạt động GẦN NHẤT trong toàn bộ các tổ hợp đó.
+                $candidate = $lastActivityByMachineId[$v['machine_id']] ?? null;
+                if ($candidate !== null && ($idleSince === null || strcmp((string) $candidate, (string) $idleSince) > 0)) {
+                    $idleSince = $candidate;
                 }
             }
 
             $machines[] = $bpdbConnected
-                ? $this->reduceMachineStatus($machineCode, $variant, $tasksForThisMachine)
+                ? $this->reduceMachineStatus($machineCode, $variant, $tasksByMachineCode[$machineCode], $idleSince)
                 : $this->unknownStatus($machineCode, $variant);
         }
 
@@ -386,14 +419,59 @@ class BpdbMachineMonitoringService
     }
 
     /**
+     * Lần hoạt động gần nhất của TỪNG dòng DyeMachines, giới hạn IDLE_LOOKBACK_DAYS ngày.
+     * Chỉ dùng làm mốc đếm cho máy IDLE — máy không có bản ghi nào trong cửa sổ này trả
+     * về null (frontend hiển thị "> 30 ngày"), KHÔNG suy diễn thành một mốc cụ thể.
+     *
+     * @param  array<int|string>  $machineIds
+     * @return array<int|string, string> [machine_id => 'Y-m-d H:i:s' theo giờ VN]
+     */
+    public function getLastActivityByMachineId(array $machineIds): array
+    {
+        if (empty($machineIds)) {
+            return [];
+        }
+
+        return Cache::remember('bpdb_machine_last_activity', self::LAST_ACTIVITY_CACHE_TTL, function () use ($machineIds) {
+            try {
+                $placeholders = implode(',', array_fill(0, count($machineIds), '?'));
+                $rows = $this->client->select(
+                    "SELECT Machine, MAX(COALESCE(FinishTime, WorkStartTime, CreateTime)) AS LastActivity
+                     FROM dbo.SUP_Tasks
+                     WHERE Machine IN ($placeholders) AND CreateTime >= ?
+                     GROUP BY Machine",
+                    [...$machineIds, now('Asia/Ho_Chi_Minh')->subDays(self::IDLE_LOOKBACK_DAYS)->format('Y-m-d H:i:s')]
+                );
+
+                $map = [];
+                foreach ($rows as $row) {
+                    if (!empty($row['LastActivity'])) {
+                        $map[$row['Machine']] = $row['LastActivity'];
+                    }
+                }
+
+                return $map;
+            } catch (\Throwable $e) {
+                // Mất mốc nhàn rỗi không được làm hỏng cả bảng trạng thái — chỉ mất cột
+                // "đã kéo dài" của các máy IDLE.
+                Log::warning('BpdbMachineMonitoringService: cannot read last activity for idle machines', [
+                    'error' => $e->getMessage(),
+                ]);
+
+                return [];
+            }
+        });
+    }
+
+    /**
      * Quy tắc chọn task hiện tại (mục 6 tài liệu yêu cầu):
      * PROCESSING > TRANSITIONING > WAITING > hoàn thành gần nhất > hủy gần nhất.
      * Cùng mức ưu tiên: WorkStartTime mới nhất -> CreateTime mới nhất -> Id lớn nhất.
      */
-    private function reduceMachineStatus(string $machineCode, array $variant, array $tasks): array
+    private function reduceMachineStatus(string $machineCode, array $variant, array $tasks, ?string $idleSince = null): array
     {
         if (empty($tasks)) {
-            return $this->buildResult($machineCode, $variant, 'IDLE', null, null, 0, 0, null);
+            return $this->buildResult($machineCode, $variant, 'IDLE', null, null, 0, 0, null, null, $idleSince, 'LAST_ACTIVITY');
         }
 
         $priorityRank = fn (array $t) => match (true) {
@@ -439,6 +517,8 @@ class BpdbMachineMonitoringService
 
         $lastCompleted = collect($tasks)->first(fn ($t) => (int) $t['TaskStatus'] === 40 && !empty($t['FinishTime']));
 
+        [$statusSince, $statusSinceSource] = $this->resolveStatusAnchor($operationalStatus, $primary);
+
         return $this->buildResult(
             $machineCode,
             $variant,
@@ -448,8 +528,37 @@ class BpdbMachineMonitoringService
             count($activeTasks),
             count($waitingTasks),
             $tasks[0]['CreateTime'] ?? null,
-            $warnings
+            $warnings,
+            $statusSince,
+            $statusSinceSource
         );
+    }
+
+    /**
+     * Mốc thời gian máy BẮT ĐẦU rơi vào trạng thái hiện tại, lấy từ chính task quyết định
+     * trạng thái đó — không có mốc "đổi trạng thái" riêng trong BPDB nên phải suy từ mốc
+     * gần nghĩa nhất, và trả kèm nguồn để người xem biết đồng hồ đang đếm từ đâu:
+     *   PROCESSING/ERROR -> WorkStartTime (lúc máy thật sự bắt đầu chạy task)
+     *   WAITING/TRANSITIONING -> CreateTime (lúc task được tạo/xếp hàng)
+     *   COMPLETED_RECENTLY/CANCELLED -> FinishTime (lúc task kết thúc, máy bắt đầu trống)
+     *
+     * @return array{0: ?string, 1: ?string} [mốc thời gian, mã nguồn mốc]
+     */
+    private function resolveStatusAnchor(string $operationalStatus, array $task): array
+    {
+        $candidates = match ($operationalStatus) {
+            'PROCESSING', 'ERROR' => [['WorkStartTime', 'WORK_START'], ['CreateTime', 'CREATE']],
+            'COMPLETED_RECENTLY', 'CANCELLED' => [['FinishTime', 'FINISH'], ['CreateTime', 'CREATE']],
+            default => [['CreateTime', 'CREATE']],
+        };
+
+        foreach ($candidates as [$field, $source]) {
+            if (!empty($task[$field])) {
+                return [$task[$field], $source];
+            }
+        }
+
+        return [null, null];
     }
 
     /**
@@ -509,8 +618,10 @@ class BpdbMachineMonitoringService
         return null;
     }
 
-    private function buildResult(string $machineCode, array $variant, string $operationalStatus, ?array $current, ?array $lastCompleted, int $activeCount, int $waitingCount, ?string $lastActivityAt, ?array $warning = null): array
+    private function buildResult(string $machineCode, array $variant, string $operationalStatus, ?array $current, ?array $lastCompleted, int $activeCount, int $waitingCount, ?string $lastActivityAt, ?array $warning = null, ?string $statusSince = null, ?string $statusSinceSource = null): array
     {
+        $statusSinceCarbon = $statusSince ? Carbon::parse($statusSince, 'Asia/Ho_Chi_Minh') : null;
+
         return [
             'machineCode' => $machineCode,
             'displayName' => $variant['display_name'],
@@ -529,6 +640,12 @@ class BpdbMachineMonitoringService
             'lastActivityAt' => $lastActivityAt,
             'dataAgeSeconds' => $lastActivityAt ? now()->diffInSeconds(Carbon::parse($lastActivityAt, 'Asia/Ho_Chi_Minh'), true) : null,
             'stuckWarning' => $warning,
+            // Máy đã ở trạng thái hiện tại từ lúc nào / bao lâu rồi. null = không đủ bằng
+            // chứng để nói (máy IDLE không có task nào trong 30 ngày, hoặc BPDB thiếu mốc
+            // thời gian) — frontend phải hiển thị "không xác định", không được coi là 0.
+            'statusSince' => $statusSinceCarbon?->toIso8601String(),
+            'statusSinceSource' => $statusSinceCarbon ? $statusSinceSource : null,
+            'statusDurationSeconds' => $statusSinceCarbon ? now()->diffInSeconds($statusSinceCarbon, true) : null,
         ];
     }
 
@@ -546,6 +663,9 @@ class BpdbMachineMonitoringService
             'stuckWarning' => null,
             'lastActivityAt' => null,
             'dataAgeSeconds' => null,
+            'statusSince' => null,
+            'statusSinceSource' => null,
+            'statusDurationSeconds' => null,
         ];
     }
 

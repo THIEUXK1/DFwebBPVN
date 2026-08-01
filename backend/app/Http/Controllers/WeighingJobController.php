@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\WeighingJob;
 use App\Models\WeighingJobItem;
 use App\Services\RealtimeService;
+use App\Services\WeighingItemRecorder;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -33,6 +34,74 @@ class WeighingJobController extends Controller
     }
 
     /**
+     * Lịch sử cân — mỗi bản ghi là MỘT VÒNG CÂN (một WeighingJob đã COMPLETED), không phải
+     * một lô. Từ 2026-08-01 một lô có thể được cân lại nhiều vòng (quét lại mã sau khi đã SAVE
+     * sẽ mở vòng mới, xem ScannerController::handleOrderScan), nên gom theo lô sẽ giấu mất các
+     * lần cân lại — đúng thứ cần nhìn thấy nhất khi đối soát.
+     *
+     * Phân trang bắt buộc: bảng này chỉ có tăng, không bao giờ được trả hết một lượt.
+     */
+    public function history(Request $request)
+    {
+        $request->validate([
+            'from' => 'nullable|date',
+            'to' => 'nullable|date',
+            'q' => 'nullable|string|max:100',
+            'workstation_id' => 'nullable|integer|exists:operation_clients,id',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $query = WeighingJob::with(['batch.machine', 'items'])
+            ->where('status', 'COMPLETED');
+
+        if ($from = $request->input('from')) {
+            $query->where('completed_at', '>=', Carbon::parse($from)->startOfDay());
+        }
+
+        if ($to = $request->input('to')) {
+            $query->where('completed_at', '<=', Carbon::parse($to)->endOfDay());
+        }
+
+        if ($wsId = $request->input('workstation_id')) {
+            $query->where('assigned_operation_client_id', $wsId);
+        }
+
+        // Tìm theo màu / mã hàng / mã lô / máy — gõ gì cũng ra, thao tác viên không phải nhớ
+        // trường nào là trường nào. Dùng `like` (không phải `ILIKE`) cho đồng nhất với toàn bộ
+        // controller khác trong dự án và để không khoá cứng vào Postgres — mã màu/mã hàng/mã máy
+        // đều viết hoa sẵn nên phân biệt hoa thường không ảnh hưởng thực tế.
+        if ($q = trim((string) $request->input('q'))) {
+            $like = '%'.$q.'%';
+            $query->whereHas('batch', function ($b) use ($like) {
+                $b->where('color', 'like', $like)
+                    ->orWhere('product_code', 'like', $like)
+                    ->orWhere('legacy_batch_id', 'like', $like)
+                    ->orWhereHas('machine', fn ($m) => $m->where('code', 'like', $like));
+            });
+        }
+
+        $jobs = $query->orderByDesc('completed_at')
+            ->paginate((int) $request->input('per_page', 20));
+
+        // Đếm ĐẠT/KHÔNG ĐẠT ngay tại đây thay vì để frontend tự suy: process_status là thuộc
+        // tính suy diễn của model (getProcessStatusAttribute), tính ở server mới đảm bảo web và
+        // báo cáo luôn dùng chung một định nghĩa.
+        $jobs->getCollection()->transform(function ($job) {
+            $items = $job->items;
+            $job->setAttribute('total_items', $items->count());
+            $job->setAttribute('accepted_count', $items->where('process_status', 'ACCEPTED')->count());
+            $job->setAttribute('rejected_count', $items->where('process_status', 'REJECTED')->count());
+
+            return $job;
+        });
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'data' => $jobs,
+        ]);
+    }
+
+    /**
      * Lô cân đang dở của 1 trạm cân (workstation) — mỗi trạm chỉ dùng cho đúng 1 máy nên
      * KHÔNG bao giờ có 2 job "đang chạy" cùng lúc. Dùng để khôi phục lại đúng job đang cân
      * khi trang /weighing-station được mở lại (F5, mất mạng, tắt máy...) mà KHÔNG bắt thao
@@ -45,9 +114,11 @@ class WeighingJobController extends Controller
             'workstation_id' => 'required|integer|exists:operation_clients,id',
         ]);
 
+        // Loại cả CANCELLED (2026-08-01, WeighingJobController::cancel): job đã bị thao tác viên
+        // hủy trắng không được coi là "đang dở" nữa — không job nào để khôi phục lại là đúng.
         $job = WeighingJob::with(['batch.machine', 'batch.tank', 'items.material'])
             ->where('assigned_operation_client_id', $request->input('workstation_id'))
-            ->where('status', '!=', 'COMPLETED')
+            ->whereNotIn('status', ['COMPLETED', 'CANCELLED'])
             ->orderByDesc('created_at')
             ->first();
 
@@ -85,9 +156,8 @@ class WeighingJobController extends Controller
             'rack_code' => 'sometimes|nullable|string|max:20',
         ]);
 
+        // Vẫn eager-load job.batch: WeighingItemRecorder đọc tới cả 2 quan hệ này.
         $item = WeighingJobItem::with('job.batch')->findOrFail($id);
-        $job = $item->job;
-        $batch = $job->batch;
 
         // Vật tư đã cân xong = chốt vĩnh viễn, không cho ghi đè lại bì/kết quả qua endpoint
         // này nữa (phản hồi 2026-07-30). Đây là hàng rào phía server — hàng rào phía
@@ -127,6 +197,192 @@ class WeighingJobController extends Controller
         // WEIGH_TOLERANCE_OVERRIDE) — không còn hành vi "phê duyệt" nào để ghi nhận. Nhãn vẫn
         // tái dựng được vĩnh viễn từ planned_weight/tolerance_* đã snapshot trên chính item.
 
+        $deviceError = $this->assertScaleDeviceBound($request, $scaleDeviceId);
+        if ($deviceError) {
+            return $deviceError;
+        }
+
+        return DB::transaction(function () use ($item, $measuredWeight, $tareWeight, $grossWeight, $rackCode) {
+            // Đường ghi dùng chung với weighBatch (/weighing-station-v2) — xem WeighingItemRecorder.
+            $result = app(WeighingItemRecorder::class)->record($item, [
+                'weight' => $measuredWeight,
+                'tare_weight' => $tareWeight,
+                'gross_weight' => $grossWeight,
+                'rack_code' => $rackCode,
+            ]);
+
+            return response()->json([
+                'status' => 'SUCCESS',
+                'message' => 'Lưu số cân thành công.',
+                'data' => $result,
+            ]);
+        });
+    }
+
+    /**
+     * Lưu CẢ MẺ trong 1 lần — port đúng VBA scaleform.btnSave_Click (workbook
+     * "4.semiauto-small scale ... DF026-027.xlsm"): thao tác viên bấm NEXT chạy hết 9 ô, giá
+     * trị từng ô giữ trên màn hình, tới lúc bấm SAVE mới ghi 1 header + N dòng xuống DB.
+     * Dùng cho /weighing-station-v2. Màn hình cũ /weighing-station vẫn dùng weighItem (lưu
+     * ngay từng dòng) — 2 luồng chạy song song, chung 1 đường ghi WeighingItemRecorder.
+     *
+     * Toàn bộ nằm trong 1 transaction: mẻ cân là một đơn vị nghiệp vụ, không được lưu nửa vời.
+     */
+    public function weighBatch(Request $request, $id)
+    {
+        $request->validate([
+            'rows' => 'required|array|min:1',
+            'rows.*.item_id' => 'required|string',
+            // 'present|nullable' chứ không 'required': VBA btnSave_Click ghi MỌI dòng có
+            // WEIGHT mục tiêu khác rỗng, kể cả ô PROCESS chưa hề cân (weight = null) —
+            // những dòng đó bị gắn REJECTED. Không 'min:0' vì cân cộng dồn trên cùng 1 đĩa,
+            // net có thể lệch âm so với bì đã chốt.
+            'rows.*.weight' => 'present|nullable|numeric',
+            'rows.*.rack_code' => 'sometimes|nullable|string|max:20',
+            'rows.*.tare_weight' => 'sometimes|nullable|numeric|min:0',
+            'rows.*.gross_weight' => 'sometimes|nullable|numeric|min:0',
+            'scale_device_id' => 'required|string',
+            'stable' => 'required|boolean',
+        ]);
+
+        $job = WeighingJob::with('batch')->findOrFail($id);
+
+        // Cùng hàng rào với weighItem: client có thể gọi thẳng API, không phụ thuộc UI.
+        if (! $request->boolean('stable')) {
+            return response()->json([
+                'status' => 'ERROR',
+                'message' => 'Số cân chưa ổn định — chờ 2 lần đọc liên tiếp giống nhau trước khi xác nhận.',
+                'error_code' => 'NOT_STABLE',
+            ], 422);
+        }
+
+        $deviceError = $this->assertScaleDeviceBound($request, $request->input('scale_device_id'));
+        if ($deviceError) {
+            return $deviceError;
+        }
+
+        $rows = collect($request->input('rows'))->keyBy('item_id');
+
+        // Chỉ nhận vật tư THUỘC ĐÚNG job này — chặn ghi nhầm sang mẻ khác nếu client gửi sai id.
+        $items = WeighingJobItem::where('weighing_job_id', $job->id)
+            ->whereIn('id', $rows->keys()->all())
+            ->orderBy('sequence_no', 'asc')
+            ->get();
+
+        if ($items->count() !== $rows->count()) {
+            return response()->json([
+                'status' => 'ERROR',
+                'message' => 'Có dòng không thuộc mẻ cân này — tải lại màn hình và cân lại.',
+                'error_code' => 'ITEM_NOT_IN_JOB',
+            ], 422);
+        }
+
+        return DB::transaction(function () use ($items, $rows, $job) {
+            $recorder = app(WeighingItemRecorder::class);
+            // Lấy mốc legacy_id 1 lần rồi tự tăng — tránh chạy max() lặp lại 9 lần và đảm bảo
+            // không trùng khoá UNIQUE(legacy_source, legacy_id) trong cùng transaction.
+            $legacyId = $recorder->nextLegacyId();
+
+            $saved = [];
+            $skipped = [];
+
+            foreach ($items as $item) {
+                // Dòng đã cân xong ở lần SAVE trước (vd bấm SAVE lại sau khi rớt mạng) thì bỏ
+                // qua thay vì ném lỗi — không được để 1 dòng cũ làm hỏng cả mẻ đang lưu.
+                if ($item->status === 'COMPLETED') {
+                    $skipped[] = $item->id;
+                    continue;
+                }
+
+                $row = $rows->get($item->id);
+                $recorder->record($item, [
+                    'weight' => $row['weight'],
+                    'tare_weight' => $row['tare_weight'] ?? null,
+                    'gross_weight' => $row['gross_weight'] ?? null,
+                    'rack_code' => $row['rack_code'] ?? null,
+                    'legacy_id' => $legacyId++,
+                ]);
+                $saved[] = $item->id;
+            }
+
+            $job->refresh();
+
+            return response()->json([
+                'status' => 'SUCCESS',
+                'message' => count($skipped) > 0
+                    ? 'Đã lưu ' . count($saved) . ' dòng, bỏ qua ' . count($skipped) . ' dòng đã cân xong trước đó.'
+                    : 'Đã lưu ' . count($saved) . ' dòng cân.',
+                'data' => [
+                    'saved_item_ids' => $saved,
+                    'skipped_item_ids' => $skipped,
+                    'job_completed' => $job->status === 'COMPLETED',
+                ],
+            ]);
+        });
+    }
+
+    /**
+     * Bỏ một vòng cân CHƯA HỀ GHI GÌ (2026-08-01) — dọn dấu vết khi thao tác viên quét nhầm đơn
+     * rồi rời đi mà không SAVE, hoặc bấm CLEAR trước khi cân dòng nào. Từ khi mỗi máy có vòng
+     * cân riêng (xem ScannerController::handleOrderScan), mỗi lần quét bỏ dở như vậy để lại một
+     * WeighingJob mồ côi — nếu không dọn, lô đó KHÔNG BAO GIỜ về được trạng thái WEIGHED (cascade
+     * trong WeighingItemRecorder đòi TẤT CẢ job của lô phải COMPLETED), và trạm Vận Chuyển không
+     * bao giờ nhận được thùng.
+     *
+     * Hàng rào bắt buộc: CHỈ hủy khi CHƯA có dòng nào COMPLETED. Còn dòng đã cân thật (kể cả
+     * job dở dang hợp lệ ở /weighing-station, nơi weighItem lưu ngay từng dòng) thì từ chối —
+     * đây là dữ liệu giao dịch thật, không được xoá/hủy tuỳ tiện (CLAUDE.md mục 3). Muốn bỏ một
+     * job đã có dữ liệu thật thì dùng restart() (có audit log, có lý do, có xác nhận rõ ràng).
+     *
+     * Không ghi AuditLog: khác restart(), hành động này không làm mất bất kỳ số cân thật nào —
+     * job vẫn còn nguyên trong DB với status CANCELLED để đối soát, chỉ đổi ý nghĩa "không tính
+     * vào vòng cân nào của lô nữa".
+     */
+    public function cancel(Request $request, $id)
+    {
+        $job = WeighingJob::with('items')->findOrFail($id);
+
+        if ($job->status === 'CANCELLED') {
+            return response()->json([
+                'status' => 'SUCCESS',
+                'message' => 'Vòng cân này đã được hủy trước đó.',
+                'data' => $job,
+            ]);
+        }
+
+        if ($job->status === 'COMPLETED') {
+            return response()->json([
+                'status' => 'ERROR',
+                'message' => 'Vòng cân đã hoàn tất — không thể hủy.',
+                'error_code' => 'JOB_ALREADY_COMPLETED',
+            ], 409);
+        }
+
+        $daCan = $job->items->where('status', 'COMPLETED')->count();
+        if ($daCan > 0) {
+            return response()->json([
+                'status' => 'ERROR',
+                'message' => "Vòng cân này đã cân {$daCan} dòng — không thể hủy trắng. Dùng chức năng CÂN LẠI TỪ ĐẦU nếu muốn bỏ toàn bộ kết quả.",
+                'error_code' => 'JOB_HAS_COMPLETED_ITEMS',
+            ], 409);
+        }
+
+        $job->status = 'CANCELLED';
+        $job->save();
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'message' => 'Đã hủy vòng cân trống.',
+            'data' => $job,
+        ]);
+    }
+
+    /**
+     * Thiết bị cân phải được gán + kích hoạt cho đúng máy trạm đang gọi. Tách ra để weighItem
+     * và weighBatch dùng chung đúng một quy tắc. Trả về response lỗi, hoặc null nếu hợp lệ.
+     */
+    private function assertScaleDeviceBound(Request $request, string $scaleDeviceId)
+    {
         $client = $request->attributes->get('operation_client');
         if (! $client) {
             $code = $request->header('X-Workstation-Code') ?? $request->input('workstation_code');
@@ -135,94 +391,24 @@ class WeighingJobController extends Controller
             }
         }
 
-        if ($client) {
-            $scaleDevice = $client->devices()
-                ->where('device_type', 'SCALE')
-                ->where('devices.code', $scaleDeviceId)
-                ->where('operation_client_devices.enabled', true)
-                ->first();
-            if (! $scaleDevice) {
-                return response()->json([
-                    'status' => 'ERROR',
-                    'message' => "Thiết bị cân '{$scaleDeviceId}' chưa được gán hoặc chưa được kích hoạt cho máy trạm này.",
-                ], 400);
-            }
+        if (! $client) {
+            return null;
         }
 
-        return DB::transaction(function () use ($item, $job, $batch, $measuredWeight, $tareWeight, $grossWeight, $rackCode, $request) {
-            // Save to scale measurements (create new for every weigh attempt, no overwrites)
-            $measurement = ScaleMeasurement::create([
-                'legacy_source' => 'web_app',
-                'legacy_id' => time() + rand(1, 100000), // mock integer
-                'legacy_batch_id' => $batch->legacy_batch_id,
-                'color' => $batch->color,
-                'product_code' => $batch->product_code,
-                'machine_code' => $batch->machine ? $batch->machine->code : 'N/A',
-                'level_code' => $batch->level_code,
-                'rack_code' => $rackCode,
-                'dye_code' => $item->material_code,
-                'weight' => $measuredWeight,
-                'tare_weight' => $tareWeight,
-                'gross_weight' => $grossWeight,
-                'measured_at' => Carbon::now(),
-                'material_type' => $job->job_type === 'DYE' ? 'DYE' : 'CHEMICAL',
-                'weighing_job_item_id' => $item->id,
-            ]);
+        $scaleDevice = $client->devices()
+            ->where('device_type', 'SCALE')
+            ->where('devices.code', $scaleDeviceId)
+            ->where('operation_client_devices.enabled', true)
+            ->first();
 
-            // Update item details
-            $item->actual_weight = $measuredWeight;
-            $item->rack_code = $rackCode;
-            $item->status = 'COMPLETED';
-            $item->completed_at = Carbon::now();
-            $item->save();
-
-            // Check if job is completed
-            $unfinishedItems = WeighingJobItem::where('weighing_job_id', $job->id)
-                ->where('status', '!=', 'COMPLETED')
-                ->count();
-
-            if ($unfinishedItems === 0) {
-                $job->status = 'COMPLETED';
-                $job->completed_at = Carbon::now();
-                $job->save();
-
-                // Trigger alerts rule validation
-                RealtimeService::publish('weighing_job.completed', 'WeighingJob', $job->id, $job->toArray(), auth()->id(), $batch->machine_id, $batch->id);
-
-                // Update Overall Production Batch Status based on remaining jobs
-                // A production batch is marked as "WEIGHED" only when ALL generated jobs are COMPLETED.
-                // If some jobs are completed but others are not, status is "PARTIALLY_WEIGHED".
-                $allJobs = WeighingJob::where('production_batch_id', $batch->id)->get();
-                $completedJobs = $allJobs->where('status', 'COMPLETED')->count();
-                $totalJobsCount = $allJobs->count();
-
-                if ($completedJobs === $totalJobsCount) {
-                    $batch->status = 'WEIGHED';
-                } else {
-                    $batch->status = 'PARTIALLY_WEIGHED';
-                }
-                $batch->save();
-            } else {
-                $job->status = 'IN_PROGRESS';
-                $job->save();
-            }
-
-            // Return next pending item in sequence
-            $nextItem = WeighingJobItem::where('weighing_job_id', $job->id)
-                ->where('status', '!=', 'COMPLETED')
-                ->orderBy('sequence_no', 'asc')
-                ->first();
-
+        if (! $scaleDevice) {
             return response()->json([
-                'status' => 'SUCCESS',
-                'message' => 'Lưu số cân thành công.',
-                'data' => [
-                    'item' => $item,
-                    'job_completed' => ($unfinishedItems === 0),
-                    'next_item' => $nextItem,
-                ],
-            ]);
-        });
+                'status' => 'ERROR',
+                'message' => "Thiết bị cân '{$scaleDeviceId}' chưa được gán hoặc chưa được kích hoạt cho máy trạm này.",
+            ], 400);
+        }
+
+        return null;
     }
 
     /**

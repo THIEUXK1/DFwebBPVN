@@ -54,8 +54,16 @@ class WeighingJobItem extends Model
      */
     public function getProcessStatusAttribute(): string
     {
-        if ($this->status !== 'COMPLETED' || $this->actual_weight === null) {
+        if ($this->status !== 'COMPLETED') {
             return 'PENDING';
+        }
+
+        // Đã chốt mẻ (COMPLETED) nhưng không có số cân nào = dòng bị bỏ qua, không cân. Port
+        // đúng VBA btnSave_Click: mọi dòng có WEIGHT mục tiêu đều được ghi, ô PROCESS trống
+        // thì nền không xanh nên `processColor` = REJECTED. Nhánh này chỉ xảy ra ở luồng lưu
+        // cả mẻ (/weighing-station-v2) — luồng lưu từng dòng luôn có actual_weight.
+        if ($this->actual_weight === null) {
+            return 'REJECTED';
         }
 
         $min = (float) $this->planned_weight - (float) $this->tolerance_minus;

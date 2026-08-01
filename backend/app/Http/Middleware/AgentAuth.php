@@ -86,6 +86,20 @@ class AgentAuth
             ];
             $defaults = $knownStationDefaults[(string) $claimedId] ?? null;
 
+            // Ma tram SINH TU TEN MAY (2026-08-01, "may nao cung dung duoc co Agent la duoc"):
+            // Agent de trong Workstation:Id thi tu sinh "WS-SCALE-<TEN-MAY>" (Worker.
+            // ResolveWorkstationId), nen moi may ra mot ma khac nhau va KHONG the co trong danh
+            // sach 3 ma co dinh o tren. Suy dinh dang tram tu truong `role` Agent gui kem thay vi
+            // liet ke ma — neu khong, tram moi roi ve type AUTO_REGISTERED va bi
+            // ScannerController::handleOrderScan chan 403 "chi duoc quet tai cac Tram Can".
+            if (! $defaults) {
+                $roleDefaults = [
+                    'SCALE_ONLY' => ['type' => 'DYE_WEIGHING', 'default_capability' => 'SMALL_SCALE', 'default_route' => '/weighing-station-v2', 'caps' => ['SMALL_SCALE', 'WEIGH', 'PRINT']],
+                    'PRINT_ONLY' => ['type' => 'QR_LABEL_PRINTING', 'default_capability' => 'QR_LABEL_PRINTING', 'default_route' => '/print-station', 'caps' => ['QR_LABEL_PRINTING', 'PRINT']],
+                ];
+                $defaults = $roleDefaults[(string) $request->input('role')] ?? null;
+            }
+
             // Gan ro status='ACTIVE' ngay trong create-attributes (khong dua vao default
             // cua cot DB) — phat hien loi thuc te 2026-07-30: firstOrCreate() KHONG tu
             // refresh attribute status tu DB sau INSERT, nen $workstation->active (accessor
@@ -95,7 +109,9 @@ class AgentAuth
             $workstation = Workstation::firstOrCreate(
                 ['code' => (string) $claimedId],
                 [
-                    'name' => (string) $claimedId,
+                    // Ten may that (Agent gui kem) de nguoi quan tri nhin ra ngay may nao la may
+                    // nao trong man hinh Quan ly Workstation, thay vi doc ma tram da bi chuan hoa.
+                    'name' => trim((string) $request->input('machine_name')) ?: (string) $claimedId,
                     'type' => $defaults['type'] ?? 'AUTO_REGISTERED',
                     'workstation_type' => $defaults['type'] ?? 'AUTO_REGISTERED',
                     'default_capability' => $defaults['default_capability'] ?? null,

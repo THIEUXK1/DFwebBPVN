@@ -107,6 +107,11 @@ Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
     // ChemicalFormulaGroup::lookupByCombinedCode), không cần cấu hình tay theo máy nữa.
     Route::get('/chemical-formula-groups', [ChemicalFormulaGroupController::class, 'index']);
 
+    // "May toi dang ngoi la tram nao?" — tra ve tram ma Agent tren CHINH may nay da tu dang ky
+    // (nhan dien qua IP nguon). Nho vay cai Agent xong la may tu co tram rieng, khong phai khai
+    // tay trong Quan ly Workstation. Xem DeviceController::whoami.
+    Route::get('/workstations/whoami', [DeviceController::class, 'whoami']);
+
     // Scale Measurements for Web App
     Route::get('/devices/readings/{workstation_id}', [DeviceController::class, 'getReading']);
     Route::get('/scale-measurements', [ScaleMeasurementController::class, 'index']);
@@ -121,9 +126,14 @@ Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
     // nếu để sau thì "active" sẽ bị "{id}" nuốt mất (gọi show('active') rồi 404 vì không
     // phải UUID hợp lệ).
     Route::get('/weighing-jobs/active', [WeighingJobController::class, 'activeForWorkstation']);
+    // Lịch sử cân — phải đứng TRƯỚC /weighing-jobs/{id}, nếu không "history" bị nuốt thành {id}.
+    Route::get('/weighing-jobs/history', [WeighingJobController::class, 'history']);
     Route::get('/weighing-jobs/{id}', [WeighingJobController::class, 'show']);
     Route::post('/weighing-jobs/items/{id}/weigh', [WeighingJobController::class, 'weighItem'])->middleware('workstation.guard:WEIGH_ITEM');
+    // Lưu cả mẻ 1 lần (VBA scaleform.btnSave_Click) — dùng ở /weighing-station-v2.
+    Route::post('/weighing-jobs/{id}/weigh-batch', [WeighingJobController::class, 'weighBatch'])->middleware('workstation.guard:WEIGH_ITEM');
     Route::post('/weighing-jobs/{id}/restart', [WeighingJobController::class, 'restart'])->middleware('workstation.guard:WEIGH_ITEM');
+    Route::post('/weighing-jobs/{id}/cancel', [WeighingJobController::class, 'cancel'])->middleware('workstation.guard:WEIGH_ITEM');
     Route::post('/weighing-jobs/{id}/print', [WeighingJobController::class, 'printLabel'])->middleware('workstation.guard:PRINT_LABEL');
     Route::post('/weighing-jobs/{id}/print-slip', [WeighingJobController::class, 'printSlip'])->middleware('workstation.guard:PRINT_SLIP');
     Route::get('/material-labels/search', [WeighingJobController::class, 'searchLabels']);

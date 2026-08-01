@@ -113,18 +113,21 @@
 }
 
 [data-theme="dark"] {
-  /* HSL Sleek Dark Mode (Obsidian Industrial Theme) */
-  --bg-main: hsl(222, 20%, 8%);
-  --bg-sidebar: hsl(222, 20%, 10%);
-  --bg-topbar: hsla(222, 20%, 10%, 0.85);
-  --bg-card: hsl(222, 20%, 13%);
-  --bg-card-hover: hsl(222, 20%, 15%);
-  --bg-popover: hsl(222, 20%, 12%);
+  /* Dark Mode tông XANH NAVY (không phải đen).
+     Tông cũ dùng saturation 12-20% nên tuy hue là xanh (222) nhưng mắt vẫn đọc ra "đen xám".
+     Muốn thực sự thấy xanh thì phải nâng saturation lên ~40% VÀ nâng lightness nền lên
+     (8% -> 11%): ở lightness quá thấp, mọi hue đều quy về đen bất kể saturation bao nhiêu. */
+  --bg-main: hsl(217, 42%, 11%);
+  --bg-sidebar: hsl(217, 42%, 13%);
+  --bg-topbar: hsla(217, 42%, 13%, 0.85);
+  --bg-card: hsl(217, 38%, 16%);
+  --bg-card-hover: hsl(217, 38%, 20%);
+  --bg-popover: hsl(217, 40%, 15%);
 
   /* Borders and Dividers */
-  --border-card: hsl(222, 12%, 18%);
-  --border-card-hover: hsl(222, 12%, 25%);
-  --border-divider: hsl(222, 12%, 15%);
+  --border-card: hsl(217, 28%, 25%);
+  --border-card-hover: hsl(217, 30%, 34%);
+  --border-divider: hsl(217, 28%, 21%);
 
   /* Accent Colors */
   --primary: hsl(250, 100%, 65%);
@@ -165,23 +168,23 @@
   --status-purple-bg: hsla(271, 91%, 65%, 0.1);
   --status-purple-border: hsla(271, 91%, 65%, 0.25);
 
-  /* Form Elements */
-  --input-bg: hsl(222, 20%, 9%);
-  --input-bg-focus: hsl(222, 20%, 11%);
-  --input-border: hsl(222, 12%, 18%);
+  /* Form Elements — ô nhập tối hơn nền thẻ 1 bậc để vẫn nhìn ra vùng nhập được */
+  --input-bg: hsl(217, 44%, 12%);
+  --input-bg-focus: hsl(217, 40%, 15%);
+  --input-border: hsl(217, 28%, 25%);
   --input-border-focus: hsl(250, 100%, 65%);
 
-  /* Text Palettes */
-  --text-title: hsl(220, 20%, 96%);
-  --text-body: hsl(220, 15%, 85%);
-  --text-muted: hsl(220, 10%, 62%);
-  --text-disabled: hsl(220, 10%, 45%);
+  /* Text Palettes — ám xanh nhẹ cho hoà với nền navy, tránh chữ xám trung tính bị "lệch tông" */
+  --text-title: hsl(215, 32%, 96%);
+  --text-body: hsl(215, 22%, 86%);
+  --text-muted: hsl(215, 16%, 66%);
+  --text-disabled: hsl(215, 14%, 48%);
   --text-white: hsl(0, 0%, 100%);
 
-  /* Shadows (đậm hơn cho nền tối) */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  /* Shadows — ám navy thay vì đen thuần, đổ bóng đen trên nền xanh sẽ trông xỉn/bẩn màu */
+  --shadow-sm: 0 1px 2px rgba(3, 10, 26, 0.45);
+  --shadow-md: 0 4px 6px -1px rgba(3, 10, 26, 0.55), 0 2px 4px -1px rgba(3, 10, 26, 0.45);
+  --shadow-lg: 0 10px 15px -3px rgba(3, 10, 26, 0.6), 0 4px 6px -2px rgba(3, 10, 26, 0.5);
   --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
 }
 
