@@ -3,32 +3,54 @@
     <div class="wh-bar">
       <div class="wh-field">
         <label>Từ ngày</label>
-        <input type="date" v-model="filters.from" />
+        <input type="date" v-model="filters.from" @change="reload" />
       </div>
       <div class="wh-field">
         <label>Đến ngày</label>
-        <input type="date" v-model="filters.to" />
+        <input type="date" v-model="filters.to" @change="reload" />
       </div>
       <div class="wh-field wh-grow">
-        <label>Tìm kiếm</label>
-        <input
-          type="text"
-          v-model="filters.q"
-          placeholder="Màu / mã hàng / mã lô / máy…"
-          @keyup.enter="reload"
-        />
+        <!-- Ô này KHÔNG gọi server: lọc ngay trên cửa sổ dữ liệu đã tải, hiện kết quả theo từng
+             ký tự gõ. Muốn với ra ngoài cửa sổ đó thì có nút riêng bên cạnh. -->
+        <label>Tìm nhanh (không cần chờ)</label>
+        <input type="text" v-model="search" placeholder="Màu / mã hàng / mã lô / máy / LV…" />
       </div>
-      <button class="wh-btn" @click="reload" :disabled="loading">Lọc</button>
+      <!-- Đường thoát khi thứ cần tìm nằm NGOÀI cửa sổ đã tải. Luôn hiện khi có chữ trong ô tìm,
+           không đợi tới lúc "không thấy gì": lọc ra 2 dòng cũng không có nghĩa là chỉ có 2. -->
+      <button v-if="search.trim()" class="wh-btn" @click="searchOnServer" :disabled="loading">
+        🔎 Tìm trên toàn bộ lịch sử
+      </button>
       <button class="wh-btn ghost" @click="resetFilters" :disabled="loading">Xoá lọc</button>
+      <button class="wh-btn ghost" @click="reload" :disabled="loading" title="Tải lại dữ liệu mới nhất">
+        ⟳ Làm mới
+      </button>
     </div>
 
     <p v-if="loading" class="wh-msg">Đang tải…</p>
     <p v-else-if="errorMsg" class="wh-msg err">{{ errorMsg }}</p>
-    <p v-else-if="rounds.length === 0" class="wh-msg">
-      Không có vòng cân nào khớp điều kiện lọc.
-    </p>
 
-    <table v-else class="wh-table">
+    <template v-else>
+      <!-- Cửa sổ bị cắt: phải nói ra. Người dùng gõ tìm mà không thấy sẽ tưởng là không có dữ
+           liệu, trong khi thực tế nó nằm ngoài số dòng vừa tải. -->
+      <p v-if="truncated" class="wh-msg warn">
+        ⚠ Chỉ đang xem <strong>{{ allRounds.length }} vòng cân gần nhất</strong> — còn nữa ở phía
+        trước. Thu hẹp khoảng ngày, hoặc bấm “Tìm trên toàn bộ lịch sử”.
+      </p>
+      <p v-else-if="serverSearch" class="wh-msg warn">
+        🔎 Kết quả tìm <strong>trên toàn bộ lịch sử</strong> cho “{{ serverSearch }}” —
+        <button class="wh-link" @click="resetFilters">quay lại danh sách gần nhất</button>
+      </p>
+
+      <p v-if="filtered.length === 0" class="wh-msg">
+        <template v-if="search.trim()">
+          Không có vòng cân nào khớp “{{ search }}” trong {{ allRounds.length }} vòng đã tải —
+          thử nút <strong>🔎 Tìm trên toàn bộ lịch sử</strong> ở trên.
+        </template>
+        <template v-else>Không có vòng cân nào khớp điều kiện lọc.</template>
+      </p>
+    </template>
+
+    <table v-if="!loading && !errorMsg && filtered.length > 0" class="wh-table">
       <thead>
         <tr>
           <th class="c-time">Thời điểm cân</th>
@@ -43,7 +65,7 @@
         </tr>
       </thead>
       <tbody>
-        <template v-for="job in rounds" :key="job.id">
+        <template v-for="job in paged" :key="job.id">
           <tr class="wh-row" :class="{ open: expanded === job.id }" @click="toggle(job.id)">
             <td class="c-time">{{ formatTime(job.completed_at) }}</td>
             <td class="strong">{{ job.batch?.color || '—' }}</td>
@@ -53,7 +75,18 @@
             <td class="c-num">{{ job.total_items }}</td>
             <td class="c-num ok">{{ job.accepted_count }}</td>
             <td class="c-num" :class="{ bad: job.rejected_count > 0 }">{{ job.rejected_count }}</td>
-            <td class="c-act">{{ expanded === job.id ? '▲' : '▼' }}</td>
+            <td class="c-act">
+              <!-- @click.stop: bấm IN LẠI không được kéo theo gập/mở dòng chi tiết. -->
+              <button
+                class="wh-print"
+                :disabled="reprintingId === job.id"
+                title="In lại phiếu cân của vòng này"
+                @click.stop="reprint(job)"
+              >
+                {{ reprintingId === job.id ? '…' : '🖨' }}
+              </button>
+              <span class="chev">{{ expanded === job.id ? '▲' : '▼' }}</span>
+            </td>
           </tr>
 
           <tr v-if="expanded === job.id" :key="job.id + '-d'" class="wh-detail-row">
@@ -95,14 +128,14 @@
       </tbody>
     </table>
 
-    <div v-if="meta.last_page > 1" class="wh-pager">
-      <button class="wh-btn ghost" :disabled="meta.current_page <= 1 || loading" @click="go(meta.current_page - 1)">
-        ← Trước
-      </button>
-      <span>Trang {{ meta.current_page }} / {{ meta.last_page }} — {{ meta.total }} vòng cân</span>
-      <button class="wh-btn ghost" :disabled="meta.current_page >= meta.last_page || loading" @click="go(meta.current_page + 1)">
-        Sau →
-      </button>
+    <!-- Phân trang thuần JS trên dữ liệu đã tải — đổi trang không gọi server, không có trạng thái
+         chờ nào cả. -->
+    <div v-if="!loading && !errorMsg && filtered.length > 0" class="wh-pager">
+      <button class="wh-btn ghost" :disabled="page <= 1" @click="page -= 1">← Trước</button>
+      <span>
+        Trang {{ page }} / {{ lastPage }} — {{ filtered.length }} vòng cân<template v-if="search"> khớp</template>
+      </span>
+      <button class="wh-btn ghost" :disabled="page >= lastPage" @click="page += 1">Sau →</button>
     </div>
   </div>
 </template>
@@ -115,16 +148,73 @@
 // thể xuất hiện nhiều lần ở đây — đó là chủ ý: các lần cân lại chính là thứ cần nhìn thấy nhất
 // khi đối soát, gom theo lô sẽ giấu mất chúng.
 
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, computed, watch, onMounted } from 'vue';
 import axios from 'axios';
+import { printTsplViaBrowser } from '../utils/tsplPrint';
 
-const rounds = ref<any[]>([]);
+/**
+ * Tải MỘT cửa sổ dữ liệu rồi tìm kiếm/phân trang hoàn toàn tại trình duyệt (2026-08-02).
+ *
+ * Trước đây mỗi lần bấm Lọc hay đổi trang là một vòng HTTP. Đo trên máy dev (DB nằm ở CS-SERVER):
+ * riêng phần DB của endpoint này là ~193ms cho 5 truy vấn, cộng mở kết nối + khởi động Laravel +
+ * đường truyền là gần nửa giây cho mỗi thao tác — trong khi toàn bộ dữ liệu chỉ có 16KB. Tải một
+ * lần rồi lọc bằng JS thì gõ tới đâu thấy tới đó, không có ô "Đang tải…" nào chen vào.
+ *
+ * Giới hạn thật thà: cửa sổ có trần (HISTORY_MAX_ROWS phía server). Vượt trần thì màn hình nói rõ
+ * và có nút tìm thẳng trên server — tuyệt đối không im lặng cắt bớt rồi để người dùng tưởng là
+ * không có dữ liệu.
+ */
+const PER_PAGE = 20;
+const WINDOW_LIMIT = 200;
+
+const allRounds = ref<any[]>([]);
+const truncated = ref(false);
+/** Khác rỗng = danh sách đang hiện là kết quả tìm TRÊN SERVER, không phải cửa sổ gần nhất. */
+const serverSearch = ref('');
+
 const loading = ref(false);
 const errorMsg = ref('');
 const expanded = ref<string | null>(null);
+const reprintingId = ref<string | null>(null);
 
-const filters = reactive({ from: '', to: '', q: '' });
-const meta = reactive({ current_page: 1, last_page: 1, total: 0 });
+const filters = reactive({ from: '', to: '' });
+/** Ô tìm nhanh — chỉ lọc trong `allRounds`, không bao giờ chạm mạng. */
+const search = ref('');
+const page = ref(1);
+
+/**
+ * Gộp các trường thao tác viên hay gõ vào một chuỗi thường để so khớp.
+ *
+ * Tính MỘT LẦN lúc dữ liệu về, KHÔNG tính trong computed: gán thêm thuộc tính vào object đang nằm
+ * trong ref là ghi vào dữ liệu phản ứng ngay giữa lượt đọc của computed — Vue sẽ coi nguồn vừa
+ * đổi và tính lại vòng vòng.
+ */
+function ganChuoiTim(job: any) {
+  job.__hay = [
+    job.batch?.color,
+    job.batch?.product_code,
+    job.batch?.legacy_batch_id,
+    job.batch?.machine?.code,
+    job.batch?.level_code,
+  ].filter(Boolean).join(' ').toLowerCase();
+  return job;
+}
+
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  if (!q) return allRounds.value;
+  // Nhiều từ = phải khớp TẤT CẢ, để gõ "đỏ VD10" lọc được đúng cả máy lẫn màu.
+  const tokens = q.split(/\s+/);
+  return allRounds.value.filter((job) => tokens.every((t) => (job.__hay || '').includes(t)));
+});
+
+const lastPage = computed(() => Math.max(1, Math.ceil(filtered.value.length / PER_PAGE)));
+const paged = computed(() => filtered.value.slice((page.value - 1) * PER_PAGE, page.value * PER_PAGE));
+
+// Lọc lại làm số trang co lại — đang đứng ở trang 5 mà chỉ còn 2 trang thì bảng trống trơn.
+watch(filtered, () => {
+  if (page.value > lastPage.value) page.value = 1;
+});
 
 function fmt(v: any): string {
   if (v === null || v === undefined || v === '') return '—';
@@ -156,50 +246,85 @@ function toggle(id: string) {
   expanded.value = expanded.value === id ? null : id;
 }
 
-async function load(page = 1) {
+/** `q` chỉ được truyền khi người dùng CHỦ ĐỘNG tìm trên toàn bộ lịch sử — xem searchOnServer. */
+async function load(q = '') {
   loading.value = true;
   errorMsg.value = '';
+  expanded.value = null;
   try {
     const res = await axios.get('/api/weighing-jobs/history', {
       params: {
-        page,
-        per_page: 20,
-        from: filters.from || undefined,
-        to: filters.to || undefined,
-        q: filters.q || undefined,
+        limit: WINDOW_LIMIT,
+        // Tìm toàn cục thì bỏ qua khoảng ngày, nếu không lại bị chính bộ lọc ngày chặn mất cái
+        // bản ghi cũ mà người dùng đang cố tìm.
+        from: q ? undefined : (filters.from || undefined),
+        to: q ? undefined : (filters.to || undefined),
+        q: q || undefined,
       },
     });
-    const p = res.data?.data;
-    rounds.value = p?.data || [];
-    meta.current_page = p?.current_page || 1;
-    meta.last_page = p?.last_page || 1;
-    meta.total = p?.total || 0;
+    const d = res.data?.data;
+    allRounds.value = (d?.rounds || []).map(ganChuoiTim);
+    truncated.value = !!d?.truncated;
+    serverSearch.value = q;
+    page.value = 1;
   } catch (err: any) {
     errorMsg.value = err.response?.data?.message || 'Không tải được lịch sử cân.';
-    rounds.value = [];
+    allRounds.value = [];
+    truncated.value = false;
   } finally {
     loading.value = false;
   }
 }
 
 function reload() {
-  expanded.value = null;
-  load(1);
+  load();
 }
 
-function go(page: number) {
-  expanded.value = null;
-  load(page);
+function searchOnServer() {
+  const q = search.value.trim();
+  if (q) load(q);
 }
 
 function resetFilters() {
   filters.from = '';
   filters.to = '';
-  filters.q = '';
-  reload();
+  search.value = '';
+  load();
 }
 
-onMounted(() => load(1));
+/**
+ * In lại phiếu cân của một vòng đã xong.
+ *
+ * Phải đi qua server chứ KHÔNG dựng phiếu bằng JS tại chỗ, dù dữ liệu đã có sẵn trên màn hình:
+ * CLAUDE.md mục 5 bắt buộc mọi lượt in lại phải để lại Audit Log bất biến (ai in, vòng nào, lúc
+ * nào). Dựng ở client thì không có gì để mà ghi.
+ *
+ * `window.open` gọi ĐỒNG BỘ ngay trong handler, trước mọi `await` — sau await là mất "user
+ * activation" và Chrome/Edge chặn popup (đúng lỗi đã dính ở luồng SAVE của Trạm cân).
+ */
+async function reprint(job: any) {
+  if (reprintingId.value) return;
+  const win = window.open('', '_blank', 'width=780,height=980');
+  if (!win) {
+    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    return;
+  }
+  win.document.write('<p style="font-family:sans-serif;padding:20px;">Đang dựng phiếu…</p>');
+  reprintingId.value = job.id;
+  try {
+    // KHÔNG gửi workstation_code: phiếu in lại phải mang mã trạm ĐÃ CÂN ra nó, không phải máy
+    // văn phòng đang mở màn hình này. Server tự lấy từ chính vòng cân (xem printSlip).
+    const res = await axios.post(`/api/weighing-jobs/${job.id}/print-slip`, {});
+    await printTsplViaBrowser(res.data?.data?.label_payload || '', win);
+  } catch (err: any) {
+    win.close();
+    alert(err.response?.data?.message || 'Không in lại được phiếu cân.');
+  } finally {
+    reprintingId.value = null;
+  }
+}
+
+onMounted(() => load());
 </script>
 
 <style scoped>
@@ -314,9 +439,57 @@ onMounted(() => load(1));
 }
 
 .c-act {
-  width: 28px;
-  text-align: center;
+  width: 72px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.chev {
+  margin-left: 8px;
   opacity: 0.6;
+}
+
+.wh-print {
+  border: 1px solid var(--border-color, #c9c9c9);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 5px 7px;
+  cursor: pointer;
+}
+
+.wh-print:hover {
+  background: rgba(10, 92, 255, 0.14);
+  border-color: #0a5cff;
+}
+
+.wh-print:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+/* Nút trông như một đường dẫn — dùng cho các hành động phụ nằm lẫn trong câu chữ. */
+.wh-link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #0a5cff;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.wh-msg.warn {
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  text-align: left;
+  border-radius: 6px;
+  background: rgba(250, 173, 20, 0.14);
+  border: 1px solid rgba(250, 173, 20, 0.45);
+  opacity: 1;
 }
 
 .strong {

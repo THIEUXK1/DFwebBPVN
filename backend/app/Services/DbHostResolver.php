@@ -16,15 +16,23 @@ class DbHostResolver
 {
     private const TTL_SECONDS = 20;
 
+    // 0.5s quá sát: đo thật 2026-08-02 thấy handshake tới 10.0.60.209 chỉ ~10ms và ổn định
+    // 5/5 lần, nhưng chỉ cần MỘT lần mạng nhiễu vượt ngưỡng là cả hệ thống chết 20 giây
+    // (xem ghi chú ở writeCache bên dưới). Nới lên 2s: không làm chậm đường bình thường
+    // (probe thành công vẫn trả về sau ~10ms), chỉ nới trần cho trường hợp xấu.
+    private const PROBE_TIMEOUT_SECONDS = 2.0;
+
     public static function resolve(): string
     {
+        $configuredHost = (string) env('DB_HOST', '127.0.0.1');
+
         $candidates = array_values(array_filter(array_map(
             'trim',
-            explode(',', (string) env('DB_HOST_CANDIDATES', env('DB_HOST', '127.0.0.1')))
+            explode(',', (string) env('DB_HOST_CANDIDATES', $configuredHost))
         )));
 
         if (count($candidates) <= 1) {
-            return $candidates[0] ?? env('DB_HOST', '127.0.0.1');
+            return $candidates[0] ?? $configuredHost;
         }
 
         $port = (int) env('DB_PORT', 5432);
@@ -35,19 +43,24 @@ class DbHostResolver
             return $cached;
         }
 
-        $resolved = $candidates[0];
         foreach ($candidates as $host) {
-            $conn = @fsockopen($host, $port, $errno, $errstr, 0.5);
+            $conn = @fsockopen($host, $port, $errno, $errstr, self::PROBE_TIMEOUT_SECONDS);
             if ($conn) {
                 fclose($conn);
-                $resolved = $host;
-                break;
+                // CHỈ ghi cache khi thật sự nối được. Trước đây kết quả fallback cũng bị ghi
+                // cache: một lần probe trượt là khoá cứng cả hệ thống vào host sai suốt 20
+                // giây, mọi request trả 500 "connection refused" dù DB vẫn chạy bình thường —
+                // lỗi thật gặp 2026-08-01 12:13 (log: mọi request nối 127.0.0.1:5433).
+                self::writeCache($cacheFile, $host);
+
+                return $host;
             }
         }
 
-        self::writeCache($cacheFile, $resolved);
-
-        return $resolved;
+        // Không probe được cái nào: trả về host cấu hình chủ đích trong DB_HOST, KHÔNG phải
+        // $candidates[0] — phần tử đầu danh sách thường là 127.0.0.1 (máy dev), nơi chắc chắn
+        // không có DB ở môi trường chạy thật. Không cache để lần sau còn probe lại ngay.
+        return $configuredHost;
     }
 
     private static function readCache(string $file): ?string

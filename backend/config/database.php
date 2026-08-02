@@ -106,6 +106,19 @@ return [
             // connect_timeout (khác pdo_odbc không tôn trọng nó).
             'options' => [
                 PDO::ATTR_TIMEOUT => 5,
+                // Kết nối BỀN — tái dùng kết nối đã mở thay vì bắt tay lại từ đầu mỗi request.
+                // Đo thật 2026-08-02 trên chính đường mạng này: mở kết nối mới tốn ~212ms,
+                // tái dùng kết nối bền chỉ ~57ms ⇒ **tiết kiệm ~155ms cho MỌI request có chạm
+                // DB**, kể cả những request bé nhất. Chi phí này lớn hơn hẳn tổng thời gian
+                // chạy câu lệnh của phần lớn endpoint (ping tới DB ~13ms, mỗi query ~33ms).
+                //
+                // Đánh đổi đã cân nhắc: nếu một request chết giữa transaction vì lỗi nghiêm
+                // trọng (hết bộ nhớ/timeout) thì PDO KHÔNG tự rollback trên kết nối bền, và
+                // kết nối đó được trả về pool khi transaction còn mở. Chấp nhận được vì mọi
+                // đường ghi đều bọc trong DB::transaction() (tự rollback khi có exception), và
+                // đổi lại là mức cải thiện thấy được bằng mắt ở trạm cân. Đặt DB_PERSISTENT=false
+                // trong .env để tắt ngay mà không phải sửa code nếu gặp vấn đề.
+                PDO::ATTR_PERSISTENT => (bool) env('DB_PERSISTENT', true),
             ],
             // Server DB dùng chung (10.0.60.209) có session TimeZone mặc định là
             // 'Asia/Bangkok' (UTC+7), không phải UTC như app.timezone của Laravel. Cột

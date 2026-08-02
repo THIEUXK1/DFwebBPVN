@@ -302,22 +302,19 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue';
-import { useAuthStore } from '../stores/auth';
-import { useRouter } from 'vue-router';
 import axios from 'axios';
 
-const authStore = useAuthStore();
-const router = useRouter();
-
+// `ref([])` để trần bị suy ra `never[]`, mọi chỗ đọc phần tử sau đó đều báo lỗi. Dùng `any[]`
+// cho đồng nhất với các màn khác trong dự án (dữ liệu tới thẳng từ API, chưa có DTO chung).
 const activeTab = ref('diagnose');
 const loading = ref(false);
-const problems = ref([]);
-const processes = ref([]);
-const batches = ref([]);
-const cases = ref([]);
-const results = ref([]);
+const problems = ref<any[]>([]);
+const processes = ref<any[]>([]);
+const batches = ref<any[]>([]);
+const cases = ref<any[]>([]);
+const results = ref<any[]>([]);
 
 const numericParams = [
   { name: 'Temperature', unit: '℃', lsl: 100.0, usl: 120.0 },
@@ -334,10 +331,12 @@ const categoricalParams = [
 ];
 
 // Diagnose Form state
+// `parameters` được truy cập bằng tên tham số động (form.parameters[p.name]) nên phải khai là
+// bản đồ chuỗi -> giá trị, nếu không TS chỉ cho đọc đúng 7 khoá viết cứng bên dưới.
 const form = reactive({
   batch_id: '',
   stage_id: '',
-  problems: [],
+  problems: [] as any[],
   parameters: {
     Temperature: { actual: null, set: null },
     Steam: { actual: null, set: null },
@@ -346,14 +345,14 @@ const form = reactive({
     Humidity: 'NORMAL',
     Washing: 'NORMAL',
     Dryer: 'NORMAL'
-  }
+  } as Record<string, any>
 });
 
 // Resolve Modal state
 const resolveModal = reactive({
   show: false,
-  caseId: null,
-  cause: {},
+  caseId: null as string | null,
+  cause: {} as Record<string, any>,
   notes: '',
   rating: 5
 });
@@ -361,7 +360,7 @@ const resolveModal = reactive({
 // Detail Modal state
 const detailModal = reactive({
   show: false,
-  case: null
+  case: null as any
 });
 
 onMounted(async () => {
@@ -416,7 +415,7 @@ const runDiagnosis = async () => {
   loading.value = true;
   try {
     // Filter out parameters that do not have values
-    const payloadParams = {};
+    const payloadParams: Record<string, any> = {};
     
     // Numeric
     numericParams.forEach(p => {
@@ -453,7 +452,7 @@ const runDiagnosis = async () => {
   }
 };
 
-const openResolveModal = (res) => {
+const openResolveModal = (res: any) => {
   resolveModal.cause = res;
   resolveModal.notes = '';
   resolveModal.rating = 5;
@@ -486,7 +485,7 @@ const submitResolution = async () => {
   }
 };
 
-const viewCaseDetails = async (caseId) => {
+const viewCaseDetails = async (caseId: string) => {
   try {
     const res = await axios.get(`/api/troubleshooting/cases/${caseId}`);
     detailModal.case = res.data.data;
@@ -496,8 +495,8 @@ const viewCaseDetails = async (caseId) => {
   }
 };
 
-const getRatingHint = (rating) => {
-  const hints = {
+const getRatingHint = (rating: number) => {
+  const hints: Record<number, string> = {
     1: 'Rất kém (Không đúng nguyên nhân)',
     2: 'Kém (Gợi ý sai lệch lớn)',
     3: 'Bình thường (Đúng nguyên nhân nhưng hạng thấp)',
@@ -507,16 +506,12 @@ const getRatingHint = (rating) => {
   return hints[rating] || '';
 };
 
-const formatDate = (dateStr) => {
+const formatDate = (dateStr: string | null) => {
   if (!dateStr) return '';
   const d = new Date(dateStr);
   return d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric', hour12: false });
 };
 
-const handleLogout = async () => {
-  await authStore.logout();
-  router.push('/login');
-};
 </script>
 
 <style scoped>

@@ -182,11 +182,25 @@ class DeviceController extends Controller
      */
     private function readCacheSlot(string $key): array
     {
-        $readAt = Cache::get("scale_live_weight_timestamp_{$key}");
+        // MỘT truy vấn cho cả 3 khoá thay vì 3: `DatabaseStore::many()` gom thành một
+        // `WHERE key IN (...)`. Đáng làm vì màn hình cân gọi endpoint này 5 lần/giây và mỗi lần
+        // đọc HAI bộ (theo mã trạm + theo IP máy) — 6 truy vấn xuống còn 2.
+        //
+        // Không đổi định dạng lưu, nên KHÔNG cần deploy đồng bộ với Agent: Agent vẫn ghi 3 khoá
+        // rời như cũ.
+        $v = Cache::many([
+            "scale_live_weight_{$key}",
+            "scale_live_weight_stable_{$key}",
+            "scale_live_weight_timestamp_{$key}",
+        ]);
+
+        $readAt = $v["scale_live_weight_timestamp_{$key}"];
 
         return [
-            'weight' => Cache::get("scale_live_weight_{$key}"),
-            'stable' => Cache::get("scale_live_weight_stable_{$key}", false),
+            'weight' => $v["scale_live_weight_{$key}"],
+            // `many()` trả null cho khoá trống chứ không nhận giá trị mặc định như `get()` —
+            // phải tự bù `false`, nếu không `(bool) null` lọt ra ngoài thành `is_stable` sai kiểu.
+            'stable' => $v["scale_live_weight_stable_{$key}"] ?? false,
             'read_at' => $readAt === null ? null : (float) $readAt,
         ];
     }

@@ -89,11 +89,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import axios from 'axios';
 
-const router = useRouter();
 const authStore = useAuthStore();
 
 // State
@@ -102,11 +100,6 @@ const showModal = ref(false);
 const editingConfig = ref<any>(null);
 const editForm = ref({ ratio_coefficient: 0.0, liquor_ratio: 0.0 });
 const saving = ref(false);
-
-const handleLogout = async () => {
-  await authStore.logout();
-  router.push('/login');
-};
 
 const fetchConfigs = async () => {
   try {

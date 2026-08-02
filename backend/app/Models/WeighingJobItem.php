@@ -45,6 +45,15 @@ class WeighingJobItem extends Model
     protected $appends = ['process_status'];
 
     /**
+     * Mã vật tư mồi cho dòng CÂN TAY (cân không quét đơn).
+     *
+     * Phải có một mã thật vì `weighing_job_items.material_code` là NOT NULL và có khoá ngoại tới
+     * `materials.code` — không để trống được dù cân tay chẳng có vật tư nào. Cũng chính là dấu
+     * nhận biết dòng cân tay ở `process_status` và ở báo cáo.
+     */
+    public const MANUAL_MATERIAL_CODE = 'CANTAY';
+
+    /**
      * Nhãn ĐẠT/KHÔNG ĐẠT của dòng cân — tương đương cột `processColor` trong Access
      * (VBA btnSave_Click ghi ACCEPTED/REJECTED theo màu nền ô txt_process).
      *
@@ -56,6 +65,18 @@ class WeighingJobItem extends Model
     {
         if ($this->status !== 'COMPLETED') {
             return 'PENDING';
+        }
+
+        // Dòng CÂN TAY (bấm NEXT cân luôn, không quét đơn nào): không có mục tiêu để so, nên
+        // không tồn tại khái niệm ĐẠT/KHÔNG ĐẠT. Trả nhãn riêng thay vì để rơi xuống nhánh dưới
+        // — `planned_weight` = 0 sẽ khiến mọi dòng cân tay hiện KHÔNG ĐẠT, mà đó là nói SAI chứ
+        // không phải để trống.
+        //
+        // Nhận qua `material_code` chứ không qua `planned_weight <= 0`: mã mồi này chỉ dòng cân
+        // tay mới có, nên không bản ghi cũ nào bị đổi nhãn (có thể có dòng QR mục tiêu 0 do tem
+        // hỏng — chúng vẫn giữ nguyên KHÔNG ĐẠT như trước).
+        if ($this->material_code === self::MANUAL_MATERIAL_CODE) {
+            return 'MANUAL';
         }
 
         // Đã chốt mẻ (COMPLETED) nhưng không có số cân nào = dòng bị bỏ qua, không cân. Port

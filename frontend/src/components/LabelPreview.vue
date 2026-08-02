@@ -7,7 +7,10 @@
       dung từng mã QR bên dưới — <strong>không xem được đúng bố cục/kích thước tem thật</strong>.
       <div class="qr-payload-list mt-3">
         <div v-for="(item, idx) in qrPayloads" :key="idx" class="qr-payload-item">
-          <canvas :ref="(el) => setCanvasRef(el, idx)" class="qr-canvas"></canvas>
+          <!-- Phải chú kiểu cho `el`: hàm mũi tên viết thẳng trong template không được suy kiểu
+               từ đâu cả. `unknown` chứ không phải `any` — setCanvasRef vẫn tự lọc bằng
+               instanceof nên không mất an toàn kiểu. -->
+          <canvas :ref="(el: unknown) => setCanvasRef(el, idx)" class="qr-canvas"></canvas>
           <div class="qr-payload-text">
             <span class="badge badge-blue font-xs">{{ item.type }}</span>
             <code class="font-xs">{{ item.payload }}</code>
@@ -63,7 +66,7 @@ const qrPayloads = computed<QrItem[]>(() => {
 });
 
 const qrCanvases = ref<Record<number, HTMLCanvasElement>>({});
-function setCanvasRef(el: Element | null, idx: number) {
+function setCanvasRef(el: unknown, idx: number) {
   if (el instanceof HTMLCanvasElement) {
     qrCanvases.value[idx] = el;
   }

@@ -17,6 +17,7 @@ use App\Models\WeighingJob;
 use App\Models\WeighingJobItem;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class WeighingItemRecorder
 {
@@ -116,6 +117,129 @@ class WeighingItemRecorder
             'job_completed' => ($unfinishedItems === 0),
             'next_item' => $nextItem,
         ];
+    }
+
+    /**
+     * Ghi CẢ MẺ trong số round-trip tối thiểu — dùng cho luồng SAVE của /weighing-station-v2.
+     *
+     * Vì sao cần đường riêng thay vì gọi record() trong vòng lặp: DB nằm ở máy khác (LAN), đo
+     * thật 2026-08-02 ra ~36ms/query, nên TỔNG SỐ query mới là thứ quyết định thời gian phản
+     * hồi, không phải độ nặng từng query. Gọi record() 9 lần tốn ~8 query/dòng (3 lazy-load
+     * quan hệ + insert + save + count + job->save + next_item) ≈ 70 query ≈ 2,5 giây.
+     *
+     * Ở đây: quan hệ đọc 1 lần trước vòng lặp, 9 bản ghi scale_measurements gộp thành 1 INSERT,
+     * cascade trạng thái job/batch chạy đúng 1 lần sau cùng thay vì lặp mỗi dòng. Còn lại đúng
+     * 1 UPDATE/dòng — đó là ghi thật, không cắt được.
+     *
+     * @param  \Illuminate\Support\Collection<int, WeighingJobItem>  $items
+     * @param  \Illuminate\Support\Collection  $rowsByItemId  keyBy('item_id')
+     * @return array{saved: string[], skipped: string[], job_completed: bool}
+     */
+    public function recordMany(WeighingJob $job, $items, $rowsByItemId): array
+    {
+        $batch = $job->batch;
+        $now = Carbon::now();
+
+        // Đọc 1 lần cho cả mẻ — trước đây mỗi dòng tự lazy-load lại chính 3 quan hệ này.
+        $machineCode = $batch->machine ? $batch->machine->code : 'N/A';
+        $materialType = $job->job_type === 'DYE' ? 'DYE' : 'CHEMICAL';
+        $legacyId = $this->nextLegacyId();
+
+        $measurements = [];
+        $saved = [];
+        $skipped = [];
+
+        foreach ($items as $item) {
+            // Dòng đã cân xong ở lần SAVE trước (vd bấm SAVE lại sau khi rớt mạng) thì bỏ qua
+            // thay vì ném lỗi — không được để 1 dòng cũ làm hỏng cả mẻ đang lưu.
+            if ($item->status === 'COMPLETED') {
+                $skipped[] = $item->id;
+
+                continue;
+            }
+
+            $row = $rowsByItemId->get($item->id);
+            $measuredWeight = ($row['weight'] ?? null) === null ? null : (float) $row['weight'];
+            $rackCode = $row['rack_code'] ?? null;
+
+            $measurements[] = [
+                // ScaleMeasurement sinh UUID trong sự kiện `creating` của model; insert hàng
+                // loạt KHÔNG kích hoạt sự kiện đó nên phải tự gán ở đây.
+                'id' => (string) Str::uuid(),
+                'legacy_source' => 'web_app',
+                'legacy_id' => $legacyId++,
+                'legacy_batch_id' => $batch->legacy_batch_id,
+                'color' => $batch->color,
+                'product_code' => $batch->product_code,
+                'machine_code' => $machineCode,
+                'level_code' => $batch->level_code,
+                'rack_code' => $rackCode,
+                'dye_code' => $item->material_code,
+                'weight' => $measuredWeight,
+                'tare_weight' => $row['tare_weight'] ?? null,
+                'gross_weight' => $row['gross_weight'] ?? null,
+                'measured_at' => $now,
+                'material_type' => $materialType,
+                'weighing_job_item_id' => $item->id,
+            ];
+
+            $item->actual_weight = $measuredWeight;
+            $item->rack_code = $rackCode;
+            $item->status = 'COMPLETED';
+            $item->completed_at = $now;
+            $item->save();
+
+            $saved[] = $item->id;
+        }
+
+        if ($measurements !== []) {
+            ScaleMeasurement::insert($measurements);
+        }
+
+        return [
+            'saved' => $saved,
+            'skipped' => $skipped,
+            'job_completed' => $this->cascadeJobAndBatch($job, $batch),
+        ];
+    }
+
+    /**
+     * Chốt trạng thái job + lô sau khi đã ghi xong số cân. Tách ra để luồng ghi từng dòng
+     * (record) và luồng ghi cả mẻ (recordMany) dùng CHUNG một quy tắc cascade — trước đây
+     * logic này nằm trong record() nên luồng batch chạy lại nó 9 lần.
+     */
+    private function cascadeJobAndBatch(WeighingJob $job, $batch): bool
+    {
+        $unfinishedItems = WeighingJobItem::where('weighing_job_id', $job->id)
+            ->where('status', '!=', 'COMPLETED')
+            ->count();
+
+        if ($unfinishedItems > 0) {
+            $job->status = 'IN_PROGRESS';
+            $job->save();
+
+            return false;
+        }
+
+        $job->status = 'COMPLETED';
+        $job->completed_at = Carbon::now();
+        $job->save();
+
+        RealtimeService::publish('weighing_job.completed', 'WeighingJob', $job->id, $job->toArray(), auth()->id(), $batch->machine_id, $batch->id);
+
+        // Lô chỉ WEIGHED khi MỌI vòng cân của nó xong. Loại CANCELLED (2026-08-01,
+        // WeighingJobController::cancel): vòng cân bị hủy trắng không phải vòng cân THẬT —
+        // đếm nó vào tổng sẽ khiến lô KHÔNG BAO GIỜ về được WEIGHED.
+        $allJobs = WeighingJob::where('production_batch_id', $batch->id)
+            ->where('status', '!=', 'CANCELLED')
+            ->get();
+
+        $batch->status = $allJobs->where('status', 'COMPLETED')->count() === $allJobs->count()
+            ? 'WEIGHED'
+            : 'PARTIALLY_WEIGHED';
+        $batch->save();
+
+        return true;
     }
 
     /**

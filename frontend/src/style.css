@@ -52,6 +52,14 @@
   --border-card: hsl(220, 15%, 89%);
   --border-card-hover: hsl(220, 15%, 80%);
   --border-divider: hsl(220, 15%, 91%);
+  /* Alias của --border-card. Có mặt vì 4 màn hình (BpdbMachines, BpdbMachinesGantt, BpdbAdmin,
+     WeighingHistory) đã viết var(--border-color, #e2e8f0) trong khi biến này CHƯA TỪNG tồn tại —
+     tức chúng luôn rơi về fallback xám sáng, kể cả ở chế độ tối (viền/lưới chói trên nền navy).
+     Khai báo ở đây sửa cả 4 màn cùng lúc mà không phải sửa 17 chỗ dùng. */
+  --border-color: hsl(220, 15%, 89%);
+  /* Lưới thời gian của vis-timeline. Tách riêng khỏi --border-divider vì lưới cần ĐẬM HƠN
+     đường kẻ bảng: nó nằm trên nền card và phải đọc được xuyên qua các thanh màu đè lên. */
+  --gantt-grid: hsl(220, 15%, 85%);
 
   /* Accent Colors */
   --primary: hsl(250, 85%, 55%);
@@ -128,6 +136,10 @@
   --border-card: hsl(217, 28%, 25%);
   --border-card-hover: hsl(217, 30%, 34%);
   --border-divider: hsl(217, 28%, 21%);
+  --border-color: hsl(217, 28%, 25%);
+  /* Sáng hơn --border-divider (21%) một quãng rõ: nền card ở chế độ tối là 16%, chênh 5% gần
+     như không nhìn thấy lưới giờ. 34% cho đủ tương phản mà vẫn không cắt vụn biểu đồ. */
+  --gantt-grid: hsl(217, 26%, 34%);
 
   /* Accent Colors */
   --primary: hsl(250, 100%, 65%);

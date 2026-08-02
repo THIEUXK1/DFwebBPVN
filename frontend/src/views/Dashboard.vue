@@ -449,10 +449,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, reactive } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import axios from 'axios';
-import SvgIcon from '../components/SvgIcon.vue';
 import echo from '../services/echo';
 
 const authStore = useAuthStore();

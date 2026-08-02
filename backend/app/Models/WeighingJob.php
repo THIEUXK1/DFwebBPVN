@@ -19,6 +19,7 @@ class WeighingJob extends Model
         'sequence_no',
         'status',
         'assigned_operation_client_id',
+        'idempotency_key',
         'assigned_workstation_id',
         'received_at',
         'started_at',

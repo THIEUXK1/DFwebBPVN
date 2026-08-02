@@ -185,11 +185,13 @@ class WeighBatchTest extends TestCase
 
         $this->assertEquals('COMPLETED', WeighingJob::find($job->id)->status);
 
-        // Đúng truy vấn ScannerController::handleOrderScan dùng để tìm job tái sử dụng.
+        // Đúng truy vấn ScannerController::handleOrderScan dùng để tìm job tái sử dụng — cột
+        // THẬT trong DB là assigned_operation_client_id (accessor/mutator trên model chỉ áp
+        // dụng khi đọc/ghi qua object, không áp dụng cho query builder).
         $reusable = WeighingJob::where('production_batch_id', $this->batch->id)
             ->where('job_type', 'DYE')
             ->where('status', '!=', 'COMPLETED')
-            ->where('assigned_workstation_id', $job->assigned_workstation_id)
+            ->where('assigned_operation_client_id', $job->assigned_workstation_id)
             ->orderByDesc('created_at')
             ->first();
 
@@ -228,7 +230,7 @@ class WeighBatchTest extends TestCase
         $viB = WeighingJob::where('production_batch_id', $this->batch->id)
             ->where('job_type', 'DYE')
             ->where('status', '!=', 'COMPLETED')
-            ->where('assigned_workstation_id', $mayB->id)
+            ->where('assigned_operation_client_id', $mayB->id)
             ->first();
         $this->assertNull($viB, 'Máy B không được tái dùng vòng cân của máy A');
 
@@ -503,7 +505,7 @@ class WeighBatchTest extends TestCase
         $reusable = WeighingJob::where('production_batch_id', $this->batch->id)
             ->where('job_type', 'DYE')
             ->whereNotIn('status', ['COMPLETED', 'CANCELLED'])
-            ->where('assigned_workstation_id', $job->assigned_workstation_id)
+            ->where('assigned_operation_client_id', $job->assigned_workstation_id)
             ->first();
 
         $this->assertNull($reusable, 'Job đã CANCELLED không được coi là tái sử dụng được');

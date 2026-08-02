@@ -16,6 +16,12 @@ class TankCodeMapper
         4 => '4D',
     ];
 
+    /** Bộ 4 tank mặc định theo đúng thứ tự 1→4, dùng khi cần dựng khung tank cố định. */
+    public static function allLetterCodes(): array
+    {
+        return array_values(self::MAP);
+    }
+
     /** Trả về null nếu không map được (KHÔNG tự đoán/gán mặc định). */
     public static function toLetterCode(int|string|null $numericTank): ?string
     {

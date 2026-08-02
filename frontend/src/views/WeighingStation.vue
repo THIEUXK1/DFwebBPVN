@@ -57,7 +57,7 @@
       v-if="!activeJob"
       :view-only="isImpersonating && remoteMode === 'VIEW_ONLY'"
       @manual-qr-submit="handleBarcodeScan"
-      @resume-job="({ job, batch }) => applyActiveJob(job, batch)"
+      @resume-job="({ job, batch }: { job: any; batch: any }) => applyActiveJob(job, batch)"
     />
 
     <!-- Active Weighing Layout -->
@@ -178,7 +178,8 @@ import axios from 'axios';
 import { currentWorkstation } from '../services/workstation';
 import { scannerService } from '../services/scanner';
 import { useAuthStore } from '../stores/auth';
-import echo from '../services/echo';
+// Không nhập `echo` ở đây: màn này không tự đăng ký kênh realtime nào. Phần nghe realtime lúc
+// chờ quét nằm trong chính QrScanPanel (component đó tự nhập echo của nó).
 import QrScanPanel from '../components/weighing/QrScanPanel.vue';
 import WeighingRackTable from '../components/weighing/WeighingRackTable.vue';
 import LiveScaleDisplay from '../components/weighing/LiveScaleDisplay.vue';

@@ -315,11 +315,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import axios from 'axios';
 
-const router = useRouter();
 const authStore = useAuthStore();
 
 // Navigation Mode
@@ -353,11 +351,6 @@ const simForm = ref({
 });
 const simulating = ref(false);
 const simResult = ref<any>(null);
-
-const handleLogout = async () => {
-  await authStore.logout();
-  router.push('/login');
-};
 
 const fetchRecipes = async () => {
   try {

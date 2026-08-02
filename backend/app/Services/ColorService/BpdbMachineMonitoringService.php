@@ -191,6 +191,17 @@ class BpdbMachineMonitoringService
             $tankGroupIds = [];
             $seenTankGroups = [];
 
+            // Dựng sẵn đủ 4 tank mặc định 1A/2B/3C/4D cho MỌI máy, kể cả máy thực tế chỉ
+            // có 1-2 tank (yêu cầu 2026-08-02) — hàng tank không có máy nào thì để trống.
+            // Khung tank cố định giúp mắt so hàng ngang giữa các máy mà không phải đọc lại
+            // nhãn; hàng trống KHÔNG có nghĩa là "máy đang rảnh", chỉ là tank không tồn tại.
+            foreach (TankCodeMapper::allLetterCodes() as $tankLabel) {
+                $tankGroupId = $code.'::'.$tankLabel;
+                $seenTankGroups[$tankGroupId] = true;
+                $tankGroupIds[] = $tankGroupId;
+                $groups[] = ['id' => $tankGroupId, 'content' => $tankLabel, 'order' => ++$order];
+            }
+
             foreach ($variant['variants'] as $v) {
                 $tankLabel = TankCodeMapper::toLetterCode($v['tank']) ?? ('Tank #' . $v['tank']);
                 $tankGroupId = $code . '::' . $tankLabel;

@@ -997,6 +997,126 @@ Người dùng đã xác nhận các thông tin nghiệp vụ và kỹ thuật c
 - Them 2 test vao `ScaleLiveWeightTest` (`..._accepts_numeric_workstation_id_not_only_code`, `..._with_unknown_numeric_id_reports_no_reading`). **CHUA CHAY DUOC**: file test nay khong dung `RefreshDatabase` nen can DB that, ma `.env` tro thang vao DB SAN XUAT (`10.0.60.209:5433/production_web`) — chay test se ghi vao production, khong lam. DB test rieng `127.0.0.1:5433` khong chay.
 - **Luu y moi truong phat hien duoc:** `backend/.env` cua may dev dang tro `DB_HOST=10.0.60.209` (DB san xuat) va `CACHE_STORE=database` — nen backend local va CS-SERVER **dung chung cache**, do la ly do so can Agent day len CS-SERVER van toi duoc man hinh localhost. Cung co nghia moi lenh test/migrate chay o may dev deu cham thang vao production.
 
+### 63. Sửa lỗi 500 "column assigned_workstation_id does not exist" khi quét mã vạch ở Trạm cân (cả localhost lẫn CS-SERVER)
+
+- **Triệu chứng:** người dùng báo lỗi SQL 500 y hệt trên cả `http://localhost:3001/weighing-station-v2` lẫn `http://10.0.60.209:3001/weighing-station-v2` ngay khi quét đơn — `SQLSTATE[42703]: column "assigned_workstation_id" does not exist`. Cùng lỗi ở cả 2 môi trường ⇒ bug trong code, không phải drift dữ liệu riêng của 1 server.
+- **Nguyên nhân (đọc code, không đoán):** migration `2026_07_17_131458_create_operation_client_architecture_tables.php` (đợt tái cấu trúc "kiến trúc OperationClient") đã **đổi tên cột thật** trong bảng `weighing_jobs` từ `assigned_workstation_id` → `assigned_operation_client_id`. Để không phải sửa lại toàn bộ chỗ gọi, `WeighingJob.php` được gắn accessor/mutator ánh xạ 2 chiều (`getAssignedWorkstationIdAttribute`/`setAssignedWorkstationIdAttribute`). Ánh xạ này **chỉ chạy khi đọc/ghi qua object model** (`$job->assigned_workstation_id`, `WeighingJob::create([...])`, `fill()`) — Eloquent áp dụng mutator cho các đường này. Nó **không chạy** khi tên cột được truyền dưới dạng chuỗi vào query builder (`where()`, `whereNotNull()`, `pluck()`) — những lệnh này build SQL thẳng từ chuỗi, bỏ qua toàn bộ lớp accessor/mutator của model.
+- **`ScannerController::handleOrderScan`** (luồng quét mã vạch ở Trạm cân) có đúng 4 chỗ dùng tên cột cũ trong query builder — đây là nguồn gây crash: dòng tìm "máy khác đang cân đơn này" (`whereNotNull`/`where`/`pluck`) và dòng tìm job có thể tái sử dụng của chính trạm (`where('assigned_workstation_id', $workstation->id)`). Cả 4 dòng này chưa từng hoạt động kể từ khi migration đổi tên cột chạy — nghĩa là **luồng quét đơn ở Trạm cân đã crash 100% mọi lần** trên bất kỳ DB nào đã chạy migration đó.
+- **Sửa:** đổi 4 chỗ trong `ScannerController.php` sang đúng tên cột thật `assigned_operation_client_id`. Các chỗ khác trong cùng file (`WeighingJob::create([...])`, `$job->assigned_workstation_id = ...`) giữ nguyên tên cũ vì đó là đường đi qua model, mutator xử lý đúng — đổi những chỗ đó sẽ không sai nhưng không cần thiết.
+- **Rà thêm và sửa cùng lỗi trong test** (không chỉ dừng ở code chạy thật): `WeighBatchTest.php` có 3 chỗ `->where('assigned_workstation_id', ...)` cùng lớp bug — nếu chạy được (môi trường hiện không có Postgres test DB) sẽ tự vỡ ngay chứ không phải giả lỗi thật. Sửa cả 3 sang `assigned_operation_client_id`. `SmallScaleTwoStationIsolationTest.php` (đọc `$jobA->assigned_workstation_id`) và các chỗ gán/tạo trong `WeighBatchTest.php` đều đi qua model nên không đụng.
+- **Kiểm chứng:** `php -l` sạch cả `ScannerController.php` lẫn `WeighBatchTest.php`. Backend (port 8500) đang chạy nền từ trước không cần khởi động lại — `php artisan serve` đọc lại file mỗi request; gọi thử 1 endpoint khác xác nhận tiến trình vẫn sống (401 đúng nghĩa thiếu auth, không phải 500). **Chưa quét thử một đơn thật qua UI** để xác nhận hết lỗi — cần người dùng tự thử lại tại `/weighing-station-v2`. Đổi trên localhost xong; **CS-SERVER (10.0.60.209) cần deploy code này riêng** (git pull + restart backend) mới hết lỗi ở đó — chưa deploy trong phiên này.
+
+### 64. Tăng tốc SAVE (tem in ra lâu) và quét đơn ở /weighing-station-v2 — cắt số vòng đi-về DB
+
+- **Triệu chứng người dùng:** "phần save chưa ổn, tem in load ra lâu quá" và "phần quét lúc đầu đẩy ra cũng bị lâu quá".
+- **ĐO THẬT trên DB production (chỉ SELECT, không ghi)** thay vì đoán — script đếm query + thời gian qua `DB::listen`, chạy trên 1 job có sẵn 4 dòng:
+  - Đọc quan hệ trong vòng lặp như code hiện tại: **17 query, 607 ms**
+  - Cùng việc đó nhưng eager load: **8 query, 243 ms**
+  - ⇒ **~36 ms/query**. Đây mới là phát hiện quan trọng: DB nằm ở máy khác (`10.0.60.209`), nên **TỔNG SỐ query mới là thứ quyết định thời gian phản hồi**, không phải độ nặng từng query. Mọi tối ưu dưới đây đều nhắm đúng vào việc giảm số vòng đi-về.
+  - Ghi chú môi trường: `DbHostResolver` TCP-probe với timeout 0.5s rồi cache 20s ra file temp; lần probe trượt sẽ rơi về `candidates[0]` = `127.0.0.1` (không có Postgres cục bộ) và mọi script sau đó fail tới khi hết cache. Xoá `%TEMP%\df_pgsql_active_host.json` để buộc probe lại.
+- **Luồng SAVE — trước:** `weighBatch` gọi `WeighingItemRecorder::record()` trong vòng lặp, mỗi dòng ~8 query (3 lazy-load quan hệ `$item->job`/`$job->batch`/`$batch->machine` + insert measurement + save item + count dòng chưa xong + `$job->save` + tìm next_item). 9 dòng ≈ **89 query**, rồi frontend còn gọi tiếp `POST /print-slip` (~7 query + nguyên một vòng HTTP) mới có nội dung tem. Tổng ≈ **96 query ≈ 3,4 giây** (ước tính theo 36ms/query đã đo).
+- **Luồng SAVE — sau (≈24 query, 1 request):**
+  1. Thêm `WeighingItemRecorder::recordMany()`: đọc quan hệ 1 lần trước vòng lặp, gộp 9 bản ghi `scale_measurements` thành **1 INSERT**, cascade trạng thái job/lô chạy **đúng 1 lần** sau cùng. Còn lại đúng 1 UPDATE/dòng — đó là ghi thật, không cắt được. Tách phần cascade ra `cascadeJobAndBatch()` để luồng ghi từng dòng (`record`) và ghi cả mẻ dùng chung một quy tắc.
+  2. `weighBatch` eager load `batch.machine` + `items.material`.
+  3. **Dựng phiếu cân ngay trong response `weigh-batch`** (`buildAndStoreSlip()` tách ra từ `printSlip`, tái dùng batch/items đã nạp) — bỏ hẳn request `/print-slip` thứ hai. Frontend đọc `data.slip.label_payload`; nếu không có thì vẫn quay về đường cũ gọi `/print-slip` (không phá luồng nào khác).
+  - `insert()` gộp bỏ qua hook `creating` của model nên **tự sinh UUID**; đã đối chiếu migration: 4 cột NOT NULL (`id`, `legacy_source`, `legacy_id`, `material_type`) đều được điền, `imported_at` có `useCurrent()`.
+- **BUG TỰ GÂY RA RỒI TỰ BẮT ĐƯỢC (đáng ghi lại):** bản đầu đặt tên khoá mới là `workstation_code`. Nhưng `assertScaleDeviceBound()` trong CÙNG hàm cũng đọc đúng khoá đó để quyết định có bắt buộc kiểm tra thiết bị cân hay không — màn hình V2 gửi `scale_device_id: 'MOCK_SCALE'` khi trạm chưa gán cân, nên thêm khoá đó vào payload sẽ **bật hàng rào lên và làm SAVE trả 400**. Đổi thành `slip_workstation_code`. Đây là lý do phải đọc hết hàm trước khi thêm tham số, không chỉ đọc chỗ mình sửa.
+- **Luồng quét:** `handleOrderScan()` nhận thêm được cả `ProductionBatch` đã nạp sẵn (không chỉ UUID) — `scanRawDyeQr` vừa tra/tạo chính bản ghi đó xong nhưng vẫn `findOrFail` lại kèm 2 quan hệ eager. Truyền thẳng object bỏ được ~3 query. Nhánh ad-hoc (phổ biến nhất, quét QR tem) đã được gộp insert từ trước nên không đụng thêm.
+- **Phát hiện kèm theo, CHƯA xử lý:** `.env` để `QUEUE_CONNECTION=database` + `CACHE_STORE=database` + `SESSION_DRIVER=database`. Nghĩa là mỗi `RealtimeService::publish()` tốn 2 query (1 `realtime_events` + 1 `jobs`), và luồng quét gọi publish 2 lần (`weighing_job.received` + `weighing_job.started` — cùng thời điểm, cùng payload, nghi là trùng lặp). Không gộp/bỏ vì có thể có consumer đang nghe; cần xác nhận nghiệp vụ trước. Đáng lưu ý hơn: cache DB nghĩa là endpoint `/api/devices/readings/{id}` (frontend poll 200ms) cũng đi 1 query xuống DB qua LAN mỗi lần.
+- **Kiểm chứng:** `php -l` sạch 3 file backend; `vue-tsc` **26 lỗi = đúng bằng baseline nhánh hiện tại**, không lỗi nào thuộc file vừa sửa. **CHƯA chạy được test và CHƯA bấm SAVE thử** — không có Postgres test cục bộ, và `.env` trỏ thẳng DB sản xuất nên không chạy thử đường GHI (kể cả kiểu ghi-rồi-rollback) mà chưa hỏi. Con số "≈96 → ≈24 query" là **ước tính đếm tĩnh từ code** nhân với 36ms/query đo được, KHÔNG phải số đo end-to-end. Cần người dùng bấm SAVE một mẻ thật để xác nhận.
+
+### 65. "Không thể mở lệnh sản xuất này" khi quét — KHÔNG phải lỗi code quét, mà là `DbHostResolver` tự khoá hệ thống vào host DB sai suốt 20 giây
+
+- **Triệu chứng:** quét mã QR test ở `/weighing-station-v2` báo "Không thể mở lệnh sản xuất này." Đó chỉ là **thông báo mặc định của frontend** khi response lỗi không kèm `message` (`WeighingStationV2.vue:437`) — không nói lên nguyên nhân, phải đọc log server.
+- **Log thật:** `SQLSTATE[08006] connection to server at "127.0.0.1", port 5433 failed: Connection refused` — backend cố nối DB ở **127.0.0.1**, trong khi DB thật ở `10.0.60.209`. Lỗi ném ra ngay tại tầng Sanctum tra `personal_access_tokens`, tức **mọi endpoint đều chết**, không riêng gì quét.
+- **Loại trừ nguyên nhân mạng bằng đo, không đoán:** `fsockopen` tới `10.0.60.209:5433` **5/5 lần đều nối được, nhanh nhất 10ms** ở cả 2 mức timeout 0.5s và 2s. Mạng hoàn toàn ổn định. (Lưu ý: `Test-NetConnection` báo 4,7-6,7 giây là do nó ping + phân giải DNS trước, KHÔNG phản ánh chi phí TCP handshake mà resolver thực sự chịu — đừng dùng số đó để kết luận.)
+- **NGUYÊN NHÂN GỐC — 3 khiếm khuyết trong `DbHostResolver::resolve()` cộng lại:**
+  1. **Kết quả fallback CŨNG bị ghi cache.** `$resolved = $candidates[0]` được khởi tạo trước vòng probe, và `writeCache()` gọi vô điều kiện sau vòng lặp. Chỉ cần **một** lần probe trượt là host sai bị khoá vào cache **20 giây**, mọi request trong 20 giây đó trả 500 dù DB vẫn chạy bình thường. Đây là khiếm khuyết nghiêm trọng nhất: biến một trục trặc thoáng qua thành sự cố kéo dài.
+  2. **Fallback là `$candidates[0]`**, mà `.env` để `DB_HOST_CANDIDATES=127.0.0.1,10.0.60.209,...` — phần tử đầu là `127.0.0.1`, nơi **chắc chắn không có DB** ở máy này. Fallback đáng ra phải là `DB_HOST` (địa chỉ cấu hình chủ đích).
+  3. **Timeout probe 0.5s** quá sát so với thực tế vận hành.
+- **Sửa:** chỉ `writeCache()` **bên trong** nhánh nối được (kèm `return` ngay); không probe được cái nào thì trả `DB_HOST` và **không ghi cache** để lần sau probe lại ngay; nới timeout 0.5s → 2s (không làm chậm đường bình thường vì probe thành công vẫn trả về sau ~10ms).
+- **Kiểm chứng (script chỉ mở/đóng socket + file cache tạm, không truy vấn DB): 5/5 PASS**, gồm đúng kịch bản đã gây lỗi:
+  1. Danh sách thật trong `.env` (127.0.0.1 đứng đầu) → chọn đúng `10.0.60.209` và ghi cache đúng host sống.
+  2. **Tất cả candidate đều chết** → fallback về `DB_HOST` chứ không phải `candidates[0]`, và **không ghi cache** (trước bản vá: ghi → kẹt 20s).
+  3. Chỉ 1 candidate → trả thẳng, không probe.
+- **Phát hiện kèm:** cả 3 tiến trình (backend 8500, vite 3001, reverb 8080) đã tắt hẳn từ lúc nào không rõ — đó là lý do lần smoke test đầu trả "Unable to connect". Đã khởi động lại cả 3; smoke test: `/` → **200**, `/api/production-batches` → **401** (đúng, app boot sạch + middleware auth chạy), frontend → **200**, và `DB OK: production_web @ 10.0.60.209:5433`.
+- **Mã QR test đã sinh** cho người dùng thử (thư viện `qrcode` có sẵn trong frontend, không gọi dịch vụ ngoài — ADR-003): `#TESTQR-TC001-VD10-220-R1-DYE001-12.50-...` 9 dòng rack. Màu/mã không khớp lô nào có sẵn nên đi nhánh ADHOC (tự tạo lô mới, cân tự do) — không đụng lô sản xuất thật. **Lưu ý: quét/SAVE bằng mã này GHI THẬT vào `production_web`**, dữ liệu test nhận diện qua tiền tố `ADHOC-` và mã `TESTQR`.
+
+### 66. Nút cổ chai thật của tốc độ KHÔNG phải số query mà là CHI PHÍ MỞ KẾT NỐI DB — bật kết nối bền, tiết kiệm ~155ms mỗi request
+
+- **Yêu cầu:** "khi quét, đẩy ra nhanh hơn nữa, siêu nhanh".
+- **ĐÍNH CHÍNH số liệu mục 64:** con số "~36ms/query" ghi ở mục trước là **đo gộp cả chi phí mở kết nối**, không phải chi phí thuần của mỗi query. Tách bạch bằng phép đo riêng (chỉ `select 1`, không ghi):
+  - **Mở kết nối lần đầu: ~212ms** — chịu MỘT LẦN cho mỗi request có chạm DB
+  - **Round-trip mỗi query sau đó: ~33ms**
+  - Ping tới `10.0.60.209`: trung bình **12,8ms** (min 8, max 23) ⇒ 33ms/query là hợp lý với đường mạng này, không phải DB chậm
+  - Bootstrap Laravel + middleware (endpoint 401, không chạm DB): **19ms** — hoàn toàn không phải vấn đề
+  - Kết luận: với luồng quét ~22 query thì riêng phần **mở kết nối chiếm 212ms**, tức gần 1/4 tổng thời gian, mà trước giờ không ai để ý vì nó không hiện ra dưới dạng "query chậm" trong bất kỳ log nào.
+- **Sửa 1 — kết nối bền (`PDO::ATTR_PERSISTENT`)** trong `config/database.php`. Đo đối chứng trên chính đường mạng này: mở mới ~212ms vs tái dùng ~57ms ⇒ **tiết kiệm ~155ms cho MỌI request có chạm DB**, không riêng gì trạm cân. Xác minh Laravel thật sự dùng kết nối bền (không chỉ PDO trần): trong cùng tiến trình, `DB::disconnect()` rồi truy vấn lại chỉ tốn **89ms thay vì 324ms**, và `transactionLevel()` = 0 (không kế thừa transaction dở của lần trước).
+  - **Đánh đổi đã cân nhắc và ghi rõ trong code:** request chết giữa transaction vì lỗi nghiêm trọng (OOM/timeout) thì PDO KHÔNG tự rollback trên kết nối bền. Chấp nhận được vì mọi đường ghi đều bọc `DB::transaction()`. Có cờ `DB_PERSISTENT=false` trong `.env` để tắt ngay mà không phải sửa code.
+- **Sửa 2 — bỏ query trùng ở đầu luồng quét:** `scanRawDyeQr` validate `exists:operation_clients,code` (1 query chỉ để kiểm tra tồn tại) rồi NGAY dòng dưới truy vấn chính bảng đó lần nữa để lấy bản ghi. Bỏ rule `exists`, giữ `firstOrFail()` vốn đã bắt đúng trường hợp mã trạm sai. **−33ms.**
+- **Sửa 3 — gắn sẵn quan hệ cho lô vừa tạo:** nhánh ADHOC vừa `firstOrCreate` xong cái máy (đã cầm object) và lô mới thì chắc chắn chưa có bồn, nhưng `handleOrderScan` vẫn `loadMissing(['machine','tank'])` truy vấn lại cả hai. Dùng `setRelation()` gắn thẳng. **−66ms.**
+- **Tổng cộng cho một lần quét đơn mới: ~−254ms** (155 + 33 + 66), cộng thêm phần đã cắt ở mục 64.
+- **Kiểm chứng:** `php -l` sạch 2 file. Backend khởi động lại để nạp config mới (`bootstrap/cache` chỉ có `packages.php`/`services.php`, KHÔNG có `config.php` nên không cần `config:clear`); smoke test sau restart: `/api/production-batches` → **401** đúng như mong đợi.
+- **CHƯA đo được end-to-end** thời gian quét thật vì đường quét là đường GHI vào DB sản xuất — cần người dùng quét thử và cho biết cảm nhận.
+
+### 67. Quét hiện bảng TỨC THÌ — parse chuỗi QR bằng JS ngay tại trình duyệt, việc tạo vòng cân dưới DB chạy nền
+
+- **Đề xuất của người dùng:** "sao không dùng JS để đẩy chuỗi QR trước, sau đó lưu sau có phải nhanh hơn không?" — đúng, và đây là thứ duy nhất thật sự đưa thời gian chờ về ~0 thay vì chỉ bớt vài trăm ms như mục 66.
+- **Nhận định:** chuỗi QR ĐÃ chứa đủ `rack/dye/weight` của cả mẻ. Bắt thao tác viên đứng chờ gần 1 giây đi-về mạng chỉ để nhìn đúng những con số vốn đã nằm sẵn trong tay là vô nghĩa.
+- **Cách làm:**
+  1. `frontend/src/utils/qrDyeParser.ts` (mới) — port `QrPayloadService::parseDyeScan` sang TS. Tách thành file riêng thay vì viết trong `.vue` **chính là để kiểm chứng được** (xem dưới).
+  2. `handleBarcodeScan`: với QR thật (`#...`), parse tại chỗ → `applyOptimisticJob()` vẽ ngay 9 dòng với dung sai ±1% tính sẵn ở client (đúng `ScannerController::TOLERANCE_RATIO`, lệch là màu LED lúc cân sẽ khác kết quả ĐẠT/KHÔNG ĐẠT server chốt lúc lưu). Con trỏ trả về ô quét ngay, không đợi hết request.
+  3. Request tạo job chạy nền, giữ trong ref `jobReady`. Khi về, `adoptRealJob()` thay khung tạm bằng dữ liệu server **nhưng GIỮ NGUYÊN** số thợ đã cân trong lúc chờ — cố ý KHÔNG dùng `applyActiveJob()` vì hàm đó xoá sạch `capturedWeights` để bắt đầu mẻ mới.
+  4. `onSave()` `await jobReady` trước khi gửi — phòng trường hợp thợ cân xong sớm hơn server. Thực tế gần như không phải chờ: đổ vật tư lên cân lâu hơn nhiều so với một vòng đi-về mạng.
+  - Token giả lập `DF:ORDER:<uuid>` KHÔNG áp dụng (không mang dữ liệu dòng nào, buộc phải hỏi server).
+- **Ba cái bẫy đã xử lý, đều là chuyện mất dữ liệu chứ không phải thẩm mỹ:**
+  1. **Request lỗi trong khi bảng đã hiện** → phải xoá bảng đi. Để nguyên thì thợ cân vào một bảng KHÔNG BAO GIỜ lưu được.
+  2. **`applyActiveJob` gọi `cancelAbandonedJob(activeJob.id)`** với khung tạm `id: null` → thêm điều kiện `activeJob.value?.id`, không đi hủy cái chưa tồn tại.
+  3. **CLEAR trong lúc job đang tạo dở** → không hủy ngay được (chưa có id). Phải chờ `jobReady` xong rồi mới hủy, nếu không vòng cân đó thành mồ côi và **lô kẹt vĩnh viễn không về được WEIGHED**. Lỗi tự bắt được khi viết: bản đầu đọc `activeJob.value?.id` bên trong `.then()`, nhưng lúc đó CLEAR đã gán `activeJob = null` (đồng bộ) rồi → sửa cho `jobReady` **trả về chính job** để đọc id từ kết quả promise.
+- **Rủi ro chính là hai bản parse lệch nhau** (thợ nhìn một đằng, DB ghi một nẻo). Đã khoá bằng `frontend/scripts/check-qr-parser.mjs`: transpile bản TS bằng esbuild, nạp `QrPayloadService` thật qua `php -r`, chạy **13 ca đối chiếu** trên cùng đầu vào → **13/13 PASS**, gồm các ca hiểm: không có `#` đầu, dấu phẩy thay dấu chấm, cụm `-dye-` xen giữa, cắt phần `chem`, thiếu bộ ba cuối, hơn 9 bộ ba (phải cắt còn 9), dấu gạch lặp, chuỗi rỗng, chỉ có `#`, `-DyE-` chữ thường lẫn hoa. Không chạm DB, không gọi API.
+- **Kiểm chứng:** `vue-tsc` **26 lỗi = đúng baseline**, không lỗi nào ở `WeighingStationV2.vue` hay `qrDyeParser.ts`. **CHƯA quét thử thật** — cần người dùng xác nhận bảng hiện tức thì và SAVE vẫn ghi đủ.
+
+### 68. Quét KHÔNG chạm mạng chút nào — cả mẻ gói vào MỘT lệnh duy nhất lúc SAVE
+
+- **Người dùng chốt** (qua câu hỏi trực tiếp, 3 phương án có nêu rõ đánh đổi): *"Không gọi gì — dồn hết vào SAVE"*. Mục 67 vẫn còn 1 request nền tạo vòng cân lúc quét; nay bỏ nốt.
+- **Đây chính là cách VBA gốc làm:** `scaleform` chỉ giữ dữ liệu trong RAM (biến `p1..p9`), `btnSave_Click` mới INSERT xuống Access. Không có bước "mở lệnh sản xuất" riêng nào cả.
+- **Backend — endpoint mới `POST /api/scanner/weigh-from-qr`** (`ScannerController::weighFromQr`), làm TẤT CẢ trong một transaction: mở/tìm lô sản xuất → tạo vòng cân + 9 dòng → ghi số cân → dựng phiếu in, trả `slip.label_payload` luôn.
+  - **Tái dùng `handleOrderScan()` thay vì chép lại logic**: thêm tham số `$returnJob` để nó trả `['job','batch','notice']` thay vì `JsonResponse`. Giữ nguyên toàn bộ nghiệp vụ đã có (nhánh có công thức vs cân tự do, khóa chống 2 máy cân chung 1 job, cascade trạng thái lô, RACK auto-fill theo vị trí). Chép lại là chắc chắn sẽ trôi dạt khỏi nhau theo thời gian.
+  - Lỗi nghiệp vụ (không có công thức ACTIVE, quét sai loại trạm) vẫn trả nguyên `JsonResponse` cũ — endpoint mới chỉ việc `return $scan` khi nhận về không phải array.
+  - **`rows` khớp theo `sequence_no`**, không theo `item_id`: client chưa từng gọi server nên không biết id nào. Dòng client gửi mà job không có (QR nhiều dòng hơn công thức) thì bỏ qua — không tự chế thêm vật tư ngoài công thức.
+  - `buildAndStoreSlip` (private) được mở ra qua `buildSlipForJob()` để dùng chung.
+  - Giữ nguyên hàng rào `NOT_STABLE` như `weighItem`/`weighBatch` — client có thể gọi thẳng API, không phụ thuộc UI.
+- **Frontend:** quét QR thật (`#...`) giờ **không gọi API nào**: parse bằng `qrDyeParser.ts` → `applyLocalJob()` dựng bảng + giữ luôn chuỗi QR để gửi lúc SAVE. `onSave()` gọi `/scanner/weigh-from-qr` với `raw_qr` + `rows`. Token `DF:ORDER:<uuid>` vẫn đi đường cũ (`/scan-dye-qr` lúc quét + `/weigh-batch` lúc lưu) vì nó không mang dữ liệu dòng nào.
+  - Gỡ bỏ `jobReady`, `adoptRealJob` (mục 67) — không còn job nền để chờ hay để nhận nuôi.
+  - **`onClear` đơn giản hẳn:** mẻ đọc từ QR chưa ghi gì xuống DB nên CLEAR chỉ là xoá màn hình, **không còn vòng cân mồ côi để dọn**. Trước đây đây là nguồn lỗi thật (lô kẹt vĩnh viễn không về được WEIGHED nếu quên hủy).
+- **Đánh đổi đã nêu rõ với người dùng TRƯỚC khi làm và được chấp thuận:** quét xong mà chưa SAVE thì dưới DB không có gì cả ⇒ (a) mất cảnh báo "đơn này cũng đang được cân ở máy khác", (b) trạm khác không thấy mẻ đang cân dở. Đổi lại: quét không tốn vòng mạng nào, và không bao giờ còn sinh vòng cân mồ côi.
+- **Kiểm chứng:** `php -l` sạch 3 file; `php artisan route:list` xác nhận `POST api/scanner/weigh-from-qr` đã đăng ký; `vue-tsc` **26 lỗi = đúng baseline**, không lỗi nào ở file vừa sửa. **CHƯA chạy thử đường ghi** — cả `weighFromQr` bọc trong `DB::transaction()` nên lỗi giữa chừng tự rollback sạch, nhưng vẫn cần người dùng quét + SAVE một mẻ thật để xác nhận.
+
+### 69. F5 giữa chừng vẫn cân tiếp được — khôi phục mẻ dở HOÀN TOÀN tại client
+
+- **Yêu cầu:** "nếu đã quét mà chưa CLEAR thì khi F5 đang cân dở sẽ cân được tiếp luôn, lưu vào cookie".
+- **Vì sao việc này thành cần thiết:** sau mục 68, quét không ghi gì xuống DB nữa, nên đường khôi phục cũ (`restoreSession` hỏi `/api/weighing-jobs/active` rồi đối chiếu `jobId`) **không còn dữ liệu để hỏi**. F5 là mất trắng mẻ đang cân.
+- **Dùng `localStorage` chứ không phải cookie** (đã có sẵn `SESSION_KEY = 'df_ws2_session_v1'` từ trước): cookie bị đính kèm vào MỌI request gửi lên server — vừa tốn băng thông vô ích cho thứ thuần tuý phía máy trạm, vừa vướng trần ~4KB mà một mẻ 9 dòng kèm bì/gộp từng ô có thể chạm tới. localStorage không gửi đi đâu và có 5-10MB.
+- **Cách làm:** lưu thêm `rawQr` vào phiên. **Chuỗi QR CHÍNH LÀ cả mẻ** — F5 xong chỉ cần parse lại chuỗi đó là dựng nguyên bảng, không hỏi server câu nào. Tách `buildLocalJob()` ra khỏi `applyLocalJob()` để khôi phục dùng lại được mà KHÔNG xoá mất số đã cân (`applyLocalJob` cố ý xoá sạch vì nó dành cho lần quét mã MỚI).
+- **Giữ nguyên cơ chế nhận lại bì đã có sẵn** (`pendingResume`): không nhận bì cũ ngay mà chờ số cân ổn định đầu tiên rồi ĐỐI CHIẾU với số gộp đã lưu (sai lệch ≤ 0.5g mới coi là "đĩa chưa bị đụng vào"). F5 không đụng vào đĩa, nhưng "ai đó nhấc đĩa ra rồi mới F5" cũng chẳng để lại dấu vết gì khác — nhận bừa bì cũ trong trường hợp đó sẽ cho ra số cân sai mà vẫn tô xanh ĐẠT.
+- Nhánh khôi phục theo `jobId` (mẻ mở bằng token `DF:ORDER:<uuid>`, có vòng cân thật dưới DB) giữ nguyên, vẫn hỏi server.
+- **Dọn tàn dư:** xoá đoạn chú thích "KHÔNG khôi phục mẻ đang dở khi vào trang (yêu cầu 2026-08-01)" — đã lạc hậu, `restoreSession()` vẫn được `onMounted` gọi suốt và giờ chính là thứ được yêu cầu.
+- **Kiểm chứng:** thêm phép kiểm tra **tính thuần tuý của `parseDyeQr`** vào `check-qr-parser.mjs` (parse lại cùng chuỗi luôn cho cùng kết quả) — đây chính là tính chất mà việc khôi phục dựa vào; nếu hàm không thuần tuý thì F5 xong thợ có thể thấy bảng khác lúc quét. **14/14 PASS**. `vue-tsc` 26 lỗi = đúng baseline. **CHƯA thử F5 thật** — cần người dùng cân dở vài ô rồi F5 để xác nhận.
+
+### 64. "Nạp đơn lâu quá" ở `/weighing-station-v2` — nút thắt KHÔNG phải JS mà là hàng đợi của backend một tiến trình
+
+- **Người dùng hỏi:** nạp đơn lâu, có dùng JS cho nhanh hơn được không.
+- **Đo trước, không đoán.** Frontend gửi **đúng 1 request** khi quét (`handleBarcodeScan` → `/api/scanner/scan-dye-qr`), nên không có gì để tối ưu ở phía JS theo nghĩa "gọi ít đi".
+  - Độ trễ DB (đo bằng script chỉ đọc): **RTT 9.16 ms/query**, riêng **mở kết nối lần đầu 119.8 ms** (DB nằm ở máy khác — `10.0.60.209:5433`).
+  - Phần ĐỌC của luồng quét: **8 query, 62.8 ms** (55.8 ms là DB, 6.9 ms là PHP) — không có N+1, không phải thủ phạm.
+  - **Phát hiện quyết định:** gọi lặp **cùng một endpoint trả 401** (thoát ở middleware auth, KHÔNG chạm DB nghiệp vụ) mà kết quả là `min 19ms / trung vị 239ms / max 2117ms`, **5/20 lần > 300ms**. Một endpoint không làm gì cả thì không thể tự chậm — chênh lệch đó chỉ có thể là **xếp hàng**.
+- **NGUYÊN NHÂN GỐC:** backend chạy `php artisan serve` → thực chất là `php -S` với **PHP_CLI_SERVER_WORKERS rỗng = MỘT worker duy nhất**, xử lý tuần tự từng request (kiểm chứng bằng `Get-CimInstance Win32_Process`, đọc đúng dòng lệnh của PID đang nghe cổng 8500). Trong khi đó `WeighingStationV2.vue` gọi `startPolling(200)` ngay từ `onMounted` — **5 request/giây liên tục** để lấy số cân, chạy cả khi màn hình đang trống chưa có đơn nào. Request quét đơn của thợ phải xếp hàng sau chính những lượt poll đó. (Trên Windows không thể bật nhiều worker cho `php -S`: cơ chế đó dựa vào `fork()`.)
+- **Sửa 1 — nhịp poll thích ứng theo trạng thái** (`WeighingStationV2.vue`): `POLL_MS_WEIGHING = 200` giữ nguyên khi ĐANG có đơn (200ms là bắt buộc, xem mục 59: bì chốt từ lần đọc ổn định đầu tiên sau NEXT, nhịp thưa thì bì ăn cả phần vật tư vừa đổ), nhưng **`POLL_MS_IDLE = 1000` khi chưa có đơn** — tức đúng lúc thợ đang quét. Giảm 80% tải nền vào đúng thời điểm cần đường thông nhất. Thêm `watch(() => !!activeJob.value, ...)` để đổi nhịp ngay khi nạp/xoá đơn; so `!!` để không khởi động lại bộ đếm mỗi lần object job được gán lại.
+- **Sửa 2 — chèn gộp 9 dòng cân** (`ScannerController.php`, cả 2 nhánh ad-hoc và có Recipe): `WeighingJobItem::create()` trong vòng lặp = 9 vòng đi-về DB ≈ **82 ms**, thay bằng 1 lần `insert()` gộp. Phải tự sinh UUID vì `insert()` đi thẳng query builder nên không chạy hook `creating` của model; an toàn với bảng này vì `$timestamps = false` (không có `created_at`/`updated_at` để điền) — đã đọc `WeighingJobItem.php` xác nhận trước khi đổi, không suy đoán.
+- **Kiểm chứng:** `php -l` sạch. `vue-tsc` **26 lỗi = ĐÚNG BẰNG baseline** (đo bằng `git stash push -u` rồi chạy lại, sau đó `git stash pop` khôi phục đủ 4 file) — không phát sinh lỗi mới. Đo lại cùng endpoint 401 sau khi sửa: **trung vị 239ms → 19ms**, số lần > 300ms **5/20 → 1/20**.
+- **GIỚI HẠN CỦA PHÉP ĐO SAU KHI SỬA — không được đọc là "đã xong":** không kiểm soát được biến số quan trọng nhất là trình duyệt người dùng có đang mở `/weighing-station-v2` hay không tại thời điểm đo, nên phần cải thiện do sửa và phần do trang tình cờ đóng/đang reload **chưa tách bạch được**. `max` vẫn còn **2657 ms** ở một lượt — nghẽn chưa biến mất hẳn, chỉ thưa đi. **Chưa bấm quét một đơn thật qua UI để đo thời gian thợ thực sự phải chờ.**
+- **Chưa làm — cách chữa tận gốc:** một tiến trình PHP phục vụ tuần tự là trần cứng; mọi tối ưu query chỉ là bào mỏng phần ngọn. Muốn hết hẳn phải cho backend chạy đa tiến trình (Apache/Nginx sẵn có trong Laragon, hoặc php-cgi nhiều tiến trình). Đây là thay đổi hạ tầng, **ảnh hưởng cả quy trình chạy local lẫn scheduled task `DFWeb-Backend` trên CS-SERVER**, nên chưa tự ý làm — cần người dùng quyết.
+
 ### 63. RAW khong nhay theo can that — nguyen nhan: PuTTY KHONG CHAY, khong lien quan code
 
 - **Trieu chung nguoi dung bao:** "RAW -0.02 dang khong nhay theo dung so can o tren may".
@@ -1187,3 +1307,430 @@ Người dùng đã xác nhận các thông tin nghiệp vụ và kỹ thuật c
   - `onClear()`: huy vong cân dang mo TRUOC khi xoa state, **tru khi vua SAVE xong** (them tham so `alreadySaved` de khoi goi thua 1 request moi lan SAVE thanh cong — server van tu choi em neu lo goi nhung khong can ton round-trip do).
   - `applyActiveJob()`: quet mot don MOI trong khi don cu chua SAVE (khong qua CLEAR) se huy don cu truoc khi thay the — day la duong bo do khac ma truoc day chua xu ly.
 - **Kiem chung:** `WeighBatchTest` **15/15 DAT** tren SQLite in-memory (them 6 test: huy job trong, tu choi khi co dong COMPLETED, tu choi job da COMPLETED, idempotent, **loai khoi cascade** (job that + job huy cung lo -> lo van WEIGHED), khong tai dung duoc khi quet lai). `vue-tsc` sach, `vite build` OK (18.16s). Test file khac (`ScannerWorkflowTest` etc.) fail do moi truong (thieu bang `operation_clients` tren SQLite, da biet tu truoc, khong lien quan thay doi nay).
+
+### 75. NEXT khong con tat o dong cuoi cua don - chay het 9 dong lu?i dung nhu VBA
+
+- **Yeu cau (02/08/2026):** "toi muon nut next luon mo du la den R3 thi khi an next van co the an next de can hang duoi tiep, mac du k co gi".
+- **Nguyen nhan:** `canPressNext` chan theo `jobItems.length` (so vat tu trong don) nen QR 3 dong la NEXT tat ngay o R3. VBA goc chan theo `CurrentBoxIndex < 9` - moc la **9 DONG LUOI**, khong phai so vat tu. Day la cho da port lech tu dau.
+- **Sua:**
+  - Them hang chung `MAX_RACK_LINES = 9` trong `frontend/src/utils/qrDyeParser.ts` (truoc do so 9 nam rai rac 3 cho: vong lap parse, `NINE_ROWS` trong VbaRackGrid, va gian tiep o canPressNext).
+  - `WeighingStationV2.vue`: `canPressNext = currentIndex < MAX_RACK_LINES - 1`; `onNext` tang chi so toi dong 9. Truong hop can xong het vat tu cua don roi moi bam NEXT: xuong **dong trong ke tiep** (`min(jobItems.length, 8)`) chu khong quay ve o 1 - quay ve la ghi de so da can.
+  - `VbaRackGrid.vue`: dong trong bay gio **chon duoc** (bo dieu kien `items[idx] &&` o `@click`), va o PROCESS hien so can song/so da chot ke ca khi dong do khong co vat tu - khong the bam NEXT xuong mot o trang tron roi bao la "can duoc".
+  - `processStyle` cho dong trong: nen TRANG (dung nhanh "target rong" cua `Mod_UI_processcolor.CheckRange`), khong bao gio an nen xanh.
+- **Gioi han da noi ro tren man hinh:** dong khong co vat tu trong QR thi **SAVE khong luu** so can o do - `onSave` duyet theo `jobItems` nen dong trong tu nhien bi loai, va day cung dung VBA (`btnSave_Click` chi INSERT dong co WEIGHT muc tieu). Them canh bao vang ngay duoi luoi khi con tro dang o dong trong, thay vi de thao tac vien can xong roi tuong da ghi.
+- **Kiem chung:** `node frontend/scripts/check-qr-parser.mjs` **14/14 PASS** (xac nhan viec rut so 9 ra thanh hang khong doi hanh vi parse, ke ca ca "nhieu hon 9 bo ba phai cat con 9"). `vue-tsc` **26 loi = dung baseline**, khong phat sinh loi moi. **CHUA thu tay tren trinh duyet** - can nguoi dung quet ma 3 dong roi bam NEXT qua R4..R9 de xac nhan.
+
+### 76. NEXT dung duoc ca khi CHUA quet don - man hinh lam duoc viec cua mot cai can thuong
+
+- **Yeu cau (02/08/2026):** "du chua co quet thi nut next van dung binh thuong, biet dau toi can dung tam de can cai gi do".
+- **Sua:** bo dieu kien `!activeJob` khoi `:disabled` cua nut NEXT. Bam NEXT tren form trang -> `onNext` di dung nhanh cu (`jobItems` rong -> `findIndex` tra -1 -> ve o 0), chot bi o lan doc on dinh dau tien, o PROCESS hien so can song. Chay duoc het 9 dong.
+- **Keo theo mot cho de bo sot: NHIP LAY SO CAN.** `pollIntervalForState()` truoc do bam theo `activeJob` nen can tay khong don se roi vao nhip nhan roi 1000ms - dung cai luong can nhip day nhat lai bi nhip thua nhat, va bi se bi chot vao luc tho da bat dau do vat tu (chinh loi da phan tich o muc 58/59). Doi moc "dang can" thanh `dangCan = activeJob !== null || currentIndex >= 0` cho ca `pollIntervalForState()` lan `watch` khoi dong lai bo dem.
+- **Khong dung/khong khoa:** SAVE va PRINT van tat khi chua co don - khong co dong nao de ghi. `saveSession()` van thoat som khi `!activeJob` nen can tay khong de lai dau vet localStorage, F5 la mat, dung nhu ban chat "can tam".
+- **Noi ro tren man hinh:** canh bao duoi luoi tach 2 truong hop - chua co don ("dang CAN TAY, khong co gi duoc luu") va co don nhung dung o dong ngoai QR ("SAVE se khong luu so o dong nay"). Dong goi y khi form trang cung noi them "can can tam cai gi do thi bam thang NEXT, khong can don".
+- **Don kem:** `v-for="(row, idx)"` -> `(_row, idx)` trong VbaRackGrid, tat TS6133 co san tu truoc o dung dong vua sua.
+- **Kiem chung:** `vue-tsc` **25 loi** (baseline 26, giam 1 do don TS6133 noi tren; khong loi nao thuoc 3 file vua sua). `vite build` **OK 22.45s**. **CHUA thu tay tren trinh duyet.**
+
+### 77. /weighing-history: tim kiem + phan trang chuyen han sang JS, va co nut IN LAI phieu can
+
+- **Yeu cau (02/08/2026):** "toi muon dung js 100% va muon load nhanh hon, co nut de in lai".
+
+**a) DO TRUOC KHI SUA** (script chi doc, khong ghi gi xuong DB):
+- `history()` cu: **5 cau truy van / 193ms**, payload chi **16KB** cho 7 vong can. Tung cau ~30-35ms - gan nhu toan bo la **di-ve mang toi DB o CS-SERVER**, khong phai cong viec that. Mo ket noi 174ms, bootstrap CLI 2048ms (nguoi khong dai dien, ban chay qua `artisan serve` co opcache).
+- Ket luan: du lieu qua nho so voi chi phi vong mang. Moi lan bam Loc / doi trang deu tra dung cai gia do cho ~16KB.
+
+**b) Bo phan trang phia server** (`WeighingJobController::history`)
+- Tra TRON mot cua so du lieu (`limit`, mac dinh 200, tran `HISTORY_MAX_ROWS = 500`) thay vi `paginate()`.
+- Bo hoan toan cau `count(*)` cua paginator: lay du **dung 1 dong** (`limit($limit + 1)`) de biet co bi cat hay khong. **5 cau -> 4 cau, 193ms -> 135ms.**
+- Hinh dang response doi: `data` gio la `{ rounds, truncated, limit }` chu khong con la object paginator. Chi co `WeighingHistory.vue` dung endpoint nay (da grep), khong co test nao - khong pha vo cho khac.
+- Giu lai tham so `q` phia server: khong dung cho o tim thuong ngay nua, nhung la duong thoat khi thu can tim nam NGOAI cua so da tai.
+
+**c) Frontend chuyen sang JS hoan toan** (`WeighingHistory.vue`)
+- O tim kiem loc ngay tren `allRounds` da tai, **khong goi server**, go toi dau thay toi do, ho tro nhieu tu (phai khop TAT CA).
+- Phan trang cung thuan JS (20 dong/trang) - doi trang **0 request**, khong con trang thai cho.
+- Chi con dung 1 vong HTTP khi: mo trang, doi khoang ngay, bam Lam moi, hoac bam "Tim tren toan bo lich su".
+- **Khong im lang cat bot:** cua so bi cat thi hien bang canh bao vang; nut "Tim tren toan bo lich su" luon hien khi o tim co chu (khong doi toi luc "khong thay gi" - loc ra 2 dong khong co nghia la chi co 2). Ket qua tim toan cuc co bang bao rieng + duong quay lai.
+- Chuoi de so khop tinh MOT LAN luc du lieu ve (`ganChuoiTim`), khong tinh trong computed: ghi thuoc tinh vao object dang nam trong ref ngay giua luot doc cua computed se lam Vue tinh lai vong vong.
+
+**d) Nut IN LAI phieu can** (bieu tuong may in tren tung dong)
+- Goi lai `POST /api/weighing-jobs/{id}/print-slip` roi render qua `printTsplViaBrowser`. `window.open` goi **dong bo ngay trong handler**, truoc moi `await` - sau await la mat "user activation" va bi chan popup (dung loi da dinh o luong SAVE).
+- **KHONG dung phieu bang JS tai cho** du du lieu da co san tren man hinh: CLAUDE.md muc 5 bat buoc moi luot in lai phai de lai Audit Log bat bien. Dung o client thi khong co gi de ma ghi.
+- **Vi vay bo sung AuditLog `WEIGH_SLIP_REPRINT`** trong `printSlip()` - truoc day chi co ban ghi PrintJob, khong truy duoc AI bam in lai. Moi luot goi endpoint nay deu la in lai (luong SAVE dung `buildSlipForJob` truc tiep, khong di qua day) nen khong bi ghi trung.
+- **Phan giai ma tram:** them nhanh `$job->workstation?->code` truoc nhanh "may dang dung". Man Lich su chay tren may van phong khong gan tram nao, ma phieu in lai phai mang dung ma tram DA CAN ra no. Da kiem chung: **ca 7/7 vong can hien co deu phan giai ra ma tram ton tai trong `operation_clients`** (script chi doc), nen `firstOrFail()` trong `buildAndStoreSlip` khong the no.
+
+- **Kiem chung:** `php -l` sach. Do lai truy van: **4 cau / 135ms**, hinh dang JSON dung cai frontend doc (`rounds/truncated/limit`, item co `process_status`). Endpoint HTTP tra **401** khi chua dang nhap (app boot sach, route dung cho). `vue-tsc` **25 loi = baseline**, khong loi nao o `WeighingHistory.vue`. `vite build` **OK 17.20s**. **CHUA bam thu nut IN LAI tren trinh duyet** - no GHI (PrintJob + AuditLog) nen de nguoi dung tu bam, khong tu chay tren DB that.
+
+### 78. /weighing-station-v2: lam lai giao dien (bo khung Windows 95), so DELTA to tu doi mau theo dung sai
+
+- **Yeu cau (02/08/2026):** "cai tien giao dien cho toi voi, de cho no dep hon".
+
+**Nhung thu KHONG duoc dong** (deu la quyet dinh co ly do da ghi trong code, khong phai mac dinh):
+- 3 ma mau o PROCESS `#FAE605/#78FA14/#FF1400` - dung ma RGB goc theo yeu cau nguoi dung.
+- Bang luon nen sang chu den ke ca khi theme toi - tho quen bang trang, nen toi lam mat cam nhan 3 mau tin hieu.
+- Kich thuoc nut lon (bam bang gang tay), luoi 9 dong co dinh khong nhay.
+- Bang do dac "MAT TIN HIEU CAN" (doc tu 1-2m) va bang xanh thong bao trung don (co y KHONG dung vang/do).
+
+**a) Bo bo khung Windows 95** — `border: 2px inset/outset` + nen `#ece9d8` doi thanh khoi `.panel` bo goc 12px, vien 1px, do bong nhe; nen tong `#eef1f6` (xam xanh trung tinh). **Cung do sang** nen 3 mau tin hieu doc y het, chi khong con cam giac phan mem hai muoi nam truoc. Phan hoi bam nut doi tu `border-style: inset` sang `translateY(2px)` - tho deo gang khong cam nhan duoc cu bam bang tay, phan hoi thi giac la thu duy nhat bao may da nhan.
+
+**b) O so DELTA tu doi mau theo dung sai** (thay doi dang ke nhat)
+- Dai mau tren dinh o + vien doi theo **DUNG 3 mau cua o PROCESS**, them dong "muc tieu 12.50" ngay canh. Tho dang do vat tu thi mat dan vao so to nay; bat ho liec xuong bang moi biet du hay chua la thua mot nhip.
+- **Chua chot bi thi de trung tinh**: luc do `liveWeight` chua tru duoc gi, to mau chi la doan bua, ma mot o to dung mau vang "chua du" ngay khi vua bam NEXT thi gay hieu nham hon la giup.
+- Phan SO giu nen trang (chi dai tren cung an mau) de luon doc duoc; rieng tone do thi so chuyen do dam.
+
+**c) Tach `utils/processColor.ts`** — quy tac suy mau tu `Mod_UI_processcolor.CheckRange` gio nam MOT cho, dung chung boi luoi 9 dong va o DELTA. Hai cho nay nam canh nhau tren cung man hinh: lech nhau du chi o ranh gioi 0.99/1.01 la tho thay so to bao DAT ma o trong bang van vang - mat luon niem tin vao ca hai.
+- **Guard `frontend/scripts/check-process-color.mjs`**: doi chieu ban moi voi doan ma CU chep nguyen van tu VbaRackGrid (git 5929b55), quet day 1200 diem quanh 2 ranh gioi + cac muc tieu bat thuong (null/0/am/NaN/khong co vat tu) + khang dinh **khong so am nao an nen xanh**. **1229/1229 PASS.** Dang co vi mau o PROCESS khong phai chuyen tham my: trong VBA chinh BackColor o nay la trang thai nghiep vu (`btnSave_Click` doc nguoc mau nen de ghi ACCEPTED/REJECTED).
+
+**d) Vai trò nút hiện bằng màu** — SAVE xanh la dac (chot ca me), NEXT xanh duong dac (nut bam nhieu nhat), CLEAR **vien do chu khong nen do dac**: no nam canh SAVE va duoc bam thuong xuyen, to do ruc se thanh nhieu thi giac va lam nhat luon bang canh bao mat tin hieu can.
+
+**e) Luoi 9 dong** — dong dang can doi tu mot vach xanh mong sang **nen xanh nhat + dai 5px + o so thu tu dao mau**; vien den doi sang xam nhat; so dung `tabular-nums` de cot khong nhay khi so doi. O PROCESS to hon (24px, 800).
+
+- **Kiem chung:** `vue-tsc` **25 loi = baseline**, khong loi nao o 3 file vua sua. `vite build` **OK 16.54s**. `check-process-color` **1229/1229**, `check-qr-parser` **14/14**. **CHUA nhin bang mat tren trinh duyet** - may nay khong co trinh dieu khien trinh duyet (khong co playwright/puppeteer/chromium-cli) va khong tu cai them. Can nguoi dung mo xem.
+
+### 79. Don sach 25 loi vue-tsc -> 0, va 3 thu duoc phat hien tren duong di
+
+- **Yeu cau (02/08/2026):** "fix cac loi do cho toi" (25 loi vue-tsc ton dong).
+- **Ket qua: 25 -> 0.** `vite build` OK 16.59s, `check-process-color` 1229/1229, `check-qr-parser` 14/14.
+- Luu y: `npm run build` chi la `vite build`, ma Vite dung esbuild - **chi boc kieu chu khong kiem kieu**. 25 loi nay tich lai duoc chinh vi khong co gi chan chung. `vue-tsc` van la cong tu nguyen, khong nam trong build.
+
+**a) Lech kieu THAT (2 loi)** - `stores/auth.ts` interface `Workstation` thieu 2 truong ma code va DB deu dung: `default_route` (cot co that trong `operation_clients`) va `capability_codes` (them 18/07 de va loi kiosk bi chan nham "tram khong co quyen"). **Code dung, kieu sai** - xoa truong cho het loi la dung lai dung con bug cu. Da bo sung ca hai kem chu thich canh bao.
+
+**b) Trang Gantt: 8 loi, chi can 1 dong khai kieu.** `res.data` tu axios la `any` nen `items` cung thanh `any`, keo theo moi tham so .sort/.filter/.map mat kieu va `new Set(...)` ra `Set<unknown>`. Them `interface GanttItem` + chu kieu cho `items` la het 7/8.
+- Loi con lai (TS2459 `DataSet`) la **thieu sot typings cua thu vien**: `vis-timeline/declarations/index.d.ts` co mot binding `DataSet` cuc bo (chi import, khong export) lam hong chuoi `export *`. Sua bang cach **tach doi**: GIA TRI van lay tu `vis-timeline/standalone` (bat buoc - lay tu goi `vis-data` rieng se ra mot lop DataSet KHAC voi lop Timeline ben trong dang dung, hai ben khong nhan nhau), KIEU lay tu `vis-data`. Da thu them `paths` vao tsconfig truoc do nhung khong can thiet - **da go lai, tsconfig y nguyen**.
+
+**c) Troubleshooting.vue la file .vue DUY NHAT trong hon 40 file chua dung TypeScript.** Bat `lang="ts"` lam lo **33 loi moi**, nhung tat ca deu gom ve vai cho khai bao goc: `ref([])` -> `ref<any[]>([])` (goc cua ~16 loi "type never"), `form.parameters` -> `Record<string, any>` (truy cap bang ten dong), `resolveModal.cause`/`detailModal.case`, va 4 tham so ham. **Chi sua kieu, khong doi mot dong logic nao.**
+
+**SAI SOT TRONG LUC LAM:** doc/ghi file UTF-8 bang `Get-Content -Raw`/`Set-Content` cua PowerShell 5.1 (khong chi -Encoding) da lam hong ky tu tieng Viet cua Troubleshooting.vue. Da khoi phuc tu ban sao va xac nhan `git diff` sach truoc khi lam lai bang cong cu sua file. **Bai hoc: khong dung PowerShell de doc/ghi file nguon co tieng Viet.**
+
+**d) 3 thu phat hien duoc khi ra tung bien "thua" thay vi xoa hang loat:**
+1. **`saveTareToStorage` trong `useScaleFeed.ts` chua bao gio duoc goi** - nghia la khoa `df_weigh_tare_state_v2` khong bao gio duoc ghi, nen `restoreTareFromStorage` (co XUAT ra ngoai) chi co the tra ve null. Mot ham khoi phuc luon tra null la cai bay cho nguoi dung no sau nay -> **da go ca bo 3 hang**. Viec nho bi qua F5 hien do `df_ws2_session_v1` trong WeighingStationV2 lo, va ban do luu bi KEM vi tri o dang can + so can gop de doi chieu dia can - bo trong composable khong mang theo hai thu do nen du co chay cung khong du an toan.
+2. **`handleLogout` bi bo quen o 5 man hinh** (MachineQueue, Materials, Recipes, WaterConfigs, Troubleshooting) - nut Dang xuat da chuyen han vao `AppLayout.vue` (dong 132). Xoa xong lo tiep `router`/`authStore` cung chi con phuc vu no -> xoa not ca import.
+3. **`elapsed` trong `MachineQueue.getLockAgeSeconds`** - bien tinh do lech dong ho may tram/server, tinh ra roi **khong dung vao ket qua tra ve**. Da go va **ghi ro canh bao tai cho**: moc het han khoa 5 phut hien tinh bang dong ho MAY TRAM doi chieu voi moc gio server, may tram lech gio thi moc nay lech theo. Chua sua (can quyet dinh lay gio server o dau).
+
+- Ngoai ra: `echo` nhap thua o WeighingStation (realtime nam trong QrScanPanel), `SvgIcon`/`reactive` thua o Dashboard, `kioskUrlInput` thua o WorkstationAdmin (go luon `ref=` tren template vi nut copy dung `navigator.clipboard`), `state` thua trong getter `isKiosk`, tham so `el` trong LabelPreview (dung `unknown` chu khong `any` - da co `instanceof` loc san).
+
+### 80. Mat mang o Tram can: mo ta dung hanh vi hien tai, va va mot lo hong IM LANG
+
+- **Cau hoi nguoi dung (02/08/2026):** "trong truong hop mat mang k luu duoc thi lam sao".
+
+**a) Hanh vi HIEN CO (doc tu code, khong suy doan) - phan da dung san:**
+- **Quet KHONG can mang.** Tu muc 68, chuoi QR duoc parse ngay tai trinh duyet; ca me chi cham mang DUNG MOT LAN luc bam SAVE.
+- **SAVE hong thi KHONG mat so.** `onSave` catch chi dat `errorMsg`, **khong dong vao `capturedWeights`** - bam SAVE lai duoc ngay khi co mang.
+- **Dong trinh duyet/mat dien cung khong mat.** Phien nam trong `localStorage` (`df_ws2_session_v1`), `clearSession()` chi chay khi SAVE THANH CONG. Mo lai trang la dung lai nguyen me (muc 69).
+- **Dieu KHONG lam duoc:** can tiep khi mat mang. So can di duong Agent -> backend -> trinh duyet (ADR-002: trinh duyet khong bao gio noi thang voi phan cung), nen mat mang toi CS-SERVER la mat luon so can du cai can va Agent deu nam ngay tren may do.
+
+**b) LO HONG PHAT HIEN DUOC - mat mang gan nhu IM LANG (da va):**
+- Bang canh bao `MAT TIN HIEU CAN` co dieu kien `scaleOnline && !signalLive`. Nhung khi mat mang thi `scaleOnline` = **false**, nen bang nay **khong hien**. Ca man hinh chi con mot cham do 9px bao hieu.
+- Te hon: nhanh `catch` cua `fetchLiveWeight` **khong ha `isStable`**. `ingestRawWeight` khong he chay trong nhanh do nen `isStable` GIU NGUYEN gia tri cu. Mat mang dung luc can dang dung yen -> man hinh treo lai o "ON DINH" voi mot con so dong cung, con o DELTA thi van giu nguyen mau xanh "DAT". Va chinh co `stable` nay duoc gui len server lam dieu kien cho ghi (`weighFromQr` chan khi stable=false).
+- **Da sua 4 cho:**
+  1. `useScaleFeed` catch: ha `isStable = false`.
+  2. Tach **hai** bang canh bao khac nhau vi cach xu ly khac nhau: `MAT TIN HIEU CAN` (goi duoc backend, so cu -> kiem tra Agent/PuTTY/day can) va `MAT KET NOI MAY CHU` (khong goi duoc backend -> mang/server), bang thu hai noi ro "So da can KHONG mat, can lai duoc ngay khi co mang".
+  3. `deltaTone` tra `none` khi mat tin hieu - khong to xanh "DAT" cho mot con so khong con phan anh cai dia can.
+  4. Vien "ON DINH/CHO ON DINH" them trang thai rieng `MAT TIN HIEU`, va so DELTA lam mo di.
+
+**c) CHUA lam (can nguoi dung quyet dinh):** frontend khong co bat ky co che phat hien offline nao (`navigator.onLine`, su kien online/offline deu khong duoc dung o dau trong `frontend/src`), va SAVE **khong tu thu lai** - thao tac vien phai tu nhan ra va bam lai. Hang doi offline hien chi co o phia Local Agent (CLAUDE.md muc 5), khong co o phia trinh duyet.
+
+- **Kiem chung:** `vue-tsc` **0 loi**, `vite build` OK 16.62s. **CHUA thu ngat mang that** - can nguoi dung tu rut mang/tat backend de xac nhan hai bang canh bao hien dung.
+
+### 81. Hang doi SAVE trong localStorage - mat mang van can tiep, van in duoc, khong mat me nao
+
+- **Yeu cau (02/08/2026):** "hang doi SAVE trong localStorage, co mang thi tu day, kem idempotency_key... van co the in, khi an save roi thi no se nam trong hang cho, khi co mang thi day len".
+
+**a) Backend - chong ghi trung (`ScannerController::weighFromQr`)**
+- Nhan them `idempotency_key` (nullable, de client cu va goi tay van chay).
+- **Truoc** khi vao transaction: neu khoa da ton tai -> dung lai phieu tu du lieu da luu va tra **200 kem `reused: true`**, KHONG ghi them gi. Tra 200 chu khong phai loi la co y: voi hang doi thi day la ket qua DUNG (me da nam duoi DB), tra loi se khien no thu lai mai khong thoi.
+- Dong dau khoa **trong cung transaction** voi viec ghi so can - hoac ca hai cung co, hoac ca hai cung khong. Ghi khoa ngoai transaction se ho ke: lan gui lai thay khoa da ton tai trong khi so can da bi rollback mat.
+- **Ca hiem nhat can chan KHONG phai mat mang han**, ma la: request DA toi server va ghi xong, nhung phan hoi rot giua duong -> hang doi tuong that bai va gui lai.
+- Migration `2026_08_02_000001_add_idempotency_key_to_weighing_jobs` (nullable + unique, idempotent, co down() an toan). **CHUA CHAY tren DB production** - migration tren prod phai xac nhan rieng (`.claude/rules/database-safety.md` muc 7, khong nam trong allowlist deploy).
+
+**b) In duoc khi mat mang - `utils/weighSlip.ts` + tach ham thuan ben PHP**
+- Tach `WeighingJobController::buildSlipTspl()` thanh **ham thuan** (khong cham DB) khoi `buildAndStoreSlip()`. Nho vay moi doi chieu duoc hai ban ma khong ghi PrintJob nao xuong DB.
+- Port sang JS: dung phieu TSPL ngay tai trinh duyet tu du lieu dang co tren man hinh. Phai ban sao ca `number_format($x, 2)` (dau phay hang nghin) va `Carbon::format('d/m/Y H:i:s')` - **khong** dung `toLocaleString` vi ket qua doi theo ngon ngu may tram.
+- **Guard `frontend/scripts/check-weigh-slip.mjs`**: doi chieu TSPL **tung ky tu** giua hai ban, 7 ca (rack rong, so lon co dau phay hang nghin, so am, dau nhay kep phai bi bo, khong dong nao, 9 dong). **7/7 PASS.**
+
+**c) Hang doi - `services/saveQueue.ts`**
+- Xep hang **TRUOC** khi gui, khong phai sau khi gui hong: xep sau thi co ke ho - dong trinh duyet/mat dien dung luc request dang bay la me bay theo, khong con dau vet nao de gui lai.
+- **Loi MANG va loi NGHIEP VU xu ly khac nhau.** 4xx (tru 408/429) = payload sai, gui lai bao nhieu lan cung the -> danh dau ket, bo qua khi day hang doi, khong de mot me hong chan luon cac me sau. Mat mang/5xx -> giu lai thu tiep.
+- Day **tuan tu** chu khong song song: nhieu me co the tro ve cung mot lo, ma `handleOrderScan` co khoa chong hai may can chung mot vong - ban song song la tu tranh chap voi chinh minh.
+- Ba moc kich hoat chong len nhau: su kien `online`, nhip dinh ky 15s, va mot luot ngay khi mo man hinh. Su kien `online` KHONG bat duoc ca "co mang LAN ma may chu chet" nen van can nhip dinh ky.
+
+**d) Man hinh can**
+- SAVE -> xep hang -> gui thu ngay. Thanh cong: in phieu tu server roi xoa form (nhu cu). Mat mang: **in phieu do trinh duyet dung**, xoa form luon de tho quet me ke tiep - dung muc dich cua hang doi - va bao ro "me dang nam trong HANG DOI, dung xoa du lieu trinh duyet". Loi nghiep vu: **giu nguyen so tren man hinh** de tho sua.
+- Chi bao "N me cho gui" canh den tin hieu can (do khi co me ket), bang chi tiet co GUI NGAY / THU LAI / BO (bo phai xac nhan - me chua len server, bo la mat luon).
+- **Sua kem mot loi co san:** nut PRINT goi `/api/weighing-jobs/null/print-slip` voi me doc tu QR (id null) nen **luon 404** - tuc nut PRINT hong voi chinh luong chay chinh. Nay dung ban dung phieu cuc bo.
+- Luong "DF:ORDER:<uuid>" **khong** qua hang doi: vong can da co san duoi DB tu luc quet, va endpoint weigh-batch chua co khoa chong ghi trung. Giu nguyen hanh vi cu.
+
+- **Kiem chung:** `WeighFromQrIdempotencyTest` **4/4 PASS** (test quan trong nhat: gui 2 lan cung khoa -> moi dong chi co DUNG 1 ban ghi ScaleMeasurement). `WeighBatchTest` **15/15** khong vo. Tong **19 passed, 94 assertions** tren SQLite in-memory. `check-weigh-slip` 7/7, `check-process-color` 1229/1229, `check-qr-parser` 14/14. `vue-tsc` **0 loi**, `vite build` OK.
+- **CHUA thu tay tren trinh duyet** va **CHUA chay migration** - hai viec nay can nguoi dung.
+
+### 82. Da chay migration idempotency_key TREN DB PRODUCTION (nguoi dung xac nhan trong phien)
+
+- **Nguoi dung yeu cau ro trong phien (02/08/2026): "lam di"** — day la xac nhan bat buoc theo `.claude/rules/database-safety.md` muc 7 (migration KHONG nam trong allowlist deploy thuong quy).
+
+**Kiem tra TRUOC khi chay (deu chi doc):**
+- Xac nhan dang noi dung DB production: `production_web @ 10.0.60.209:5433`.
+- `migrate:status`: **chi DUNG MOT migration dang treo** la cai nay — khong co migration la nao di ke. Day la buoc quan trong nhat: `php artisan migrate` chay TAT CA migration treo chu khong rieng cai minh muon.
+- Quy mo: `weighing_jobs` **20 dong / 24 kB**, **0 khoa** dang giu tren bang -> them cot (can ACCESS EXCLUSIVE) chi khoa vai mili giay.
+- Ke hoach lui: thay doi la **chi THEM cot nullable**, khong dung vao dong du lieu nao; `down()` chi xoa dung cot vua them (dang rong) -> lui bang `migrate:rollback --step=1`, khong co kha nang mat du lieu. Khong dump toan bo DB vi khong tuong xung voi muc rui ro.
+- Chay **co gioi han pham vi**: `--path=database/migrations/2026_08_02_000001_...php` chu khong chay tran.
+
+**Ket qua:** `DONE 161.36ms`.
+
+**Kiem chung SAU khi chay (chi doc):**
+- Cot: `character varying(100)`, `nullable: YES` — dung thiet ke.
+- Index: `weighing_jobs_idempotency_key_unique` (UNIQUE btree). **Day moi la thu thuc su chan ghi trung** — khong co index nay thi ca co che chi la trang tri.
+- Du lieu cu nguyen ven: **20 dong truoc = 20 dong sau**, 0 dong co idempotency_key (dung, cot moi).
+- Smoke test `POST /api/scanner/weigh-from-qr` -> **401** (app boot sach, route dung cho, middleware auth chay).
+
+- **Con lai cho nguoi dung:** thu ngat mang + SAVE tren trinh duyet that. CHUA ai chay duong ghi that qua endpoint nay tren DB production.
+
+### 83. SAVE in phieu NGAY tu du lieu tren man hinh, khong cho vong mang nao
+
+- **Yeu cau (02/08/2026):** "khi an save tem ma in ra lay nhung cai dang dung hien thi o tren web de in off luon".
+- **Truoc do:** mac du da dung san phieu cuc bo, luong SAVE van **cho `axios.post` tra ve** roi moi in, va uu tien phieu server tra ve. Tuc van cho tron mot vong mang chi de lay ve dung thu minh da co san — chinh cho tho tung keu "bam SAVE xong cho mai tem moi hien".
+- **Nay:** in NGAY sau khi mo cua so, TRUOC khi cham mang. An toan vi ban dung cua trinh duyet da duoc doi chieu TUNG KY TU voi ban server (`check-weigh-slip.mjs`, 7/7). `window.print()` chan trong cua so CON nen request van bay di binh thuong trong luc hop thoai in dang mo.
+
+**Hai he qua phai xu ly, khong bo lo:**
+
+1. **Moc gio in.** Trinh duyet in bang dong ho may tram; neu de server tu lay gio cua no thi ban ghi `print_jobs` mang mot moc khac voi to phieu dang nam tren hang — mat kha nang doi chieu, dung thu ma ban ghi do sinh ra de lam. Nay chot moc MOT LAN o trinh duyet (`nowSlipTimestamp()`), gui kem `printed_at` len server, xuyen qua `buildSlipForJob -> buildAndStoreSlip -> buildSlipTspl`. Khong gui thi server tu lay gio minh nhu cu.
+
+2. **Loi nghiep vu (4xx) sau khi DA in.** Truoc day nhanh nay `boQua()` (xoa khoi hang doi) va giu nguyen man hinh. Gio phieu da ra giay roi, xoa khoi hang doi se de lai **mot to phieu tren hang ma trong may khong con dau vet nao**. Doi thanh `danhDauKet()`: ngung tu gui lai nhung GIU trong hang doi, hien chi bao do, tho mo bang ra xem/xu ly. Man hinh van xoa trang de quet me ke tiep — khong mat gi vi moi thu deu nam trong hang doi.
+
+- Ket qua: bam SAVE -> phieu hien ra ngay, form trang ngay, quet me ke tiep duoc ngay. Ket qua gui len server (thanh cong / cho mang / bi tu choi) deu hien qua chi bao hang doi chu khong chan tho lai.
+
+- **Kiem chung:** them 2 test — `printed_at` tu trinh duyet phai xuat hien trong phieu server luu, va khong gui thi van co moc gio hop le. `WeighFromQrIdempotencyTest` **6/6**, tong voi `WeighBatchTest` la **21 passed, 98 assertions**. `check-weigh-slip` 7/7. `vue-tsc` **0 loi**, `vite build` OK 17.01s.
+- **CHUA thu tay tren trinh duyet.**
+
+### 84. Da bam SAVE thi BAT BUOC phai gui — bo duong vut me, va go cai bay ket vinh vien di kem
+
+- **Yeu cau (02/08/2026):** "1 me o hang cho k bo duoc, bat buoc phai gui khi da an save".
+- **Sua truc tiep:** bo nut **BO** khoi bang hang doi va bo ham `onBoMe`. `saveQueue.boQua()` doi ten thanh **`danhDauDaGui()`** — ten moi noi dung viec no lam va **la duong DUY NHAT** mot me roi hang doi: chi goi sau khi cam trong tay phan hoi 2xx that. Ghi thanh dieu kien 3 o dau file (truoc co 3, nay 4).
+
+**Nhung neu chi lam bay nhieu thi tao ra mot cai bay CHET — 2 thu bat buoc phai sua kem:**
+
+1. **Co `stable` gui len la co SAI.** `onSave` gui `stable: isStable.value` — do la co SONG cua lan doc **ngay luc nay**, tra loi cau hoi "cai can LUC NAY co dung yen khong". Server hoi mot cau khac: "may con so trong goi nay co phai so da dung yen khong". O man V2 hai thu cach nhau HANG PHUT vi can ca me xong moi SAVE mot lan.
+   - **Bay that, tren duong thuong:** bam NEXT xong bam SAVE luon thi `resetTareForNewSlot()` vua ha `isStable = false`; hoac mat mang thi `fetchLiveWeight()` catch cung ha no xuong — **ma mat mang chinh la luc hang doi duoc dung**. Me vao hang doi voi `stable=false` se an **422 NOT_STABLE mai mai**, gui lai bao nhieu lan cung the. Truoc day escape la nut BO; bo nut BO ma khong sua cho nay = ket vinh vien kem mot to phieu da in.
+   - **Sua:** gui `stable: true` cho nhanh QR. **Dung theo cau tao, khong phai noi lieu:** `capturedWeights` chi nhan `liveWeight`, ma `liveWeight` chi nhuc nhich sau `if (!stable) return` trong `ingestRawWeight`; bi cung chi chot tu lan doc on dinh, khong co bi thi khong chot duoc so nao. O khong can gui `weight = null` va bi gan KHONG DAT, khong phai so rac. Tuc **weight khac null <=> da chot tu mot lan doc on dinh**.
+   - Cong chan `NOT_STABLE` phia server **giu nguyen** (test `rejected when stable false` van pass) — chi doi thu ma client V2 gui len.
+
+2. **Tu bo cuoc sau 20 lan hong mang.** `MAX_LAN_THU = 20` danh dau me thanh "ket" sau 20 lan gui hong, tuc **chi 5 phut mat mang** (nhip 15s) la ngung tu gui va bat nguoi bam tay tung me. Mang xuong chet nua tieng hay khoi dong lai server la dinh — mau thuan thang voi "bat buoc phai gui". **Bo han nguong nay:** loi mang chi dem `so_lan_thu`, khong bao gio dat `loi_nghiep_vu`. Khong ton gi: `dayHangDoi` dung ca luot ngay lan hong dau nen tong cong van chi **mot request moi 15s** du hang doi co bao nhieu me. Tu nay `loi_nghiep_vu` chi con nghia "server tra loi tu choi", khong con nghia "thu nhieu qua".
+
+- **`tatTuDay()` nay co dieu kien:** roi man hinh can ma hang doi con me thi **khong tat nhip tu day**. Truoc day `onUnmounted` tat han -> me nam im cho toi lan sau co nguoi mo dung man hinh can. Hang doi rong thi moi 15s no chi so hai con so roi thoi.
+- **DA CAN NHAC VA BO** chan `beforeunload` khi hang doi con me: `main.ts` bat 401 bang `authStore.logout()` + `window.location.reload()`, nen phien het han se bung hop thoai "roi trang?" ma tho khong he bam gi — bam Huy con ket lai o trang da dang xuat. Dong tab KHONG mat me (localStorage con nguyen, da ra soat: ca frontend khong co `localStorage.clear()` nao, chi `removeItem` dung khoa, khong dung toi `df_ws2_save_queue_v1`) va nhip tu day van song khi roi man hinh — doi lay mot hop thoai doa nguoi la lo.
+- **Duong thoat cho me bi server tu choi that:** nut **THU LAI**. Cac nguyen nhan 4xx thuc te deu sua duoc roi thu lai (401 het phien -> dang nhap lai; 403 thieu quyen tram -> admin cap; khoa lo -> doi tram kia nha), khong con cai nao vinh vien sau khi da go bay `stable` o tren.
+- **Kiem chung:** `vue-tsc` **0 loi**, `vite build` OK 17.79s, `WeighFromQrIdempotencyTest` + `WeighBatchTest` **21 passed (98 assertions)**, 3 script guard 7/7 + 1229/1229 + 14/14. Ra soat sach: khong con `boQua`/`MAX_LAN_THU`/`onBoMe` o dau.
+- **CHUA thu tay tren trinh duyet.**
+
+### 85. Ping dinh ky — thong thi moi day me len
+
+- **Yeu cau (02/08/2026):** "toi muon co ping dinh ki, khi ma thong thi day".
+- **Truoc do:** nhip 15s nem thang ca me (goi vai KB) ra duong roi ngoi cho het gio. Mat mang la lap lai mai.
+- **Nay:** `GET /api/ping` (route moi, `routes/api.php`) tra `{"status":"OK"}`, nhip 15s goi `thuDay()`: ping truoc, **thong moi day**. Su kien `online` cua trinh duyet cung di qua `thuDay` chu khong day thang — trinh duyet chi biet card mang da len, no khong biet server da voi toi duoc chua.
+
+**Ba quyet dinh dang ghi lai:**
+
+1. **Route ping CO Y de NGOAI middleware auth.** Phien het han cung phai ping duoc, neu khong "mat mang" va "het phien" nhin giong het nhau. Quan trong hon: 401 se kich hoat interceptor o `main.ts` -> `logout()` + `window.location.reload()` — mot nhip chay ngam se **tu da tho ra khoi man hinh can giua luc dang can**. Da chot bang test `test_ping_answers_without_authentication`.
+   - Ping cung **khong cham DB**: cau hoi la "web con song khong", khong phai "DB con song khong". Bat no truy van DB thi moi tram can mat mang se nen them mot truy van moi 15 giay.
+
+2. **BAT KY ma HTTP nao cung la THONG, ke ca 404/500.** Co ma tra ve nghia la goi tin da di toi noi va co thu gi do tra loi — dung cai can biet. **Khong phai chuyen vun:** server chua deploy route `/api/ping` se tra 404; coi 404 la tac thi hang doi dung im vinh vien tren dung nhung tram can no nhat. Chi khi KHONG co phan hoi nao moi la tac. Da kiem chung that: goi `/api/ping-chua-deploy` -> co phan hoi HTTP 404.
+
+3. **Timeout ping 8 giay la DO DUOC, khong phai doan.** Ban dau dat 4s. Do that tren backend dang chay: luc nong **~25ms**, nhung lan goi dau sau khi server nam im **2.1s**, va lan dau tien sau khoi dong **4.2s** (PHP dung lai tien trinh + bootstrap Laravel). De 4s la thinh thoang bao "mat ket noi" trong khi server song nguyen.
+
+- **Them timeout 20s cho chinh lenh gui me** (truoc do khong co -> mang nua song nua chet co the treo hang phut, ma treo la `flushing` ket bat, chan luon moi nhip sau). **Cat ngang KHONG so mat me:** neu request that ra da toi server va ghi xong thi lan gui lai mang dung `idempotency_key` cu, server nhan ra va tra ban da ghi (`reused=true`) — dung cai co che muc 82 dung ra de lam.
+- **Chi bao cho tho:** them `duongThong` (ref). Chip hien "mat ket noi", bang hang doi hien "mat ket noi — dang do lai moi 15 giay" thay vi "dang cho mang" chung chung. Phan biet duoc 2 tinh huong nhin giong het nhau ma cach xu ly khac han: mat mang thi dung doi la xong, con me bi may chu che thi phai goi nguoi. `guiMot` cung cap nhat co nay (cung quy tac "co ma HTTP la thong") de nut GUI NGAY bam tay — di thang khong qua ping — van hien dung.
+- **Kiem chung:** `php -l` sach, `route:list --path=ping` co dung 1 route, goi that khong dang nhap -> **HTTP 200**. `vue-tsc` **0 loi**, `vite build` OK 23.08s, test **22 passed (100 assertions)**.
+- **CHUA thu tay tren trinh duyet.**
+
+### 86. "Co 1 me cho gui nhung khong thay day" — hang doi DUNG IM HOAN TOAN khi chi con me bi tu choi
+
+- **Nguoi dung bao (02/08/2026):** "co 1 the cho gui nhung van chua thay day".
+- **Nguyen nhan (doc thang code, khong doan):** me bi danh dau `loi_nghiep_vu` thi **hai cong cung dong lai**:
+  - `thuDay()` co cong `queueCount <= stuckCount` -> con dung 1 me va me do bi tu choi thi `1 <= 1` -> **thoat ngay, khong ping, khong day**.
+  - `dayHangDoi()` loc `.filter(i => !i.loi_nghiep_vu)` -> danh sach rong -> vong lap khong chay lan nao.
+  - **Hau qua: bam ca nut GUI NGAY cung khong xay ra gi**, khong co dau hieu nao cho biet vi sao. Chip van hien "1 me cho gui" nhu binh thuong.
+- **Day la loi thiet ke cua chinh muc 84**, khong phai loi moi: bo nut BO nhung van giu nguyen co che "4xx thi ngung tu gui" — thanh ra me khong bo duoc MA cung khong gui duoc.
+
+**Ba sua:**
+
+1. **KHONG BAO GIO ngung thu lai, du loi loai nao.** Bo `.filter(i => !i.loi_nghiep_vu)` trong `dayHangDoi`. Ly do ban dau ("4xx thi gui lai bao nhieu lan cung the") **SAI voi thuc te o day**: phan lon 4xx tu khoi khi nguoi ta sua nguyen nhan — 401 het phien (dang nhap lai), 403 thieu quyen tram (admin cap), khoa lo (tram kia nha). Loc bo nghia la bat tho nho quay lai bam THU LAI dung luc; quen la me nam do vinh vien. `loi_nghiep_vu` tu nay chi de HIEN cho nguoi doc, khong con la co dung. Khong ton gi: da co ping chan nen chi chay khi duong thong, va me hong that thi `continue` chu khong `break` nen khong chan me phia sau.
+2. **Cong `thuDay` doi thanh `queueCount === 0`.**
+3. **`vaMeCu()` — va payload da dong bang trong localStorage.** Me xep hang boi ban code CU mang theo `stable: false` (cai bay da mo ta o muc 84). Sua code chi cuu duoc me MOI; me da nam trong localStorage van an 422 NOT_STABLE mai mai, **ma gio khong bo me duoc nua**. `batTuDay()` nay quet hang doi, thay `payload.stable === false` thi dat lai `true` va xoa `loi_nghiep_vu` cu. **Va la DUNG chu khong phai lach:** moi `weight` khac null trong payload deu da chot tu mot lan doc on dinh (`capturedWeights` chi nhan `liveWeight`, ma `liveWeight` chi nhuc nhich sau `if (!stable) return`) — cai sai nam o co, khong nam o so.
+
+- **Don dep kem:** header file danh so sai (hai muc cung so 3), dieu kien 2 viet nguoc voi hanh vi moi — da viet lai ca bon. Chu tren man hinh doi theo: bang hang doi hien "*(van dang tu gui lai moi 15 giay)*" canh loi, tooltip chip bo chu "bi ket".
+- **LUU Y VAN HANH:** `vaMeCu()` chay trong `onMounted` -> **phai tai lai trang** (F5) thi me dang ket moi duoc va. HMR khong chay lai `onMounted`.
+- **Kiem chung:** `vue-tsc` **0 loi**, `vite build` OK 46.84s. **Nguyen nhan goc cua rieng me dang ket tren may nguoi dung thi CHUA xac minh** — co che thi da doc thang code va chac chan, nhung ly do me do bi tu choi la suy luan. Xem bang `JSON.parse(localStorage.getItem('df_ws2_save_queue_v1'))` trong Console.
+
+### 87. Gia lap khong can duoc — so go vao bi an lam BI, o DELTA hien 0.00 mai
+
+- **Nguoi dung bao (02/08/2026):** "toi dang dung gia lap, nhu can khong duoc, no cu bi nha ve 0.0 o cac cai can can".
+- **Loi that, khong phai dung sai. NGUYEN NHAN GOC chi co MOT: gia lap chi nap so khi gia tri DOI.** `fetchLiveWeight` `return` thang khi dang gia lap, nen nguon duy nhat la `watch(simulatedWeight)` — ma watch chi chay khi gia tri thay doi. Hau qua day chuyen:
+  - Bam NEXT -> `resetTareForNewSlot()` dat `tareBaseline = null`, cho "lan doc on dinh dau tien" lam bi (`Delta_Begin` cua VBA). Nhung **khong co lan doc nao ca** — khong ai ban so vao.
+  - Go so thu nhat -> watch chay -> so do bi an lam BI, `net = raw - bi = 0` -> o DELTA hien **0.00**.
+  - Go lai dung so cu -> watch khong chay -> man hinh dung im. Nhin y het "can khong duoc".
+- **Sua:** nhanh gia lap trong `fetchLiveWeight` nay nap lai `simulatedWeight` moi nhip, dung nhu cai can that ban so lien tuc. Van khong hoi Agent (dang gia lap thi so that phai bi bo qua hoan toan — bai hoc V1 ghi o dau `useSimValue`). Giu `watch(simulatedWeight)` de go xong thay doi tuc thi thay vi doi het mot nhip 200ms.
+- **MOT BUOC SAI DA TU SUA TRONG PHIEN:** ban dau con them nhanh rieng cho gia lap trong `resetTareForNewSlot()` — chot `tareBaseline = 0` de "so go vao chinh la so can duoc". **Nguoi dung bat ngay:** *"khi an next thi phai can lai tu 0 chu, mac du la can tiep"*. Dung — vat tu o truoc VAN NAM tren dia, nen bi phai chot bang so DANG CO tren can luc bam NEXT thi o moi moi dem dung phan do them. Dat cung bi = 0 la bien so go vao thanh so can luon, tuc bo mat chinh cai hanh vi dang can thu. **Da go bo nhanh do** — gia lap nay chay y het can that, khong con biet le nao. Bai hoc: sua cho A thi dung vien mot ngoai le o B, cai `return` thieu o `fetchLiveWeight` moi la loi that.
+- **Luong dung sau khi sua:** bam NEXT -> trong 200ms bi tu chot = so dang go, o DELTA ve **0.00**; go so lon hon (vi du 12.5 -> 20.8) -> hien **8.3**, dung phan vua do them; bam NEXT -> chot 8.3 vao o va sang o ke, lai ve 0.00.
+- **Kiem chung:** `vue-tsc` **0 loi**, `vite build` OK 25.35s. **CHUA thu tay tren trinh duyet.**
+
+### 88. Gia lap: so nhay ve 0.0 khi go dau thap phan, va F5 luon bao "dia can da thay doi"
+
+Hai bao loi tiep theo cua nguoi dung sau muc 87, deu la loi that.
+
+**A. "khi toi dien gia lap so cu bi nhay nhay ve 0.0"**
+
+- **Nguyen nhan:** `<input type="number">` tra ve **CHUOI RONG** o moi trang thai go do — go `12.` la trinh duyet coi chua hop le. `v-model.number` day chuoi rong do vao `simulatedWeight`, roi `ingestRawWeight('')` -> JS tinh `'' - bi` ra SO chu khong ra loi (`'' - 0 === 0`) -> o DELTA nhay ve 0.00. Cu go toi dau cham thap phan la nhay mot cai.
+- **Sua:** chan ngay dau `ingestRawWeight`: `if (!Number.isFinite(raw)) return;` — bo qua so rac, GIU NGUYEN so dang hien, dung nhu cai can that giu mat so khi khong doc duoc gi moi.
+- **Bat duoc them mot loi co san:** duong can THAT cung di qua cong nay — `parseFloat(res.data.weight)` ra NaN khi Agent day len chuoi hong, truoc day NaN chay thang vao `liveWeight` va mat so hien "NaN". Nay cung bi chan.
+
+**B. "khi toi f5 lai thi tiep tuc can cai toi da an next"**
+
+- **Nguyen nhan:** `useSimValue` la ref thuong, **khong song qua F5**. Tai lai trang xong gia lap TU TAT, man hinh quay ve doc can that (so 0 hoac mat tin hieu). Ma co che noi lai o dang can do (`pendingResume`) lai so `grossWeight` hien tai voi `grossAtSave` da luu — mot ben la so gia lap, mot ben la so cua can that -> **lech, lan nao F5 cung an "Dia can da thay doi trong luc tai lai trang"**.
+- **Sua:** luu `useSim` + `simWeight` vao `df_ws2_session_v1`, va khoi phuc chung trong `khoiPhucGiaLap(saved)` — goi **TRUOC** khi dat `pendingResume` o ca hai nhanh (QR va token). Thu tu la bat buoc: khong dung lai nguon so gia lap truoc thi nhip poll dau tien nap so cua can that va phep so luon lech.
+- Da kiem tra `onNext` khong co loi thu tu: `captureCurrentSlot()` -> tang `currentIndex` -> `saveSession()`, nen phien luu dung O MOI. Sau F5 quay lai dung o dang can do la **hanh vi thiet ke** (muc 69), khong phai bug.
+- **Kiem chung:** `vue-tsc` **0 loi**, `vite build` OK 19.96s. **CHUA thu tay tren trinh duyet.**
+
+### 89. Giam tai nhip poll cua /weighing-station-v2 — 9 truy van DB moi 200ms
+
+- **Nguoi dung hoi:** "co gop y gi cho toi de chay muot hon nua khong".
+- **Do bang cach doc dung duong code** cua `GET /api/devices/readings/{id}?local=1`:
+
+| Cho | Truy van |
+|---|---|
+| Sanctum auth | 2 (`personal_access_tokens` + `users`) |
+| `resolveReadingKey` tra id -> ma tram | 1 (`operation_clients`) |
+| `readCacheSlot(ma tram)` | 3 |
+| `readCacheSlot(theo IP may)` | 3 |
+
+  **= 9 truy van x 5 lan/giay = ~45 truy van/giay cho MOI tram can.** 6 truy van cache la do `.env` de **`CACHE_STORE=database`** — moi `Cache::get` di thang xuong PostgreSQL. Agent day so len con nang hon: `storeReading` goi **7 `Cache::put`** moi lan doc can.
+- **Tren may dev day chinh la thu lam no i:** DB o 10.0.60.209, moi truy van ~20ms (da do o muc 68) -> 9 x 20 = **~180ms** trong khi nhip poll la 200ms, gan nhu bao hoa. Tren CS-SERVER DB nam cung may (~1ms) nen nguoi dung khong thay, nhung van la 45 truy van/giay/tram nen vao mot bang `cache` duy nhat.
+
+**DA LAM (nguoi dung chon 2 + 4):**
+
+2. **`Cache::many()` thay 3 lan `Cache::get`** trong `readCacheSlot`. Da **doc thang vendor** de xac minh chu khong tin suong: `Illuminate\Cache\DatabaseStore::many()` (dong 125) gom thanh MOT `whereIn('key', ...)`. **6 truy van xuong 2.** Khong doi dinh dang luu -> KHONG can deploy dong bo voi Agent, Agent van ghi 3 khoa roi nhu cu.
+   - **Bay da chan:** `many()` tra `null` cho khoa trong, KHONG nhan gia tri mac dinh nhu `Cache::get($key, false)`. Quen bu `?? false` thi `is_stable` ra `null` — trinh duyet `Boolean(null)` van ra false nen nhin thi "van chay", nhung kieu du lieu trong phan hoi da sai va bat ky cho nao so `=== false` se hong am tham. Da chot bang test rieng.
+4. **Ngung poll khi tab bi an** (`visibilitychange` + `document.hidden`). Gop chung vao `capNhatNhipPoll()` de ca `watch(dangCan)` lan su kien hien/an di qua mot cho. Hien lai thi doc so NGAY roi moi vao nhip, khong doi toi nhip ke. An toan vi khong co thao tac can nao xay ra khi trang bi an (khong bam duoc NEXT, khong quet duoc ma). **KHONG dung toi nhip hang doi** (`batTuDay`) — me chua gui van phai duoc day len ke ca khi tho da chuyen cua so khac.
+
+- **Test moi `ScaleReadingCacheTest` (4 test):** doc dung so trong cache; **cache rong -> `is_stable` phai la `false` dung kieu bool, khong duoc null** (dung ca `many()` khac `get()`); so het han nhung moc thoi gian con -> van bao duoc `age_ms` (thu ma man hinh dung de bao MAT TIN HIEU CAN); `?local=1` -> can o chinh may thang ma tram cau hinh san.
+- **Kiem chung:** `php -l` sach, `vue-tsc` **0 loi**, `vite build` OK 17.54s, **26 passed (116 assertions)**.
+
+**CHUA LAM — de nguoi dung quyet:**
+
+1. **`CACHE_STORE=database` -> `file`** (config server). Bo duoc 6/9 truy van doc VA ca 7 lan ghi cua Agent. Khong sua dong code nao. CS-SERVER chay tat ca tren mot may nen file cache la du dung. **Day van la don bay lon nhat**, muc 2 chi go duoc mot phan. Doi xong nho `config:clear`; cache so can TTL 15s nen mat cache khong anh huong gi.
+3. **Bo truy van tra id -> ma tram.** Frontend dang gui `id`; gui thang `code` thi `resolveReadingKey` tra ve ngay, khoi truy van. **CHUA xac minh** Agent ghi cache theo ma tram hay theo id — phai kiem truoc khi doi.
+5. **Thay poll bang SSE** (ADR-008 da chot SSE cho realtime, du an da co Transactional Outbox). Do moi la cach bo han 45 truy van/giay. Dang Phase 12 UAT nen khong dong vao kien truc.
+- **Khong phai van de:** canh bao chunk >500kB luc build — router da lazy-load du 30 route, canh bao do den tu thu vien khac chu khong phai trang nay.
+
+### 90. Lam not muc 1 + 3: 9 truy van/lan poll xuong con 2. Va DINH CHINH muc 5 — SSE la khuyen nghi SAI
+
+**1. `CACHE_STORE=database` -> `file`** (`backend/.env`, da `config:clear`).
+
+- Da ra soat truoc khi doi: **khong co `Cache::lock` hay `Cache::tags` nao** trong `app/` — file store khong ho tro tags nen day la dieu kien bat buoc phai kiem.
+- File store la CUC BO TUNG MAY, nhung dung o day: ca ghi (Agent POST -> `storeReading`) lan doc (trinh duyet GET -> `getReading`) deu chay trong tien trinh backend tren CUNG mot may CS-SERVER.
+- **Kiem chung that** bang tinker: put 3 khoa roi `Cache::many` doc lai -> `{"..._WSKT":12.34,"..._stable_WSKT":true,"..._timestamp_WSKT":1785663207.33,"..._KHONG_CO":null}`. Ket qua cuoi cung xac nhan dung cai bay da chan o muc 89: khoa trong tra `null`.
+- **`.env` nam trong `backend/.gitignore`** -> sua o day CHI doi may dev. **CS-SERVER phai tu doi**, khong deploy kem duoc.
+- Test khong bi anh huong: `phpunit.xml` ep `CACHE_STORE=array`.
+
+**3. Frontend gui MA tram thay vi id.**
+
+- **Da xac minh truoc khi doi** (muc 89 con ghi la chua): `storeReading` ghi cache bang dung chuoi `workstation_id` Agent gui len — mot MA (vi du "WS-WEIGH-SCALE"), khong phai so. `resolveReadingKey` chi tra DB khi tham so la so, de doi id -> `OperationClient.code`. Vay gui thang ma la trung dung khoa do, bot 1 truy van, ket qua khong doi.
+- Khong co rui ro thu tu deploy: backend nhan ca hai dang, frontend moi chay duoc voi backend cu.
+- Co `encodeURIComponent` + lui ve `id` khi tram chua co ma.
+
+**Ket qua don:**
+
+| | Truoc hom nay | Sau muc 2 | Sau muc 1+3 |
+|---|---|---|---|
+| Truy van DB / lan poll | 9 | 5 | **2** (chi con Sanctum auth) |
+| Ghi DB moi lan Agent doc can | 7 | 7 | **0** |
+
+**DINH CHINH — muc 5 (SSE) la khuyen nghi SAI, da rut lai:**
+
+- O muc 89 toi de xuat "thay poll bang SSE" va vien dan ADR-008. **Toi da khong doc phan cap nhat 2026-07-30 cua chinh ADR do:** SSE gốc (`/api/realtime/stream`, vong lap `while(true)`) **da duoc lam va da gay treo TOAN BO server** — `php artisan serve` tren Windows khong co concurrency that (khong `fork()`), chi mot tab mo Dashboard la chiem request-handling thread vinh vien.
+- SSE da bi thay bang **Laravel Reverb** (WebSocket, tu host), dang chay san: task `DFWeb-Reverb`, `frontend/src/services/echo.ts`, `app/Events/RealtimeEventBroadcast.php`, `BROADCAST_CONNECTION=reverb`.
+- Lam theo dung loi toi noi la dung lai su co thang truoc. **Ban dung cua muc 5 la phat so can qua Reverb** — ha tang co san nen re hon tuong, nhung khac han ve rui ro: `storeReading` phai goi Reverb moi lan Agent day so (vai lan/giay), can kenh rieng tung tram, va **Reverb chet la man hinh can mat so** trong khi poll hien tai tu lanh. Phai giu poll lam du phong (dung ADR-010).
+- **CHUA LAM, dung lai hoi nguoi dung** — cai ho duyet (SSE) khong ton tai nhu mot lua chon.
+- **Bai hoc:** `.claude/architecture-decisions.md` co ADR da bi thay the nhung TIEU DE van giu nguyen ten cu ("ADR-008: Lua chon SSE..."), phan bac bo nam o muc con ben duoi. Doc tieu de roi trich dan la sai. Lan sau doc het ca muc truoc khi vien dan bat ky ADR nao.
+- **Kiem chung:** `config:clear` OK, `cache.default = file`, `vue-tsc` **0 loi**, `vite build` OK 17.09s, **26 passed (116 assertions)**.
+
+### 91. CAN TAY — can khong quet don van luu duoc
+
+- **Yeu cau (02/08/2026):** "khi k quet QR ma can khong van co the luu binh thuong". Nguoi dung chon phuong an: **"van in phieu binh thuong, cai gi trong thi trong, van luu DB binh thuong"**.
+- **Truoc do:** khong quet don thi `activeJob` null -> `jobItems` rong -> `rows` rong -> SAVE bao "Khong co dong nao de luu". Man hinh con ghi thang "khong co gi duoc luu".
+
+**Rang buoc luoc do buoc phai xu ly (da tra migration truoc khi thiet ke):**
+
+- `weighing_jobs.production_batch_id` **NOT NULL** + khoa ngoai -> phai co mot lo.
+- `production_batches.color` / `product_code` / `machine_id` / `level_code` **deu nullable** -> de TRONG duoc, dung y nguoi dung, khong phai bia.
+- `weighing_job_items.material_code` **NOT NULL** + khoa ngoai toi `materials.code`, va `planned_weight` **NOT NULL** -> hai cho nay khong the trong.
+
+**Cach lam:**
+
+- Lo: `legacy_batch_id = 'CANTAY-<YmdHis>-<4 ky tu>'`, color/product_code/machine_id/level_code **NULL**. Bao cao tieu hao/dung sai/san luong phai LOAI cac lo nay — nhan dien qua tien to `CANTAY-`, cung cach dang dung cho `ADHOC-`.
+- Dong: `material_code = 'CANTAY'` (ma moi, `Material::firstOrCreate` 1 lan), `planned_weight = 0`, dung sai 0.
+- **`process_status` tra `'MANUAL'`** cho dong mang ma moi nay. Neu khong, `planned_weight = 0` se cho ra REJECTED — **gan "khong dat" cho mot con so khong co gi de doi chieu la noi SAI**, khac han voi de trong. Nhan qua `material_code` chu KHONG qua `planned_weight <= 0`: ma moi chi dong can tay moi co, nen **khong ban ghi cu nao bi doi nhan** (dong QR muc tieu 0 do tem hong van giu nguyen REJECTED nhu truoc).
+- **Di CHUNG endpoint `weigh-from-qr`** (`manual=true`, `raw_qr` doi thanh `required_without:manual`) chu khong tach endpoint rieng: in ngay, hang doi, chong ghi trung, xoa form — tat ca dung y het. Tach ra la co hai bo ngu nghia hang doi phai giu dong bo voi nhau.
+- **Kiem chong ghi trung chuyen len TRUOC khi re nhanh.** O can tay hau qua con nang hon me QR: moi lan gui lai tao MOT lo moi toanh, khong co gi trung de ma dung nhau — khong co khoa thi ghi trung bao nhieu lan cung lot.
+- Dong chua can thi KHONG tao item (khac me theo don: don quy dinh san phai can nhung gi nen phai ghi ca o bo trong; can tay khong co danh sach nao de ma thieu). Khong co dong nao da can -> tra 422, khong de lo rong.
+- Frontend: them `manualRacks` (o RACK cua dong trong truoc day go xong roi vao hu khong vi `onUpdateRack` ghi vao `jobItems[idx]` khong ton tai), nhanh `canTay` trong `onSave`, `dungPhieuCanTay()`, doi lai dong chu tren man hinh.
+
+**Kiem chung:**
+
+- **Them ca "can tay" vao bo doi chieu JS<->PHP** (`check-weigh-slip.mjs`): dau phieu trong tron, nhan MANUAL, va dong can tay CHUA co so cai phai ra MANUAL chu khong phai REJECTED — chot dung THU TU cac nhanh. **Bo doi chieu bat duoc ngay mot troi dat that:** `processStatus` ban JS chua biet nhan MANUAL. Da bo sung + hang so `MANUAL_MATERIAL_CODE` dung chung. **8/8 pass**, hai ban ra CUNG mot chuoi.
+- 5 test backend moi: luu duoc khong can QR + lo de trong dung cho; khong dong nao bi gan KHONG DAT; van co phieu voi dau phieu trong; gui lai khong de them lo; chua can gi thi choi 422 va khong tao lo rong.
+- `php -l` sach, `vue-tsc` **0 loi**, `vite build` OK 16.80s, **31 passed (138 assertions)**, guard 8/8 + 14/14 + 1229/1229.
+
+- **CHUA thu tay tren trinh duyet.**
+
+### 92. Can tay: song qua F5, va tach han khoi moi thong ke san xuat
+
+Hai viec con thieu o muc 91, nguoi dung yeu cau lam not: *"van can tiep duoc tru khi an clean"* va *"them phan danh dau rang cai nay, k lien quan den cai quet don"*.
+
+**A. Me can tay song qua F5**
+
+- `saveSession()` bo dieu kien `!activeJob` (truoc day thoat ngay -> can tay do dang ma F5 la mat sach). Thay bang dieu kien "co gi do dang de giu" (`activeJob` HOAC da bam NEXT HOAC da chot o nao) — khong co thi khong ghi, tranh moi lan can dung yen lai ghi mot ban rong vao localStorage.
+- Luu them `canTay: true` (danh dau tuong minh, khong de `restoreSession` suy ra tu cho thieu jobId/rawQr — suy ra thi khong phan biet duoc voi mot ban ghi hong) va `manualRacks`.
+- `restoreSession` them nhanh `canTay`: dung lai so da can + rack + gia lap, roi noi lai o dang can do bang dung co che `pendingResume` nhu me theo don.
+- `watch([isStable, grossWeight])` ghi moc `grossAtSave` bo dieu kien `activeJob` — khong bo thi can tay khong co moc nao de doi chieu, F5 xong khong noi lai duoc.
+- CLEAR/SAVE van `clearSession()` nhu cu -> dung yeu cau "tru khi an clean".
+
+- **BAT DUOC MOT LOI CODE CHET CUA CHINH MUC 91:** o RACK trong `VbaRackGrid` co `v-if="items[idx]"` — dong khong co vat tu **khong he render o nhap**. Nghia la `manualRacks` + `onUpdateRack` them o muc 91 khong bao gio chay duoc, can tay khong co cach nao go ma rack. Da them prop `manualRacks` + `allowManualRack` va render o nhap cho dong trong KHI dang can tay. Dong trong nam DUOI mot don da quet thi van khoa — SAVE cua me theo don khong gui chung di, cho go vao do chi tao cam giac da ghi duoc cai gi do.
+
+**B. Tach can tay khoi moi thong ke san xuat**
+
+- `ProductionBatch::MANUAL_BATCH_PREFIX` + scope **`khongPhaiCanTay()`** — mot cho dung chung, thay vi rai dieu kien khap noi.
+- **Phan biet ro voi tien to `ADHOC-`, va CO Y khong loc ADHOC:** lo ADHOC **den tu mot tem QR that** (chi la chua khop lo nao trong Web) nen no van la viec san xuat va van phai nam trong bao cao. Lo CANTAY thi khong lien quan gi toi quet don — dung nhu nguoi dung dien dat.
+- **Ap o 7 cho, khong chi bao cao** (ra soat moi noi liet ke `ProductionBatch`): `DashboardController` (4 cho: tong quan, hang cho can, may nhuom, 2 so dem), `ProductionBatchController::index`, `ReportController` (tieu hao + dung sai). De lot vao Dashboard la bang dieu khien day nhung dong trong tron.
+  - `ReportController::machineOutput` **khong can sua**: no `join('machines', 'mac.id', '=', 'pb.machine_id')` ma lo can tay co `machine_id` NULL -> inner join tu loai; va no bat dau tu `feed_operations` ma can tay khong bao gio tao.
+  - Bao cao dung query builder tran nen scope cua model khong ap duoc -> co ban viet tay `ReportController::loaiCanTay()`.
+- **BAY DA CHAN, viet vao ca hai ban:** phai viet dang "`legacy_batch_id` NULL **HOAC** not like" chu khong `not like` tran — trong SQL `NULL NOT LIKE '...'` cho ra **NULL** chu khong ra TRUE, nen `not like` tran se **nem sach moi lo khong co ma cu ra khoi bao cao**. Hong am tham: so chi nho di chu khong bao loi. Da chot bang test rieng `test_batches_without_a_legacy_id_are_still_counted`.
+
+**Kiem chung:**
+
+- 2 test moi: lo can tay bi loai khoi bao cao tieu hao **trong khi lo quet don van duoc tinh** (test tim thay `DYE001` nen no doc dung cau truc phan hoi, khong phai so tren mang rong); va lo `legacy_batch_id` NULL van duoc giu.
+- `php -l` 4 file sach, `vue-tsc` **0 loi**, `vite build` OK 17.07s, **33 passed (144 assertions)**, guard 8/8.
+- **`ReportsTest` (12 test) hong SAN, khong phai do thay doi nay:** class do dung `DatabaseTransactions` chu khong `RefreshDatabase` nen doi DB da migrate san (Postgres) — tren SQLite in-memory no chet ngay o `User::factory()` voi `no such table: users`. Da xac minh TUNG test deu chet dung loi thieu bang do. Phan loc bao cao van duoc phu that, bang test nam trong class co `RefreshDatabase`.
+- **CHUA thu tay tren trinh duyet.**
+
+### 93. Can tay: SAVE duoc NGAY khi co so, khong bat bam NEXT truoc
+
+- **Yeu cau (02/08/2026):** *"chi can khong nhap don, khi can lieu co chi so la save duoc"*.
+- **Truoc do** muc 91-92 chi lam duong bam NEXT: `capturedWeights` rong -> `rows` rong -> SAVE choi. Nhung o **RAW** (`grossWeight`) hien so **ngay ca khi chua bam NEXT** — tho nhin thay so ma bam SAVE khong duoc.
+- **Nay `dongCanTayDeLuu()` nhan CA HAI cach dung:**
+  1. Bam NEXT chay nhieu o nhu can theo don -> lay cac o DA CHOT SO (nhu cu).
+  2. Khong bam NEXT gi ca -> lay thang so RAW dang hien, mot dong.
+- **Vi sao lay `grossWeight` chu khong `liveWeight`:** cach 2 chua he chot bi, ma `ingestRawWeight` thoat som khi chua `armed` nen `liveWeight` VAN DUNG O 0. Thu duy nhat co that la so can gop. Ghi kem `tare_weight = null` cho khop su that: khong tru bi lan nao ca.
+- **Ba dieu kien phai qua, va bao dung ly do tung cai** (gop thanh mot cau chung la tho dung bam lai mai ma khong biet phai lam gi):
+  - `signalLive` — so chet la con so dong cung tu lan doc cuoi truoc khi mat tin hieu.
+  - `isStable` — so chua dung yen la dang do do.
+  - `grossWeight !== 0` — can rong khong phai "co chi so". **Chan o day vi ban ghi tao ra KHONG XOA DUOC** (CLAUDE.md muc 3, khong xoa vat ly) — bam nham mot cai la de lai rac vinh vien.
+- Doi lai dong huong dan tren man hinh: dat vat tu len can, thay so o RAW la bam SAVE duoc ngay; muon can nhieu thu thanh mot phieu thi bam NEXT cho tung thu roi moi SAVE.
+- **Kiem chung:** them test `test_manual_weighing_accepts_a_single_untared_row` — payload hinh dang khac han nhanh bam NEXT (dung MOT dong, `tare_weight` = null), server phai nhan duoc chu khong duoc doi co bi. `vue-tsc` **0 loi**, `vite build` OK 16.99s, **34 passed (148 assertions)**.
+- **CHUA thu tay tren trinh duyet.**
+
+### 94. Nut SAVE van khoa `!activeJob` — toan bo duong can tay KHONG DUNG DUOC
+
+- **Nguoi dung bao (02/08/2026):** *"nut save dang hien thi cam, toi bam duoc"* — nut xam, con tro hinh cam.
+- **Loi cua chinh toi, va la loi nang nhat trong nhom nay:** muc 91-93 xay tron duong luu can tay (backend + hang doi + phieu + test) nhung **quen go dieu kien khoa o chinh cai nut goi no**: `:disabled="saving || !activeJob"`. Khong co don thi nut xam vinh vien -> **khong mot dong nao trong 3 muc do chay duoc tu giao dien**. Test backend xanh het nhung nguoi dung khong cham toi duoc.
+- **Bai hoc:** test API xanh khong chung minh tinh nang **DUNG DUOC**. Duong di tu ngon tay nguoi dung toi ham do — nut, dieu kien disabled, o nhap — phai duoc ra soat rieng. Day la lan thu HAI trong phien: muc 92 cung phat hien o RACK cua dong trong khong he render (`v-if="items[idx]"`) nen `manualRacks` la code chet.
+- **Sua:** `SAVE` chi con khoa khi `saving`. Ly do khong luu duoc thi `onSave` noi ro tung truong hop (mat tin hieu / chua dung yen / can rong) — **noi ra duoc van hon mot cai nut xam khong giai thich gi**.
+- **Sua kem cung cho hut do:** nut `PRINT` cung khoa `!activeJob`. Nay bo khoa va `printSlip` them nhanh can tay — dung chung `dongCanTayDeLuu()` voi SAVE nen to in thu va to in luc luu khong the khac nhau. Cua so in van mo DONG BO truoc moi `await` (khong bi chan popup).
+- **Ra soat lai toan bo `:disabled=`** trong file: chi con `saving` (CLEAR/SAVE), `saving || !canPressNext` (NEXT), `flushing` (GUI NGAY) — deu dung.
+- **Kiem chung:** `vue-tsc` **0 loi**, `vite build` OK 16.72s. **CHUA thu tay tren trinh duyet.**

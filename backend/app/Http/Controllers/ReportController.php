@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\ProductionBatch;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use App\Exports\ArrayExport;
@@ -41,6 +42,31 @@ class ReportController extends Controller
     }
 
     /**
+     * Loại vòng CÂN TAY khỏi báo cáo sản xuất (yêu cầu 2026-08-02).
+     *
+     * Cân tay là thợ dùng tạm cái cân, không quét đơn nào — không màu, không mã hàng, không định
+     * mức. Để lọt vào báo cáo tiêu hao/dung sai thì mọi dòng đều là "thực cân X, định mức 0",
+     * tức bịa ra một khoản vượt định mức 100% không có thật.
+     *
+     * Bản Eloquent tương đương là `ProductionBatch::khongPhaiCanTay()`; ở đây phải viết tay vì
+     * báo cáo dùng query builder trần, scope của model không áp vào được.
+     *
+     * Dạng "NULL HOẶC không khớp" là bắt buộc: `legacy_batch_id` nullable, mà SQL cho
+     * `NULL NOT LIKE '...'` ra NULL chứ không ra TRUE — dùng `not like` trần sẽ ném luôn mọi lô
+     * không có mã cũ ra khỏi báo cáo.
+     *
+     * KHÔNG loại tiền tố "ADHOC-": lô đó đến từ một tem QR thật (chỉ là chưa khớp lô nào trong
+     * Web) nên vẫn là việc sản xuất và vẫn phải được tính.
+     */
+    private function loaiCanTay($query, string $alias = 'pb'): void
+    {
+        $query->where(function ($q) use ($alias) {
+            $q->whereNull("{$alias}.legacy_batch_id")
+                ->orWhere("{$alias}.legacy_batch_id", 'not like', ProductionBatch::MANUAL_BATCH_PREFIX.'%');
+        });
+    }
+
+    /**
      * Report 1: Tiêu hao thuốc nhuộm/hóa chất thực tế vs định mức (planned_weight vs actual_weight).
      */
     public function dyeConsumption(Request $request)
@@ -55,6 +81,7 @@ class ReportController extends Controller
             ->leftJoin('materials as m', 'm.code', '=', 'wji.material_code')
             ->where('wji.status', 'COMPLETED')
             ->whereBetween('wji.completed_at', [$from, $to]);
+        $this->loaiCanTay($query);
 
         if ($materialType) {
             $query->where('wj.job_type', $materialType);
@@ -143,6 +170,7 @@ class ReportController extends Controller
             ->leftJoin('materials as m', 'm.code', '=', 'wji.material_code')
             ->where('wji.status', 'COMPLETED')
             ->whereBetween('wji.completed_at', [$from, $to]);
+        $this->loaiCanTay($base);
 
         if ($materialType) {
             $base->where('wj.job_type', $materialType);

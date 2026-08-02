@@ -33,6 +33,17 @@ use App\Http\Controllers\WorkstationRegistrationController;
 use App\Http\Middleware\KioskAuthenticationMiddleware;
 use Illuminate\Support\Facades\Route;
 
+// Ping — hàng đợi cân của /weighing-station-v2 gõ cửa định kỳ để biết "đường đã thông chưa"
+// trước khi đẩy cả mẻ lên (xem frontend/src/services/saveQueue.ts).
+//
+// CỐ Ý không đặt sau middleware auth: phiên hết hạn cũng phải ping được, nếu không mất mạng và
+// hết phiên nhìn giống hệt nhau. Và 401 sẽ kích hoạt interceptor ở main.ts -> logout + reload
+// trang — không được để một nhịp chạy ngầm làm việc đó.
+//
+// Không chạm DB: đây là câu hỏi "web còn sống không", không phải "DB còn sống không". Bắt nó
+// truy vấn DB thì mỗi trạm cân mất mạng sẽ nện thêm một truy vấn mỗi 15 giây.
+Route::get('/ping', fn () => response()->json(['status' => 'OK']));
+
 // Public Auth Route
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/workstations/handshake', [WorkstationRegistrationController::class, 'handshake']);
@@ -182,6 +193,10 @@ Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
     Route::put('/workstations/{id}/local-device-config', [WorkstationLocalConfigController::class, 'updateDeviceConfig']);
     Route::post('/scanner/scan', [ScannerController::class, 'scan'])->middleware('workstation.guard:SCAN_ORDER');
     Route::post('/scanner/scan-dye-qr', [ScannerController::class, 'scanRawDyeQr'])->middleware('workstation.guard:SCAN_ORDER');
+    // Một lệnh duy nhất cho cả mẻ cân của /weighing-station-v2: mở lệnh sản xuất + tạo vòng cân
+    // + ghi số cân + dựng phiếu in. Màn hình đó không gọi /scan-dye-qr nữa — nó tự đọc chuỗi QR
+    // bằng JS và chỉ chạm mạng đúng một lần lúc bấm SAVE (xem ScannerController::weighFromQr).
+    Route::post('/scanner/weigh-from-qr', [ScannerController::class, 'weighFromQr'])->middleware('workstation.guard:SCAN_ORDER');
     Route::post('/scanner/verify-tank', [ScannerController::class, 'verifyTank'])->middleware('workstation.guard:SCAN_DUAL_VERIFY');
     Route::post('/scanner/acknowledge-order', [ScannerController::class, 'acknowledgeOrder'])->middleware('workstation.guard:SCAN_ORDER');
 

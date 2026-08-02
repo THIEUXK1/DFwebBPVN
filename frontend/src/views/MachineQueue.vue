@@ -125,11 +125,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import axios from 'axios';
 
-const router = useRouter();
 const authStore = useAuthStore();
 
 const queue = ref<any[]>([]);
@@ -137,11 +135,6 @@ let timerInterval: any = null;
 
 // Determine if user has managerial role to override locks
 const isAdminOrShiftLeader = ref(false);
-
-const handleLogout = () => {
-  authStore.logout();
-  router.push('/login');
-};
 
 const fetchQueue = async () => {
   try {
@@ -171,10 +164,11 @@ const getLockAgeSeconds = (item: any) => {
   
   // Calculate difference between current time and locked_at
   const lockTime = new Date(item.locked_at).getTime();
-  // Adjust for client/server potential clock offset
-  const elapsed = Math.floor((Date.now() - item.client_fetch_time) / 1000);
+  // LƯU Ý: tính bằng ĐỒNG HỒ MÁY TRẠM đối chiếu với mốc giờ của server. Ở đây từng có một biến
+  // `elapsed` dựa trên `item.client_fetch_time` để bù lệch đồng hồ, nhưng chưa bao giờ được dùng
+  // vào kết quả trả về — đã gỡ. Máy trạm lệch giờ thì mốc hết hạn khoá 5 phút sẽ lệch theo.
   const totalElapsed = Math.floor((Date.now() - lockTime) / 1000);
-  
+
   return totalElapsed > 0 ? totalElapsed : 0;
 };
 

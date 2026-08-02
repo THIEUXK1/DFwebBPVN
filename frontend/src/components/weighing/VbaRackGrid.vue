@@ -10,23 +10,29 @@
     </div>
 
     <!-- LUÔN vẽ đủ 9 dòng kể cả khi công thức ít vật tư hơn — đúng form gốc (txt_RACK1..9
-         luôn hiện, ô thừa để trống), thao tác viên quen nhìn khung cố định không nhảy. -->
+         luôn hiện, ô thừa để trống), thao tác viên quen nhìn khung cố định không nhảy.
+         Dòng trống cũng chọn được: VBA cho NEXT chạy hết 9 dòng bất kể QR có mấy dòng, và ô
+         PROCESS ở đó vẫn hiện số cân sống để dùng cân như cân thường. -->
     <div
-      v-for="(row, idx) in NINE_ROWS"
+      v-for="(_row, idx) in MAX_RACK_LINES"
       :key="idx"
       class="vba-row"
       :class="{ 'is-current': idx === currentIndex, 'is-empty': !items[idx] }"
-      @click="items[idx] && $emit('select', idx)"
+      @click="$emit('select', idx)"
     >
       <div class="cell-no">{{ idx + 1 }}</div>
 
+      <!-- Dòng KHÔNG có vật tư cũng gõ được RACK khi đang cân tay (chưa quét đơn) — cân tay lưu
+           theo đúng mã rack thợ gõ, không có gì khác để nhận ra dòng nào là dòng nào. Còn dòng
+           trống nằm DƯỚI một đơn đã quét thì vẫn khoá: SAVE của mẻ theo đơn không gửi chúng đi,
+           cho gõ vào đó chỉ tạo cảm giác đã ghi được cái gì đó. -->
       <div class="cell cell-rack">
         <input
-          v-if="items[idx]"
+          v-if="items[idx] || allowManualRack"
           type="text"
           inputmode="numeric"
           class="vba-input"
-          :value="items[idx].rack_code || ''"
+          :value="items[idx] ? (items[idx].rack_code || '') : (manualRacks?.[idx] || '')"
           :disabled="readonlyRows"
           @click.stop
           @input="$emit('update-rack', idx, ($event.target as HTMLInputElement).value)"
@@ -55,7 +61,8 @@
 //   dải số thứ tự bên trái rộng 12pt.
 // Tỉ lệ cột giữ nguyên theo bản gốc, quy sang % để co giãn theo bề rộng màn hình thật.
 
-const NINE_ROWS = 9;
+import { MAX_RACK_LINES } from '../../utils/qrDyeParser';
+import { processTone, processBackground } from '../../utils/processColor';
 
 const props = defineProps<{
   items: any[];
@@ -66,6 +73,10 @@ const props = defineProps<{
   /** Số cân sống của ô đang cân — chỉ hiện ở đúng dòng currentIndex. */
   liveWeight: number;
   readonlyRows?: boolean;
+  /** Mã RACK gõ tay cho dòng không có vật tư (cân tay), theo index. */
+  manualRacks?: Record<number, string>;
+  /** Cho gõ RACK ở dòng trống — bật khi đang cân tay (chưa quét đơn nào). */
+  allowManualRack?: boolean;
 }>();
 
 defineEmits<{
@@ -78,11 +89,16 @@ function formatNum(v: any): string {
   return Number(v).toFixed(2);
 }
 
-/** Giá trị hiện ở ô PROCESS: ô đang cân lấy số sống, ô khác lấy giá trị đã chốt. */
+/**
+ * Giá trị hiện ở ô PROCESS: ô đang cân lấy số sống, ô khác lấy giá trị đã chốt.
+ *
+ * Hai nhánh đầu KHÔNG đòi phải có vật tư ở dòng đó: dòng nằm dưới phần QR mang tới vẫn cân được
+ * (xem onNext) nên phải nhìn thấy số, nếu không thì bấm NEXT xuống đó chỉ thấy ô trắng trơn.
+ */
 function valueFor(idx: number): number | null {
-  if (!props.items[idx]) return null;
   if (idx === props.currentIndex) return props.liveWeight;
   if (props.capturedWeights[idx] !== undefined) return props.capturedWeights[idx];
+  if (!props.items[idx]) return null;
   // Đã cân xong từ trước (khôi phục job đang dở) thì hiện luôn kết quả đã lưu.
   const actual = props.items[idx].actual_weight;
   return actual !== null && actual !== undefined ? Number(actual) : null;
@@ -94,52 +110,40 @@ function processText(idx: number): string {
 }
 
 /**
- * Port nguyên văn Mod_UI_processcolor.CheckRange:
- *   ratio = delta / target
- *   ratio < 0.99            -> RGB(250,230,5)  vàng  (chưa đủ)
- *   0.99 <= ratio <= 1.01   -> RGB(120,250,20) xanh  (đạt, đúng ±1%)
- *   ratio > 1.01            -> RGB(255,20,0)   đỏ    (vượt)
- *   target rỗng/<=0         -> trắng
- * Dùng ĐÚNG mã màu gốc (yêu cầu người dùng) nên hard-code hex, không dùng biến theme —
- * ô này giữ nền sáng + chữ đen kể cả khi giao diện đang ở chế độ tối.
- *
- * Delta ÂM (lấy vật tư ra tụt xuống dưới mốc bì) rơi vào nhánh `ratio < 0.99` -> vàng, đúng
- * nghĩa "chưa đủ". Không cần nhánh riêng, và quan trọng là KHÔNG có đường nào để số âm ăn nền
- * xanh — đây chính là thứ bản dùng Abs() trước đây làm sai được.
+ * Nền ô PROCESS theo dung sai. Quy tắc (port của `Mod_UI_processcolor.CheckRange`) nằm ở
+ * `utils/processColor` vì ô số DELTA cỡ lớn trên băng trên tô theo ĐÚNG quy tắc đó — hai chỗ nằm
+ * cạnh nhau nên không được phép lệch. Ô này giữ nền sáng + chữ đen kể cả khi giao diện đang tối.
  */
 function processStyle(idx: number): Record<string, string> {
-  const item = props.items[idx];
-  if (!item) return {};
   const v = valueFor(idx);
   if (v === null) return {};
 
-  const target = Number(item.planned_weight);
-  if (!target || target <= 0) return { backgroundColor: '#FFFFFF', color: '#000000' };
+  // Dòng không có vật tư = không có mục tiêu -> tone 'none' -> nền trắng.
+  const tone = processTone(v, props.items[idx]?.planned_weight);
 
-  const ratio = v / target;
-  let bg = '#FAE605';               // RGB(250,230,5)
-  if (ratio >= 0.99 && ratio <= 1.01) bg = '#78FA14';  // RGB(120,250,20)
-  else if (ratio > 1.01) bg = '#FF1400';               // RGB(255,20,0)
-
-  return { backgroundColor: bg, color: '#000000' };
+  return { backgroundColor: processBackground(tone), color: '#000000' };
 }
 </script>
 
 <style scoped>
 .vba-grid {
-  border: 1px solid #000;
+  border: 1px solid #b9c0cc;
+  border-radius: 10px;
+  overflow: hidden;
   background: #fff;
   /* Bảng luôn nền sáng như form VBA gốc, không đổi theo theme tối — thợ đã quen bảng trắng
      chữ đen, đổi sang nền tối làm mất cảm nhận màu vàng/xanh/đỏ vốn là tín hiệu chính. */
-  color: #000;
+  color: #0d1520;
+  box-shadow: 0 1px 3px rgba(15, 30, 55, 0.1);
 }
 
 .vba-row {
   display: grid;
   /* Tỉ lệ đúng bản gốc: 12 | 48 | 330 | 312 | 360 (pt) */
-  grid-template-columns: 16px 4.4% 30.6% 28.9% 33.4%;
+  grid-template-columns: 34px 4.4% 30.6% 28.9% 33.4%;
   height: 53px; /* 39.75pt */
-  border-bottom: 1px solid #000;
+  border-bottom: 1px solid #e3e7ee;
+  transition: background 0.12s ease;
 }
 
 .vba-row:last-child {
@@ -147,34 +151,37 @@ function processStyle(idx: number): Record<string, string> {
 }
 
 .vba-head {
-  height: 24px;
-  background: #d4d0c8; /* xám hệ thống kiểu form Windows cổ điển */
-  font-weight: 700;
-  font-size: 13px;
+  height: 30px;
+  background: #eef1f6;
+  border-bottom: 1px solid #c9d1dd;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.7px;
+  color: #56617a;
 }
 
 .vba-head .cell {
   display: flex;
   align-items: center;
-  padding: 0 6px;
+  padding: 0 10px;
 }
 
 .cell-no {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #555;
-  background: #d4d0c8;
-  border-right: 1px solid #000;
+  font-size: 13px;
+  font-weight: 800;
+  color: #8a94a8;
+  background: #f5f7fa;
+  border-right: 1px solid #e3e7ee;
 }
 
 .cell {
   display: flex;
   align-items: center;
-  padding: 0 8px;
-  border-right: 1px solid #000;
+  padding: 0 10px;
+  border-right: 1px solid #e3e7ee;
   font-size: 18px;
   font-weight: 700;
   overflow: hidden;
@@ -188,7 +195,8 @@ function processStyle(idx: number): Record<string, string> {
 .cell-weight,
 .cell-process {
   justify-content: flex-end;
-  font-family: 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, 'Cascadia Mono', 'Consolas', 'Courier New', monospace;
 }
 
 .vba-head .cell-weight,
@@ -197,32 +205,58 @@ function processStyle(idx: number): Record<string, string> {
   font-family: inherit;
 }
 
-.cell-process {
-  font-size: 22px;
+.cell-weight {
+  color: #56617a;
 }
 
-/* Dòng đang cân — viền xanh đậm bên trái để thấy ngay đang ở ô nào giữa 9 dòng. */
-.vba-row.is-current {
-  box-shadow: inset 4px 0 0 #0a5cff;
+.cell-process {
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.vba-row:not(.is-empty):hover {
+  background: #f7f9fc;
+  cursor: pointer;
+}
+
+/* Dòng đang cân — dải xanh bên trái + nền nhạt để thấy ngay đang ở ô nào giữa 9 dòng, kể cả khi
+   liếc nhanh từ xa. Nền nhạt thôi: ô PROCESS mới là chỗ mang tín hiệu màu, không được lấn át. */
+.vba-row.is-current,
+.vba-row.is-current:hover {
+  background: #e8f0ff;
+  box-shadow: inset 5px 0 0 #1f6bff;
+}
+
+.vba-row.is-current .cell-no {
+  background: #1f6bff;
+  color: #fff;
 }
 
 .vba-row.is-empty {
-  background: #f0f0f0;
+  background: #f7f8fa;
+  color: #aab2c0;
 }
 
 .vba-input {
   width: 100%;
   height: 38px;
-  border: 1px solid #7a7a7a;
+  border: 1px solid #c2cad8;
+  border-radius: 6px;
   font-size: 18px;
   font-weight: 700;
   text-align: center;
   font-family: inherit;
   background: #fff;
-  color: #000;
+  color: #0d1520;
+  outline: none;
+}
+
+.vba-input:focus {
+  border-color: #1f6bff;
+  box-shadow: 0 0 0 3px rgba(31, 107, 255, 0.18);
 }
 
 .vba-input:disabled {
-  background: #ebebeb;
+  background: #eef0f4;
 }
 </style>

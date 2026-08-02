@@ -21,6 +21,13 @@ use Illuminate\Support\Facades\DB;
 class WeighingJobController extends Controller
 {
     /**
+     * Trần số vòng cân trả về một lượt cho màn Lịch sử cân. Bảng `weighing_jobs` chỉ có tăng nên
+     * không bao giờ được trả hết; 500 dòng (~9 dòng vật tư mỗi vòng) là cỡ vài trăm KB JSON, vẫn
+     * nhẹ hơn nhiều so với việc mỗi lần tìm/đổi trang lại đi một vòng HTTP tới DB ở máy khác.
+     */
+    private const HISTORY_MAX_ROWS = 500;
+
+    /**
      * Get details of a single weighing job.
      */
     public function show($id)
@@ -39,7 +46,13 @@ class WeighingJobController extends Controller
      * sẽ mở vòng mới, xem ScannerController::handleOrderScan), nên gom theo lô sẽ giấu mất các
      * lần cân lại — đúng thứ cần nhìn thấy nhất khi đối soát.
      *
-     * Phân trang bắt buộc: bảng này chỉ có tăng, không bao giờ được trả hết một lượt.
+     * KHÔNG phân trang phía server nữa (2026-08-02). Trước đây mỗi lần lọc/đổi trang là một vòng
+     * HTTP mới, mà với DB nằm ở máy khác thì mỗi truy vấn tốn ~35ms và mỗi vòng mất vài trăm ms.
+     * Nay trả về TRỌN một cửa sổ dữ liệu (mặc định khoảng ngày người dùng chọn, trần
+     * HISTORY_MAX_ROWS dòng) để trình duyệt tự tìm kiếm/phân trang tức thì, không chạm mạng.
+     *
+     * Bảng này chỉ có tăng nên vẫn phải có trần: lấy dư ĐÚNG 1 dòng để biết có bị cắt hay không
+     * mà không tốn thêm câu `count(*)` — cái count đó chính là 1 vòng đi-về DB bỏ đi được.
      */
     public function history(Request $request)
     {
@@ -48,7 +61,7 @@ class WeighingJobController extends Controller
             'to' => 'nullable|date',
             'q' => 'nullable|string|max:100',
             'workstation_id' => 'nullable|integer|exists:operation_clients,id',
-            'per_page' => 'nullable|integer|min:1|max:100',
+            'limit' => 'nullable|integer|min:1|max:'.self::HISTORY_MAX_ROWS,
         ]);
 
         $query = WeighingJob::with(['batch.machine', 'items'])
@@ -70,6 +83,10 @@ class WeighingJobController extends Controller
         // trường nào là trường nào. Dùng `like` (không phải `ILIKE`) cho đồng nhất với toàn bộ
         // controller khác trong dự án và để không khoá cứng vào Postgres — mã màu/mã hàng/mã máy
         // đều viết hoa sẵn nên phân biệt hoa thường không ảnh hưởng thực tế.
+        //
+        // Màn Lịch sử cân KHÔNG dùng tham số này cho ô tìm kiếm thường ngày (nó lọc ngay tại
+        // trình duyệt trong cửa sổ đã tải, không tốn vòng mạng nào) — chỉ dùng khi người dùng bấm
+        // "tìm trên toàn bộ lịch sử", tức là cần với ra ngoài cửa sổ đó.
         if ($q = trim((string) $request->input('q'))) {
             $like = '%'.$q.'%';
             $query->whereHas('batch', function ($b) use ($like) {
@@ -80,24 +97,38 @@ class WeighingJobController extends Controller
             });
         }
 
+        $limit = (int) $request->input('limit', 200);
+
+        // Lấy dư ĐÚNG 1 dòng: nếu về đủ $limit+1 thì biết ngay là còn nữa, khỏi tốn một câu
+        // `count(*)` — với DB ở máy khác, câu count đó là ~35ms thuần đi-về mạng.
         $jobs = $query->orderByDesc('completed_at')
-            ->paginate((int) $request->input('per_page', 20));
+            ->limit($limit + 1)
+            ->get();
+
+        $truncated = $jobs->count() > $limit;
+        if ($truncated) {
+            $jobs = $jobs->take($limit);
+        }
 
         // Đếm ĐẠT/KHÔNG ĐẠT ngay tại đây thay vì để frontend tự suy: process_status là thuộc
         // tính suy diễn của model (getProcessStatusAttribute), tính ở server mới đảm bảo web và
         // báo cáo luôn dùng chung một định nghĩa.
-        $jobs->getCollection()->transform(function ($job) {
+        $jobs->each(function ($job) {
             $items = $job->items;
             $job->setAttribute('total_items', $items->count());
             $job->setAttribute('accepted_count', $items->where('process_status', 'ACCEPTED')->count());
             $job->setAttribute('rejected_count', $items->where('process_status', 'REJECTED')->count());
-
-            return $job;
         });
 
         return response()->json([
             'status' => 'SUCCESS',
-            'data' => $jobs,
+            'data' => [
+                'rounds' => $jobs->values(),
+                // `truncated` phải được frontend nói rõ ra: im lặng cắt bớt là kiểu bảng "tìm
+                // không thấy" mà người dùng tưởng là không có dữ liệu.
+                'truncated' => $truncated,
+                'limit' => $limit,
+            ],
         ]);
     }
 
@@ -243,9 +274,20 @@ class WeighingJobController extends Controller
             'rows.*.gross_weight' => 'sometimes|nullable|numeric|min:0',
             'scale_device_id' => 'required|string',
             'stable' => 'required|boolean',
+            // Có gửi thì dựng luôn phiếu cân trả kèm response (bỏ được request /print-slip
+            // riêng); không gửi thì hành vi giữ nguyên như cũ.
+            //
+            // CỐ Ý KHÔNG đặt tên là 'workstation_code': assertScaleDeviceBound() bên dưới cũng
+            // đọc chính khoá đó để quyết định có bắt buộc kiểm tra thiết bị cân hay không. Đặt
+            // trùng tên sẽ vô tình bật hàng rào đó lên cho màn hình V2 (vốn gửi scale_device_id
+            // 'MOCK_SCALE' khi trạm chưa gán cân) và làm SAVE trả 400 — đổi tên là để giữ
+            // nguyên hành vi hiện có, không phải né kiểm tra.
+            'slip_workstation_code' => 'sometimes|string|exists:operation_clients,code',
         ]);
 
-        $job = WeighingJob::with('batch')->findOrFail($id);
+        // Nạp sẵn batch.machine: recordMany dùng cả hai để dựng scale_measurements, và
+        // buildAndStoreSlip dùng lại batch — trước đây mỗi dòng cân tự lazy-load lại từ đầu.
+        $job = WeighingJob::with('batch.machine')->findOrFail($id);
 
         // Cùng hàng rào với weighItem: client có thể gọi thẳng API, không phụ thuộc UI.
         if (! $request->boolean('stable')) {
@@ -264,7 +306,10 @@ class WeighingJobController extends Controller
         $rows = collect($request->input('rows'))->keyBy('item_id');
 
         // Chỉ nhận vật tư THUỘC ĐÚNG job này — chặn ghi nhầm sang mẻ khác nếu client gửi sai id.
-        $items = WeighingJobItem::where('weighing_job_id', $job->id)
+        // Nạp sẵn material để dựng phiếu in ngay trong response này (xem cuối hàm) mà không phải
+        // truy vấn lại cả job/items/material ở một request /print-slip riêng.
+        $items = WeighingJobItem::with('material')
+            ->where('weighing_job_id', $job->id)
             ->whereIn('id', $rows->keys()->all())
             ->orderBy('sequence_no', 'asc')
             ->get();
@@ -277,45 +322,34 @@ class WeighingJobController extends Controller
             ], 422);
         }
 
-        return DB::transaction(function () use ($items, $rows, $job) {
-            $recorder = app(WeighingItemRecorder::class);
-            // Lấy mốc legacy_id 1 lần rồi tự tăng — tránh chạy max() lặp lại 9 lần và đảm bảo
-            // không trùng khoá UNIQUE(legacy_source, legacy_id) trong cùng transaction.
-            $legacyId = $recorder->nextLegacyId();
+        $workstationCode = $request->input('slip_workstation_code');
 
-            $saved = [];
-            $skipped = [];
+        return DB::transaction(function () use ($items, $rows, $job, $workstationCode) {
+            $result = app(WeighingItemRecorder::class)->recordMany($job, $items, $rows);
 
-            foreach ($items as $item) {
-                // Dòng đã cân xong ở lần SAVE trước (vd bấm SAVE lại sau khi rớt mạng) thì bỏ
-                // qua thay vì ném lỗi — không được để 1 dòng cũ làm hỏng cả mẻ đang lưu.
-                if ($item->status === 'COMPLETED') {
-                    $skipped[] = $item->id;
-                    continue;
-                }
+            $saved = $result['saved'];
+            $skipped = $result['skipped'];
 
-                $row = $rows->get($item->id);
-                $recorder->record($item, [
-                    'weight' => $row['weight'],
-                    'tare_weight' => $row['tare_weight'] ?? null,
-                    'gross_weight' => $row['gross_weight'] ?? null,
-                    'rack_code' => $row['rack_code'] ?? null,
-                    'legacy_id' => $legacyId++,
-                ]);
-                $saved[] = $item->id;
+            // Dựng LUÔN phiếu cân và trả kèm response (2026-08-02). Trước đây màn hình V2 phải
+            // gọi tiếp POST /print-slip sau khi SAVE xong — thêm nguyên một vòng HTTP + nạp lại
+            // job/items/material/batch/machine chỉ để in đúng những dòng vừa ghi. Với DB ở máy
+            // khác (~36ms/query đo thật) đó là chỗ "bấm SAVE xong chờ mãi tem mới hiện".
+            $slip = null;
+            if ($workstationCode) {
+                $slip = $this->buildAndStoreSlip($job, $items, $workstationCode);
             }
-
-            $job->refresh();
 
             return response()->json([
                 'status' => 'SUCCESS',
                 'message' => count($skipped) > 0
-                    ? 'Đã lưu ' . count($saved) . ' dòng, bỏ qua ' . count($skipped) . ' dòng đã cân xong trước đó.'
-                    : 'Đã lưu ' . count($saved) . ' dòng cân.',
+                    ? 'Đã lưu '.count($saved).' dòng, bỏ qua '.count($skipped).' dòng đã cân xong trước đó.'
+                    : 'Đã lưu '.count($saved).' dòng cân.',
                 'data' => [
                     'saved_item_ids' => $saved,
                     'skipped_item_ids' => $skipped,
-                    'job_completed' => $job->status === 'COMPLETED',
+                    'job_completed' => $result['job_completed'],
+                    // null khi client không gửi workstation_code — client tự gọi /print-slip như cũ.
+                    'slip' => $slip,
                 ],
             ]);
         });
@@ -595,6 +629,11 @@ class WeighingJobController extends Controller
      * dòng chưa cân để trống) — giữ đúng hành vi đó, khác với printLabel() (tem vật tư) vốn
      * bắt buộc job COMPLETED. In qua hộp thoại in của trình duyệt (window.print()), không
      * qua TSPL/Local Agent — xem ghi chú ở printLabel().
+     *
+     * MỌI lượt gọi endpoint này đều là IN LẠI: luồng SAVE của /weighing-station-v2 dựng phiếu
+     * thẳng trong response (buildSlipForJob), không đi qua đây. Nên đây là chỗ đúng để ghi Audit
+     * Log theo CLAUDE.md mục 5 ("In lại tem (Reprint) ... phải ghi Audit Log bất biến") — trước
+     * 2026-08-02 chỉ có bản ghi PrintJob, không truy được AI bấm in lại.
      */
     public function printSlip(Request $request, $id)
     {
@@ -602,17 +641,114 @@ class WeighingJobController extends Controller
             'workstation_code' => 'sometimes|string|exists:operation_clients,code',
         ]);
 
-        $job = WeighingJob::with('items.material')->findOrFail($id);
-        $batch = ProductionBatch::with('machine')->where('id', $job->production_batch_id)->firstOrFail();
+        $job = WeighingJob::with(['items.material', 'batch.machine'])->findOrFail($id);
 
+        // Màn Lịch sử cân chạy trên máy văn phòng, không gắn trạm nào — nhưng phiếu vẫn phải mang
+        // đúng mã trạm ĐÃ CÂN ra nó, nếu không phiếu in lại lại ghi tên một trạm không liên quan.
+        // Trạm gốc của vòng cân vì thế là nguồn ưu tiên hơn "máy đang đứng" ở nhánh cuối.
         $client = $request->attributes->get('operation_client');
-        $workstationCode = $request->input('workstation_code') ?? ($client ? $client->code : null);
+        $workstationCode = $request->input('workstation_code')
+            ?? $job->workstation?->code
+            ?? ($client ? $client->code : null);
         if (! $workstationCode) {
             return response()->json(['status' => 'ERROR', 'message' => 'Không xác định được mã trạm.'], 400);
         }
+
+        $printJob = $this->buildAndStoreSlip($job, $job->items, $workstationCode);
+
+        AuditLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'WEIGH_SLIP_REPRINT',
+            'entity_type' => 'WeighingJob',
+            'entity_id' => $job->id,
+            'after_data' => [
+                'weighing_job_id' => $job->id,
+                'production_batch_id' => $job->production_batch_id,
+                'color' => $job->batch?->color,
+                'product_code' => $job->batch?->product_code,
+                'machine_code' => $job->batch?->machine?->code,
+                'workstation_code' => $workstationCode,
+                'print_job_id' => $printJob->id,
+                'item_count' => $job->items->count(),
+            ],
+            'client_ip' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'message' => 'Đã tạo phiếu cân — in qua hộp thoại in của trình duyệt.',
+            'data' => $printJob,
+        ], 201);
+    }
+
+    /**
+     * Dựng nội dung phiếu cân (TSPL) + lưu PrintJob. Tách riêng để luồng SAVE của
+     * /weighing-station-v2 dựng phiếu NGAY trong response weigh-batch, không phải gọi thêm một
+     * request /print-slip nữa (2026-08-02) — với DB ở máy khác, vòng HTTP thừa đó chính là chỗ
+     * "bấm SAVE xong chờ mãi tem mới hiện".
+     *
+     * `$items` truyền vào từ ngoài để tái dùng đúng collection vừa ghi xong, khỏi query lại.
+     *
+     * `buildSlipForJob()` là cửa công khai cho ScannerController::weighFromQr — luồng "một lệnh
+     * duy nhất" của /weighing-station-v2 cũng cần đúng phiếu này.
+     */
+    public function buildSlipForJob(WeighingJob $job, $items, string $workstationCode, ?string $printedAt = null): PrintJob
+    {
+        return $this->buildAndStoreSlip($job, $items, $workstationCode, $printedAt);
+    }
+
+    /**
+     * `$printedAt` do trình duyệt gửi lên: từ 2026-08-02 màn hình cân IN NGAY từ dữ liệu trên
+     * màn, trước khi chạm mạng. Nếu để server tự lấy giờ của mình thì bản ghi print_jobs sẽ mang
+     * một mốc giờ khác với tờ phiếu đã ra giấy — đúng thứ mà bản ghi này phải đối chiếu được.
+     */
+    private function buildAndStoreSlip(WeighingJob $job, $items, string $workstationCode, ?string $printedAt = null): PrintJob
+    {
+        // Tái dùng batch đã nạp kèm job nếu có (luồng weigh-batch nạp sẵn 'batch.machine'),
+        // chỉ truy vấn lại khi thật sự chưa có (luồng /print-slip gọi độc lập).
+        $batch = $job->relationLoaded('batch') && $job->batch
+            ? $job->batch->loadMissing('machine')
+            : ProductionBatch::with('machine')->where('id', $job->production_batch_id)->firstOrFail();
         $workstation = OperationClient::where('code', $workstationCode)->firstOrFail();
 
-        $machineCode = $batch->machine ? $batch->machine->code : 'N/A';
+        $tspl = self::buildSlipTspl([
+            'color' => $batch->color,
+            'product_code' => $batch->product_code,
+            'machine_code' => $batch->machine ? $batch->machine->code : 'N/A',
+            'level_code' => $batch->level_code,
+            'printed_at' => $printedAt,
+        ], $items);
+
+        // In qua trình duyệt (yêu cầu 2026-07-30) — xem ghi chú ở printLabel().
+        return PrintJob::create([
+            'workstation_id' => $workstation->code,
+            'label_payload' => $tspl,
+            'printer_connection_type' => 'BROWSER',
+            'printer_address' => 'BROWSER',
+            'status' => 'PRINTED',
+            'processed_at' => now(),
+        ]);
+    }
+
+    /**
+     * Dựng NỘI DUNG phiếu cân (chuỗi TSPL) — hàm THUẦN: không chạm DB, không phụ thuộc request.
+     *
+     * Tách khỏi buildAndStoreSlip() vì hai lý do:
+     *   1. Trình duyệt có một bản port của đúng hàm này (`frontend/src/utils/weighSlip.ts`) để in
+     *      được phiếu khi MẤT MẠNG (mẻ nằm hàng đợi chờ đẩy lên sau). Hai bản phải ra chuỗi y hệt
+     *      nhau, nếu không phiếu in lúc mất mạng sẽ khác phiếu in lúc bình thường.
+     *   2. Có tách ra thì mới đối chiếu được hai bản bằng script mà KHÔNG ghi PrintJob nào xuống
+     *      DB (xem `frontend/scripts/check-weigh-slip.mjs`).
+     *
+     * `$header` là mảng phẳng (color/product_code/machine_code/level_code) chứ không phải model,
+     * để script đối chiếu dựng đầu vào mà không cần bản ghi thật.
+     */
+    public static function buildSlipTspl(array $header, $items): string
+    {
+        $color = $header['color'] ?? '';
+        $productCode = $header['product_code'] ?? '';
+        $machineCode = $header['machine_code'] ?? 'N/A';
+        $levelCode = $header['level_code'] ?? '';
 
         $tspl = "SIZE 76 mm, 130 mm\r\n".
                 "GAP 2 mm, 0 mm\r\n".
@@ -620,10 +756,10 @@ class WeighingJobController extends Controller
                 "REFERENCE 0,0\r\n".
                 "CLS\r\n".
                 "TEXT 15,15,\"3\",0,1,1,\"DF_WEIGHING_SLIP\"\r\n".
-                "TEXT 15,50,\"2\",0,1,1,\"MAU: {$batch->color}\"\r\n".
-                "TEXT 15,75,\"2\",0,1,1,\"HANG: {$batch->product_code}\"\r\n".
+                "TEXT 15,50,\"2\",0,1,1,\"MAU: {$color}\"\r\n".
+                "TEXT 15,75,\"2\",0,1,1,\"HANG: {$productCode}\"\r\n".
                 "TEXT 15,100,\"2\",0,1,1,\"MAY: {$machineCode}\"\r\n".
-                'TEXT 15,125,"2",0,1,1,"MUC: '.($batch->level_code ?? '')."\"\r\n";
+                'TEXT 15,125,"2",0,1,1,"MUC: '.($levelCode ?? '')."\"\r\n";
 
         // Bảng RACK/DYE CODE/MT/TT/STATUS — cột thẳng hàng theo tọa độ x cố định thay vì gộp
         // hết vào 1 dòng chữ chạy dài (phản hồi 2026-07-30: "tôi muốn nó là 1 table"), đúng
@@ -641,7 +777,7 @@ class WeighingJobController extends Controller
                  "TEXT {$colStatus},155,\"1\",0,1,1,\"STATUS\"\r\n";
 
         $y = 178;
-        foreach ($job->items as $idx => $item) {
+        foreach ($items as $idx => $item) {
             // ACCEPTED / REJECTED / PENDING — đúng cột processColor của VBA btnSave_Click,
             // suy từ chính dung sai đã snapshot trên item (xem WeighingJobItem::process_status).
             $statusText = $item->process_status;
@@ -662,24 +798,13 @@ class WeighingJobController extends Controller
             $y += 22;
         }
 
-        $tspl .= "TEXT 15,{$y},\"1\",0,1,1,\"In luc: ".Carbon::now()->format('d/m/Y H:i:s')."\"\r\n";
+        // `printed_at` cho phép script đối chiếu ghim cứng một mốc giờ; bỏ trống thì lấy giờ hiện
+        // tại như cũ.
+        $printedAt = $header['printed_at'] ?? Carbon::now()->format('d/m/Y H:i:s');
+        $tspl .= "TEXT 15,{$y},\"1\",0,1,1,\"In luc: {$printedAt}\"\r\n";
         $tspl .= "PRINT 1,1\r\n";
 
-        // In qua trình duyệt (yêu cầu 2026-07-30) — xem ghi chú ở printLabel().
-        $printJob = PrintJob::create([
-            'workstation_id' => $workstation->code,
-            'label_payload' => $tspl,
-            'printer_connection_type' => 'BROWSER',
-            'printer_address' => 'BROWSER',
-            'status' => 'PRINTED',
-            'processed_at' => now(),
-        ]);
-
-        return response()->json([
-            'status' => 'SUCCESS',
-            'message' => 'Đã tạo phiếu cân — in qua hộp thoại in của trình duyệt.',
-            'data' => $printJob,
-        ], 201);
+        return $tspl;
     }
 
     /**

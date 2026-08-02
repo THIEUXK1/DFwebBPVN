@@ -27,7 +27,9 @@ class DashboardController extends Controller
         RealtimeService::checkAlertRules();
 
         $machines = Machine::where('is_active', true)->get();
-        $batches = ProductionBatch::with(['machine', 'tank'])->whereIn('status', ['NEW', 'READY_TO_WEIGH', 'WEIGHING', 'WEIGHED', 'SENT'])->get();
+        // `khongPhaiCanTay`: lô cân tay không phải lệnh sản xuất (không màu/mã hàng/máy) — để lọt
+        // vào đây là bảng điều khiển đầy những dòng trống trơn. Xem ProductionBatch::MANUAL_BATCH_PREFIX.
+        $batches = ProductionBatch::with(['machine', 'tank'])->khongPhaiCanTay()->whereIn('status', ['NEW', 'READY_TO_WEIGH', 'WEIGHING', 'WEIGHED', 'SENT'])->get();
         $alertsCount = Alert::whereIn('status', ['OPEN', 'ACKNOWLEDGED'])->count();
 
         $overviewData = $machines->map(function ($machine) use ($batches) {
@@ -74,6 +76,7 @@ class DashboardController extends Controller
     {
         // Get all batches in queue for weighing
         $batches = ProductionBatch::with(['machine', 'tank'])
+            ->khongPhaiCanTay()
             ->whereIn('status', ['READY_TO_WEIGH', 'WEIGHING', 'WEIGHED'])
             ->get();
 
@@ -110,7 +113,7 @@ class DashboardController extends Controller
     public function machines(Request $request)
     {
         $machines = Machine::where('is_active', true)->get();
-        $batches = ProductionBatch::with(['machine', 'tank'])->whereIn('status', ['WEIGHED', 'SENT', 'DONE'])->get();
+        $batches = ProductionBatch::with(['machine', 'tank'])->khongPhaiCanTay()->whereIn('status', ['WEIGHED', 'SENT', 'DONE'])->get();
 
         $data = $machines->map(function ($m) use ($batches) {
             $batch = $batches->firstWhere('machine_id', $m->id);
@@ -159,9 +162,9 @@ class DashboardController extends Controller
             ->where('completed_at', '>=', $today)
             ->count();
 
-        $activeBatches = ProductionBatch::whereIn('status', ['WEIGHING', 'WEIGHED', 'SENT'])->count();
-        
-        $machinesRunning = ProductionBatch::where('status', 'SENT')->count();
+        $activeBatches = ProductionBatch::khongPhaiCanTay()->whereIn('status', ['WEIGHING', 'WEIGHED', 'SENT'])->count();
+
+        $machinesRunning = ProductionBatch::khongPhaiCanTay()->where('status', 'SENT')->count();
         $machinesWaiting = MaterialTransport::where('status', 'IN_TRANSIT')->count();
 
         $overdueWeighing = Alert::where('rule_code', 'WEIGH_COMP_DELAY')

@@ -15,8 +15,6 @@ import { ref, watch, onUnmounted } from 'vue';
 import axios from 'axios';
 import { currentWorkstation } from '../services/workstation';
 
-const TARE_STORAGE_KEY = 'df_weigh_tare_state_v2';
-
 /**
  * Số cân cũ hơn ngưỡng này coi như KHÔNG CÒN GIÁ TRỊ: không hiển thị, không được làm bì, không
  * tính delta. Backend cache số cân tới 15 giây — quá thừa so với nhịp đẩy của Agent (~150ms) —
@@ -54,24 +52,17 @@ export function useScaleFeed() {
   const useSimValue = ref<boolean>(false);
   const simulatedWeight = ref<number>(0);
 
-  function saveTareToStorage(slotKey: string, tare: number) {
-    localStorage.setItem(TARE_STORAGE_KEY, JSON.stringify({ slotKey, tare }));
-  }
-
-  function clearTareStorage() {
-    localStorage.removeItem(TARE_STORAGE_KEY);
-  }
-
-  function restoreTareFromStorage(slotKey: string): number | null {
-    try {
-      const raw = localStorage.getItem(TARE_STORAGE_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return parsed.slotKey === slotKey ? parsed.tare : null;
-    } catch {
-      return null;
-    }
-  }
+  /*
+   * ĐÃ GỠ (2026-08-02) bộ 3 hàm lưu/khôi phục bì qua localStorage (`df_weigh_tare_state_v2`).
+   * Chúng chưa bao giờ chạy: `saveTareToStorage` không có chỗ nào gọi, nên khoá đó không bao giờ
+   * được ghi, và `restoreTareFromStorage` — tuy có xuất ra ngoài — chỉ có thể trả về null. Giữ
+   * lại một hàm khôi phục luôn trả null là cái bẫy cho người dùng nó sau này.
+   *
+   * Việc nhớ bì qua F5 hiện do màn hình tự lo, gói chung trong phiên làm việc của trạm
+   * (`df_ws2_session_v1` trong WeighingStationV2) — ở đó bì được lưu KÈM vị trí ô đang cân và số
+   * cân gộp để còn đối chiếu xem đĩa cân có bị đụng vào hay không. Bản trong composable này
+   * không mang theo hai thứ đó nên dù có chạy cũng không đủ an toàn.
+   */
 
   /** Delta_Begin: bắt đầu 1 ô mới — bỏ bì cũ, chờ chốt bì lại từ đầu. */
   function resetTareForNewSlot() {
@@ -79,7 +70,16 @@ export function useScaleFeed() {
     liveWeight.value = 0;
     grossWeight.value = 0;
     isStable.value = false;
-    clearTareStorage();
+
+    // CỐ Ý không có nhánh riêng cho giả lập ở đây. Bì phải chốt bằng số ĐANG CÓ trên cân lúc bấm
+    // NEXT — vật tư ô trước vẫn nằm nguyên trên đĩa, nên chỉ có vậy thì ô mới mới đếm đúng phần
+    // đổ thêm ("cân lại từ 0 dù là cân tiếp"). Đặt cứng bì = 0 cho giả lập là biến số gõ vào
+    // thành số cân luôn, tức bỏ mất chính cái hành vi đang cần thử.
+    //
+    // Việc để `null` ở đây chạy đúng được với giả lập là nhờ `fetchLiveWeight` nạp lại số mỗi
+    // nhịp: sau NEXT, nhịp kế tiếp chốt ngay bì = số đang gõ và ô DELTA về 0.00 trong 200ms.
+    // Trước khi có nhịp đó thì nguồn duy nhất là `watch(simulatedWeight)` — chỉ chạy khi giá trị
+    // ĐỔI — nên số đầu tiên gõ vào bị ăn làm bì và màn hình đứng ở 0.00 cho tới khi gõ số thứ hai.
   }
 
   /**
@@ -93,6 +93,17 @@ export function useScaleFeed() {
    * lọt vào nhánh chốt bì bên dưới.
    */
   function ingestRawWeight(raw: number, stable: boolean, fresh = true) {
+    // Số rác thì BỎ QUA HẲN, giữ nguyên số đang hiển thị — đúng như cái cân thật giữ nguyên mặt
+    // số khi không đọc được gì mới.
+    //
+    // Chỗ này bắt được hai nguồn rác thật:
+    //   · Ô nhập giả lập: `<input type="number">` trả CHUỖI RỖNG ở mọi trạng thái gõ dở — gõ
+    //     "12." là trình duyệt coi chưa hợp lệ. Mà JS thì `'' - bì` ra số chứ không ra lỗi, nên
+    //     cứ gõ tới dấu chấm thập phân là ô DELTA nháy một cái về 0.00.
+    //   · Cân thật: `parseFloat(res.data.weight)` ra NaN khi Agent đẩy lên chuỗi hỏng — trước
+    //     đây NaN chạy thẳng vào `liveWeight` và mặt số hiện "NaN".
+    if (!Number.isFinite(raw)) return;
+
     signalLive.value = fresh;
     if (!fresh) {
       isStable.value = false; // không cho phép thao tác nào coi số cũ là "đã ổn định"
@@ -144,11 +155,18 @@ export function useScaleFeed() {
   function retare() {
     tareBaseline.value = null;
     liveWeight.value = 0;
-    clearTareStorage();
   }
 
   const fetchLiveWeight = async () => {
-    if (useSimValue.value) return; // đang giả lập thì bỏ qua số từ Agent
+    // GIẢ LẬP: nạp lại số đang gõ mỗi nhịp, đúng như cái cân thật bắn số liên tục.
+    //
+    // Trước đây chỗ này `return` thẳng, nên nguồn duy nhất là `watch(simulatedWeight)` — mà
+    // watch chỉ chạy khi giá trị ĐỔI. Bấm NEXT xong màn hình đứng im cho tới khi gõ một số
+    // KHÁC; gõ lại đúng số cũ thì không có gì xảy ra cả.
+    if (useSimValue.value) {
+      ingestRawWeight(simulatedWeight.value, true);
+      return; // vẫn không hỏi Agent: đang giả lập thì số thật phải bị bỏ qua hoàn toàn
+    }
     if (!currentWorkstation.value) return;
     try {
       // Response API là object PHẲNG ({status, workstation_id, weight, is_stable}) — không
@@ -159,7 +177,15 @@ export function useScaleFeed() {
       // máy — trước đây mọi máy đều đóng cứng "WS-WEIGH-SCALE" nên hai trạm cân cùng lúc là
       // đè số của nhau. Backend chỉ dùng tới IP khi số theo mã trạm cũ hơn, nên trạm đã cấu
       // hình tay vẫn chạy y nguyên (xem DeviceController::getReading).
-      const res = await axios.get(`/api/devices/readings/${currentWorkstation.value.id}?local=1`);
+      // Gửi MÃ trạm, không phải id. `resolveReadingKey` phía server chỉ tra DB khi tham số là
+      // SỐ (id -> code); đưa thẳng mã là bớt đúng một truy vấn mỗi 200ms mà kết quả không đổi —
+      // khoá cache vốn đã đánh theo mã (`storeReading` ghi bằng chính chuỗi `workstation_id`
+      // Agent gửi lên, mà chuỗi đó là mã trạm chứ không phải số).
+      //
+      // Không có rủi ro thứ tự deploy: backend nhận cả hai dạng, nên frontend mới chạy được với
+      // backend cũ. Lùi về `id` khi trạm chưa có mã, để không gãy ở cấu hình lạ.
+      const khoaCan = currentWorkstation.value.code || currentWorkstation.value.id;
+      const res = await axios.get(`/api/devices/readings/${encodeURIComponent(String(khoaCan))}?local=1`);
       if (res.data?.status === 'SUCCESS') {
         // has_reading/age_ms là trường mới; backend cũ chưa có thì `age_ms === undefined` —
         // coi như còn tươi để không làm hỏng màn hình khi frontend deploy trước backend.
@@ -170,8 +196,15 @@ export function useScaleFeed() {
         scaleOnline.value = true;
       }
     } catch {
+      // Không gọi tới được backend (mất mạng, server chết, DNS hỏng...). Khác với nhánh
+      // `fresh = false` ở trên — chỗ đó backend CÓ trả lời, chỉ là số đã cũ.
       scaleOnline.value = false;
       signalLive.value = false;
+      // BẮT BUỘC hạ cờ ổn định: `ingestRawWeight` không hề chạy trong nhánh này nên `isStable`
+      // sẽ GIỮ NGUYÊN giá trị cũ. Mất mạng đúng lúc cân đang đứng yên là màn hình treo lại ở
+      // "ỔN ĐỊNH" với một con số đông cứng — thợ tưởng cân vẫn sống, mà server lại dùng chính
+      // cờ này để cho phép ghi (weighFromQr chặn khi stable=false).
+      isStable.value = false;
     }
   };
 
@@ -189,6 +222,8 @@ export function useScaleFeed() {
     }
   }
 
+  // Nạp ngay lúc gõ, không đợi nhịp kế. Trùng việc với `fetchLiveWeight` là có chủ ý: nhịp poll
+  // đã bảo đảm số luôn được nạp lại, còn watch này chỉ để gõ xong thấy đổi tức thì.
   watch(simulatedWeight, (newVal) => {
     if (useSimValue.value) ingestRawWeight(newVal, true);
   });
@@ -211,7 +246,6 @@ export function useScaleFeed() {
     ingestRawWeight,
     retare,
     resetTareForNewSlot,
-    restoreTareFromStorage,
     fetchLiveWeight,
     startPolling,
     stopPolling,

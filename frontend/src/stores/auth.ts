@@ -11,7 +11,20 @@ interface Workstation {
   assigned_scale_device_id: string | null;
   assigned_printer_device_id: string | null;
   default_screen: string | null;
+  /**
+   * Tên cột THẬT bên backend (`operation_clients.default_route`). `default_screen` ở trên là tên
+   * cũ vẫn còn dùng ở luồng kiosk, nên router đọc `default_route` trước rồi mới rơi về
+   * `default_screen` — cả hai đều phải có mặt ở đây.
+   */
+  default_route?: string | null;
   allowed_actions: string[] | null;
+  /**
+   * Bổ sung 2026-07-18 để vá lỗi: thiếu trường này thì `workstationHasCapability()` (AppLayout)
+   * không tìm ra capability nào của phiên kiosk, mọi route có yêu cầu capability đều bị chặn nhầm
+   * "trạm không có quyền". Interface trước đây không khai nên TS báo lỗi ngay tại chỗ gán —
+   * xoá trường đi cho hết lỗi là dựng lại đúng con bug đó.
+   */
+  capability_codes?: string[];
 }
 
 interface User {
@@ -33,7 +46,8 @@ export const useAuthStore = defineStore('auth', {
 
   getters: {
     isAuthenticated: (state) => !!state.token,
-    isKiosk: (state) => !!localStorage.getItem('df_kiosk_session_token'),
+    // Không nhận `state`: getter này đọc thẳng localStorage, không phụ thuộc state nào.
+    isKiosk: () => !!localStorage.getItem('df_kiosk_session_token'),
     hasRole: (state) => (role: string) => state.user?.roles.includes(role) || false,
     isAdmin: (state) => state.user?.roles.includes('ADMIN') || false,
     isOperator: (state) => state.user?.roles.includes('OPERATOR') || false,

@@ -96,7 +96,9 @@ class ProductionBatchController extends Controller
     {
         // 'dispatches' (queue_state) can thiet de frontend biet lo nao da CONFIRMED
         // (da bam OK o /print-station) ma an di khoi bang "lo gan nhat" (yeu cau 2026-07-31).
-        $query = ProductionBatch::query()->with(['machine', 'tank', 'dispatches']);
+        // Loại lô CÂN TAY: chúng không phải lệnh sản xuất, không màu/mã hàng/máy, lọt vào đây là
+        // danh sách lô đầy những dòng trống. Xem ProductionBatch::MANUAL_BATCH_PREFIX.
+        $query = ProductionBatch::query()->khongPhaiCanTay()->with(['machine', 'tank', 'dispatches']);
 
         if ($request->has('status')) {
             $query->where('status', $request->input('status'));

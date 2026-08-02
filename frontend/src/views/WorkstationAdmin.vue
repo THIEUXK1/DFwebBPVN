@@ -223,7 +223,9 @@
               Token được bảo mật và ẩn trong CSDL. URL dưới đây chứa token rõ và **chỉ hiển thị MỘT LẦN duy nhất**. Vui lòng copy và lưu trữ cẩn thận.
             </p>
             <div class="kiosk-url-box d-flex gap-2">
-              <input type="text" class="form-input font-mono font-xs flex-1" readonly :value="generatedKioskUrl" ref="kioskUrlInput" />
+              <!-- Bỏ ref="kioskUrlInput": nút copy dùng navigator.clipboard đọc thẳng
+                   generatedKioskUrl, không đụng tới thẻ input này. -->
+              <input type="text" class="form-input font-mono font-xs flex-1" readonly :value="generatedKioskUrl" />
               <button class="btn btn-primary btn-sm" @click="copyKioskUrl">Copy</button>
             </div>
             <p v-if="copied" class="text-success font-xs mt-1 font-semibold">✓ Đã copy link vào clipboard!</p>
@@ -360,7 +362,6 @@ const kioskSubmitting = ref(false);
 const generatedKioskUrl = ref('');
 const kioskError = ref('');
 const copied = ref(false);
-const kioskUrlInput = ref<HTMLInputElement | null>(null);
 
 const allCapabilities = [
   { code: 'CHEMICAL_CALL', name: 'Gọi hóa chất', category: 'BUSINESS' },
