@@ -949,15 +949,16 @@ onUnmounted(() => {
    ":deep(.vis-nesting-group) { z-index: 6; }" bên dưới. */
 :deep(.vis-panel.vis-left) { width: v-bind(labelColumnWidthCss) !important; }
 :deep(.vis-panel) { background-color: var(--bg-card) !important; }
-/* Cột tên Máy VD/Tank lấy nền SIDEBAR chứ không cùng nền với vùng biểu đồ — cùng màu thì ở chế
-   độ tối không còn ranh giới nào giữa cột nhãn và phần chart, mắt phải tự dò theo hàng. */
+/* Cột tên Máy VD/Tank có nền riêng (--gantt-label-bg), không cùng màu với vùng biểu đồ — cùng
+   màu thì mất ranh giới, mắt phải tự dò theo hàng. Dùng biến riêng chứ KHÔNG dùng --bg-sidebar:
+   ở chế độ sáng --bg-sidebar là trắng, trùng đúng nền chart (xem chú thích tại style.css). */
 :deep(.vis-panel.vis-left) {
-  background-color: var(--bg-sidebar) !important;
+  background-color: var(--gantt-label-bg) !important;
   border-right: 1px solid var(--border-card-hover) !important;
 }
 :deep(.vis-label),
 :deep(.vis-label .vis-inner) {
-  background-color: var(--bg-sidebar) !important;
+  background-color: var(--gantt-label-bg) !important;
   color: var(--text-title) !important;
 }
 :deep(.vis-nesting-group) { font-weight: 700; }
@@ -1006,10 +1007,10 @@ onUnmounted(() => {
   justify-content: center;
   box-sizing: border-box;
   padding: 0 6px;
-  /* Nền --bg-card-hover khác hẳn nền cột (--bg-sidebar) ở CẢ 2 theme (sáng: trắng vs xám
-     nhạt, tối: 13% vs 20%) nên thẻ máy nổi lên rõ mà không cần đổ bóng. */
-  background: var(--bg-card-hover);
-  border: 1px solid var(--border-card);
+  /* Thẻ máy nổi lên trên nền cột nhãn ở cả 2 theme: sáng = trắng trên xám nhạt, tối = 20%
+     trên 13%. Không cần đổ bóng. */
+  background: var(--gantt-card-bg);
+  border: 1px solid var(--border-card-hover);
   border-radius: 6px;
   z-index: 2;
 }
@@ -1085,8 +1086,8 @@ onUnmounted(() => {
   top: 50%;
   transform: translateY(-50%);
   padding: 1px 9px !important;
-  background: var(--bg-card-hover) !important;
-  border: 1px solid var(--border-card);
+  background: var(--gantt-card-bg) !important;
+  border: 1px solid var(--border-card-hover);
   border-radius: 999px;
   font-weight: 600;
   line-height: 1.45;
@@ -1100,9 +1101,12 @@ onUnmounted(() => {
 :deep(.vis-panel.vis-center) { border-color: var(--border-card) !important; }
 /* Trục thời gian tách nền khỏi vùng biểu đồ để hàng giờ không lẫn vào các thanh mẻ. */
 :deep(.vis-panel.vis-top) {
-  background-color: var(--bg-sidebar) !important;
+  background-color: var(--gantt-label-bg) !important;
   border-bottom: 1px solid var(--border-card-hover) !important;
 }
+/* Đường kẻ ngang giữa các hàng Tank. Mặc định vis-timeline để #bfbfbf cứng — chói ở nền tối,
+   lại quá nhạt so với lưới giờ ở nền sáng. */
+:deep(.vis-foreground .vis-group) { border-bottom: 1px solid var(--gantt-grid) !important; }
 /* Trước đó thử cách để nền màu chỉ nằm trên .gantt-item-label (nhãn) rồi tràn ra ngoài
    thanh .vis-item hẹp qua overflow:visible — lỗi: vis-timeline tự dịch chuyển
    .vis-item-content bằng transform riêng (tính năng "giữ nhãn hiển thị khi thanh bị kéo
@@ -1116,9 +1120,11 @@ onUnmounted(() => {
   border-radius: 4px !important;
   font-size: 12px !important;
   font-weight: 600 !important;
-  border: 1px solid rgba(255,255,255,0.25) !important;
+  /* Viền thanh mẻ đảo màu theo theme (xem --gantt-item-border): nền sáng mà viền trắng thì
+     các thanh màu nhạt (vàng/be) chảy nhoè vào nền trắng, không thấy mép thanh. */
+  border: 1px solid var(--gantt-item-border) !important;
   min-width: max(70px, max-content) !important;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.18);
 }
 :deep(.vis-item-overflow) { overflow: visible !important; }
 :deep(.gantt-item-label) {

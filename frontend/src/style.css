@@ -59,7 +59,16 @@
   --border-color: hsl(220, 15%, 89%);
   /* Lưới thời gian của vis-timeline. Tách riêng khỏi --border-divider vì lưới cần ĐẬM HƠN
      đường kẻ bảng: nó nằm trên nền card và phải đọc được xuyên qua các thanh màu đè lên. */
-  --gantt-grid: hsl(220, 15%, 85%);
+  --gantt-grid: hsl(220, 14%, 80%);
+  /* Cột nhãn Máy/Tank của Gantt. KHÔNG dùng lại --bg-sidebar được: ở chế độ sáng biến đó là
+     trắng tinh, đúng bằng nền vùng biểu đồ -> cột nhãn và chart dính liền thành một mảng
+     trắng, mất ranh giới (ở chế độ tối thì 2 biến khác nhau nên không lộ vấn đề này). */
+  --gantt-label-bg: hsl(220, 24%, 96%);
+  /* Thẻ máy + viên tank nổi lên trên nền cột nhãn: sáng thì trắng trên nền xám nhạt. */
+  --gantt-card-bg: hsl(0, 0%, 100%);
+  /* Viền quanh thanh mẻ. Sáng phải là viền TỐI (thanh màu nhạt trên nền trắng, viền trắng
+     coi như không có); tối thì ngược lại. */
+  --gantt-item-border: rgba(0, 0, 0, 0.28);
 
   /* Accent Colors */
   --primary: hsl(250, 85%, 55%);
@@ -140,6 +149,9 @@
   /* Sáng hơn --border-divider (21%) một quãng rõ: nền card ở chế độ tối là 16%, chênh 5% gần
      như không nhìn thấy lưới giờ. 34% cho đủ tương phản mà vẫn không cắt vụn biểu đồ. */
   --gantt-grid: hsl(217, 26%, 34%);
+  --gantt-label-bg: hsl(217, 42%, 13%);
+  --gantt-card-bg: hsl(217, 38%, 20%);
+  --gantt-item-border: rgba(255, 255, 255, 0.25);
 
   /* Accent Colors */
   --primary: hsl(250, 100%, 65%);
