@@ -14,7 +14,15 @@ initTheme();
 // Centralized API backend baseURL — dùng đúng host mà trình duyệt đang dùng để mở
 // trang (LAN IP của máy chủ, không phải 'localhost') để các máy trạm khác trong
 // mạng nội bộ gọi API đúng máy chủ thay vì gọi vào chính máy trạm đó.
-axios.defaults.baseURL = `http://${window.location.hostname}:8500`;
+//
+// NGOẠI LỆ 'localhost' -> '127.0.0.1' (đo thật 2026-08-02): trên Windows, 'localhost'
+// phân giải ra ::1 (IPv6) TRƯỚC, mà backend `php artisan serve --host=0.0.0.0` chỉ nghe
+// IPv4 — mỗi request phải chờ nhánh IPv6 hỏng rồi mới thử lại IPv4. Đo bằng curl trên
+// chính máy này: localhost = 213ms chỉ riêng bước connect (tổng ~245ms), 127.0.0.1 =
+// 0.35ms (tổng ~19ms). Ép về 127.0.0.1 cắt thẳng ~215ms/request. Chỉ đổi đúng chuỗi
+// 'localhost', các host khác (LAN IP, tên máy chủ) giữ nguyên.
+const apiHost = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
+axios.defaults.baseURL = `http://${apiHost}:8500`;
 
 const app = createApp(App);
 const pinia = createPinia();

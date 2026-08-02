@@ -19,13 +19,28 @@ class ChemicalCallController extends Controller
      */
     public function getChannels(Request $request)
     {
-        $channels = MachineChemicalChannel::with('machine')->get()->map(function ($channel) {
-            $currentRequest = ChemicalCallRequest::where('channel_id', $channel->id)
-                ->whereIn('status', ['CREATED', 'ORDERED', 'ACKNOWLEDGED', 'DONE'])
-                ->orderByDesc('requested_at')
-                ->first();
-                
-            $formulaGroup = ChemicalFormulaGroup::lookupByCombinedCode($channel->chemical_code);
+        $channels = MachineChemicalChannel::with('machine')->get();
+
+        // Trước đây mỗi thùng tự chạy 1 truy vấn tìm lượt gọi hiện tại + 1 truy vấn tra công
+        // thức -> 2N+1 truy vấn cho N thùng. DB nằm ở máy chủ khác (không phải localhost) nên
+        // chi phí thật gần như là 2N lượt đi-về mạng, và trang tự tải lại mỗi 10 giây. Gom
+        // thành đúng 3 truy vấn cố định, phần còn lại ghép trong bộ nhớ.
+        $latestRequests = ChemicalCallRequest::select('id', 'channel_id', 'status', 'requested_at')
+            ->whereIn('channel_id', $channels->pluck('id'))
+            ->whereIn('status', ['CREATED', 'ORDERED', 'ACKNOWLEDGED', 'DONE'])
+            ->orderByDesc('requested_at')
+            ->get()
+            ->groupBy('channel_id');
+
+        $formulaGroups = ChemicalFormulaGroup::indexedByCode();
+
+        $channels = $channels->map(function ($channel) use ($latestRequests, $formulaGroups) {
+            // groupBy giữ nguyên thứ tự đã sắp ở truy vấn -> phần tử đầu chính là lượt gọi
+            // mới nhất của thùng, đúng như ->orderByDesc()->first() cũ.
+            $currentRequest = $latestRequests->get($channel->id)?->first();
+
+            $formulaKey = ChemicalFormulaGroup::combinedCodeKey($channel->chemical_code);
+            $formulaGroup = $formulaKey === null ? null : $formulaGroups->get($formulaKey);
 
             return [
                 'channel_id' => $channel->id,

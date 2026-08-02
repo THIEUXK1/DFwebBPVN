@@ -552,14 +552,26 @@ onMounted(async () => {
 
   // Vẫn giữ polling làm lưới an toàn (vd WebSocket rớt kết nối tạm thời) — chu kỳ dài hơn
   // vì cập nhật chính đã qua Reverb tức thì.
+  // Tab bị ẩn thì BỎ QUA lượt poll: backend chạy `php artisan serve` (một tiến trình, xử lý
+  // tuần tự — xem session-log mục 38/1113), nên mọi request thừa của tab nền đều xếp hàng
+  // trước request thật của người đang thao tác ở tab khác. Khi quay lại tab thì nạp ngay.
   pollInterval = setInterval(() => {
+    if (document.hidden) return;
     fetchChannels();
     fetchRecentEvents();
   }, 10000);
+  document.addEventListener('visibilitychange', onVisible);
 });
+
+function onVisible() {
+  if (document.hidden) return;
+  fetchChannels();
+  fetchRecentEvents();
+}
 
 onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval);
+  document.removeEventListener('visibilitychange', onVisible);
   echo.leaveChannel('chemical-channels');
 });
 </script>

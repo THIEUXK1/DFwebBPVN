@@ -1,53 +1,28 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { ROUTE_CAPABILITY_MAP } from '../services/workstation';
-import Login from '../views/Login.vue';
-import Dashboard from '../views/Dashboard.vue';
-import Materials from '../views/Materials.vue';
-import WaterConfigs from '../views/WaterConfigs.vue';
-import Recipes from '../views/Recipes.vue';
-import ProductionBatches from '../views/ProductionBatches.vue';
-import ProductionBatchesList from '../views/ProductionBatchesList.vue';
-import MachineQueue from '../views/MachineQueue.vue';
-import WeighingStation from '../views/WeighingStation.vue';
-import WeighingStationV2 from '../views/WeighingStationV2.vue';
-import WeighingHistory from '../views/WeighingHistory.vue';
-import MaterialTransfer from '../views/MaterialTransfer.vue';
-import FeedingMonitor from '../views/FeedingMonitor.vue';
-import Troubleshooting from '../views/Troubleshooting.vue';
-import Reports from '../views/Reports.vue';
-import AuditLogExplorer from '../views/AuditLogExplorer.vue';
-import WorkstationAdmin from '../views/WorkstationAdmin.vue';
-import PrintHistoryAdmin from '../views/PrintHistoryAdmin.vue';
-import MachinesTanks from '../views/MachinesTanks.vue';
-import BpdbAdmin from '../views/BpdbAdmin.vue';
-import BpdbMachines from '../views/BpdbMachines.vue';
-import OrderScan from '../views/OrderScan.vue';
-import PrintStation from '../views/PrintStation.vue';
-import WorkstationKioskSetup from '../views/WorkstationKioskSetup.vue';
-import ChemicalCall from '../views/ChemicalCall.vue';
-import ChemicalCallMonitor from '../views/ChemicalCallMonitor.vue';
-import ChemicalCallPending from '../views/ChemicalCallPending.vue';
-import KioskLanding from '../views/KioskLanding.vue';
-import KioskMenu from '../views/KioskMenu.vue';
 
+// Mọi view đều nạp lười `() => import(...)`. Trước 2026-08-02 có 29 view import tĩnh, dồn
+// toàn bộ ứng dụng vào một chunk ~692 kB — mở BẤT KỲ trang nào cũng phải tải xong cả 29 màn
+// hình mới hiện được. Nạp lười cắt chunk chung xuống còn phần lõi, mỗi trang chỉ tải đúng
+// mã của nó. KHÔNG import tĩnh view mới ở đây nữa.
 const routes = [
   {
     path: '/login',
     name: 'Login',
-    component: Login,
+    component: () => import('../views/Login.vue'),
     meta: { requiresAuth: false }
   },
   {
     path: '/workstation-setup',
     name: 'WorkstationKioskSetup',
-    component: WorkstationKioskSetup,
+    component: () => import('../views/WorkstationKioskSetup.vue'),
     meta: { requiresAuth: false }
   },
   {
     path: '/operate/c/:clientCode/:kioskToken',
     name: 'KioskLanding',
-    component: KioskLanding,
+    component: () => import('../views/KioskLanding.vue'),
     meta: { requiresAuth: false }
   },
   // Link tắt cho môi trường test/demo — trỏ thẳng vào đúng link kiosk đầy đủ ở trên
@@ -62,61 +37,61 @@ const routes = [
   {
     path: '/operate/menu',
     name: 'KioskMenu',
-    component: KioskMenu,
+    component: () => import('../views/KioskMenu.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/chemical-call',
     name: 'ChemicalCall',
-    component: ChemicalCall,
+    component: () => import('../views/ChemicalCall.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/chemical-call/monitor',
     name: 'ChemicalCallMonitor',
-    component: ChemicalCallMonitor,
+    component: () => import('../views/ChemicalCallMonitor.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/chemical-call/pending',
     name: 'ChemicalCallPending',
-    component: ChemicalCallPending,
+    component: () => import('../views/ChemicalCallPending.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/troubleshooting',
     name: 'Troubleshooting',
-    component: Troubleshooting,
+    component: () => import('../views/Troubleshooting.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/',
     name: 'Dashboard',
-    component: Dashboard,
+    component: () => import('../views/Dashboard.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/production-batches',
     name: 'ProductionBatches',
-    component: ProductionBatches,
+    component: () => import('../views/ProductionBatches.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/production-batches/list',
     name: 'ProductionBatchesList',
-    component: ProductionBatchesList,
+    component: () => import('../views/ProductionBatchesList.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/order-scan',
     name: 'OrderScan',
-    component: OrderScan,
+    component: () => import('../views/OrderScan.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/weighing-station',
     name: 'WeighingStation',
-    component: WeighingStation,
+    component: () => import('../views/WeighingStation.vue'),
     meta: { requiresAuth: true }
   },
   // Bản dựng lại của màn hình cân, chạy song song với /weighing-station (bản cũ giữ nguyên
@@ -124,97 +99,97 @@ const routes = [
   {
     path: '/weighing-station-v2',
     name: 'WeighingStationV2',
-    component: WeighingStationV2,
+    component: () => import('../views/WeighingStationV2.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/weighing-history',
     name: 'WeighingHistory',
-    component: WeighingHistory,
+    component: () => import('../views/WeighingHistory.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/print-station',
     name: 'PrintStation',
-    component: PrintStation,
+    component: () => import('../views/PrintStation.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/material-transports',
     name: 'MaterialTransfer',
-    component: MaterialTransfer,
+    component: () => import('../views/MaterialTransfer.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/feeding-monitor',
     name: 'FeedingMonitor',
-    component: FeedingMonitor,
+    component: () => import('../views/FeedingMonitor.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/machine-queue',
     name: 'MachineQueue',
-    component: MachineQueue,
+    component: () => import('../views/MachineQueue.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/materials',
     name: 'Materials',
-    component: Materials,
+    component: () => import('../views/Materials.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/water-configs',
     name: 'WaterConfigs',
-    component: WaterConfigs,
+    component: () => import('../views/WaterConfigs.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/recipes',
     name: 'Recipes',
-    component: Recipes,
+    component: () => import('../views/Recipes.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/machines-tanks',
     name: 'MachinesTanks',
-    component: MachinesTanks,
+    component: () => import('../views/MachinesTanks.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/reports',
     name: 'Reports',
-    component: Reports,
+    component: () => import('../views/Reports.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/audit-logs',
     name: 'AuditLogExplorer',
-    component: AuditLogExplorer,
+    component: () => import('../views/AuditLogExplorer.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/workstation-admin',
     name: 'WorkstationAdmin',
-    component: WorkstationAdmin,
+    component: () => import('../views/WorkstationAdmin.vue'),
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
     path: '/print-history-admin',
     name: 'PrintHistoryAdmin',
-    component: PrintHistoryAdmin,
+    component: () => import('../views/PrintHistoryAdmin.vue'),
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
     path: '/bpdb-admin',
     name: 'BpdbAdmin',
-    component: BpdbAdmin,
+    component: () => import('../views/BpdbAdmin.vue'),
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
     path: '/bpdb-machines',
     name: 'BpdbMachines',
-    component: BpdbMachines,
+    component: () => import('../views/BpdbMachines.vue'),
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {

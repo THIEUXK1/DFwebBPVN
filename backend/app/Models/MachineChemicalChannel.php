@@ -53,7 +53,7 @@ class MachineChemicalChannel extends Model
         $combo = implode('+', $parts);
         $filename = "QR_{$this->machine->code}_{$combo}.jpg";
 
-        if (!file_exists(public_path("chemical-qr/{$filename}"))) {
+        if (!isset(static::danhSachAnhQr()[$filename])) {
             return null;
         }
 
@@ -61,5 +61,23 @@ class MachineChemicalChannel extends Model
         // hiểu sai (không khớp tên file, rơi về route mặc định của Laravel thay vì trả
         // đúng ảnh); encode thành "%2B" thì browser tải đúng file.
         return '/chemical-qr/' . rawurlencode($filename);
+    }
+
+    private static ?array $anhQrCache = null;
+
+    /**
+     * Tên các file ảnh QR hiện có, đọc thư mục ĐÚNG 1 LẦN cho mỗi request thay vì gọi
+     * file_exists() cho từng thùng (getChannels duyệt toàn bộ thùng, và trang tự tải lại
+     * mỗi 10 giây). Cache chỉ sống trong 1 request nên thêm/bớt ảnh vẫn nhận ra ở lần tải
+     * kế tiếp, không cần xóa cache thủ công.
+     */
+    private static function danhSachAnhQr(): array
+    {
+        if (static::$anhQrCache === null) {
+            $files = @scandir(public_path('chemical-qr'));
+            static::$anhQrCache = array_fill_keys($files ?: [], true);
+        }
+
+        return static::$anhQrCache;
     }
 }

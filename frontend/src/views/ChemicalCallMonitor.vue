@@ -228,11 +228,22 @@ onMounted(async () => {
   echo.channel('chemical-channels').listen('.updated', refreshAll);
 
   // Polling giữ làm lưới an toàn (WebSocket rớt kết nối tạm thời), chu kỳ dài hơn.
-  pollInterval = setInterval(refreshAll, 10000);
+  // Tab ẩn thì bỏ qua lượt poll — backend xử lý tuần tự (`php artisan serve`, xem session-log
+  // mục 38/1113), request thừa của tab nền chen trước thao tác thật của người dùng.
+  pollInterval = setInterval(() => {
+    if (document.hidden) return;
+    refreshAll();
+  }, 10000);
+  document.addEventListener('visibilitychange', onVisible);
 });
+
+function onVisible() {
+  if (!document.hidden) refreshAll();
+}
 
 onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval);
+  document.removeEventListener('visibilitychange', onVisible);
   echo.leaveChannel('chemical-channels');
 });
 </script>

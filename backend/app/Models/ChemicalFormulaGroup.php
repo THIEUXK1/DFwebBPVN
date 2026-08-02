@@ -79,6 +79,25 @@ class ChemicalFormulaGroup extends Model
      */
     public static function lookupByCombinedCode(?string $combined): ?self
     {
+        $key = static::combinedCodeKey($combined);
+        if ($key === null) {
+            return null;
+        }
+
+        [$code1, $code2] = explode('|', $key, 2);
+
+        return static::where('code_1', $code1)
+            ->where('code_2', $code2 === '' ? null : $code2)
+            ->first();
+    }
+
+    /**
+     * Khóa tra cứu chuẩn hóa từ mã ghép trên thùng: "<code_1>|<code_2>" (code_2 rỗng khi
+     * thùng chỉ có 1 mã). Tách riêng để lookupByCombinedCode() và indexedByCode() dùng
+     * CHUNG một cách tách chuỗi — hai nơi tách khác nhau là tra trượt mà không báo lỗi.
+     */
+    public static function combinedCodeKey(?string $combined): ?string
+    {
         if (!$combined) {
             return null;
         }
@@ -88,11 +107,16 @@ class ChemicalFormulaGroup extends Model
             explode('+', $combined, 2)
         );
 
-        $code1 = $parts[0] ?? '';
-        $code2 = $parts[1] ?? null;
+        return ($parts[0] ?? '').'|'.($parts[1] ?? '');
+    }
 
-        return static::where('code_1', $code1)
-            ->where('code_2', $code2 === '' ? null : $code2)
-            ->first();
+    /**
+     * Toàn bộ công thức nạp 1 lần, đánh khóa theo combinedCodeKey() — dùng khi phải tra cho
+     * cả danh sách thùng (getChannels), thay cho việc gọi lookupByCombinedCode() từng thùng
+     * (mỗi lần là 1 truy vấn riêng, rất tốn khi DB ở máy chủ khác).
+     */
+    public static function indexedByCode(): \Illuminate\Support\Collection
+    {
+        return static::all()->keyBy(fn (self $g) => $g->code_1.'|'.($g->code_2 ?? ''));
     }
 }
