@@ -429,7 +429,11 @@ const menuGroupsRaw = [
   {
     title: 'CÔNG NGHỆ',
     items: [
-      { path: '/production-batches', label: 'Quét đơn (Lô SX)', icon: 'batch' },
+      // MainForm (bản dựng lại Workbook C3) là màn hình nhập đơn CHÍNH — để đầu nhóm.
+      { path: '/production-batches/grid', label: 'Nhập đơn (MainForm)', icon: 'batch' },
+      // Dựng lại UserForm TO_SEND của workbook DF002 (PRINTER LANDSCAPE / jit qr sending).
+      { path: '/print-order-entry', label: 'In tem nhập đơn', icon: 'recipe' },
+      { path: '/production-batches', label: 'Quét đơn (bản web)', icon: 'batch' },
       { path: '/production-batches/list', label: 'Danh sách Lô SX', icon: 'batch' },
       { path: '/machine-queue', label: 'Điều phối máy', icon: 'queue' },
       { path: '/materials', label: 'Vật tư', icon: 'material' },
@@ -478,6 +482,8 @@ const currentRouteName = computed(() => {
     '/feeding-monitor': 'Kiểm soát Cấp máy',
     '/production-batches': 'Trạm Quét đơn sản xuất',
     '/production-batches/list': 'Danh sách Lô sản xuất',
+    '/production-batches/grid': 'Nhập đơn sản xuất — MainForm (C3)',
+    '/print-order-entry': 'In tem nhập đơn — TO_SEND (DF002)',
     '/machine-queue': 'Hàng chờ Điều phối',
     '/materials': 'Danh mục Vật tư',
     '/water-configs': 'Cấu hình Mực nước',

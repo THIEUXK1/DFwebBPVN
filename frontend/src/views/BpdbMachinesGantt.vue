@@ -98,6 +98,42 @@
         <span aria-hidden="true">⤢</span> Thoát toàn màn hình
       </button>
     </div>
+
+    <!-- Bảng chi tiết mẻ — chỉ hiện khi BẤM vào thanh Gantt (yêu cầu 2026-08-03), thay cho
+         tooltip hover mặc định của vis-timeline trước đây. position: fixed nên đặt ở cuối
+         cây, vị trí do detailPopupStyle tính theo điểm bấm. -->
+    <div v-if="detailPopup" class="gantt-detail-popup" :style="detailPopupStyle">
+      <button class="gantt-detail-close" @click="closeDetailPopup" title="Đóng (Esc)">✕</button>
+      <div class="gantt-detail-head">
+        <span class="gantt-detail-swatch" :style="{ backgroundColor: detailPopup.barColor }"></span>
+        <span class="gantt-detail-title">
+          {{ detailPopup.machineCode }}<template v-if="detailPopup.tankLabel"> · Tank {{ detailPopup.tankLabel }}</template>
+        </span>
+      </div>
+      <dl class="gantt-detail-list">
+        <template v-if="detailPopup.color && detailPopup.productCode">
+          <dt>Mã màu - Mã hàng</dt>
+          <dd>{{ detailPopup.color }} - {{ detailPopup.productCode }}</dd>
+        </template>
+        <template v-else>
+          <dt>TaskTitle gốc (không tách được mã màu/mã hàng)</dt>
+          <dd>{{ detailPopup.taskTitle || '—' }}</dd>
+        </template>
+        <dt>Trạng thái</dt>
+        <dd>
+          {{ detailPopup.statusLabel }}
+          <span v-if="detailPopup.uncompleted" class="gantt-blink">(đang chạy)</span>
+        </dd>
+        <dt>Bắt đầu</dt>
+        <dd>{{ detailPopup.startText }}</dd>
+        <dt>Kết thúc</dt>
+        <dd>{{ detailPopup.endText }}</dd>
+        <template v-if="detailPopup.errorMessage">
+          <dt class="text-error">Lỗi</dt>
+          <dd class="text-error">{{ detailPopup.errorMessage }}</dd>
+        </template>
+      </dl>
+    </div>
   </div>
   </component>
 </template>
@@ -223,7 +259,11 @@ const RAW_TASK_STATUS_LABELS: Record<string, string> = {
 
 // Độ dài vẽ tối thiểu của mỗi thanh Gantt — mẻ ngắn hơn vẫn được vẽ rộng bằng đúng ngần
 // này thời gian (không phải ép cứng theo px), giữ đúng bản chất "thanh dài = thời gian dài".
-const MIN_VISUAL_DURATION_MS = 2 * 60 * 60 * 1000;
+// Cũng chính là khoảng cách tối thiểu giữa 2 mẻ liên tiếp trên cùng Tank (xem lượt 1 của
+// thuật toán xếp mẻ trong fetchGantt), nên tăng số này là tăng luôn chỗ cho nhãn.
+// 2h -> 2.5h (2026-08-03): sau khi bỏ min-width theo px, 2h vẫn chưa đủ rộng cho nhãn
+// "{mã màu}-{mã hàng}" ở khung 24h mặc định nên chữ bị cắt.
+const MIN_VISUAL_DURATION_MS = 2.5 * 60 * 60 * 1000;
 
 // Độ rộng cột tên máy/tank — mã máy (vd "VD006") và tên tank (vd "1A") đều ngắn, 170px dư
 // quá nhiều diện tích lẽ ra dành cho phần vẽ Gantt (yêu cầu 2026-07-29). Một hằng số dùng
@@ -333,24 +373,91 @@ interface GanttItem {
   className: string;
   style: string;
   content: string;
-  title: string;
 }
 
-const buildTooltip = (item: any) => {
+/** Nội dung bảng chi tiết mẻ — hiện khi BẤM vào thanh Gantt (xem openDetailPopup). */
+interface GanttDetail {
+  id: string;
+  group: string;
+  machineCode: string;
+  tankLabel: string;
+  color: string | null;
+  productCode: string | null;
+  taskTitle: string;
+  statusLabel: string;
+  uncompleted: boolean;
+  startText: string;
+  endText: string;
+  errorMessage: string | null;
+  barColor: string;
+}
+
+const buildDetail = (item: any, realEnd: Date, barColor: string): GanttDetail => {
   // group id có dạng "{machineCode}::{tankLabel}" (xem BpdbMachineMonitoringService::
   // getGanttTimeline) — tách lại để hiển thị, không cần field riêng từ backend.
   const [machineCode, tankLabel] = String(item.group).split('::');
-  const lines = [
-    `<strong>Máy:</strong> ${machineCode}${tankLabel ? ' · Tank ' + tankLabel : ''}`,
-    item.color && item.productCode
-      ? `<strong>Mã màu - Mã hàng:</strong> ${item.color} - ${item.productCode}`
-      : `<strong>TaskTitle gốc (không tách được mã màu/mã hàng):</strong> ${item.taskTitle}`,
-    `<strong>Trạng thái:</strong> ${rawTaskStatusLabel(item.taskStatus)}${item.uncompleted ? ' <span class="gantt-blink">(đang chạy)</span>' : ''}`,
-    `<strong>Bắt đầu:</strong> ${formatTime(item.start)}`,
-    `<strong>Kết thúc:</strong> ${item.uncompleted ? 'Chưa kết thúc' : formatTime(item.end)}`,
-  ];
-  if (item.errorMessage) lines.push(`<strong class="text-error">Lỗi:</strong> ${item.errorMessage}`);
-  return `<div class="gantt-tooltip">${lines.join('<br/>')}</div>`;
+  return {
+    id: item.id,
+    group: item.group,
+    machineCode,
+    tankLabel: tankLabel || '',
+    color: item.color ?? null,
+    productCode: item.productCode ?? null,
+    taskTitle: item.taskTitle ?? '',
+    statusLabel: rawTaskStatusLabel(item.taskStatus),
+    uncompleted: !!item.uncompleted,
+    startText: formatTime(item.start),
+    endText: item.uncompleted ? 'Chưa kết thúc' : formatTime(realEnd.toISOString()),
+    errorMessage: item.errorMessage || null,
+    barColor,
+  };
+};
+
+// Chi tiết từng mẻ giữ NGOÀI DataSet của vis-timeline (tra theo id) — trước đây nội dung này
+// nhét vào field `title` của item, tức là tooltip hover mặc định của thư viện; yêu cầu
+// 2026-08-03 đổi sang "bấm mới hiện" nên item không còn `title`, popup do trang tự vẽ bằng
+// template Vue (an toàn hơn: dữ liệu BPDB được Vue tự escape, không phải ghép chuỗi HTML).
+const itemDetails = new Map<string, GanttDetail>();
+
+const detailPopup = ref<GanttDetail | null>(null);
+const detailPopupStyle = ref('');
+
+const closeDetailPopup = () => {
+  detailPopup.value = null;
+};
+
+// Ước lượng khổ popup để kẹp trong khung nhìn — chỉ dùng cho phép tính vị trí, kích thước
+// thật do CSS quyết định (xem .gantt-detail-popup).
+const DETAIL_POPUP_W = 330;
+const DETAIL_POPUP_H = 250;
+
+const openDetailPopup = (id: string, pageX: number, pageY: number) => {
+  const detail = itemDetails.get(id);
+  if (!detail) return;
+  // position: fixed nên phải quy về toạ độ khung nhìn (vis-timeline trả pageX/pageY).
+  const x = pageX - window.scrollX;
+  const y = pageY - window.scrollY;
+  const left = Math.max(8, Math.min(x + 14, window.innerWidth - DETAIL_POPUP_W - 8));
+  const top = y + 14 + DETAIL_POPUP_H > window.innerHeight
+    ? Math.max(8, y - 14 - DETAIL_POPUP_H)
+    : y + 14;
+  detailPopupStyle.value = `left: ${left}px; top: ${top}px;`;
+  detailPopup.value = detail;
+};
+
+// Bấm ra ngoài popup thì đóng. Bỏ qua thao tác bấm bên trong vùng biểu đồ — sự kiện 'click'
+// của vis-timeline đã tự quyết định mở mẻ khác hay đóng, xử lý thêm ở đây chỉ gây tranh chấp.
+const closeDetailOnOutsideClick = (event: MouseEvent) => {
+  if (!detailPopup.value) return;
+  const target = event.target as HTMLElement | null;
+  if (!target) return;
+  if (target.closest('.gantt-detail-popup')) return;
+  if (timelineEl.value?.contains(target)) return;
+  closeDetailPopup();
+};
+
+const closeDetailOnEscape = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') closeDetailPopup();
 };
 
 const fetchGantt = async () => {
@@ -371,6 +478,7 @@ const fetchGantt = async () => {
     order: g.order,
     nestedGroups: g.nestedGroups && g.nestedGroups.length ? g.nestedGroups : undefined,
   }));
+  itemDetails.clear();
   const items: GanttItem[] = (res.data.items || []).map((it: any): GanttItem => {
     const start = new Date(it.start);
     const realEnd = it.uncompleted ? syncSnapshot.value : new Date(it.end);
@@ -378,7 +486,7 @@ const fetchGantt = async () => {
     // vẽ thanh rộng bằng đúng 2h theo tỉ lệ thời gian hiện tại (co giãn đúng theo zoom, khác
     // với ép min-width theo px cố định), đủ chỗ cho nhãn trong đa số trường hợp mà vẫn giữ
     // đúng bản chất "biểu thị theo thời gian" của Gantt chart. Chỉ ảnh hưởng bề rộng vẽ —
-    // tooltip/nhãn vẫn dùng realEnd (giờ kết thúc thật) để không hiển thị sai lệch dữ liệu.
+    // bảng chi tiết vẫn dùng realEnd (giờ kết thúc thật) để không hiển thị sai lệch dữ liệu.
     const displayEnd = realEnd.getTime() - start.getTime() < MIN_VISUAL_DURATION_MS
       ? new Date(start.getTime() + MIN_VISUAL_DURATION_MS)
       : realEnd;
@@ -386,6 +494,8 @@ const fetchGantt = async () => {
     const color = it.colorHex || FALLBACK_BAR_COLOR;
     const textColor = labelColorOn(color);
     const textShadow = labelShadowFor(textColor);
+    // realEnd (giờ kết thúc THẬT) chỉ dùng cho bảng chi tiết — bề rộng vẽ dùng displayEnd.
+    itemDetails.set(it.id, buildDetail(it, realEnd, color));
     return {
       id: it.id,
       group: it.group,
@@ -393,24 +503,27 @@ const fetchGantt = async () => {
       end: displayEnd,
       className: it.uncompleted ? 'gantt-item-running' : '',
       style: `background-color: ${color}; color: ${textColor};`,
-      // Nền màu đặt luôn trên nhãn (thẻ) chứ không chỉ trên thanh ngoài — phòng trường hợp
-      // zoom quá xa khiến 2h vẫn chưa đủ chỗ cho nhãn (xem CSS .vis-item min-width và
-      // .vis-item-overflow overflow:visible bên dưới); nếu không tô lại màu ở đây, phần chữ
-      // tràn ra sẽ không có nền, trông như bị "hụt" nền so với chữ.
+      // Nền màu đặt luôn trên nhãn (thẻ) chứ không chỉ trên thanh ngoài — nhãn nay bị cắt gọn
+      // trong lòng thanh (xem CSS .gantt-item-label), tô cùng màu để không lộ vệt nền khác
+      // màu giữa chữ và mép thanh.
       content: `<div class="gantt-item-label" style="background-color: ${color}; color: ${textColor}; text-shadow: ${textShadow};">${label}</div>`,
-      title: buildTooltip({ ...it, end: realEnd }),
     };
   });
 
-  // Nối liền các mẻ trên CÙNG 1 Tank theo chuỗi, không chừa khoảng trống (yêu cầu
-  // 2026-07-29: "đừng quan tâm thời gian kết thúc, nếu có khoảng trống giữa các mẻ thì sẽ
-  // dài chạm đến cái bên phải gần nhất") — sắp theo giờ bắt đầu (giờ bắt đầu vẫn là giờ
-  // THẬT, không đổi), rồi ép giờ kết thúc HIỂN THỊ của mỗi mẻ = đúng giờ bắt đầu của mẻ kế
-  // tiếp trên cùng Tank, bất kể giờ kết thúc thật là khi nào — vừa lấp khoảng trống (máy
-  // rảnh) vừa tự động hết chồng đè (mẻ trước luôn kết thúc đúng lúc mẻ sau bắt đầu). Mẻ
-  // CUỐI CÙNG của mỗi Tank không có mẻ nào bên phải để chạm tới nên giữ nguyên giờ kết thúc
-  // đã tính ở trên (thật, hoặc kéo dài tối thiểu 2h nếu mẻ quá ngắn). Tooltip vẫn dùng
-  // it.start/realEnd (giờ thật) nên không sai lệch dữ liệu — chỉ đổi bề rộng VẼ.
+  // Xếp các mẻ trên CÙNG 1 Tank thành chuỗi liền mạch, TUYỆT ĐỐI không đè lên nhau (yêu cầu
+  // 2026-08-03) — chấp nhận vẽ SAI giờ: mẻ nào không đủ chỗ thì bị ĐẨY SANG PHẢI (muộn hơn
+  // giờ thật), lan truyền tiếp sang các mẻ sau nó. Kết hợp với yêu cầu 2026-07-29 trước đó
+  // ("nếu có khoảng trống giữa các mẻ thì kéo dài chạm tới mẻ bên phải gần nhất"): khoảng
+  // trống vẫn được lấp, chỉ khác là giờ BẮT ĐẦU nay cũng được phép dịch, không chỉ giờ kết thúc.
+  //
+  // Vì sao bản trước vẫn đè dù đã ép end = start của mẻ kế tiếp: hai mẻ bắt đầu cách nhau vài
+  // phút (hoặc trùng giờ) tạo ra thanh gần như rộng 0, nhưng CSS còn ép min-width theo px và
+  // cho nhãn tràn ra ngoài -> phần vẽ thật vẫn phủ lên mẻ bên phải. Nay bề rộng TỐI THIỂU
+  // được bảo đảm ngay trong dữ liệu (theo THỜI GIAN, co giãn đúng theo zoom) nên CSS không
+  // cần ép min-width/tràn nhãn nữa (xem .vis-item trong <style>).
+  //
+  // Bảng chi tiết (bấm vào thanh) vẫn lấy giờ THẬT từ itemDetails — dữ liệu không sai lệch,
+  // chỉ riêng vị trí VẼ mới bị dịch.
   const itemsByTank = new Map<string, typeof items>();
   for (const item of items) {
     if (!itemsByTank.has(item.group)) itemsByTank.set(item.group, []);
@@ -418,6 +531,23 @@ const fetchGantt = async () => {
   }
   for (const tankItems of itemsByTank.values()) {
     tankItems.sort((a, b) => a.start.getTime() - b.start.getTime());
+
+    // Lượt 1 — dịch giờ bắt đầu sang phải sao cho 2 mẻ liên tiếp luôn cách nhau ít nhất
+    // MIN_VISUAL_DURATION_MS. cursor = mốc sớm nhất mà mẻ kế tiếp được phép bắt đầu.
+    let cursor = -Infinity;
+    for (const item of tankItems) {
+      const duration = item.end.getTime() - item.start.getTime();
+      if (item.start.getTime() < cursor) {
+        item.start = new Date(cursor);
+        item.end = new Date(cursor + duration);
+      }
+      cursor = item.start.getTime() + MIN_VISUAL_DURATION_MS;
+    }
+
+    // Lượt 2 — lấp khoảng trống: mỗi mẻ kéo dài chạm đúng giờ bắt đầu (đã dịch) của mẻ kế
+    // tiếp. Nhờ lượt 1, khoảng cách đó luôn >= MIN_VISUAL_DURATION_MS nên không mẻ nào bị
+    // bóp hẹp lại. Mẻ CUỐI của mỗi Tank không có mẻ nào bên phải nên giữ nguyên độ dài
+    // (thật, hoặc tối thiểu MIN_VISUAL_DURATION_MS).
     for (let i = 0; i < tankItems.length - 1; i++) {
       tankItems[i].end = tankItems[i + 1].start;
     }
@@ -506,6 +636,17 @@ const applyMachineFilter = () => {
   itemsDataSet.add(visibleItems);
   totalRecords.value = visibleItems.length;
 
+  // Bảng chi tiết đang mở phải bám theo dữ liệu vừa nạp: mẻ bị lọc mất (tìm máy) hoặc biến
+  // khỏi kết quả sau lần Auto tải lại 30s thì đóng lại, còn thì thay bằng bản mới nhất (mẻ
+  // đang chạy có thể đã đổi trạng thái/có lỗi mới) — nếu không, popup sẽ đứng im hiển thị
+  // dữ liệu cũ trong khi thanh Gantt phía sau đã đổi.
+  if (detailPopup.value) {
+    const stillVisible = visibleItems.some(it => it.id === detailPopup.value!.id);
+    const fresh = itemDetails.get(detailPopup.value.id);
+    if (!stillVisible || !fresh) closeDetailPopup();
+    else detailPopup.value = fresh;
+  }
+
   // clear()+add() phát sự kiện 'add' bình thường (đủ để vẽ lại nội dung/nhãn — search và
   // icon ghim đã chạy đúng qua đường này), nhưng THỨ TỰ hàng dựa trên field order chỉ được
   // tính lại chắc chắn khi gọi setGroups() — API chính thức của vis-timeline để "nạp lại
@@ -583,6 +724,10 @@ const initTimeline = () => {
     // (mặc định stack:true của vis-timeline). Đè lên nhau không mất dữ liệu — mỗi mẻ vẫn
     // bấm/hover riêng được để xem tooltip.
     stack: false,
+    // Không dùng cơ chế "chọn item" của vis-timeline (viền/nền xanh mặc định của .vis-selected
+    // đè lên màu họ màu của mẻ) — trang tự vẽ bảng chi tiết khi bấm, xem sự kiện 'click' bên
+    // dưới. Sự kiện 'click' vẫn bắn bình thường khi selectable: false.
+    selectable: false,
     groupOrder: 'order',
     orientation: 'top',
     zoomKey: 'ctrlKey',
@@ -595,33 +740,45 @@ const initTimeline = () => {
     locale: 'vi',
     start: new Date(syncSnapshot.value.getTime() - 12 * 3600 * 1000),
     end: new Date(syncSnapshot.value.getTime() + 12 * 3600 * 1000),
-    // Tên option đúng là overflowMethod, không phải overflow (console cảnh báo "Unknown
-    // option detected" trước khi sửa) — 'flip' để tooltip tự lật sang trái khi sát mép phải.
-    tooltip: { followMouse: true, overflowMethod: 'flip' },
+    // KHÔNG khai báo option `tooltip`: item không còn field `title` (chi tiết mẻ nay hiện khi
+    // BẤM — xem itemDetails/openDetailPopup), nên tooltip hover mặc định của thư viện không
+    // còn nội dung để hiện.
+    //
     // vis-timeline mặc định lọc XSS trên MỌI content HTML tự cung cấp (group content, item
-    // content, item title/tooltip) — bộ lọc mặc định của thư viện `xss` xóa sạch class/
-    // data-*/title, khiến .gantt-machine-row/.gantt-machine-name/.gantt-pin-btn và
-    // data-machine-id biến mất khỏi DOM thật dù HTML string vẫn đúng (đúng lỗi báo cáo
-    // 2026-07-29: icon ghim bấm không ăn — do data-machine-id đã bị lọc mất, không phải do
-    // logic click sai). Phải khai báo rõ whiteList đủ các thẻ/thuộc tính đang thực sự dùng
-    // (span cho group content + <span class="gantt-blink">, div/strong/br cho item content
-    // và tooltip trong buildTooltip()) thay vì tắt hẳn xss — tắt hẳn sẽ mất luôn bảo vệ cho
-    // nội dung có lẫn dữ liệu từ BPDB (taskTitle/errorMessage) hiển thị trong tooltip. Thiếu
-    // 1 thẻ nào trong whiteList sẽ khiến thẻ đó hiện ra dạng chữ HTML thô thay vì bị render
-    // (đã gặp khi mới thêm whiteList chỉ có span — content thanh Gantt vỡ thành text thô).
+    // content) — bộ lọc mặc định của thư viện `xss` xóa sạch class/data-*/title, khiến
+    // .gantt-machine-row/.gantt-machine-name/.gantt-pin-btn và data-machine-id biến mất khỏi
+    // DOM thật dù HTML string vẫn đúng (đúng lỗi báo cáo 2026-07-29: icon ghim bấm không ăn —
+    // do data-machine-id đã bị lọc mất, không phải do logic click sai). Phải khai báo rõ
+    // whiteList đủ các thẻ/thuộc tính đang thực sự dùng (span cho group content, div cho nhãn
+    // thanh Gantt) thay vì tắt hẳn xss — tắt hẳn sẽ mất luôn bảo vệ cho nội dung có lẫn dữ
+    // liệu từ BPDB. Thiếu 1 thẻ nào trong whiteList sẽ khiến thẻ đó hiện ra dạng chữ HTML thô
+    // thay vì bị render (đã gặp khi mới thêm whiteList chỉ có span — content thanh Gantt vỡ
+    // thành text thô).
     xss: {
       filterOptions: {
         whiteList: {
           span: ['class', 'title', 'data-machine-id'],
           div: ['class', 'style'],
-          strong: ['class'],
-          br: [],
         },
       },
     },
   } as any);
   timeline.on('rangechange', calculateNeedle);
   timeline.on('rangechanged', calculateNeedle);
+  // Bấm vào thanh mẻ -> hiện bảng chi tiết; bấm vào chỗ trống trong vùng biểu đồ -> đóng.
+  // Dùng sự kiện 'click' của vis-timeline (không tự bắt DOM) vì nó trả sẵn id item nằm dưới
+  // con trỏ, xử lý đúng cả trường hợp các mẻ vẽ đè lên nhau do stack: false.
+  timeline.on('click', (props: any) => {
+    if (props?.item == null) {
+      closeDetailPopup();
+      return;
+    }
+    // props.pageX/pageY lấy từ event gốc; với sự kiện cảm ứng do hammerjs tổng hợp, toạ độ
+    // nằm ở event.center — lấy dự phòng để popup không rơi về góc trên trái trên tablet.
+    const pageX = props.pageX ?? (props.event?.center?.x ?? 0) + window.scrollX;
+    const pageY = props.pageY ?? (props.event?.center?.y ?? 0) + window.scrollY;
+    openDetailPopup(String(props.item), pageX, pageY);
+  });
   // 'changed' bắn sau MỖI lần vis-timeline vẽ xong (đổi nhóm, đổi item, zoom, cuộn) — đúng
   // thời điểm chiều cao thật của các hàng đã chốt để đo lại ô gộp.
   timeline.on('changed', capNhatOGopMay);
@@ -730,6 +887,8 @@ onMounted(async () => {
   }, 5000);
   document.addEventListener('fullscreenchange', syncBrowserFullscreenState);
   fullscreenMedia.addEventListener('change', syncBrowserFullscreenState);
+  document.addEventListener('mousedown', closeDetailOnOutsideClick);
+  document.addEventListener('keydown', closeDetailOnEscape);
 });
 
 onUnmounted(() => {
@@ -737,6 +896,8 @@ onUnmounted(() => {
   if (moveTimer) clearInterval(moveTimer);
   document.removeEventListener('fullscreenchange', syncBrowserFullscreenState);
   fullscreenMedia.removeEventListener('change', syncBrowserFullscreenState);
+  document.removeEventListener('mousedown', closeDetailOnOutsideClick);
+  document.removeEventListener('keydown', closeDetailOnEscape);
   stopClock();
   if (isAdminUser) isFullscreen.value = previousIsFullscreen;
   timeline?.destroy();
@@ -1107,15 +1268,13 @@ onUnmounted(() => {
 /* Đường kẻ ngang giữa các hàng Tank. Mặc định vis-timeline để #bfbfbf cứng — chói ở nền tối,
    lại quá nhạt so với lưới giờ ở nền sáng. */
 :deep(.vis-foreground .vis-group) { border-bottom: 1px solid var(--gantt-grid) !important; }
-/* Trước đó thử cách để nền màu chỉ nằm trên .gantt-item-label (nhãn) rồi tràn ra ngoài
-   thanh .vis-item hẹp qua overflow:visible — lỗi: vis-timeline tự dịch chuyển
-   .vis-item-content bằng transform riêng (tính năng "giữ nhãn hiển thị khi thanh bị kéo
-   lệch khỏi khung nhìn", RangeItem.repositionX) dựa trên đúng bề rộng .vis-item thật hẹp
-   — khi zoom/kéo thu nhỏ khung giờ, transform này lệch khỏi vị trí nền màu, làm chữ và
-   nền tách rời nhau. Ép min-width theo max-content NGAY TRÊN .vis-item (thanh + nền màu
-   thật, không phải lớp phủ riêng) mới tránh được: chữ và nền luôn là cùng 1 khối, không
-   thể tách nhau ở bất kỳ mức zoom nào. Đánh đổi: mẻ ngắn đứng sát nhau có thể đè nhẹ lên
-   nhau theo chiều ngang — chấp nhận được vì đây là chart chỉ để xem, không kéo/thả. */
+/* Thanh mẻ giữ ĐÚNG bề rộng theo thời gian, không ép min-width theo px và không cho nhãn
+   tràn ra ngoài nữa (bỏ 2026-08-03). Bản trước ép `min-width: max(70px, max-content)` +
+   `overflow: visible` để nhãn luôn đọc được, đánh đổi là mẻ ngắn đứng sát nhau đè lên nhau —
+   nay yêu cầu là KHÔNG BAO GIỜ đè, kể cả phải vẽ sai giờ. Bề rộng tối thiểu đã được bảo đảm
+   ngay trong dữ liệu (MIN_VISUAL_DURATION_MS + đẩy mẻ sang phải, xem fetchGantt), tức là
+   tính theo THỜI GIAN nên co giãn đúng theo zoom; ở khung 24h mặc định, 2.5h đủ chỗ cho
+   nhãn. Zoom quá xa thì nhãn bị cắt bớt — bấm vào thanh vẫn xem được đầy đủ ở bảng chi tiết. */
 :deep(.vis-item) {
   border-radius: 4px !important;
   font-size: 12px !important;
@@ -1123,32 +1282,91 @@ onUnmounted(() => {
   /* Viền thanh mẻ đảo màu theo theme (xem --gantt-item-border): nền sáng mà viền trắng thì
      các thanh màu nhạt (vàng/be) chảy nhoè vào nền trắng, không thấy mép thanh. */
   border: 1px solid var(--gantt-item-border) !important;
-  min-width: max(70px, max-content) !important;
+  /* 2px để mẻ hẹp bất thường vẫn còn 1 vệt nhìn thấy/bấm được, thay vì biến mất hẳn. */
+  min-width: 2px !important;
   box-shadow: 0 1px 3px rgba(0,0,0,0.18);
 }
-:deep(.vis-item-overflow) { overflow: visible !important; }
+:deep(.vis-item-overflow) { overflow: hidden !important; }
 :deep(.gantt-item-label) {
-  display: inline-block;
-  width: max-content;
+  display: block;
+  width: 100%;
   border-radius: 4px;
   padding: 3px 7px;
   /* color + text-shadow đặt inline theo độ sáng của màu mẻ (labelColorOn) — thanh Gantt nay
      mang màu thật của họ màu, trải từ pastel rất nhạt tới gần đen, nên không thể cố định
      chữ trắng + đổ bóng tối như trước. */
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   position: relative;
   z-index: 1;
 }
-:deep(.vis-tooltip) {
-  background-color: var(--bg-card, #fff) !important;
-  color: var(--text-title, #111827) !important;
-  border: 1px solid var(--border-color, #e2e8f0) !important;
-  border-radius: 8px !important;
-  padding: 10px 12px !important;
-  font-size: 0.8rem !important;
-  line-height: 1.7 !important;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.25) !important;
-  max-width: 340px !important;
+/* Thanh mẻ giờ là thứ bấm được (mở bảng chi tiết) — con trỏ phải nói lên điều đó, nếu không
+   người dùng quen tooltip hover cũ sẽ không biết là phải bấm. */
+:deep(.vis-item) { cursor: pointer; }
+
+/* Bảng chi tiết mẻ (thay tooltip hover cũ). z-index cao hơn mọi lớp của vis-timeline và cả
+   nút thoát/đồng hồ toàn màn hình (3000) để không bị che ở chế độ treo màn hình. */
+.gantt-detail-popup {
+  position: fixed;
+  z-index: 3100;
+  width: 330px;
+  max-width: calc(100vw - 16px);
+  padding: 12px 14px 12px;
+  border-radius: 10px;
+  background: var(--bg-card, #fff);
+  color: var(--text-title, #111827);
+  border: 1px solid var(--border-card, #e2e8f0);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.gantt-detail-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #6b7280);
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.gantt-detail-close:hover { background: var(--border-card-hover, #e5e7eb); }
+.gantt-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 22px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-card, #e2e8f0);
+  padding-bottom: 8px;
+}
+.gantt-detail-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(0,0,0,0.2);
+}
+.gantt-detail-title { font-weight: 700; }
+.gantt-detail-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  row-gap: 4px;
+  margin: 0;
+}
+.gantt-detail-list dt {
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  white-space: nowrap;
+}
+.gantt-detail-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 :deep(.gantt-item-running) {
   border: 2px solid #ef4444 !important;

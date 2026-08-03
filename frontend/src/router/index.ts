@@ -83,6 +83,18 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/production-batches/grid',
+    name: 'ProductionBatchesGrid',
+    component: () => import('../views/ProductionBatchesGrid.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/print-order-entry',
+    name: 'PrintOrderEntry',
+    component: () => import('../views/PrintOrderEntry.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/order-scan',
     name: 'OrderScan',
     component: () => import('../views/OrderScan.vue'),

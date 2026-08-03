@@ -11,6 +11,10 @@
           <SvgIcon name="search" size="18" />
           Sang trạm Quét đơn
         </router-link>
+        <router-link to="/production-batches/grid" class="btn btn-secondary">
+          <SvgIcon name="batch" size="18" />
+          Nhập đơn (Form VBA)
+        </router-link>
         <!-- MES Mock tool trigger button -->
         <button
           v-if="authStore.isAdmin || authStore.isOperator"

@@ -339,6 +339,30 @@ class MachineDispatchController extends Controller
     }
 
     /**
+     * Bật/tắt cờ đã đối chiếu cân của 1 đơn trong hàng chờ in.
+     *
+     * Port của TO_SEND.SavePrintCheck (workbook DF002): tick ô Check trên lưới ghi thẳng
+     * `UPDATE tbl_tosend SET scale_check = ...` ngay lúc bấm, không đợi bấm nút nào khác.
+     * Cột `scale_checked` đã có sẵn trên machine_dispatches nên KHÔNG cần migration.
+     */
+    public function updateScaleChecked(Request $request, $id)
+    {
+        $request->validate([
+            'scale_checked' => 'required|boolean',
+        ]);
+
+        $dispatch = MachineDispatch::find($id);
+        if (!$dispatch) {
+            return response()->json(['status' => 'ERROR', 'message' => 'DISPATCH_NOT_FOUND'], 404);
+        }
+
+        $dispatch->scale_checked = $request->boolean('scale_checked');
+        $dispatch->save();
+
+        return response()->json(['status' => 'SUCCESS', 'data' => $dispatch]);
+    }
+
+    /**
      * In lại tem cho 1 đơn ĐÃ in (yêu cầu 2026-07-18: tier B/C lịch sử in phải phân
      * biệt được lần in đầu và lần in lại + lý do). Không tính lại routing/QR — dùng
      * đúng QrPayload đã sinh lần đầu.

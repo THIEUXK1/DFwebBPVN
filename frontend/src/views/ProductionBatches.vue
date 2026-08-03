@@ -11,6 +11,10 @@
           <SvgIcon name="batch" size="18" />
           Xem danh sách Lô sản xuất
         </router-link>
+        <router-link to="/production-batches/grid" class="btn btn-secondary">
+          <SvgIcon name="batch" size="18" />
+          Nhập đơn (Form VBA)
+        </router-link>
       </div>
     </div>
 

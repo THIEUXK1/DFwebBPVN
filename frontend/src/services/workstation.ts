@@ -28,6 +28,9 @@ export interface Workstation {
 export const ROUTE_CAPABILITY_MAP: Record<string, string[]> = {
   '/print-station': ['QR_LABEL_PRINTING'],
   '/production-batches': ['PRODUCTION_ORDER'],
+  // Bản dựng lại MainForm của Workbook C3 — màn hình nhập đơn CHÍNH. Phải có mặt ở đây,
+  // nếu không phiên kiosk trạm WS-ORDER-01 bị guard đá ngược về default_screen.
+  '/production-batches/grid': ['PRODUCTION_ORDER'],
   '/weighing-station': ['SMALL_SCALE', 'LARGE_SCALE'],
   // Bản dựng lại — cùng ràng buộc capability với bản cũ để không lọt dữ liệu sang trạm
   // không phải trạm cân.
