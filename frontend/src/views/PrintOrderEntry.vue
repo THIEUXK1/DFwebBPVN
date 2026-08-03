@@ -35,8 +35,8 @@
                @change="onToggleScaleCheck(slot, ($event.target as HTMLInputElement).checked)" />
 
         <button class="vba-btn" :style="box(sendLeft(i) + 402, sendTop(i), 36, 24)"
-                :disabled="!slot || actionsLocked"
-                :title="actionsLocked ? PENDING_DECISION_HINT : 'Xác nhận đã gửi'"
+                :disabled="!slot || confirmingId === slot?.id"
+                title="Xác nhận đã in & đã gửi — đơn rời hàng chờ sang lịch sử (TO_SEND.ConfirmRow)"
                 @click="onConfirm(slot)">OK</button>
       </template>
 
@@ -67,7 +67,10 @@
     <!-- printform / wait_printform — cùng một hộp thoại, chỉ khác nguồn dữ liệu -->
     <VbaPrintForm v-if="previewData" :data="previewData" @close="previewData = null" />
 
-    <div v-if="statusMsg" class="vba-statusbar" :class="{ 'is-error': statusIsError }">{{ statusMsg }}</div>
+    <div class="vba-statusbar">
+      <router-link to="/print-sent-log" class="sent-log-link">📄 SENT LOG — xem đơn đã tích &amp; đã bấm OK →</router-link>
+      <span v-if="statusMsg" :class="{ 'is-error': statusIsError }">{{ statusMsg }}</span>
+    </div>
   </div>
 </template>
 
@@ -75,6 +78,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import axios from 'axios';
 import echo from '../services/echo';
+import { currentWorkstation } from '../services/workstation';
 import { applyVbaRowLock, vbaAgeColor } from '../utils/vbaRowLock';
 import VbaPrintForm, { type VbaPrintFormData } from '../components/VbaPrintForm.vue';
 
@@ -92,12 +96,6 @@ const box = (l: number, t: number, w: number, h: number) => ({
 
 const sendLeft = (i: number) => SEND_BLOCK_LEFTS[Math.floor(i / SEND_ROWS_PER_BLOCK)];
 const sendTop = (i: number) => 6 + (i % SEND_ROWS_PER_BLOCK) * 24;
-
-// Hai nút này ghi dữ liệu và còn một quyết định nghiệp vụ chưa chốt (xem báo cáo):
-// bên VBA nút OK chỉ chuyển tbl_tosend -> tbl_sentlog, còn web /confirm vừa xác nhận
-// vừa tạo print job. Khóa lại để không lỡ tay ghi nhầm khi backend đang trỏ DB thật.
-const actionsLocked = ref(true);
-const PENDING_DECISION_HINT = 'Đang khóa: cần chốt cách nối với luồng in của web (xem ghi chú)';
 
 const dispatches = ref<any[]>([]);
 const sendTags = ref<(string | null)[]>(Array(SEND_SLOTS).fill(null));
@@ -200,7 +198,33 @@ const onWaitPrint = (b: any) => {
   };
 };
 
-const onConfirm = (_slot: any) => say(PENDING_DECISION_HINT, true);
+// TO_SEND.ConfirmRow — bản gốc chép dòng sang tbl_sentlog (TIME3=Now) rồi xóa khỏi
+// tbl_tosend, giải phóng ô lưới. Web tương đương: POST /confirm đặt queue_state=CONFIRMED,
+// nên dòng rơi khỏi danh sách hàng chờ và row lock tự trả ô về trống.
+//
+// printed_via_browser=true vì ở màn hình này tem đã được in từ hộp thoại xem trước trước
+// đó (đúng thứ tự thao tác của bản gốc: print -> PRINT -> OK). Cờ này đánh dấu print job
+// PRINTED ngay thay vì đẩy xuống hàng chờ Local Agent — không thì Agent sẽ in TSPL lần
+// nữa, trùng với bản vừa in qua trình duyệt.
+const confirmingId = ref<string | null>(null);
+
+const onConfirm = async (slot: any) => {
+  if (!slot) return;
+  confirmingId.value = slot.id;
+  try {
+    await axios.post(`/api/machine-dispatches/${slot.id}/confirm`, {
+      idempotency_key: `printorder_${slot.id}_${Date.now()}`,
+      workstation_id: currentWorkstation.value?.code || undefined,
+      printed_via_browser: true,
+    });
+    say(`Đã xác nhận đơn ${slot.batch?.color || ''} - ${slot.batch?.product_code || ''}. Xem ở màn hình SENT LOG.`);
+    fetchDispatches();
+  } catch (e: any) {
+    say(e.response?.data?.message || 'Không xác nhận được đơn.', true);
+  } finally {
+    confirmingId.value = null;
+  }
+};
 
 const fetchDispatches = async () => {
   try {
@@ -340,8 +364,24 @@ onUnmounted(() => {
   color: #000000;
 }
 
-.vba-statusbar.is-error {
+.vba-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.vba-statusbar .is-error {
   color: #a00000;
   font-weight: bold;
 }
+
+.sent-log-link {
+  color: #000080;
+  font-weight: bold;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.sent-log-link:hover { text-decoration: underline; }
 </style>

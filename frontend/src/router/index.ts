@@ -95,6 +95,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/print-sent-log',
+    name: 'PrintSentLog',
+    component: () => import('../views/PrintSentLog.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/order-scan',
     name: 'OrderScan',
     component: () => import('../views/OrderScan.vue'),

@@ -496,12 +496,19 @@ const fetchMetadata = async () => {
 };
 
 // WAITING = tbl_input_all gốc: chỉ đơn chưa duyệt.
-// VBA đọc "ORDER BY id" (cũ nhất trước) còn API trả created_at DESC, nên đảo lại để thứ tự
-// lấp ô trống khớp bản gốc. Chỉ ảnh hưởng lúc gán ô mới — sau đó row lock giữ chỗ cố định.
+//
+// Phải xin per_page = 100 (trần của API) chứ KHÔNG phải 81. Trước đây xin đúng 81 nên khi
+// hàng chờ vượt 81 đơn, API trả về 81 đơn MỚI NHẤT — trong khi bảng chờ theo máy bên
+// /print-order-entry xin 100, tức là có đơn hiện bên đó mà bên này mất tăm dù cùng một
+// nguồn dữ liệu. VBA cũng không cắt: LoadGrid_safe đọc TOÀN BỘ tbl_input_all "ORDER BY id"
+// (cũ nhất trước) rồi lấp dần vào 81 ô, dư thì thôi. Nên ở đây sắp xếp CŨ NHẤT TRƯỚC rồi
+// đưa cả danh sách cho row lock tự lấp — hết ô thì nó tự dừng, đúng hành vi bản gốc.
 const fetchWaiting = async () => {
   try {
-    const res = await axios.get('/api/production-batches', { params: { status: 'NEW', per_page: GRID_SLOTS } });
-    const rows = [...res.data.data].reverse();
+    const res = await axios.get('/api/production-batches', { params: { status: 'NEW', per_page: 100 } });
+    const rows = [...res.data.data].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
     batches.value = rows;
     applyRowLock(rows);
   } catch (error) {

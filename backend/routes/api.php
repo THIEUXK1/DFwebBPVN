@@ -21,6 +21,7 @@ use App\Http\Controllers\MaterialTransportController;
 use App\Http\Controllers\OperationClientAdminController;
 use App\Http\Controllers\PrintJobController;
 use App\Http\Controllers\ProductionBatchController;
+use App\Http\Controllers\RackDispatchController;
 use App\Http\Controllers\RecipeController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ScaleMeasurementController;
@@ -100,6 +101,9 @@ Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
     Route::patch('/machine-dispatches/{id}/scale-checked', [MachineDispatchController::class, 'updateScaleChecked']);
     Route::post('/machine-dispatches/{id}/reprint', [MachineDispatchController::class, 'reprint']);
     Route::get('/machine-dispatches/{id}/preview', [MachineDispatchController::class, 'previewPayload']);
+
+    // SEND OVER 6 — trạm cân lớn xếp lệnh gửi mã rack sang hệ pha màu (Mod_sendRackauto).
+    Route::post('/rack-dispatch', [RackDispatchController::class, 'store']);
     Route::post('/print-jobs/{id}/cancel', [PrintJobController::class, 'cancel']);
 
     // Chemical Calls (Wave 2)
@@ -267,6 +271,9 @@ Route::post('/devices/readings', [DeviceController::class, 'storeReading'])->mid
 Route::get('/agents/{workstation_id}/jobs', [AgentJobsController::class, 'getJobs'])->middleware('agent.auth');
 Route::post('/jobs/{job_id}/ack', [AgentJobsController::class, 'acknowledgeJob'])->middleware('agent.auth');
 Route::post('/agents/{workstation_id}/printers', [AgentJobsController::class, 'reportPrinters'])->middleware('agent.auth');
+// SEND OVER 6 — Agent lấy lệnh gửi rack rồi báo lại kết quả.
+Route::get('/agents/{workstation_id}/rack-commands', [RackDispatchController::class, 'pending'])->middleware('agent.auth');
+Route::post('/agents/{workstation_id}/rack-commands/{id}/ack', [RackDispatchController::class, 'acknowledge'])->middleware('agent.auth');
 
 // AgentController (device_id-based, theo đúng local-agent-architecture.md Mục 4 —
 // hiện Local Agent .NET CHƯA gọi tới nhóm route này, chỉ dùng 3 route phía trên).

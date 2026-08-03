@@ -24,6 +24,28 @@ public class Program
                 services.AddSingleton<ScaleReader>();
                 services.AddSingleton<LabelPrinter>();
                 services.AddSingleton<PrinterDiscovery>();
+                // SEND OVER 6 — toạ độ chuột đọc từ appsettings mục "Rack" (coding-standards
+                // mục 3: không hard-code cấu hình thiết bị trong code). Mặc định là đúng bộ
+                // toạ độ của VBA gốc, nhưng Enabled=false để không trạm nào tự nhiên chiếm chuột.
+                services.AddSingleton(sp =>
+                {
+                    var opts = new RackOptions();
+                    hostContext.Configuration.GetSection("Rack").Bind(opts);
+                    if (opts.SlotPoints.Count == 0)
+                    {
+                        opts.SlotPoints = new List<RackPoint>
+                        {
+                            new() { X = 345, Y = 200 },
+                            new() { X = 345, Y = 250 },
+                            new() { X = 345, Y = 300 },
+                            new() { X = 345, Y = 345 },
+                            new() { X = 345, Y = 390 },
+                            new() { X = 345, Y = 440 },
+                        };
+                    }
+                    return opts;
+                });
+                services.AddSingleton<RackSender>();
                 services.AddHostedService<Worker>();
             });
 

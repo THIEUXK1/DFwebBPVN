@@ -44,6 +44,44 @@ function normalizeVdCode(code: string): string {
   return c;
 }
 
+/**
+ * Port Mod_printslip.bas khối "PROCESS CHECK" (dòng 88-115) — phân loại họ thuốc nhuộm in
+ * vào QR mode PROCESS. Trước đây chỗ này hard-code "Nylon Dyes" nên mọi tem PROCESS đều
+ * báo sai họ thuốc với lô Cation/Disperse. Đối chiếu backend QrPayloadService::
+ * computeDyesProcess — hai bên phải cho cùng kết quả.
+ *
+ * Quy tắc gốc:
+ *  - mã dye kết thúc bằng "C"                                 -> Cation Dyes (thắng tuyệt đối)
+ *  - mã dye kết thúc bằng "D" hoặc bắt đầu Y13/R23/B33         -> đánh dấu isDisperse
+ *  - mã hóa chất có chứa "0574" hoặc "0507"                    -> đánh dấu hasChemKey
+ *  - không phải Cation, mà isDisperse && hasChemKey            -> Disperse Dyes
+ *  - còn lại                                                   -> Nylon Dyes
+ */
+function computeDyesProcess(dyeCodes: string[], chemCodes: string[]): string {
+  let dyesProcess = 'Nylon Dyes';
+  let isDisperse = false;
+
+  for (const raw of dyeCodes) {
+    const c = (raw || '').toUpperCase().trim();
+    if (c === '') continue;
+    if (c.endsWith('C')) dyesProcess = 'Cation Dyes';
+    if (c.endsWith('D') || c.startsWith('Y13') || c.startsWith('R23') || c.startsWith('B33')) {
+      isDisperse = true;
+    }
+  }
+
+  const hasChemKey = chemCodes.some(raw => {
+    const c = (raw || '').toUpperCase().trim();
+    return c.includes('0574') || c.includes('0507');
+  });
+
+  if (dyesProcess !== 'Cation Dyes' && isDisperse && hasChemKey) {
+    dyesProcess = 'Disperse Dyes';
+  }
+
+  return dyesProcess;
+}
+
 /** Port Format(Now,"yyyymmddhhmm") / Format(Now,"hhmm") — chỉ 2 kiểu Mod_printslip.bas dùng. */
 function nowStamp(pattern: 'yyyymmddhhmm' | 'hhmm'): string {
   const n = new Date();
@@ -141,11 +179,15 @@ export async function buildDispatchSlipHtml(data: DispatchSlipData): Promise<str
     // buildProcessPayload backend, cùng lý do).
     const tankUpper = data.tankCode.toUpperCase();
     const newLevel = tankUpper === '1A' ? '450' : tankUpper === '2B' ? '250' : data.levelCode;
-    modeQrText = `${data.color}-${data.productCode} ${nowStamp('yyyymmddhhmm')}\n\n${data.machineCode}-${data.tankCode}-${newLevel}\n\nNylon Dyes`;
+    const dyesProcess = computeDyesProcess(dyeLines.map(r => r.code), chemLines.map(r => r.code));
+    modeQrText = `${data.color}-${data.productCode} ${nowStamp('yyyymmddhhmm')}\n\n${data.machineCode}-${data.tankCode}-${newLevel}\n\n${dyesProcess}`;
   } else if (routing.mode === 'EXTRA') {
     const totalD = dyeLines.reduce((sum, r) => sum + (parseFloat(r.weight) || 0), 0);
     const rnd = 1 + Math.floor(Math.random() * 9);
-    modeQrText = `${data.machineCode}\n${data.tankCode.charAt(0)}\n${data.color} ${data.productCode}\n${rnd}\n${data.levelCode}\n1\n${totalD}`;
+    // VBA: vF3QR chuẩn hóa "VD" + 3 chữ số, và Format(totalD,"0.###") — tối đa 3 số lẻ,
+    // cắt số 0 thừa. Để nguyên số JS sẽ lòi đuôi dấu phẩy động (4.250000000000001).
+    const totalDText = String(parseFloat(totalD.toFixed(3)));
+    modeQrText = `${normalizeVdCode(data.machineCode)}\n${data.tankCode.toUpperCase().trim().charAt(0)}\n${data.color} ${data.productCode}\n${rnd}\n${data.levelCode}\n1\n${totalDText}`;
   } else {
     modeQrText = `${data.color}-${data.productCode} ${nowStamp('hhmm')}`;
   }

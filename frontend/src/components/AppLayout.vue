@@ -433,6 +433,8 @@ const menuGroupsRaw = [
       { path: '/production-batches/grid', label: 'Nhập đơn (MainForm)', icon: 'batch' },
       // Dựng lại UserForm TO_SEND của workbook DF002 (PRINTER LANDSCAPE / jit qr sending).
       { path: '/print-order-entry', label: 'In tem nhập đơn', icon: 'recipe' },
+      // Bản web của sheet "sent" (Mod_load_sentlog_sheet) — đơn đã tích & đã bấm OK.
+      { path: '/print-sent-log', label: 'Sent log (đã OK)', icon: 'recipe' },
       { path: '/production-batches', label: 'Quét đơn (bản web)', icon: 'batch' },
       { path: '/production-batches/list', label: 'Danh sách Lô SX', icon: 'batch' },
       { path: '/machine-queue', label: 'Điều phối máy', icon: 'queue' },
@@ -484,6 +486,7 @@ const currentRouteName = computed(() => {
     '/production-batches/list': 'Danh sách Lô sản xuất',
     '/production-batches/grid': 'Nhập đơn sản xuất — MainForm (C3)',
     '/print-order-entry': 'In tem nhập đơn — TO_SEND (DF002)',
+    '/print-sent-log': 'Sent log — đơn đã xác nhận (DF002)',
     '/machine-queue': 'Hàng chờ Điều phối',
     '/materials': 'Danh mục Vật tư',
     '/water-configs': 'Cấu hình Mực nước',

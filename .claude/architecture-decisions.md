@@ -101,3 +101,31 @@ Tài liệu này ghi nhận các Quyết định Kiến trúc (ADR - Architectur
 - **Lý do:** Giúp Quản lý hoặc Shift Leader dễ dàng điều chỉnh cấu hình ngưỡng cảnh báo trực tiếp trên giao diện Admin mà không cần thay đổi hay triển khai lại mã nguồn backend.
 - **Hệ quả:** Backend chạy scheduled task/command định kỳ (hoặc trigger tự động) để đối chiếu thông số thực tế với cấu hình quy tắc và tự sinh cảnh báo.
 
+
+---
+
+## ADR-012: Mô phỏng chuột (RPA) cho "SEND OVER 6" — đảo ngược DEPRECATED_CONFIRMED
+- **Ngày:** 2026-08-03
+- **Bối cảnh:** Trạm cân lớn (`/weighing-station-large`, port từ `5.Semiauto- lockmove SEND OVER6 - delta-stable-final-221.xlsm`) cần gửi mã rack sang **hệ pha màu**. Bản VBA gốc làm bằng `Mod_sendRackauto.FireRackBatch`: đặt clipboard rồi `ClickAt` vào 6 toạ độ MÀN HÌNH cố định + `SendKeys "^v"`, cuối cùng click nút xác nhận. Các đợt audit trước xếp toàn bộ cụm `ModAPI_mouse`/`Mod_clickAT`/`SendTextToApp` là **`DEPRECATED_CONFIRMED`**, với lập luận "kiến trúc Local Agent mới thay thế đúng bằng giao tiếp trực tiếp Serial Port + HTTP API, không cần giả lập chuột" (xem `vba-migration-matrix.md`, `menu-workstation-device-architecture.md`).
+- **Vấn đề với quyết định cũ:** Lập luận đó giả định hệ pha màu **có API để tích hợp thật**. Chủ dự án xác nhận (2026-08-03) **hệ pha màu KHÔNG có API**. Vì vậy giữ nguyên DEPRECATED đồng nghĩa với việc chức năng đặc trưng nhất của workbook (nằm ngay trong tên file) vĩnh viễn không hoạt động — thực tế trước ADR này frontend gọi `POST /api/rack-dispatch` nhưng endpoint không tồn tại, thợ phải bấm COPY rồi dán tay.
+- **Quyết định:** Tái lập kỹ thuật mô phỏng chuột + clipboard, nhưng **đặt trong Local Agent**, không phải trình duyệt:
+  - Web chỉ ghi lệnh vào `app.rack_dispatch_commands` (`POST /api/rack-dispatch`).
+  - Local Agent poll `GET /agents/{ws}/rack-commands`, thực thi bằng Win32 `SetCursorPos`/`mouse_event`/`keybd_event` + clipboard API thuần (`agent/RackSender.cs`), rồi ack về `POST .../ack`.
+  - Toạ độ + mốc trễ nằm trong `appsettings.json` mục `Rack`, **không hard-code** (`coding-standards` mục 3). Mặc định = đúng bản VBA gốc.
+- **Trình tự thao tác gốc (bắt buộc giữ nguyên cả thứ tự lẫn mốc trễ):**
+  - `OUT`: chờ 150 → click (10,100) kích hoạt cửa sổ → chờ 220 → click (365,680) mở vùng nhập → chờ 200 → [6 lần: đặt clipboard, click ô tại X=345 Y={200,250,300,345,390,440}, Ctrl+V, chờ 200] → click (750,215) xác nhận → chờ 200.
+  - `IN`: chờ 150 → click (10,100) → chờ 220 → click **(750,430)** → chờ 200.
+  - `SendTextToApp` = SetClipboardText → ClickAt → Ctrl+V; `ClickAt` **không** có độ trễ xen giữa (mọi độ trễ nằm ở `SmartDelay`).
+- **Hai chi tiết cực dễ làm sai (bản đầu của Agent này đã sai cả hai, phát hiện khi đọc được mã nguồn thật):**
+  - `FireRackBatch` gửi **đủ 6 ô, kể cả ô rỗng** — dán chuỗi rỗng chính là để XOÁ giá trị còn sót của lô trước bên ứng dụng đích. Bỏ qua ô rỗng sẽ để lại rác của lô cũ.
+  - Nút xác nhận của `IN` là **(750,430)**, KHÁC nút xác nhận của `OUT` (750,215).
+- **Nguồn mã đối chiếu:** VBA project của workbook bị khoá mật khẩu nên không mở được qua Excel COM. Mã nguồn lấy được bằng cách giải nén trực tiếp `xl/vbaProject.bin` theo MS-OVBA (mật khẩu chỉ khoá giao diện VBE, không mã hoá module) — script tại scratchpad phiên 2026-08-03. Đã đối chiếu `scaleform.btn_Out_Click`/`btn_In_Click`, `Mod_sendRackauto`, `ModAPI_mouse`, `ModDelay_paste`.
+- **Không port:** `SetTopMost Me, False/True` — thao tác gỡ/bật always-on-top của chính UserForm VBA, Agent không có form nên không có gì để gỡ.
+  - `Rack:Enabled` mặc định **false**: chỉ trạm được bật tường minh mới chiếm chuột.
+- **Lý do vẫn tôn trọng ADR-002:** Trình duyệt tuyệt đối không chạm ứng dụng cục bộ; toàn bộ phần "bẩn" nằm trong Agent — đúng ranh giới phân lớp đã chốt.
+- **Hệ quả / rủi ro phải chấp nhận:**
+  - Đây là **RPA mù**: click theo toạ độ tuyệt đối, KHÔNG kiểm tra cửa sổ nào đang ở đó. Nếu ứng dụng pha màu không mở đúng vị trí/độ phân giải như lúc hiệu chỉnh, mã rack sẽ bị dán vào cửa sổ bất kỳ. Đã cân nhắc phương án tìm cửa sổ theo tiêu đề rồi click tương đối (an toàn hơn) nhưng chủ dự án chọn giữ đúng hành vi bản gốc.
+  - Agent chiếm chuột thật của máy trong lúc bắn — thợ không được thao tác cùng lúc.
+  - Bắt buộc `idempotency_key` UNIQUE (`database-safety` mục 4): Agent đồng bộ lại sau khi mất mạng mà bắn trùng nghĩa là **cấp thừa vật tư**.
+  - Lệnh xử lý **tuần tự**, không song song — cả máy chỉ có một con chuột.
+- **Chưa làm:** chưa hiệu chỉnh toạ độ trên máy trạm thật, chưa chạy thử đầu-cuối với hệ pha màu. `Rack:Enabled=false` cho tới khi hiệu chỉnh xong.

@@ -79,8 +79,13 @@
 
      3.1.0.0 (2026-08-03): Agent day so can len NHIEU backend cung luc (Backend:Urls), de mo
      man hinh can bang localhost hay bang IP server deu thay so — xem Worker.ResolveBackendUrls.
-     Kem theo: chi ghi log khi tinh trang mot backend DOI, khong con spam 5 dong/giay. -->
-<?define PackageVersion = "3.1.0.0"?>
+     Kem theo: chi ghi log khi tinh trang mot backend DOI, khong con spam 5 dong/giay.
+
+     3.2.0.0 (2026-08-03): them SEND OVER 6 — Agent mo phong chuot/ban phim day ma rack sang
+     ung dung pha mau (RackSender, port 1-1 tu VBA scaleform/Mod_sendRackauto, xem ADR-012).
+     Chi ban CAN TO co muc cau hinh "Rack" trong appsettings; mac dinh Enabled=false nen nang
+     cap len ban nay KHONG lam may nao tu nhien chiem chuot. -->
+<?define PackageVersion = "3.2.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.ProductLabel))"

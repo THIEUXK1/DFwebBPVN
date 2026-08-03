@@ -30,6 +30,8 @@ public class Worker : BackgroundService
     private readonly int _printPollIntervalMs;
     private readonly bool _scaleEnabled;
     private readonly bool _printEnabled;
+    private readonly RackSender _rackSender;
+    private readonly RackOptions _rackOptions;
 
     // Trạng thái lần đẩy gần nhất của TỪNG backend, chỉ để quyết định có ghi log hay không.
     //
@@ -49,7 +51,9 @@ public class Worker : BackgroundService
         ScaleReader scaleReader,
         LabelPrinter labelPrinter,
         OfflineQueue offlineQueue,
-        PrinterDiscovery printerDiscovery)
+        PrinterDiscovery printerDiscovery,
+        RackSender rackSender,
+        RackOptions rackOptions)
     {
         _logger = logger;
         _config = config;
@@ -57,6 +61,8 @@ public class Worker : BackgroundService
         _labelPrinter = labelPrinter;
         _offlineQueue = offlineQueue;
         _printerDiscovery = printerDiscovery;
+        _rackSender = rackSender;
+        _rackOptions = rackOptions;
 
         _backendUrls = ResolveBackendUrls(_config);
         // Backend CHINH: dung cho cac viec chi co mot dich den hop ly (lay lenh in, bao cao may
@@ -224,6 +230,8 @@ public class Worker : BackgroundService
         // vì xếp hàng chồng chất (số cân cũ không đáng để gửi bù, luôn có số mới hơn ngay sau).
         Task? pushInFlight = null;
         Task? printPollInFlight = null;
+        Task? rackPollInFlight = null;
+        DateTime nextRackPollAt = DateTime.MinValue;
 
         static bool Idle(Task? t) => t is null || t.IsCompleted;
 
@@ -269,6 +277,15 @@ public class Worker : BackgroundService
                 {
                     printPollInFlight = ProcessPrintWorkAsync();
                     nextPrintPollAt = DateTime.UtcNow.AddMilliseconds(_printPollIntervalMs);
+                }
+
+                // SEND OVER 6 — chỉ chạy khi máy trạm được BẬT TƯỜNG MINH (Rack:Enabled).
+                // Mặc định tắt vì việc này chiếm chuột thật của máy: bật nhầm ở một trạm không
+                // có ứng dụng pha màu sẽ khiến con trỏ nhảy lung tung giữa lúc thợ đang thao tác.
+                if (_rackOptions.Enabled && DateTime.UtcNow >= nextRackPollAt && Idle(rackPollInFlight))
+                {
+                    rackPollInFlight = ProcessRackCommandsAsync();
+                    nextRackPollAt = DateTime.UtcNow.AddMilliseconds(_rackOptions.PollIntervalMs);
                 }
             }
             catch (Exception ex)
@@ -381,6 +398,68 @@ public class Worker : BackgroundService
         }
     }
 
+    /// <summary>
+    /// SEND OVER 6 — lấy lệnh gửi rack rồi mô phỏng chuột vào ứng dụng pha màu.
+    ///
+    /// Xử lý TUẦN TỰ từng lệnh, không song song: cả máy chỉ có MỘT con chuột, hai lệnh chạy
+    /// chồng nhau sẽ dán lẫn mã của nhau vào ô sai.
+    /// </summary>
+    private async Task ProcessRackCommandsAsync()
+    {
+        try
+        {
+            HttpResponseMessage response = await _httpClient.GetAsync($"{_backendUrl}/agents/{_workstationId}/rack-commands");
+            if (!response.IsSuccessStatusCode) return;
+
+            var commands = await response.Content.ReadFromJsonAsync<RackCommandDto[]>();
+            if (commands == null || commands.Length == 0) return;
+
+            foreach (var cmd in commands)
+            {
+                _logger.LogInformation("Rack command {Id}: {Action}", cmd.Id, cmd.Action);
+
+                bool ok;
+                string? error = null;
+                try
+                {
+                    ok = cmd.Action == "IN"
+                        ? _rackSender.SendIn()
+                        : _rackSender.SendOut(cmd.Racks ?? Array.Empty<string>());
+                    if (!ok) error = "Agent không thực hiện được thao tác (xem log Agent).";
+                }
+                catch (Exception ex)
+                {
+                    ok = false;
+                    error = ex.Message;
+                }
+
+                await AcknowledgeRackCommandAsync(cmd.Id, ok, error);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Failed to poll rack commands: {Msg}", ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Báo lại CẢ HAI chiều — lệnh hỏng phải để lại dấu FAILED kèm lý do, nếu không nó nằm
+    /// mãi ở SENT và không ai biết hệ pha màu đã nhận hay chưa.
+    /// </summary>
+    private async Task AcknowledgeRackCommandAsync(string id, bool success, string? error)
+    {
+        try
+        {
+            await _httpClient.PostAsJsonAsync(
+                $"{_backendUrl}/agents/{_workstationId}/rack-commands/{id}/ack",
+                new { success, error_message = error });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Failed to ack rack command {Id}: {Msg}", id, ex.Message);
+        }
+    }
+
     private async Task ProcessPendingPrintJobsAsync()
     {
         try
@@ -470,5 +549,13 @@ public class Worker : BackgroundService
         public string LabelPayload { get; set; } = string.Empty;
         public string? PrinterConnectionType { get; set; }
         public string? PrinterAddress { get; set; }
+    }
+
+    /// <summary>Một lệnh SEND OVER 6 lấy từ /agents/{ws}/rack-commands.</summary>
+    public class RackCommandDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Action { get; set; } = "OUT";
+        public string[]? Racks { get; set; }
     }
 }
