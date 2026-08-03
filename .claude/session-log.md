@@ -1734,3 +1734,174 @@ Hai viec con thieu o muc 91, nguoi dung yeu cau lam not: *"van can tiep duoc tru
 - **Sua kem cung cho hut do:** nut `PRINT` cung khoa `!activeJob`. Nay bo khoa va `printSlip` them nhanh can tay — dung chung `dongCanTayDeLuu()` voi SAVE nen to in thu va to in luc luu khong the khac nhau. Cua so in van mo DONG BO truoc moi `await` (khong bi chan popup).
 - **Ra soat lai toan bo `:disabled=`** trong file: chi con `saving` (CLEAR/SAVE), `saving || !canPressNext` (NEXT), `flushing` (GUI NGAY) — deu dung.
 - **Kiem chung:** `vue-tsc` **0 loi**, `vite build` OK 16.72s. **CHUA thu tay tren trinh duyet.**
+
+### 95. Man hinh "Can to" (/weighing-station-large) -- port workbook VBA #5, man RIENG khong dung chung V2
+
+- **Yeu cau (03/08/2026):** *"o layout toi muon them 1 phan ten la can to co giao dien va chuc nang giong form vba nay"* (`5.Semiauto- lockmove SEND OVER6 - delta-stable-final-221.xlsm`). Nguoi dung chot ro: **"no la 1 phan khac, k lien quan den v2"**, va nut OUT/IN **"dung agent loai khac"**.
+
+**A. Doi chieu nguon truoc khi code (source-traceability)**
+
+- Da trich toan bo VBA cua workbook #5 va #4 bang bo doc CFB + giai nen MS-OVBA viet rieng (Excel dang mo file trong VBE nen khong dung duoc COM). Ca hai workbook: **22 module y het nhau** (2 UserForm `scaleform`/`checkform`, 16 module chuan, ThisWorkbook + Sheet1-3 rong).
+- **Diff code giua #4 (can nho) va #5 (can to) chi co 3 cho, deu khong phai nghiep vu:**
+  - `txt_color_AfterUpdate`: ban #4 xu ly `-dye-`/`chem` khong phan biet hoa thuong (tot hon), ban #5 phan biet hoa thuong.
+  - `Mod_lockmoveform`: ban #4 co them chong rung (`Abs(...) > 1`) + kiem tra `WatchForm.Visible`.
+  - GUID form.
+- **Dung sai giong het:** `Mod_UI_processcolor.CheckRange` 0 dong khac -- ratio <0.99 vang / <=1.01 xanh / >1.01 do. `Mod_sendRackauto` cung **y het** o ca hai file (tuc khoi SEND OVER 6 ton tai o ca can nho, chi la V2 chua port).
+- Da bao lai phat hien nay cho nguoi dung; nguoi dung van chot lam man RIENG -- lam theo quyet dinh do.
+
+**B. Da lam**
+
+- **`frontend/src/views/WeighingStationLarge.vue` (moi)** -- man hinh doc lap: quet QR vao o COLOR, luoi 9 dong, NEXT/SAVE/PRINT/CLEAR/CHECK/CLOSE, o DELTA co lon, thanh RAW, hang doi gui me, khoi phuc phien sau F5.
+  - **Khoa localStorage RIENG `df_wslarge_session_v1`** (khong dung chung `df_ws2_session_v1` cua V2): hai man co the mo cung mot may luc kiem thu, dung chung khoa thi mo man nay se nuot mat me dang can do cua man kia.
+  - **Dung chung HA TANG** voi cac man can khac (`useScaleFeed`, `VbaRackGrid`, `saveQueue`, `weighSlip`, `qrDyeParser`, `processColor`, `tsplPrint`). Day la ban port DUY NHAT cua thuat toan VBA goc (delta/bi, dung sai +-1%, bo cuc phieu, doc QR) -- chep tay lan nua la mo duong cho hai man cung can mot me ra hai ket qua khac nhau.
+- **Khoi "SEND OVER 6" (rieng cua can to, V2 khong co)** -- port `Mod_sendRackauto.BuildRackBatch`: gom o RACK khac rong va khac `"0"`, don lien tuc, 6 ma dau vao LO 1, phan du vao LO 2. Nut IN don LO 2 len thanh LO 1 (dung `rackBatch1(i) = rackBatch2(i)` cua VBA), don **vo dieu kien** ke ca khi gui hong -- dung ban goc, gui va don la hai chuyen tach roi.
+  - Lo rack duoc luu vao phien -- F5 giua chung khong mat thu tu rack con lai.
+  - `onUpdateRack` gom lai lo khi da tung gom, neu khong khoi SEND OVER hien so cu cua lan gom truoc va tho bam OUT la **gui nham ma**.
+- **`frontend/src/services/rackDispatch.ts` (moi)** -- diem tich hop DUY NHAT voi agent. VBA goc dieu khien chuot (`ClickAt 345,200` + `SendKeys "^v"` vao toa do man hinh cua app pha mau); cach do **khong port sang web duoc va vi pham ADR-002**. Web chi PHAT LENH: `POST /api/rack-dispatch` kem `idempotency_key` (rules/database-safety muc 4).
+- Route `/weighing-station-large`, `ROUTE_CAPABILITY_MAP` **chi `LARGE_SCALE`** (khac 2 dong `/weighing-station*` von nhan ca SMALL lan LARGE -- co chu y, thao tac gui rack chi ton tai o khu can lon), muc menu **"Can to"** (adminOnly trong luc chay thu, vi tai khoan van hanh bi khoa cung vao 1 man theo workstation binding), tieu de man hinh trong `AppLayout.vue`.
+
+**C. CON TON DONG -- chua lam**
+
+- **Backend `POST /api/rack-dispatch` CHUA CO**, va **agent xu ly OUT/IN chua duoc xac dinh** ("agent loai khac", chua ro la agent nao). Hien bam OUT/IN se bao loi ro rang bang tieng Viet va chi tho dung nut **COPY** (chep LO 1 ra clipboard, dan tay sang he pha mau) -- duong thoat dung duoc ngay, khong phai nut chet.
+- **CHUA thu tay tren trinh duyet.**
+- **Kiem chung da chay:** `vue-tsc --noEmit` 0 loi o file moi, `vite build` OK 13.48s (chunk `WeighingStationLarge` 23.86 kB).
+
+### 96. Can to: dung lai giao dien 1:1 theo dung toa do form VBA
+
+- **Yeu cau (03/08/2026):** *"can to toi muon giao dien giong het trong form VBA"*.
+
+**A. Lay toa do that — VBA project BI KHOA MAT KHAU**
+
+- Moi duong qua Excel COM deu TREO (khong bao loi): `wb.VBProject` bat hop thoai hoi mat khau ma cua so lai vo hinh. Nguyen nhan chi lo ra khi doc stream `PROJECT`: khoa **`DPx=`** (bien the cua `DPB=`, nen lan grep dau tim `DPB=` bao "khong khoa" — sai). Workbook #4 dung `DPB=`, #5 dung `DPx=`.
+- => Doc thang binary **MS-OFORMS** trong `xl/vbaProject.bin`: storage `scaleform` -> stream **`f`** (ten + Left/Top + ObjectStreamSize + ClsidCacheIndex + TabIndex) va stream **`o`** (Size + Caption + Font). Don vi goc himetric (1/100 mm), quy ve POINT.
+- **Khong dung duoc spec tu tri nho** cho vung `SiteDepthsAndTypes` (ma hoa run-length) -> thay bang cach do: thu parse chuoi ban ghi tu moi offset, lay chuoi DAI NHAT. Tu kiem chung: ra dung **74 control**, moi ten deu la dinh danh hop le, va an vua khit stream.
+- **Hai quy luat rut ra bang doi chieu tay 8 control du 3 loai** (khong co trong tri nho, phai suy tu chinh file):
+  - Than control = `[0, 4+cb)`; moi thu sau do la ban ghi con (TextProps = font).
+  - **Size (Cx,Cy) LUON la 8 byte cuoi cua than** -> offset `4+cb-8`. Caption nam ngay truoc Size.
+- **Bang chung parse dung:** `txt_RACK1` @(12.02, 11.99)pt, `txt_RACK2` @(12.02, 59.98) -> buoc dong dung **48pt**, trung voi so da biet tu ban #4; `btnSAVE` left 552 + width 180 = 732 ≈ be ngang form 734.26.
+- **Mot bay da mac va da go:** chuoi ASCII trong stream `o` cho ra `RACK#`, nhung CaptionLength = 4 -> caption that la **`RACK`**, ky tu `#` chinh la byte thap cua Cx (0x0423 = 1059 himetric = 30.02pt). Doc caption bang "quet chuoi in duoc" la sai.
+
+**B. Bo cuc that (form 734.26 x 546.01 pt = 979 x 728 px)**
+
+- Luoi 9 dong: RACK @12.02 (48pt), DYE @65.99 (186pt), WEIGHT @257.98 (132pt), PROCESS @396 (150pt); cao 44.39pt, buoc dong 48.04pt; nhan so thu tu 1..9 @6.01 rong 6pt.
+- Cot phai: DEL/PRINT/CHECK @top 6; ban phim so 1-9 (48x42) @66/114/162; `0` + CLOSE @210; **OUT (90x84) + IN (84x84) @258**; CLEAR (180x57.6) @348; SAVE (180x54) @408; NEXT (180x72) @468.
+- Duoi trai: COLOR(90x25.2) / MACHINE(48x25.2) @450, CODE / LV @480, **delta_rawline 384x93pt font 80.2pt**, rawline 144x30pt.
+- Font: luoi va delta dung **Arial Narrow 36pt**, nut/nhan dung **Tahoma**.
+
+**C. Da lam**
+
+- `WeighingStationLarge.vue` viet lai template + style: khung CO DINH 979x728px, moi control dat tuyet doi theo dung so do tren, ca khung thu/phong bang **MOT phep `transform: scale()`** (ResizeObserver) -> ti le giua cac control, co chu, do day vien khong bao gio lech so voi ban VBA.
+- **Hang so `C` / `HEADERS` / `NUMPAD` la ban sao cua form that — da ghi chu ro KHONG duoc chinh tay**, muon doi thi sua .xlsm roi trich lai.
+- Ban phim so nay chay dung ban goc: chi go vao o **RACK** (`LastInputBox` cua VBA chi duoc dat trong `txt_rackN_Enter`).
+- **Moi thu bang web KHONG co trong VBA** (den mat tin hieu, hang doi gui me, gia lap, thong bao loi, lo rack + nut COPY) day het ra **DAI NGOAI khung form** -> phan form giong het ban goc, ma tho van thay duoc may dang hong gi.
+- Da bo `VbaRackGrid` khoi man nay: component do dung ti le cua workbook **#4** (RACK 48 | DYE 330 | WEIGHT 312 | PROCESS 360 pt), khong phai #5.
+- Hai cho CO Y khac ban goc, deu chi them chu khong bot: vien xanh o dong dang can (9 dong giong het nhau, khong co dau thi phai do bang mat), va o delta to mau theo dung 3 mau dung sai cua o PROCESS.
+
+**D. Kiem chung**
+
+- `vue-tsc --noEmit` **0 loi**, `vite build` OK 13.58s.
+- Doi chieu so hoc: hang cuoi luoi ket thuc @440.7pt < COLOR @450 (khong chong nhau); NEXT ket thuc @540 < cao form 546; CHECK ket thuc @731.99 < rong form 734.26.
+- **CHUA thu tay tren trinh duyet** — can nguoi dung mo /weighing-station-large xem bang mat.
+
+### 97. Can to: lam lai phan NHIN (giu nguyen bo cuc + thao tac)
+
+- **Yeu cau (03/08/2026):** *"giao dien nay dep hon, de nhin hon"* — sau khi da xem that tren trinh duyet.
+- **Bo gia kieu Windows 95** (vien outset/inset, xam #f0f0f0, Tahoma): no chi lam man hinh trong cu chu khong giup doc nhanh hon. Thay bang: vo ngoai toi, mat form la mot the sang bo goc co do do; o du lieu bo goc, vien manh; **soc chan/le** cho 9 dong (9 o trang giong het nhau thi mat rat de nhay nham dong khi liec tu can len); nut phan mau theo VAI TRO (SAVE xanh duong / NEXT xanh la / CLEAR do / OUT tim / IN xanh mong); o delta thanh tam nen DEN, chu so doi mau theo dung sai.
+- **3 mau tin hieu GIU NGUYEN ma RGB goc** (`utils/processColor`) — do la thu duy nhat tren man hinh mang nghia nghiep vu.
+
+**Da tu bat va sua 3 loi bang cach CHUP MAN HINH bo cuc that**
+
+Trang can dang nhap nen khong chup truc tiep duoc -> dung `scratchpad/preview.mjs`: doc THANG khoi `<style>` cua component, dung lai DOM tinh voi du lieu mau **co tinh chon dai nhat co the gap** (`1024`, `BLACK-ECO-N`, `1234.75`), roi chup bang Edge headless. Ba loi chi lo ra khi nhin anh:
+
+1. **Chu tran o, cat mat so.** Ban dau toi doi ca luoi sang Inter — sai: o RACK chi rong 48pt (64px) ma chu 36pt (48px). Ban goc dung **Arial Narrow** chinh vi ly do do. Da tra font hep ve cho o du lieu, Inter chi dung cho nhan/nut.
+2. **Van con cat ngay ca voi Arial Narrow** — vi ban goc de ca 4 cot 36pt, tuc **form that cung dang cat mat ma rack 3 ky tu**. Da chinh co chu theo be rong that tung cot: RACK 26 / DYE 30 / WEIGHT 30 / **PROCESS 34 (giu to nhat, day la so mang tin hieu)**.
+3. **4 o cung mot dong bi so le.** Ban goc dat DYE/WEIGHT/PROCESS thap hon o RACK 3.65pt (gan nhu chac chan do keo tha chuot), nhin ra la rang cua. Dat `ROW_OFFSET = 0` — **sai lech toa do DUY NHAT so voi ban goc, va chi 4.9px**. Nhan cot cung cho ve cung mot moc.
+
+**Sua khac**
+
+- **Nhan cho hang o duoi**: ban VBA de COLOR/MACHINE/CODE/LV tran trui. Them nhan vao khe 9.3pt giua day luoi va hang o (COLOR/MACHINE/DELTA); CODE/LV/RAW khong con khe nen nhan nam luon trong o.
+- **Them lop `.stage-fit`**: `transform: scale()` khong doi o layout cua phan tu, nen khi phong to > 1 mat form bi tran ra ngoai vung cuon va cut mep. Lop dem mang dung kich thuoc sau khi phong.
+- Chan tren cua phong to 1.6 -> 2.0, va tru padding cua vung cuon khi tinh ti le.
+
+**Kiem chung:** `vue-tsc --noEmit` **0 loi**, `vite build` OK 13.25s. Anh chup bo cuc: `scratchpad/preview2.png`. **Chua thu tay tren trinh duyet that.**
+
+### 98. Can to: het cuon chuot — man hinh vua DUNG MOT khung hinh
+
+- **Yeu cau (03/08/2026):** *"toi muon cac o lam sao nhin trong 1 view ma k can cuon chuot vi qua dai"*.
+- **Nguyen nhan (loi cua muc 96-97):** route nay co `requiresAuth` nen `App.vue` boc no trong **AppLayout** — noi dung nam trong `.content-container` (`flex:1; padding:24px; overflow-y:auto`), tuc DA la mot vung cuon co san va da bi thanh tren an mat mot phan chieu cao. Toi lai dat `.wsl-root { min-height: 100vh }` -> ep man hinh cao BANG CA CUA SO roi cong them thanh tren => luon dai hon mot khung hinh, phai cuon moi thay het mat form.
+- **Sua:** bo `100vh`. Chieu cao nay **do bang JS** (`fitRoot`): `window.innerHeight - getBoundingClientRect().top - paddingBottom cua phan tu cha`. Dung trong moi truong hop, ke ca khi bat/tat toan man hinh hay doi chieu cao thanh tren. `.wsl-root` them `overflow: hidden` — moi thu BAT BUOC phai vua mot khung hinh.
+  - `fitAll()` = `fitRoot()` roi `nextTick(fitStage)`: khong cho qua mot nhip thi `fitStage` van doc chieu cao CU va mat form bi thu nho hon muc can thiet.
+  - Do lai mot nhip nua trong `requestAnimationFrame`: luc `onMounted` chay, AppLayout co the chua dung xong thanh tren nen `top` con la so tam.
+  - `ResizeObserver` van gan vao `.stage-wrap` — dai thong tin / dong loi duoi cung hien roi an lam khung cao thap khac nhau.
+- **Nhuong them cho cho mat form:** padding vung cuon 14 -> 8px, dai thong tin 8 -> 5px, dong loi 7 -> 5px va **chan toi da 2 dong** (thong bao dai khong duoc phep doi mat form len).
+- **RACK 26 -> 24pt + le 2px:** anh chup cho thay ma rack 4 ky tu (`1024`) van sat mep o 26pt. 24pt cho ra 58.3px trong o rong 60px -> vua du 4 ky tu.
+
+**Kiem chung bang anh chup, khong doan:** `scratchpad/preview.mjs` nay **mo phong luon khung AppLayout** (sidebar 240 + topbar 64 + `.content-container` padding 24) va chay ban sao cua chinh `fitRoot`/`fitStage`. Chup o **1920x1080** (scale 1.50) va **1600x900** (scale 1.24): toan bo mat form + dai thong tin + dong loi nam gon trong mot khung hinh, khong co thanh cuon. Anh: `preview_fhd.png`, `preview_final.png`.
+
+`vite build` OK 13.27s. **Chua thu tay tren trinh duyet that.**
+
+### 99. Tach lam 2 Agent / 2 bo cai doc lap: Can nho vs Can to
+
+- **Yeu cau (03/08/2026):** *"/weighing-station-v2 va /weighing-station-large toi muon tach ra lam 2 agent, 2 bo cai k lien quan den nhau"*.
+- **Hien trang truoc do:** DUNG 1 bo cai `DFAgentSetup-Scale.msi` (service `DFAgent`, thu muc `ProgramFiles\DFAgent`, ma tram `WS-SCALE-<TEN-MAY>`). Backend ghep cap trinh duyet voi Agent **theo IP nguon** (`machine_<ip>`), nen mot may chay hai Agent la ca hai ghi de len dung mot khoa cache — man Can to se hien so cua can nho.
+
+**Cach tach: cung ma nguon, khac dung 1 khoa cau hinh `Workstation:ScaleKind` (SMALL/LARGE)**
+
+| | Can nho | Can to |
+|---|---|---|
+| MSI | `DFAgentSetup-CanNho.msi` | `DFAgentSetup-CanTo.msi` |
+| Service | `DFAgentSmall` | `DFAgentLarge` |
+| Thu muc cai | `ProgramFiles\DFAgent-Small` | `ProgramFiles\DFAgent-Large` |
+| UpgradeCode | `CD108F1A-...` (giu Guid lich su) | `2FDBACF6-...` (Guid moi) |
+| Ma tram tu sinh | `WS-SCALE-<TEN-MAY>` | `WS-LARGE-<TEN-MAY>` |
+| Man hinh | `/weighing-station-v2` | `/weighing-station-large` |
+
+- **UpgradeCode khac nhau la thu quyet dinh "khong lien quan den nhau"**: dung chung Guid thi `MajorUpgrade` cua bo thu hai se TU GO bo thu nhat luc cai.
+- **Bo Guid dong cung tren `<Component>`** trong .wxs, de WiX v5 tu sinh theo key path. Quy tac component cua Windows Installer cam mot Guid tro toi hai duong dan khac nhau, ma hai bo nay cai vao hai thu muc khac nhau. **Da do lai bang cach mo 2 file MSI**: 224 component moi ben, **0 Guid trung nhau**.
+- `agent_cache.db` (hang doi offline) nam canh file .exe nen tu dong tach rieng theo thu muc cai, khong phai lam gi them.
+- **Can nho GIU NGUYEN tien to `WS-SCALE-`** — co y. Doi tien to la moi may pilot dang chay tu sinh mot tram moi va bo lai tram cu thanh rac trong DB.
+- Version nhay **2.2.0.0 -> 3.0.0.0** vi ban can nho doi ca ten service lan thu muc cai; may dang cai 2.2.0.0 phai qua MajorUpgrade de service `DFAgent` cu duoc go sach, khong de lai service mo coi tro toi thu muc da xoa.
+
+**Sua backend — cho de khong lan so can**
+
+- `DeviceController`: `machineKey($ip, $kind)` them hau to `_LARGE`. **SMALL khong co hau to** => khoa cu giu nguyen, tram can nho dang chay khong dut so luc deploy va khong phai xoa cache.
+- `storeReading` nhan them `scale_kind` (nullable, in:SMALL,LARGE); `getReading` va `whoami` nhan `?kind=`. Thieu tham so deu ve SMALL — V1 (`/weighing-station`) va Dashboard khong truyen gi, phai chay y nhu cu.
+- `AgentAuth`: tram tu dang ky voi `scale_kind=LARGE` duoc cap capability **LARGE_SCALE** + `default_route=/weighing-station-large`. Truoc do moi tram SCALE_ONLY deu ra SMALL_SCALE, tuc tram can to se **khong vao noi chinh man hinh cua no** (`ROUTE_CAPABILITY_MAP['/weighing-station-large']` doi dung LARGE_SCALE).
+- `routes/web.php`: `/downloads/agent-launcher/{kind?}`. URL cu khong tham so van chay, tra bo can nho.
+
+**Sua frontend**
+
+- `useScaleFeed(kind)` gui `&kind=`; `adoptLocalWorkstation(kind)` gui `?kind=`. V2 khai bao tuong minh `'SMALL'`, Large khai bao `'LARGE'` (du SMALL la mac dinh — doc man nao biet ngay man do cam vao cai can nao).
+- Sidebar "TAI CONG CU" gio co **2 link**: `DF Agent — Can nho` / `DF Agent — Can to`.
+
+**Kiem chung**
+
+- `dotnet test` agent: **35/35 pass** (them 3 test moi: chuan hoa ScaleKind, hai loai can tren cung may ra hai ma khac nhau, cau hinh cu khong co ScaleKind van giu tien to `WS-SCALE-`). Luu y: may dev khong co .NET 8 runtime (chi 3.1/9/10) — phai chay voi `DOTNET_ROLL_FORWARD=Major`.
+- `build.ps1`: build **ca 2 MSI thanh cong** (28 MB moi file), da doi chieu UpgradeCode/ProductCode/ServiceName/thu muc trong chinh file MSI.
+- `vite build` OK 14.13s.
+- **Backend phpunit KHONG chay duoc tren may nay** — khong co PostgreSQL cong 5433 va khong co Docker, ca 12 test cu cua `ScaleLiveWeightTest` cung fail vi ly do do chu khong phai vi thay doi nay. **2 test moi (`test_hai_agent_can_nho_va_can_to_tren_cung_mot_may_khong_ghi_de_nhau`, `test_whoami_tra_dung_tram_theo_loai_can`) chua tung duoc chay** — phai chay lai o moi truong co DB test truoc khi tin.
+- Da xoa artifact cu `DFAgentSetup-Scale.msi`/`.wixpdb` (da bi thay the, sinh lai duoc bang `build.ps1`).
+
+**Con lai:** hai may tram ngoai xuong phai cai dung bo cua minh, va neu cai ca hai len cung mot may thi PuTTY phai co **2 session rieng ghi ra 2 file log khac nhau** (`Scale:LogFilePath` — ban can to mac dinh `D:\scale\putty_log_large.txt`, cong `COM2`). Trung file log la hai Agent cung doc mot cai can.
+
+### 100. Agent day so can len NHIEU backend — mo bang localhost hay bang IP server deu nhan can
+
+- **Trieu chung nguoi dung bao:** *"http://localhost:3001/weighing-station-v2 cai nay dang k nhan can, toi cai roi"*, sau do: *"toi muon ca 2 dia chi deu chay duoc"*.
+- **NGUYEN NHAN GOC (do bang cach doc cau hinh that tren may, khong doan):**
+  - Frontend suy ra host API tu **chinh URL trinh duyet dang mo**: `axios.defaults.baseURL = http://<hostname>:8500` (`main.ts:25`).
+  - Mo bang `localhost:3001` => hoi backend **cuc bo** (`127.0.0.1:8500`, `CACHE_STORE=file`, cache rieng cua may).
+  - Agent lai dong cung `Backend:Url = http://10.0.60.209:8500/api` => day so len **CS-SERVER**.
+  - Hai kho cache tach roi => man hinh khong bao gio thay so. **Khong phai loi man hinh, khong phai loi cai dat.**
+- **Da loai tru cac nghi van khac bang bang chung:** service `DFAgentSmall` dang Running, `appsettings.json` dung ban moi (`ScaleKind=SMALL`, `Id` de trong), PuTTY van ghi `D:\scale\putty_log.txt` lien tuc. Event Log cho thay loi *unreachable host 10.0.60.209:8500* luc 07:52 (mat mang tam thoi) da tu het sau khi service khoi dong lai luc 08:37.
+
+**Sua: `Backend:Urls` (mang) — Agent day len TAT CA backend, song song**
+
+- `Worker.ResolveBackendUrls()`: doc `Backend:Urls`; loc muc rong, cat dau `/` thua, bo trung (khong phan biet hoa thuong). Rong thi lui ve `Backend:Url` (chuoi don) — cau hinh tren may da cai **khong bi bo qua im lang** sau khi cap nhat Agent.
+- `PushWeightToBackendAsync` = `Task.WhenAll` qua tat ca URL. **Song song chu khong tuan tu**: mot backend chet se giu ca luot day dung bang thoi gian cho timeout (5s), lam so can tren backend con song tre theo.
+- **Chi xep vao hang doi offline khi KHONG backend nao nhan duoc.** Con mot noi nhan la so can da co cho luu; xep hang them chi tao ban ghi trung luc dong bo lai.
+- **Chan spam log** (`GhiNhanTrangThaiBackend`): nhip day la 200ms, mot backend chet ma moi lan hong lai ghi mot dong canh bao la **5 dong/giay** do vao Event Log, troi mat moi thu khac dung luc can doc nhat. Chi ghi khi trang thai DOI: luc hong lan dau, va luc song lai. Nho co chan spam nay moi dam de san `127.0.0.1` trong danh sach mac dinh cua CA HAI bo cai — may tram khong chay backend cuc bo thi dia chi do chi that bai im lang (mot lan TCP refused tren loopback moi nhip, khong ton mang).
+- `PackageVersion` 3.0.0.0 -> **3.1.0.0**, da build lai ca 2 MSI (28.1 MB moi file, da doi chieu ProductVersion trong chinh file MSI).
+
+**Kiem chung:** `dotnet test` **39/39 pass** (them 4 test: mac dinh khi khong khai bao gi, `Backend:Url` don le van chay, `Backend:Urls` duoc uu tien hon, loc muc rong/dau '/' thua/dia chi trung).
+
+**Con lai — CHUA CHAY THU THAT:** may nay dang cai ban 3.0.0.0 (chi day len CS-SERVER). Phai cai de ban 3.1.0.0 bang quyen admin moi kiem chung duoc tren trinh duyet that; da soan san script `scratchpad/tro-agent-ve-backend-cuc-bo.ps1`. **CS-SERVER van chay backend cu** — chua deploy thay doi cua muc 99-100.

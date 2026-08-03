@@ -1,3 +1,5 @@
+using System;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -15,7 +17,7 @@ public class Program
             // Cho phép chạy như Windows Service thật (SCM start/stop, working directory
             // đúng thư mục cài đặt) khi cài qua MSI — vẫn chạy console bình thường như cũ
             // khi launch trực tiếp (no-op nếu không phải chạy dưới Service Control Manager).
-            .UseWindowsService(options => { options.ServiceName = "DFAgent"; })
+            .UseWindowsService(options => { options.ServiceName = ResolveServiceName(); })
             .ConfigureServices((hostContext, services) =>
             {
                 services.AddSingleton<OfflineQueue>();
@@ -24,4 +26,35 @@ public class Program
                 services.AddSingleton<PrinterDiscovery>();
                 services.AddHostedService<Worker>();
             });
+
+    /// <summary>
+    /// Tên service Windows của CHÍNH bản cài này. Phải khớp với ServiceInstall/@Name trong
+    /// DFAgentSetup.wxs, nếu không thì tên hiển thị trong log và tên SCM lệch nhau.
+    ///
+    /// Đọc từ cấu hình vì từ 2026-08-03 có HAI bộ cài độc lập chạy song song được trên cùng
+    /// một máy: DFAgentSmall (cân nhỏ) và DFAgentLarge (cân to). Mặc định "DFAgent" cho cấu
+    /// hình cũ chưa có khóa này.
+    ///
+    /// Phải tự dựng cấu hình ở đây (thay vì dùng hostContext) vì UseWindowsService cần tên
+    /// service TRƯỚC khi host được build.
+    /// </summary>
+    private static string ResolveServiceName()
+    {
+        try
+        {
+            string? name = new ConfigurationBuilder()
+                .SetBasePath(AppContext.BaseDirectory)
+                .AddJsonFile("appsettings.json", optional: true)
+                .Build()
+                .GetValue<string>("Service:Name");
+
+            return string.IsNullOrWhiteSpace(name) ? "DFAgent" : name.Trim();
+        }
+        catch
+        {
+            // Cấu hình hỏng KHÔNG được làm service không khởi động nổi — tên mặc định vẫn
+            // chạy được, chỉ hiển thị sai tên trong log.
+            return "DFAgent";
+        }
+    }
 }

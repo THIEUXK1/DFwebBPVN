@@ -300,6 +300,67 @@ class ScaleLiveWeightTest extends TestCase
     }
 
     /**
+     * MỘT máy chạy CẢ HAI Agent (bộ cài cân nhỏ + bộ cài cân to, 2026-08-03). Hai Agent gửi từ
+     * cùng một IP nên nếu khóa cache theo máy không tách theo loại cân thì chúng ghi đè lên nhau
+     * và màn hình Cân to hiện số của cân nhỏ — cân sai mà vẫn tô xanh ĐẠT, hỏng nguy hiểm nhất.
+     */
+    public function test_hai_agent_can_nho_va_can_to_tren_cung_mot_may_khong_ghi_de_nhau(): void
+    {
+        foreach (['scale_live_weight_', 'scale_live_weight_stable_', 'scale_live_weight_timestamp_'] as $p) {
+            Cache::forget($p.'machine_10_0_1_20');
+            Cache::forget($p.'machine_10_0_1_20_LARGE');
+        }
+
+        $this->postJson('/api/devices/readings',
+            ['workstation_id' => 'WS-SCALE-PC01', 'weight' => 2.5, 'is_stable' => true, 'scale_kind' => 'SMALL'],
+            ['REMOTE_ADDR' => '10.0.1.20'])->assertStatus(200);
+
+        // Cân to đẩy SAU: nếu chung khóa thì 480.75 đè mất 2.5 và cả hai màn hình cùng thấy 480.75.
+        $this->postJson('/api/devices/readings',
+            ['workstation_id' => 'WS-LARGE-PC01', 'weight' => 480.75, 'is_stable' => true, 'scale_kind' => 'LARGE'],
+            ['REMOTE_ADDR' => '10.0.1.20'])->assertStatus(200);
+
+        // Không truyền kind ⇒ SMALL: /weighing-station (V1) và các màn cũ giữ nguyên hành vi.
+        $this->actingAs($this->operator)
+            ->getJson('/api/devices/readings/WS-SCALE-PC01?local=1', ['REMOTE_ADDR' => '10.0.1.20'])
+            ->assertJsonPath('weight', 2.5)
+            ->assertJsonPath('source', 'MACHINE');
+
+        $this->actingAs($this->operator)
+            ->getJson('/api/devices/readings/WS-LARGE-PC01?local=1&kind=LARGE', ['REMOTE_ADDR' => '10.0.1.20'])
+            ->assertJsonPath('weight', 480.75)
+            ->assertJsonPath('source', 'MACHINE');
+    }
+
+    /**
+     * whoami phải trả ĐÚNG trạm theo loại cân đang hỏi — máy chạy cả 2 Agent có 2 trạm cùng lúc.
+     */
+    public function test_whoami_tra_dung_tram_theo_loai_can(): void
+    {
+        Cache::forget('scale_machine_station_machine_10_0_1_30');
+        Cache::forget('scale_machine_station_machine_10_0_1_30_LARGE');
+
+        Workstation::firstOrCreate(['code' => 'WS-SCALE-PC02'], ['name' => 'PC02 can nho', 'status' => 'ACTIVE']);
+        Workstation::firstOrCreate(['code' => 'WS-LARGE-PC02'], ['name' => 'PC02 can to', 'status' => 'ACTIVE']);
+
+        $this->postJson('/api/devices/readings',
+            ['workstation_id' => 'WS-SCALE-PC02', 'weight' => 1.1, 'scale_kind' => 'SMALL'],
+            ['REMOTE_ADDR' => '10.0.1.30'])->assertStatus(200);
+
+        $this->postJson('/api/devices/readings',
+            ['workstation_id' => 'WS-LARGE-PC02', 'weight' => 222.2, 'scale_kind' => 'LARGE'],
+            ['REMOTE_ADDR' => '10.0.1.30'])->assertStatus(200);
+
+        $this->actingAs($this->operator)
+            ->getJson('/api/workstations/whoami', ['REMOTE_ADDR' => '10.0.1.30'])
+            ->assertJsonPath('data.code', 'WS-SCALE-PC02');
+
+        $this->actingAs($this->operator)
+            ->getJson('/api/workstations/whoami?kind=LARGE', ['REMOTE_ADDR' => '10.0.1.30'])
+            ->assertJsonPath('data.code', 'WS-LARGE-PC02');
+    }
+
+    /**
      * Agent/PuTTY chết ở máy này: số cân hết TTL 15s nhưng mốc thời gian (TTL 1 giờ) vẫn còn, đủ để
      * biết "máy này CÓ cân". Phải báo mất tín hiệu, TUYỆT ĐỐI không âm thầm tụt về khóa mã trạm và
      * hiển thị số cân của trạm khác — cân sai mà vẫn tô xanh ĐẠT nguy hiểm hơn hẳn mất số.

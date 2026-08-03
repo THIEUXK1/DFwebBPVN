@@ -25,7 +25,18 @@ import { currentWorkstation } from '../services/workstation';
  */
 const STALE_READING_MS = 1500;
 
-export function useScaleFeed() {
+/**
+ * Loại cân mà màn hình đang dùng — cũng chính là loại BỘ CÀI Agent phục vụ nó:
+ *   SMALL → Agent "Cân nhỏ" (service DFAgentSmall, mã trạm WS-SCALE-*), màn /weighing-station-v2
+ *   LARGE → Agent "Cân to"  (service DFAgentLarge, mã trạm WS-LARGE-*), màn /weighing-station-large
+ *
+ * Hai bộ cài chạy song song được trên CÙNG một máy, mà backend ghép cặp trình duyệt với Agent
+ * theo IP nguồn — nên nếu không nói rõ đang hỏi cân nào thì màn Cân to có thể đọc phải số của
+ * cân nhỏ. Tham số này chính là thứ tách hai đường đó ra.
+ */
+export type ScaleKind = 'SMALL' | 'LARGE';
+
+export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
   // liveWeight = NET (đã trừ bì) — giá trị dùng để hiển thị/so dung sai/gửi khi lưu.
   const liveWeight = ref<number>(0);
   const grossWeight = ref<number>(0);
@@ -184,8 +195,14 @@ export function useScaleFeed() {
       //
       // Không có rủi ro thứ tự deploy: backend nhận cả hai dạng, nên frontend mới chạy được với
       // backend cũ. Lùi về `id` khi trạm chưa có mã, để không gãy ở cấu hình lạ.
+      //
+      // `kind` chỉ định rõ đang hỏi cái cân NÀO ở máy này (xem ScaleKind ở đầu file). Backend
+      // đọc khóa cache riêng cho từng loại, nên máy cài cả 2 Agent không bị lẫn số. Backend cũ
+      // chưa biết tham số này thì bỏ qua nó và trả về đúng như trước — không cần deploy đồng bộ.
       const khoaCan = currentWorkstation.value.code || currentWorkstation.value.id;
-      const res = await axios.get(`/api/devices/readings/${encodeURIComponent(String(khoaCan))}?local=1`);
+      const res = await axios.get(
+        `/api/devices/readings/${encodeURIComponent(String(khoaCan))}?local=1&kind=${scaleKind}`
+      );
       if (res.data?.status === 'SUCCESS') {
         // has_reading/age_ms là trường mới; backend cũ chưa có thì `age_ms === undefined` —
         // coi như còn tươi để không làm hỏng màn hình khi frontend deploy trước backend.

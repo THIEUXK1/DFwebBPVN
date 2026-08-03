@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -20,13 +21,22 @@ public class Worker : BackgroundService
     private readonly PrinterDiscovery _printerDiscovery;
     private readonly HttpClient _httpClient;
     private readonly string _backendUrl;
+    private readonly string[] _backendUrls;
     private readonly string _workstationId;
     private readonly string _role;
+    private readonly string _scaleKind;
     private readonly int _readIntervalMs;
     private readonly int _pushIntervalMs;
     private readonly int _printPollIntervalMs;
     private readonly bool _scaleEnabled;
     private readonly bool _printEnabled;
+
+    // Trạng thái lần đẩy gần nhất của TỪNG backend, chỉ để quyết định có ghi log hay không.
+    //
+    // Nhịp đẩy là 200ms, nên một backend chết mà cứ mỗi lần hỏng lại ghi một dòng cảnh báo là
+    // 5 dòng/giây đổ vào Event Log — trôi mất mọi thứ khác và làm log vô dụng đúng lúc cần đọc
+    // nhất. Chỉ ghi khi trạng thái ĐỔI: lúc hỏng lần đầu, và lúc sống lại.
+    private readonly System.Collections.Generic.Dictionary<string, bool> _backendOk = new();
 
     // Danh sách máy in cài sẵn hiếm khi đổi — không cần báo cáo mỗi vòng lặp 500ms
     // như số cân. Báo lại mỗi 60 giây (đủ nhanh để phát hiện máy in mới cắm vào).
@@ -48,7 +58,11 @@ public class Worker : BackgroundService
         _offlineQueue = offlineQueue;
         _printerDiscovery = printerDiscovery;
 
-        _backendUrl = _config.GetValue<string>("Backend:Url", "http://localhost:8500/api") ?? "http://localhost:8500/api";
+        _backendUrls = ResolveBackendUrls(_config);
+        // Backend CHINH: dung cho cac viec chi co mot dich den hop ly (lay lenh in, bao cao may
+        // in). Chi so can moi duoc day len TAT CA backend — xem PushWeightToBackendAsync.
+        _backendUrl = _backendUrls[0];
+        _scaleKind = ResolveScaleKind(_config);
         _workstationId = ResolveWorkstationId(_config);
         // NHỊP ĐỌC tách khỏi NHỊP ĐẨY (2026-08-01). Trước đây một giá trị PollIntervalMs điều
         // khiển cả hai, buộc phải đánh đổi giữa độ chính xác và tải mạng — thực ra hai việc này
@@ -99,6 +113,62 @@ public class Worker : BackgroundService
     }
 
     /// <summary>
+    /// Danh sách backend nhận số cân. Trả về ít nhất 1 phần tử.
+    ///
+    /// LÝ DO CÓ NHIỀU (2026-08-03): frontend suy ra host của API từ CHÍNH URL trình duyệt đang
+    /// mở (`axios.defaults.baseURL = http://<hostname>:8500`, xem frontend/src/main.ts). Nên mở
+    /// màn hình cân bằng `localhost:3001` là nó hỏi backend chạy ngay trên máy đó, còn mở bằng
+    /// `10.0.60.209:3001` là hỏi backend trên CS-SERVER — HAI kho cache tách rời. Agent chỉ đẩy
+    /// vào một kho thì địa chỉ còn lại vĩnh viễn không thấy số cân nào, mà đó lại là trạng thái
+    /// "cân chết" không có cách nào phân biệt với hỏng thật.
+    ///
+    /// Khai báo `Backend:Urls` (mảng) để đẩy song song lên nhiều backend; máy trạm ngoài xưởng
+    /// chỉ có CS-SERVER nên vẫn để `Backend:Url` (chuỗi đơn) như cũ — KHÔNG thêm địa chỉ không
+    /// tồn tại vào danh sách, mỗi địa chỉ chết là một lần chờ hết timeout + một dòng cảnh báo
+    /// mỗi nhịp đẩy.
+    ///
+    /// `Backend:Url` vẫn được đọc làm dự phòng để cấu hình trên máy đã cài không bị bỏ qua im
+    /// lặng sau khi cập nhật Agent.
+    /// </summary>
+    public static string[] ResolveBackendUrls(IConfiguration config)
+    {
+        string[] urls = config.GetSection("Backend:Urls").Get<string[]>() ?? Array.Empty<string>();
+
+        urls = urls.Where(u => !string.IsNullOrWhiteSpace(u))
+                   .Select(u => u.Trim().TrimEnd('/'))
+                   .Distinct(StringComparer.OrdinalIgnoreCase)
+                   .ToArray();
+
+        if (urls.Length > 0)
+        {
+            return urls;
+        }
+
+        string single = config.GetValue<string>("Backend:Url", "http://localhost:8500/api")
+                        ?? "http://localhost:8500/api";
+
+        return new[] { single.Trim().TrimEnd('/') };
+    }
+
+    /// <summary>
+    /// Loại cân mà bản cài này phục vụ: "SMALL" (cân nhỏ, dưới 6kg) hay "LARGE" (cân to).
+    ///
+    /// Đây là thứ DUY NHẤT phân biệt hai bộ cài — cùng một mã nguồn, khác đúng file
+    /// appsettings.json đóng gói kèm (xem agent/installer/appsettings.small.json và
+    /// appsettings.large.json). Hai bộ cài chạy song song trên cùng một máy được: khác tên
+    /// service, khác thư mục cài, khác UpgradeCode, và khác mã trạm nhờ tiền tố dưới đây.
+    ///
+    /// Mặc định SMALL để cấu hình cũ (chưa có khóa này) giữ nguyên hành vi: máy đã cài bản
+    /// Agent cũ vẫn ra đúng mã trạm "WS-SCALE-&lt;TÊN MÁY&gt;" như trước, không đổi sau khi cập nhật.
+    /// </summary>
+    public static string ResolveScaleKind(IConfiguration config)
+    {
+        string kind = (config.GetValue<string>("Workstation:ScaleKind") ?? "").Trim().ToUpperInvariant();
+
+        return kind == "LARGE" ? "LARGE" : "SMALL";
+    }
+
+    /// <summary>
     /// Mã trạm của MÁY NÀY. Để trống Workstation:Id trong cấu hình thì tự sinh từ TÊN MÁY —
     /// nhờ đó một bộ cài MSI duy nhất cài lên bao nhiêu máy cũng ra mã khác nhau, không phải
     /// sửa tay từng máy sau khi cài.
@@ -106,6 +176,12 @@ public class Worker : BackgroundService
     /// Trước 2026-08-01 bộ cài đóng cứng cùng một mã cho mọi máy, nên hai trạm cân chạy cùng
     /// lúc ghi đè số cân của nhau. Điền Workstation:Id tường minh vẫn được ưu tiên — máy đã
     /// cài từ trước giữ nguyên hành vi cũ, không bị đổi mã sau khi cập nhật Agent.
+    ///
+    /// TIỀN TỐ theo loại cân (2026-08-03): cân nhỏ giữ nguyên "WS-SCALE-", cân to dùng
+    /// "WS-LARGE-". Nhờ vậy cài CẢ HAI bộ lên cùng một máy vẫn ra hai mã trạm khác nhau, hai
+    /// bản ghi trạm khác nhau, hai khóa cache số cân khác nhau — không có đường nào để số cân
+    /// của cân to lọt sang màn hình cân nhỏ. Cố ý KHÔNG đổi tiền tố của cân nhỏ: đổi là mọi
+    /// máy pilot đang chạy tự sinh ra một trạm mới, bỏ lại trạm cũ thành rác trong DB.
     ///
     /// Tên máy Windows chỉ gồm chữ/số/dấu '-' nên gần như luôn qua bộ lọc nguyên vẹn; bộ lọc
     /// chỉ để phòng tên máy lạ (ký tự Unicode) làm hỏng mã trạm dùng làm khóa cache/URL.
@@ -118,6 +194,8 @@ public class Worker : BackgroundService
             return configured.Trim();
         }
 
+        string prefix = ResolveScaleKind(config) == "LARGE" ? "WS-LARGE-" : "WS-SCALE-";
+
         var sb = new System.Text.StringBuilder();
         foreach (char c in Environment.MachineName.ToUpperInvariant())
         {
@@ -126,14 +204,14 @@ public class Worker : BackgroundService
 
         string machine = sb.ToString().Trim('-');
 
-        return machine.Length == 0 ? "WS-SCALE-UNKNOWN" : "WS-SCALE-" + machine;
+        return machine.Length == 0 ? prefix + "UNKNOWN" : prefix + machine;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation(
-            "DF Local Agent started for Workstation: {WS} (đọc cân mỗi {Read}ms, đẩy lên backend mỗi {Push}ms)",
-            _workstationId, _readIntervalMs, _pushIntervalMs);
+            "DF Local Agent started for Workstation: {WS} (loại cân {Kind}, đọc cân mỗi {Read}ms, đẩy lên backend mỗi {Push}ms, backend: {Urls})",
+            _workstationId, _scaleKind, _readIntervalMs, _pushIntervalMs, string.Join(" + ", _backendUrls));
 
         double lastLoggedWeight = 0.0;
         DateTime nextPushAt = DateTime.MinValue;
@@ -218,7 +296,28 @@ public class Worker : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Đẩy số cân lên MỌI backend trong danh sách, SONG SONG.
+    ///
+    /// Song song chứ không tuần tự: một backend chết sẽ giữ cả lượt đẩy đúng bằng thời gian
+    /// chờ timeout (5 giây), làm số cân trên backend còn sống trễ theo — trong khi cả hai vốn
+    /// độc lập nhau hoàn toàn.
+    ///
+    /// Chỉ ghi vào hàng đợi offline khi KHÔNG backend nào nhận được. Còn một nơi nhận là số
+    /// cân đã có chỗ lưu, xếp hàng thêm chỉ tạo bản ghi trùng lúc đồng bộ lại.
+    /// </summary>
     private async Task PushWeightToBackendAsync(double weight, bool isStable)
+    {
+        bool[] ketQua = await Task.WhenAll(_backendUrls.Select(url => PushWeightToOneAsync(url, weight, isStable)));
+
+        if (!ketQua.Any(ok => ok))
+        {
+            _offlineQueue.SaveScaleReading(_workstationId, $"Simulated raw {weight} kg", weight);
+        }
+    }
+
+    /// <summary>true nếu backend này đã nhận được số cân.</summary>
+    private async Task<bool> PushWeightToOneAsync(string backendUrl, double weight, bool isStable)
     {
         try
         {
@@ -233,23 +332,52 @@ public class Worker : BackgroundService
                 // ScannerController::handleOrderScan chặn 403 "chỉ được quét tại các Trạm Cân".
                 // machine_name chỉ để hiển thị cho người quản trị nhận ra máy nào là máy nào.
                 role = _role,
+                // Loại cân của CHÍNH bản cài này. Backend dùng nó cho hai việc:
+                //   · tách khóa cache theo IP máy — hai Agent cùng chạy trên một máy (một cân
+                //     nhỏ, một cân to) không được ghi đè số của nhau;
+                //   · tự đăng ký trạm mới với đúng capability (SMALL_SCALE / LARGE_SCALE) và
+                //     đúng màn hình mặc định.
+                scale_kind = _scaleKind,
                 machine_name = Environment.MachineName
             };
 
-            HttpResponseMessage response = await _httpClient.PostAsJsonAsync($"{_backendUrl}/devices/readings", payload);
+            HttpResponseMessage response = await _httpClient.PostAsJsonAsync($"{backendUrl}/devices/readings", payload);
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogDebug("Weight reading pushed to backend: {W} kg (Stable: {Stable})", weight, isStable);
+                _logger.LogDebug("Weight reading pushed to {Url}: {W} kg (Stable: {Stable})", backendUrl, weight, isStable);
+                GhiNhanTrangThaiBackend(backendUrl, true, null);
+                return true;
             }
-            else
-            {
-                _logger.LogWarning("Backend rejected weight. Status: {Code}", response.StatusCode);
-            }
+
+            GhiNhanTrangThaiBackend(backendUrl, false, $"tra ve {(int)response.StatusCode}");
+            return false;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning("Could not reach backend API. Caching scale reading locally. Error: {Msg}", ex.Message);
-            _offlineQueue.SaveScaleReading(_workstationId, $"Simulated raw {weight} kg", weight);
+            GhiNhanTrangThaiBackend(backendUrl, false, ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Ghi log CHỈ khi tình trạng của một backend thay đổi — xem ghi chú ở <see cref="_backendOk"/>.
+    /// </summary>
+    private void GhiNhanTrangThaiBackend(string backendUrl, bool ok, string? lyDo)
+    {
+        if (_backendOk.TryGetValue(backendUrl, out bool truoc) && truoc == ok)
+        {
+            return;
+        }
+
+        _backendOk[backendUrl] = ok;
+
+        if (ok)
+        {
+            _logger.LogInformation("Backend {Url}: đã nhận lại được số cân.", backendUrl);
+        }
+        else
+        {
+            _logger.LogWarning("Backend {Url} KHÔNG nhận được số cân: {Msg}", backendUrl, lyDo);
         }
     }
 

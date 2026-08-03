@@ -102,6 +102,15 @@ const routes = [
     component: () => import('../views/WeighingStationV2.vue'),
     meta: { requiresAuth: true }
   },
+  // TRẠM CÂN TO (>=6kg) — màn hình RIÊNG, port từ workbook VBA "5.Semiauto- lockmove SEND OVER6".
+  // Không dùng chung component với /weighing-station-v2 (workbook cân nhỏ): hai trạm là hai công
+  // đoạn vật lý khác nhau, và cân to có thêm khối "SEND OVER 6" gửi mã rack sang hệ pha màu.
+  {
+    path: '/weighing-station-large',
+    name: 'WeighingStationLarge',
+    component: () => import('../views/WeighingStationLarge.vue'),
+    meta: { requiresAuth: true }
+  },
   {
     path: '/weighing-history',
     name: 'WeighingHistory',

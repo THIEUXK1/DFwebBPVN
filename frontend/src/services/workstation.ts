@@ -32,6 +32,9 @@ export const ROUTE_CAPABILITY_MAP: Record<string, string[]> = {
   // Bản dựng lại — cùng ràng buộc capability với bản cũ để không lọt dữ liệu sang trạm
   // không phải trạm cân.
   '/weighing-station-v2': ['SMALL_SCALE', 'LARGE_SCALE'],
+  // Cân to: CHỈ trạm LARGE_SCALE. Khác hai dòng trên là có chủ ý — màn này gửi mã rack sang hệ
+  // pha màu (khối SEND OVER 6), thao tác đó chỉ tồn tại ở khu cân lớn.
+  '/weighing-station-large': ['LARGE_SCALE'],
   '/chemical-call': ['CHEMICAL_CALL'],
 };
 
@@ -111,12 +114,16 @@ export function setWorkstation(ws: Workstation | null) {
  * KHÔNG đụng tới tài khoản/phiên kiosk đã gắn cứng trạm (`df_workstation_config`): ở đó trạm là
  * do quản trị chỉ định có chủ đích, đè lên là phá đúng thứ WS-001 dựng ra để chặn chọn nhầm.
  * Trả về true nếu đã đổi sang trạm của máy.
+ *
+ * `kind` = loại cân của màn hình đang gọi (2026-08-03). Từ khi tách 2 bộ cài Agent độc lập,
+ * một máy có thể vừa có trạm cân nhỏ vừa có trạm cân to — phải nói rõ đang cần trạm nào, nếu
+ * không màn Cân to sẽ nhận nhầm trạm của cân nhỏ và đọc số của cái cân kia.
  */
-export async function adoptLocalWorkstation(): Promise<boolean> {
+export async function adoptLocalWorkstation(kind: 'SMALL' | 'LARGE' = 'SMALL'): Promise<boolean> {
   if (localStorage.getItem('df_workstation_config')) return false;
 
   try {
-    const res = await axios.get('/api/workstations/whoami');
+    const res = await axios.get(`/api/workstations/whoami?kind=${kind}`);
     const ws = res.data?.data;
     // data=null là trạng thái BÌNH THƯỜNG (máy chưa cài Agent, hoặc PuTTY chưa bật nên Agent
     // chưa đẩy số nào) — giữ nguyên trạm đang chọn, không báo lỗi.

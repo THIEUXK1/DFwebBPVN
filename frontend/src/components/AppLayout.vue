@@ -37,13 +37,15 @@
       <div class="sidebar-footer">
         <div class="footer-title">TẢI CÔNG CỤ</div>
         <a
-          :href="agentInstallerUrl"
+          v-for="bo in agentInstallers"
+          :key="bo.kind"
+          :href="bo.url"
           download
           class="tool-download-link"
-          title="Cài trên máy trạm có gắn cân điện tử (đọc cân qua cổng COM)"
+          :title="bo.title"
         >
           <SvgIcon name="download" size="16" />
-          <span>DF Agent (Nhận cân)</span>
+          <span>{{ bo.label }}</span>
         </a>
       </div>
     </aside>
@@ -272,25 +274,38 @@ const authStore = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 
-// CHỈ CÒN 1 bộ cài Local Agent duy nhất: đọc cân điện tử qua cổng COM rồi đẩy số cân lên
-// backend (yêu cầu 2026-07-31). Trước đây có 3 bộ theo vai trò (print-station /
-// weighing-printer / weighing-scale) vì máy in đi qua Agent; nay cả Print Station lẫn
-// Weighing Station đều in bằng hộp thoại in của trình duyệt (window.print(), xem
-// PrintStation.vue + utils/tsplPrint.ts) nên phần máy in của Agent không còn được dùng ở
-// đâu nữa — Agent chỉ còn đúng một việc là nhận cân.
+// HAI bộ cài Local Agent ĐỘC LẬP, tách theo loại cân (yêu cầu 2026-08-03) — cân nhỏ và cân
+// to là hai cái cân vật lý khác nhau, hai công đoạn khác nhau. Hai bộ khác UpgradeCode, khác
+// tên service (DFAgentSmall / DFAgentLarge), khác thư mục cài, nên cài cả hai lên CÙNG một
+// máy vẫn chạy song song được, và gỡ bộ này không đụng gì tới bộ kia.
+//
+// Cả hai chỉ làm đúng một việc: đọc cân điện tử rồi đẩy số lên backend. Phần máy in của Agent
+// đã bỏ từ 2026-07-31 — cả Print Station lẫn Weighing Station đều in bằng hộp thoại in của
+// trình duyệt (window.print(), xem PrintStation.vue + utils/tsplPrint.ts).
 //
 // Backend serve tĩnh từ public/downloads/ (xem agent/installer/DFAgentSetup.wxs +
 // build.ps1). Dùng đúng host mà trình duyệt đang mở trang (giống main.ts) để máy trạm
 // trong LAN tải đúng từ máy chủ. Dùng định dạng MSI (không phải Inno Setup .exe) vì bản
 // .exe cũ bị Windows Defender gán nhầm nhãn "Program:Win32/Wacapew.A!ml" và tự xóa ngay
 // sau khi tải — MSI + ServiceInstall/ServiceControl native không bị quét. Không hỏi Mã
-// trạm/Token/URL Backend — đã đóng cứng sẵn, cài xong service "DFAgent" chạy ngay.
+// trạm/Token/URL Backend — đã đóng cứng sẵn, cài xong service chạy ngay.
 //
-// Tải file .cmd (route backend /downloads/agent-launcher, xem routes/web.php) thay vì .msi
-// trực tiếp — MSI không tự hiện hộp thoại UAC khi tài khoản không phải admin double-click
+// Tải file .cmd (route backend /downloads/agent-launcher/{kind}, xem routes/web.php) thay vì
+// .msi trực tiếp — MSI không tự hiện hộp thoại UAC khi tài khoản không phải admin double-click
 // (chỉ báo lỗi "không đủ quyền" rồi dừng, khác .exe), nên phải qua file .cmd nhỏ tự gọi
 // Start-Process -Verb RunAs để bật đúng hộp thoại xin quyền admin.
-const agentInstallerUrl = `http://${window.location.hostname}:8500/downloads/agent-launcher`;
+const agentInstallers = [
+  {
+    kind: 'small',
+    label: 'DF Agent — Cân nhỏ',
+    title: 'Cài trên máy trạm gắn CÂN NHỎ (dưới 6kg). Service DFAgentSmall, mã trạm WS-SCALE-<tên máy>.',
+  },
+  {
+    kind: 'large',
+    label: 'DF Agent — Cân to',
+    title: 'Cài trên máy trạm gắn CÂN TO. Service DFAgentLarge, mã trạm WS-LARGE-<tên máy>. Độc lập hoàn toàn với bộ cân nhỏ — cài chung một máy vẫn chạy song song.',
+  },
+].map(bo => ({ ...bo, url: `http://${window.location.hostname}:8500/downloads/agent-launcher/${bo.kind}` }));
 
 // Station-scoped account (WS-001) HOẶC phiên kiosk (link riêng máy, không đăng nhập):
 // công đoạn được cố định theo tài khoản/link, không cho đổi tay qua dropdown.
@@ -393,10 +408,15 @@ const menuGroupsRaw = [
       { path: '/', label: 'Giám sát', icon: 'dashboard' },
       { path: '/order-scan', label: 'Quét đơn QR', icon: 'search' },
       { path: '/weighing-station', label: 'Trạm cân', icon: 'scale' },
-      // Bản dựng lại của Trạm cân, đang làm dở — để adminOnly vì tài khoản vận hành bị
-      // khóa cứng vào đúng 1 màn hình (router guard), bấm vào chỉ bị đá ngược về màn hình
-      // cũ. Bỏ cờ adminOnly khi bản mới chạy chính thức thay bản cũ.
-      { path: '/weighing-station-v2', label: 'Trạm cân (V2)', icon: 'scale', adminOnly: true },
+      // Cặp "Cân nhỏ" (<6kg) / "Cân to" (>=6kg) — đúng 2 workbook VBA vật lý tách riêng
+      // (4.semiauto-small scale.xlsm vs 5.Semiauto-lockmove SEND OVER6.xlsm), tức 2 công đoạn
+      // và 2 máy trạm khác nhau ngoài xưởng.
+      //
+      // Cả hai còn adminOnly vì tài khoản vận hành bị khóa cứng vào đúng 1 màn hình (router
+      // guard), bấm vào chỉ bị đá ngược về màn hình cũ. Bỏ cờ này khi chuyển default_route của
+      // WS-SMALL-* / WS-LARGE-01 sang đúng 2 route dưới đây.
+      { path: '/weighing-station-v2', label: 'Cân nhỏ', icon: 'scale', adminOnly: true },
+      { path: '/weighing-station-large', label: 'Cân to', icon: 'scale', adminOnly: true },
       { path: '/weighing-history', label: 'Lịch sử cân', icon: 'scale', adminOnly: true },
       { path: '/print-station', label: 'In tem', icon: 'recipe' },
       { path: '/material-transports', label: 'Vận chuyển', icon: 'transfer' },
@@ -451,7 +471,8 @@ const currentRouteName = computed(() => {
   const nameMap: Record<string, string> = {
     '/': 'Giám sát trạm cân',
     '/weighing-station': 'Quản lý Trạm cân',
-    '/weighing-station-v2': 'Trạm cân (V2 — đang dựng lại)',
+    '/weighing-station-v2': 'Cân nhỏ (Trạm cân dưới 6kg)',
+    '/weighing-station-large': 'Cân to (Trạm cân lớn ≥ 6kg)',
     '/weighing-history': 'Lịch sử cân',
     '/material-transports': 'Giám sát Vận chuyển',
     '/feeding-monitor': 'Kiểm soát Cấp máy',

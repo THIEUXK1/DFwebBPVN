@@ -92,9 +92,20 @@ class AgentAuth
             // sach 3 ma co dinh o tren. Suy dinh dang tram tu truong `role` Agent gui kem thay vi
             // liet ke ma — neu khong, tram moi roi ve type AUTO_REGISTERED va bi
             // ScannerController::handleOrderScan chan 403 "chi duoc quet tai cac Tram Can".
+            //
+            // Tu 2026-08-03 co HAI bo cai Agent doc lap (can nho / can to), phan biet bang
+            // truong `scale_kind` gui kem chu KHONG phai bang `role` — ca hai deu la
+            // SCALE_ONLY vi cung lam dung mot viec (doc can), chi khac cai can vat ly va man
+            // hinh phuc vu. Tram can to phai duoc cap capability LARGE_SCALE ngay tu luc tu
+            // dang ky, neu khong no khong vao noi /weighing-station-large (ROUTE_CAPABILITY_MAP
+            // doi dung LARGE_SCALE).
             if (! $defaults) {
+                $laCanTo = strtoupper(trim((string) $request->input('scale_kind'))) === 'LARGE';
+
                 $roleDefaults = [
-                    'SCALE_ONLY' => ['type' => 'DYE_WEIGHING', 'default_capability' => 'SMALL_SCALE', 'default_route' => '/weighing-station-v2', 'caps' => ['SMALL_SCALE', 'WEIGH', 'PRINT']],
+                    'SCALE_ONLY' => $laCanTo
+                        ? ['type' => 'DYE_WEIGHING', 'default_capability' => 'LARGE_SCALE', 'default_route' => '/weighing-station-large', 'caps' => ['LARGE_SCALE', 'WEIGH', 'PRINT']]
+                        : ['type' => 'DYE_WEIGHING', 'default_capability' => 'SMALL_SCALE', 'default_route' => '/weighing-station-v2', 'caps' => ['SMALL_SCALE', 'WEIGH', 'PRINT']],
                     'PRINT_ONLY' => ['type' => 'QR_LABEL_PRINTING', 'default_capability' => 'QR_LABEL_PRINTING', 'default_route' => '/print-station', 'caps' => ['QR_LABEL_PRINTING', 'PRINT']],
                 ];
                 $defaults = $roleDefaults[(string) $request->input('role')] ?? null;

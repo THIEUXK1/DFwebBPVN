@@ -9,64 +9,96 @@
   KHONG con man hinh cau hinh, KHONG con Custom Action sinh appsettings.json luc cai (da bo
   sau khi gap MSI error 1721 "A program run as part of the setup did not finish as expected"
   tren may that 2026-07-30 — deferred Custom Action goi PowerShell qua token [~] khong dang
-  tin cay bang, kho debug tu xa). Vi StationId da co dong san luc build (khong con nguoi
-  dung nhap gi ca), don gian hon nhieu la dong goi THANG 1 file appsettings.scale.json tinh
-  co san qua bien tien xu ly AppSettingsFile — khong can Custom Action nao het ngoai
+  tin cay bang, kho debug tu xa). Don gian hon nhieu la dong goi THANG 1 file appsettings
+  tinh co san qua bien tien xu ly AppSettingsFile — khong can Custom Action nao het ngoai
   ServiceInstall/ServiceControl native cua MSI.
 
-  Tu 2026-07-31 chi con DUNG 1 vai tro / 1 file MSI: NHAN CAN (SCALE_ONLY). Truoc do co 3
-  vai tro (print-station / weighing-printer / weighing-scale) vi may in di qua Agent; nay ca
-  Print Station lan Weighing Station deu in bang hop thoai in cua trinh duyet nen phan may in
-  cua Agent khong con duoc dung o dau ca. Build:
-    wix build DFAgentSetup.wxs -ext WixToolset.UI.wixext -o DFAgentSetup-Scale.msi
-  (xem agent/installer/build.ps1 — script build ca .NET publish lan MSI)
+  ====================================================================================
+  TU 2026-08-03: MOT file .wxs, HAI SAN PHAM DOC LAP (yeu cau nguoi dung "tach ra lam 2
+  agent, 2 bo cai khong lien quan den nhau"):
+
+      can nho  -> DFAgentSetup-CanNho.msi  | service DFAgentSmall | ProgramFiles\DFAgent-Small
+      can to   -> DFAgentSetup-CanTo.msi   | service DFAgentLarge | ProgramFiles\DFAgent-Large
+
+  Doc lap that su, khong chia se gi ngoai ma nguon:
+    · UpgradeCode KHAC NHAU  -> cai/go/nang cap ban nay khong dung gi toi ban kia. Neu dung
+      chung UpgradeCode thi MajorUpgrade cua ban thu hai se TU GO ban thu nhat - dung cai
+      loi can tranh.
+    · Ten service khac nhau  -> 2 service cung chay song song tren 1 may duoc.
+    · Thu muc cai khac nhau  -> ke ca agent_cache.db (hang doi offline) cung tach rieng, vi
+      OfflineQueue dat file ngay canh file .exe.
+    · appsettings khac nhau  -> ScaleKind SMALL/LARGE quyet dinh tien to ma tram va truong
+      scale_kind gui kem so can.
+
+  Component KHONG con dong cung Guid: hai san pham cai vao HAI thu muc khac nhau, ma quy tac
+  component cua Windows Installer cam mot Guid tro toi hai duong dan khac nhau. De WiX v5 tu
+  sinh Guid on dinh theo duong dan key path la dung nhat.
+
+  Build (xem agent/installer/build.ps1 — script build ca .NET publish lan 2 file MSI):
+    wix build DFAgentSetup.wxs -ext WixToolset.UI.wixext ^
+        -d ProductLabel="Can nho" -d ServiceName=DFAgentSmall ^
+        -d InstallFolderName=DFAgent-Small -d AppSettingsFile=appsettings.small.json ^
+        -d UpgradeGuid=CD108F1A-FCE9-46F2-B991-372D89E0E9D1 -o DFAgentSetup-CanNho.msi
+  ====================================================================================
 
   Khong con Token — backend (AgentAuth middleware) tu tao/nhan Workstation theo
   workstation_id khi khong co token, danh doi bao mat da duoc nguoi dung xac nhan (xem
   session-log.md).
 -->
-<?ifndef StationId?>
-<?define StationId = "WS-WEIGH-SCALE"?>
+<?ifndef ProductLabel?>
+<?define ProductLabel = "Can nho"?>
+<?endif?>
+<?ifndef ServiceName?>
+<?define ServiceName = "DFAgentSmall"?>
+<?endif?>
+<?ifndef InstallFolderName?>
+<?define InstallFolderName = "DFAgent-Small"?>
 <?endif?>
 <?ifndef AppSettingsFile?>
-<?define AppSettingsFile = "appsettings.scale.json"?>
+<?define AppSettingsFile = "appsettings.small.json"?>
+<?endif?>
+<!-- Ban CAN NHO giu nguyen UpgradeCode lich su (CD108F1A-...) de tu go sach cac ban da cai
+     ngoai xuong: 3 ban 1.4.x theo vai tro cu (print-station / weighing-printer /
+     weighing-scale) va ban 2.x service "DFAgent". Ban CAN TO dung mot Guid HOAN TOAN MOI —
+     day chinh la thu lam hai bo cai khong lien quan gi den nhau. -->
+<?ifndef UpgradeGuid?>
+<?define UpgradeGuid = "CD108F1A-FCE9-46F2-B991-372D89E0E9D1"?>
 <?endif?>
 <?ifndef PackageVersion?>
 <!-- 2.1.0.0 (2026-08-01): doi han cach doc can — doc duoi file log PuTTY (Scale:Source=
      PUTTY_LOG, dung cach he Excel VBA cu) o nhip 10ms, tach nhip DOC khoi nhip DAY len
-     backend. Phai tang version vi may pilot dang cai 2.0.0.0; giu nguyen so thi MajorUpgrade
-     khong nang cap sach duoc.
+     backend.
 
-     2.0.0.0: moc bo 2 vai tro may in, chi con vai tro nhan can. Version cao hon han 1.4.x
-     cua ca 3 file MSI cu de may tram da cai bat ky vai tro nao cung nang cap thang len
-     duoc (MajorUpgrade tu go ban cu truoc khi cai ban nay). -->
-<!-- 2.2.0.0 (2026-08-01): mot bo cai dung cho MOI may — Workstation:Id de trong, Agent tu sinh
-     ma tram tu TEN MAY ("WS-SCALE-<TEN-MAY>", xem Worker.ResolveWorkstationId). Truoc do file
-     nay dong cung mot ma tram cho moi may nen hai tram can chay cung luc ghi de so can cua
-     nhau. Agent gui kem role + machine_name de backend tu tao ban ghi tram dung loai ngay o
-     lan day so dau tien (AgentAuth), va trinh duyet tren chinh may do tu nhan ra tram cua minh
-     qua /api/workstations/whoami. -->
-<?define PackageVersion = "2.2.0.0"?>
+     2.2.0.0 (2026-08-01): mot bo cai dung cho MOI may — Workstation:Id de trong, Agent tu
+     sinh ma tram tu TEN MAY.
+
+     3.0.0.0 (2026-08-03): tach lam HAI bo cai doc lap (can nho / can to). Nhay major vi ban
+     can nho doi ca ten service (DFAgent -> DFAgentSmall) lan thu muc cai (DFAgent ->
+     DFAgent-Small): may pilot dang cai 2.2.0.0 phai nang cap qua MajorUpgrade de service cu
+     duoc go sach truoc, khong de lai service "DFAgent" mo coi tro toi thu muc da xoa.
+
+     3.1.0.0 (2026-08-03): Agent day so can len NHIEU backend cung luc (Backend:Urls), de mo
+     man hinh can bang localhost hay bang IP server deu thay so — xem Worker.ResolveBackendUrls.
+     Kem theo: chi ghi log khi tinh trang mot backend DOI, khong con spam 5 dong/giay. -->
+<?define PackageVersion = "3.1.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="DF Local Agent ($(var.StationId))"
+  <Package Name="DF Local Agent ($(var.ProductLabel))"
            Manufacturer="DF Factory Systems"
            Version="$(var.PackageVersion)"
-           UpgradeCode="CD108F1A-FCE9-46F2-B991-372D89E0E9D1"
+           UpgradeCode="$(var.UpgradeGuid)"
            Language="1033"
            Scope="perMachine"
            InstallerVersion="500"
            Compressed="yes">
 
-    <!-- Giu nguyen UpgradeCode cu de bo cai nay TU GO 3 ban 1.4.x cua cac vai tro cu
-         (print-station / weighing-printer / weighing-scale) neu may tram da cai — tranh 2
-         service cung ten "DFAgent" chong nhau. AllowDowngrades="yes" giu nguyen tu ban cu:
-         thu tu version giua cac ban cu khong phan anh "moi/cu" that su. -->
+    <!-- AllowDowngrades="yes" giu nguyen tu ban cu: thu tu version giua cac ban cu khong
+         phan anh "moi/cu" that su. -->
     <MajorUpgrade AllowDowngrades="yes" />
     <MediaTemplate EmbedCab="yes" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="DFAgent" />
+      <Directory Id="INSTALLFOLDER" Name="$(var.InstallFolderName)" />
     </StandardDirectory>
 
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
@@ -76,12 +108,12 @@
       </Files>
     </ComponentGroup>
 
-    <Component Id="MainExecutable" Directory="INSTALLFOLDER" Guid="57612DD8-1695-4C9D-BA12-50A1C09E972E" Bitness="always64">
+    <Component Id="MainExecutable" Directory="INSTALLFOLDER" Bitness="always64">
       <File Id="DFAgentExe" Source="..\publish_release\DFAgent.exe" KeyPath="yes" />
 
       <ServiceInstall Id="DFAgentServiceInstall"
-                      Name="DFAgent"
-                      DisplayName="DF Local Agent"
+                      Name="$(var.ServiceName)"
+                      DisplayName="DF Local Agent ($(var.ProductLabel))"
                       Description="Doc can dien tu qua cong COM va day so can len he thong DF (khong dung dau co dau de tranh loi encoding Service Control Manager)."
                       Type="ownProcess"
                       Start="auto"
@@ -89,20 +121,20 @@
                       Account="LocalSystem" />
 
       <ServiceControl Id="DFAgentServiceControl"
-                       Name="DFAgent"
+                       Name="$(var.ServiceName)"
                        Start="install"
                        Stop="both"
                        Remove="uninstall"
                        Wait="yes" />
     </Component>
 
-    <!-- appsettings.json tinh, dong san dung role/ma tram theo bien AppSettingsFile luc
-         build — khong sinh dong luc cai nua (xem ghi chu dau file). -->
-    <Component Id="AppSettingsConfig" Directory="INSTALLFOLDER" Guid="AEDB51B0-A39F-498D-9C25-BF8E612DF1E0" Bitness="always64">
+    <!-- appsettings.json tinh, dong san dung loai can theo bien AppSettingsFile luc build —
+         khong sinh dong luc cai (xem ghi chu dau file). -->
+    <Component Id="AppSettingsConfig" Directory="INSTALLFOLDER" Bitness="always64">
       <File Id="AppSettingsJson" Name="appsettings.json" Source="$(var.AppSettingsFile)" KeyPath="yes" />
     </Component>
 
-    <Feature Id="MainFeature" Title="DF Local Agent" Level="1">
+    <Feature Id="MainFeature" Title="DF Local Agent ($(var.ProductLabel))" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
       <ComponentRef Id="MainExecutable" />
       <ComponentRef Id="AppSettingsConfig" />

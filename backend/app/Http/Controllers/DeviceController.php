@@ -33,11 +33,14 @@ class DeviceController extends Controller
             // Không bắt buộc để tương thích ngược với Agent cũ chưa cập nhật (nếu có) —
             // mặc định false (KHÔNG mặc định true, tránh lặp lại bug hard-code true cũ).
             'is_stable' => 'nullable|boolean',
+            // Loại cân của bản Agent đang gửi (2026-08-03). Agent cũ không gửi ⇒ SMALL.
+            'scale_kind' => 'nullable|string|in:SMALL,LARGE',
         ]);
 
         $workstationId = $request->input('workstation_id');
         $weight = $request->input('weight');
         $isStable = $request->boolean('is_stable', false);
+        $scaleKind = self::scaleKind($request->input('scale_kind'));
 
         // PB-2 (đã sửa 2026-07-17): cache kèm is_stable thật từ ScaleReader.StableFilter
         // (Agent), thay vì chỉ cache weight rồi để frontend tự hard-code true.
@@ -59,7 +62,13 @@ class DeviceController extends Controller
         //
         // Ghi thêm chứ KHÔNG thay thế: khóa theo mã trạm vẫn giữ nguyên cho Dashboard (xem
         // nhiều trạm cùng lúc) và cho các trạm đã cấu hình mã riêng.
-        $machineKey = self::machineKey($request->ip());
+        //
+        // Khóa tách theo LOẠI CÂN (2026-08-03): từ khi có 2 bộ cài Agent độc lập, một máy có
+        // thể chạy đồng thời cân nhỏ và cân to. Cùng IP mà chung khóa thì hai Agent ghi đè số
+        // của nhau và màn hình Cân to hiện số của cân nhỏ — đúng loại lỗi "cân sai mà vẫn tô
+        // xanh ĐẠT" nguy hiểm nhất. Cân nhỏ giữ khóa CŨ không hậu tố nên máy đang chạy không
+        // mất số trong lúc deploy.
+        $machineKey = self::machineKey($request->ip(), $scaleKind);
         Cache::put("scale_live_weight_{$machineKey}", $weight, 15);
         Cache::put("scale_live_weight_stable_{$machineKey}", $isStable, 15);
         Cache::put("scale_live_weight_timestamp_{$machineKey}", microtime(true), 3600);
@@ -149,7 +158,10 @@ class DeviceController extends Controller
      */
     public function whoami(Request $request)
     {
-        $code = Cache::get('scale_machine_station_'.self::machineKey($request->ip()));
+        // ?kind=LARGE — "trạm CÂN TO của máy này là trạm nào?". Máy chạy cả 2 Agent có 2 trạm
+        // cùng lúc, nên phải hỏi rõ đang cần trạm nào. Thiếu tham số ⇒ SMALL, giữ nguyên hành
+        // vi cũ cho các màn hình chưa cập nhật.
+        $code = Cache::get('scale_machine_station_'.self::machineKey($request->ip(), self::scaleKind($request->query('kind'))));
 
         // Chưa có Agent nào đẩy số từ máy này (chưa cài, chưa chạy, hoặc PuTTY chưa bật) —
         // trả 200 kèm data=null để client tự lui về cách chọn trạm tay, KHÔNG trả 404 vì đây
@@ -166,15 +178,33 @@ class DeviceController extends Controller
     }
 
     /**
-     * Khóa cache theo MÁY (địa chỉ IP nguồn) thay vì theo mã trạm cấu hình sẵn.
+     * Chuẩn hóa loại cân về đúng 2 giá trị SMALL/LARGE.
+     *
+     * Mặc định SMALL cho MỌI đầu vào lạ hoặc thiếu — Agent cũ (chưa có trường `scale_kind`)
+     * và các màn hình chưa truyền `?kind=` đều phải rơi vào đúng nhánh cũ, nếu không thì bản
+     * deploy này làm mất số cân của toàn bộ trạm đang chạy.
+     */
+    private static function scaleKind($raw): string
+    {
+        return strtoupper(trim((string) $raw)) === 'LARGE' ? 'LARGE' : 'SMALL';
+    }
+
+    /**
+     * Khóa cache theo MÁY (địa chỉ IP nguồn) thay vì theo mã trạm cấu hình sẵn, tách riêng
+     * theo LOẠI CÂN vì một máy có thể chạy cùng lúc 2 Agent (cân nhỏ + cân to).
      *
      * Tiền tố "machine_" để không bao giờ đụng một mã trạm thật (mã trạm theo quy ước là
      * WS-*). IPv6 chứa dấu ':' nên đổi hết ký tự không phải chữ/số thành '_' — cache theo
      * driver database lưu khóa vào cột chuỗi, dấu ':' không sai nhưng gây khó đọc khi soi log.
+     *
+     * SMALL KHÔNG có hậu tố — giữ nguyên khóa cũ (`machine_10_0_0_55`) để các trạm cân nhỏ
+     * đang chạy không đứt số ở thời điểm deploy, và để không phải xóa cache khi lên bản mới.
      */
-    private static function machineKey(?string $ip): string
+    private static function machineKey(?string $ip, string $scaleKind = 'SMALL'): string
     {
-        return 'machine_' . preg_replace('/[^A-Za-z0-9]/', '_', (string) $ip);
+        $key = 'machine_' . preg_replace('/[^A-Za-z0-9]/', '_', (string) $ip);
+
+        return $scaleKind === 'LARGE' ? $key . '_LARGE' : $key;
     }
 
     /**
@@ -235,8 +265,10 @@ class DeviceController extends Controller
         // đã từng báo số trong 1 giờ qua thì coi là máy CÓ CÂN. Nhờ vậy khi Agent/PuTTY chết,
         // màn hình báo thẳng "MẤT TÍN HIỆU CÂN" thay vì âm thầm tụt về hiển thị cân của trạm
         // khác — cân sai mà vẫn tô xanh ĐẠT là hỏng nguy hiểm hơn nhiều so với mất số.
+        // ?kind=LARGE — lấy cái cân TO ở máy này, không phải cân nhỏ. Thiếu tham số ⇒ SMALL:
+        // /weighing-station (V1) và Dashboard không truyền gì và phải chạy y như cũ.
         if ($request->boolean('local')) {
-            $local = $this->readCacheSlot(self::machineKey($request->ip()));
+            $local = $this->readCacheSlot(self::machineKey($request->ip(), self::scaleKind($request->query('kind'))));
 
             if ($local['read_at'] !== null) {
                 $slot = $local;

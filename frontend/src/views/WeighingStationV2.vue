@@ -274,7 +274,10 @@ const {
   liveWeight, grossWeight, isStable, scaleOnline, signalLive, tareBaseline, armed,
   useSimValue, simulatedWeight,
   retare, resetTareForNewSlot, fetchLiveWeight, startPolling, stopPolling,
-} = useScaleFeed();
+  // 'SMALL' = chỉ nhận số từ bộ cài Agent "Cân nhỏ" (service DFAgentSmall, mã trạm WS-SCALE-*).
+  // Cũng là giá trị mặc định, nhưng ghi tường minh để đọc màn nào biết ngay màn đó cắm vào
+  // cái cân nào — hai bộ cài Agent chạy song song được trên cùng một máy.
+} = useScaleFeed('SMALL');
 
 const activeJob = ref<any | null>(null);
 const activeBatch = ref<any | null>(null);
@@ -1327,7 +1330,7 @@ onMounted(() => {
   // Tự nhận trạm của CHÍNH máy này (xem adoptLocalWorkstation). Không await: số cân và mẻ đang
   // dở phải chạy ngay, còn việc đổi trạm chỉ ảnh hưởng các lượt gọi sau. Máy chưa cài Agent thì
   // hàm này không đổi gì cả.
-  adoptLocalWorkstation().then((doi) => {
+  adoptLocalWorkstation('SMALL').then((doi) => {
     if (doi) fetchLiveWeight();
   });
   // Khôi phục mẻ đang dở CỦA RIÊNG MÁY NÀY (nếu có) — xem restoreSession. Không await để số
