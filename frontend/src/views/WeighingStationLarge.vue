@@ -112,7 +112,7 @@
          Cố ý nằm NGOÀI khung form: bản VBA không có mấy thứ này (mất tín hiệu cân, hàng đợi gửi
          mẻ, giả lập, thông báo lỗi) nhưng bỏ đi thì thợ không có cách nào biết máy đang hỏng gì.
          Để ngoài khung thì phần form vẫn giống hệt bản gốc. -->
-    <div class="webbar">
+    <div class="webbar" :class="{ alarm: statusMsg?.bad }">
       <span class="wb-ws">
         <span class="wb-dot" :class="scaleOnline && signalLive ? 'on' : 'off'"></span>
         {{ currentWorkstation?.code || 'chưa gán trạm' }}
@@ -132,20 +132,17 @@
         {{ stuckCount > 0 ? '✕' : '⏳' }} {{ queueCount }} mẻ chờ gửi
       </button>
 
+      <!-- Ô thông báo: là phần tử DUY NHẤT được co giãn trong dải, nên khi chật thì nó bị cắt
+           bớt chứ không đẩy mất mấy nút bấm bên cạnh. Chữ đầy đủ xem ở tooltip. -->
+      <span class="wb-msg" :class="{ bad: statusMsg?.bad }" :title="statusMsg?.text || ''">
+        {{ statusMsg ? (statusMsg.bad ? '❌ ' : '') + statusMsg.text : '' }}
+      </span>
+
       <label class="wb-sim">
         <input type="checkbox" v-model="useSimValue" /> giả lập
       </label>
       <input v-if="useSimValue" type="number" step="0.1" class="wb-siminput" v-model.number="simulatedWeight" />
     </div>
-
-    <p v-if="errorMsg" class="wsl-error">❌ {{ errorMsg }}</p>
-    <p v-else-if="rackMsg" class="wsl-msg" :class="{ bad: !rackOk }">{{ rackMsg }}</p>
-    <p v-else-if="!signalLive && !useSimValue && scaleOnline" class="wsl-error">
-      ⚠ MẤT TÍN HIỆU CÂN — kiểm tra Agent / dây cân
-    </p>
-    <p v-else-if="!useSimValue && !scaleOnline" class="wsl-error">
-      ⚠ MẤT KẾT NỐI MÁY CHỦ — số cân không cập nhật. Số đã cân KHÔNG mất.
-    </p>
 
     <!-- Bảng hàng đợi — chỉ mở khi thợ chủ động bấm -->
     <div v-if="showQueue" class="queue-overlay" @click.self="showQueue = false">
@@ -494,6 +491,26 @@ const rackMsg = ref('');
 const rackOk = ref(true);
 
 const rackBatchText = computed(() => rackBatch1.value.filter(Boolean).join(' · '));
+
+/**
+ * Thông báo gộp về MỘT chỗ duy nhất, nằm ngay trong dải trạng thái.
+ *
+ * Trước đây mỗi thông báo là một thẻ <p> riêng nằm dưới cùng, hiện lên là đẩy `.stage-wrap` hụt
+ * đi ~30px, `fitStage` tính lại `scale` và cả mặt form co lại rồi phình ra mỗi lần có/hết thông
+ * báo — thợ đang nhìn số cân thì màn hình nhấp nháy đổi cỡ. Đưa vào dải trạng thái (chiều cao
+ * CỐ ĐỊNH) thì mặt form không bao giờ đổi cỡ nữa.
+ *
+ * Thứ tự ưu tiên giữ đúng như chuỗi v-if/v-else-if cũ.
+ */
+const statusMsg = computed<{ text: string; bad: boolean } | null>(() => {
+  if (errorMsg.value) return { text: errorMsg.value, bad: true };
+  if (rackMsg.value) return { text: rackMsg.value, bad: !rackOk.value };
+  if (!signalLive.value && !useSimValue.value && scaleOnline.value)
+    return { text: '⚠ MẤT TÍN HIỆU CÂN — kiểm tra Agent / dây cân', bad: true };
+  if (!useSimValue.value && !scaleOnline.value)
+    return { text: '⚠ MẤT KẾT NỐI MÁY CHỦ — số cân không cập nhật. Số đã cân KHÔNG mất.', bad: true };
+  return null;
+});
 
 /** Mã rack đang hiện ở dòng `i` — dòng có vật tư lấy từ đơn, dòng trống lấy ô gõ tay. */
 function rackAt(i: number): string {
@@ -1592,19 +1609,46 @@ input.vv-text:focus {
 .vv-btn.in { background: #0f7f9c; color: #fff; }
 
 /* ===== Dải thông tin của riêng bản web (NGOÀI khung form) ===== */
+/* Chiều cao CỐ ĐỊNH là điểm mấu chốt: `.stage-wrap` là flex:1 nên mọi thay đổi chiều cao ở dải
+   này đều làm `fitStage` tính lại `scale` và cả mặt form co/phình theo. Vì thế ở đây KHÔNG được
+   `flex-wrap: wrap` (xuống dòng là cao gấp đôi) và mọi phần tử ẩn/hiện đều phải nằm gọn một
+   hàng. Phần tử duy nhất được co giãn là `.wb-msg`. */
 .webbar {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
-  flex: 0 0 auto;
-  padding: 5px 12px;
+  flex-wrap: nowrap;
+  flex: 0 0 34px;
+  height: 34px;
+  overflow: hidden;
+  padding: 0 12px;
   background: rgba(12, 16, 26, 0.72);
   border-top: 1px solid rgba(255, 255, 255, 0.07);
   color: #c9d1e2;
   font-family: 'Inter', 'Segoe UI', sans-serif;
   font-size: 12px;
+  transition: background 0.15s ease;
 }
+
+/* Có lỗi thì đổi màu CẢ dải — nổi hơn hẳn một dòng chữ đỏ, mà không tốn thêm chiều cao nào. */
+.webbar.alarm {
+  background: #4d1f1a;
+  border-top-color: #e2564a;
+  color: #ffc9c3;
+}
+
+.webbar > * { flex: 0 0 auto; white-space: nowrap; }
+
+/* Phần tử co giãn duy nhất. `min-width: 0` là bắt buộc, thiếu nó thì flex item không chịu hẹp
+   hơn nội dung và chữ dài vẫn đẩy các nút bên phải văng khỏi dải. */
+.wb-msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+.wb-msg.bad { color: #ffd9d4; }
 
 .wb-ws { display: flex; align-items: center; gap: 6px; font-weight: 700; }
 .wb-dot { width: 9px; height: 9px; border-radius: 50%; background: #7a8296; }
@@ -1617,6 +1661,8 @@ input.vv-text:focus {
 
 .wb-tare { opacity: 0.85; }
 
+/* Danh sách 6 mã rack có thể rất dài — cho phép nó hẹp lại và cắt bớt, chứ đừng đẩy nút COPY
+   hay ô giả lập ra khỏi dải. */
 .wb-rack {
   display: flex;
   align-items: center;
@@ -1625,6 +1671,10 @@ input.vv-text:focus {
   border-radius: 6px;
   background: #3c455c;
   font-weight: 700;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wb-btn {
@@ -1667,23 +1717,6 @@ input.vv-text:focus {
   padding: 0 8px;
   font-weight: 700;
 }
-
-.wsl-error, .wsl-msg {
-  margin: 0;
-  flex: 0 0 auto;
-  padding: 5px 12px;
-  font-family: 'Inter', 'Segoe UI', sans-serif;
-  font-size: 12.5px;
-  font-weight: 700;
-  line-height: 1.35;
-  /* Thông báo dài không được phép đội mặt form lên: 2 dòng là kịch trần, dư thì cắt. */
-  max-height: 2.7em;
-  overflow: hidden;
-}
-
-.wsl-error { background: #4d1f1a; color: #ffc9c3; }
-.wsl-msg { background: #1e5c36; color: #b9f2ce; }
-.wsl-msg.bad { background: #4d1f1a; color: #ffc9c3; }
 
 /* ===== Bảng hàng đợi ===== */
 .queue-overlay {

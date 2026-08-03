@@ -80,7 +80,7 @@
       <div ref="timelineEl" class="gantt-canvas"></div>
       <p v-if="!loading && totalRecords === 0" class="gantt-empty">Không có task nào khớp trong khoảng ngày/tên máy đã chọn.</p>
     </div>
-    <p class="footnote">Tổng số task hiển thị: <strong>{{ totalRecords }}</strong> · viền đỏ nhấp nháy = mẻ đang chạy, chưa kết thúc</p>
+    <p class="footnote">Tổng số thanh hiển thị: <strong>{{ totalRecords }}</strong> · viền đỏ nhấp nháy = mẻ đang chạy, chưa kết thúc · các mẻ đã xong liên tiếp trùng mã màu - mã hàng được gộp thành 1 thanh</p>
 
     <!-- Đồng hồ nổi góc trên trái — chỉ hiện khi toàn màn hình (che mất đồng hồ hệ điều hành). -->
     <div v-show="isBrowserFullscreen" class="fs-clock">
@@ -124,6 +124,10 @@
           {{ detailPopup.statusLabel }}
           <span v-if="detailPopup.uncompleted" class="gantt-blink">(đang chạy)</span>
         </dd>
+        <template v-if="detailPopup.mergedCount > 1">
+          <dt>Số mẻ</dt>
+          <dd>{{ detailPopup.mergedCount }} mẻ liên tiếp cùng mã màu - mã hàng (đã gộp)</dd>
+        </template>
         <dt>Bắt đầu</dt>
         <dd>{{ detailPopup.startText }}</dd>
         <dt>Kết thúc</dt>
@@ -373,6 +377,15 @@ interface GanttItem {
   className: string;
   style: string;
   content: string;
+  // Các field dưới đây chỉ phục vụ xử lý phía client (gộp mẻ, dựng lại nhãn) — vis-timeline
+  // bỏ qua field lạ nên không cần tách sang cấu trúc riêng.
+  /** Khoá so sánh "2 mẻ giống nhau" = mã màu + mã hàng; rỗng khi không tách được (không gộp). */
+  mergeKey: string;
+  uncompleted: boolean;
+  /** Giờ kết thúc THẬT (khác `end` vốn đã bị kéo tối thiểu 2.5h/lấp khoảng trống để vẽ). */
+  realEnd: Date;
+  /** Số mẻ đã gộp vào thanh này (1 = chưa gộp) — chỉ hiện trong bảng chi tiết, KHÔNG in lên nhãn. */
+  mergedCount: number;
 }
 
 /** Nội dung bảng chi tiết mẻ — hiện khi BẤM vào thanh Gantt (xem openDetailPopup). */
@@ -390,6 +403,8 @@ interface GanttDetail {
   endText: string;
   errorMessage: string | null;
   barColor: string;
+  /** Số mẻ đã xong liên tiếp giống nhau được gộp chung vào thanh này (1 = chưa gộp). */
+  mergedCount: number;
 }
 
 const buildDetail = (item: any, realEnd: Date, barColor: string): GanttDetail => {
@@ -410,6 +425,7 @@ const buildDetail = (item: any, realEnd: Date, barColor: string): GanttDetail =>
     endText: item.uncompleted ? 'Chưa kết thúc' : formatTime(realEnd.toISOString()),
     errorMessage: item.errorMessage || null,
     barColor,
+    mergedCount: 1,
   };
 };
 
@@ -479,7 +495,7 @@ const fetchGantt = async () => {
     nestedGroups: g.nestedGroups && g.nestedGroups.length ? g.nestedGroups : undefined,
   }));
   itemDetails.clear();
-  const items: GanttItem[] = (res.data.items || []).map((it: any): GanttItem => {
+  let items: GanttItem[] = (res.data.items || []).map((it: any): GanttItem => {
     const start = new Date(it.start);
     const realEnd = it.uncompleted ? syncSnapshot.value : new Date(it.end);
     // Độ dài hiển thị tối thiểu 2h (yêu cầu 2026-07-29) — mẻ chạy thật sự ngắn hơn vẫn được
@@ -507,6 +523,12 @@ const fetchGantt = async () => {
       // trong lòng thanh (xem CSS .gantt-item-label), tô cùng màu để không lộ vệt nền khác
       // màu giữa chữ và mép thanh.
       content: `<div class="gantt-item-label" style="background-color: ${color}; color: ${textColor}; text-shadow: ${textShadow};">${label}</div>`,
+      // Chỉ gộp được khi tách được ĐỦ mã màu + mã hàng — TaskTitle thô không tách được thì
+      // để rỗng, thà vẽ tách rời còn hơn gộp nhầm 2 mẻ khác nhau.
+      mergeKey: it.color && it.productCode ? `${it.color}|${it.productCode}` : '',
+      uncompleted: !!it.uncompleted,
+      realEnd,
+      mergedCount: 1,
     };
   });
 
@@ -529,9 +551,41 @@ const fetchGantt = async () => {
     if (!itemsByTank.has(item.group)) itemsByTank.set(item.group, []);
     itemsByTank.get(item.group)!.push(item);
   }
-  for (const tankItems of itemsByTank.values()) {
+  // Lượt 0 — GỘP các mẻ ĐÃ XONG liên tiếp giống hệt nhau trên cùng 1 Tank thành 1 thanh duy
+  // nhất (yêu cầu 2026-08-03): cùng mã màu + mã hàng và nằm kề nhau trong chuỗi thời gian của
+  // Tank đó. Mẻ ĐANG CHẠY không bao giờ bị gộp (kể cả khi trùng mã với mẻ trước) — nó phải
+  // giữ riêng viền đỏ nhấp nháy và chưa có giờ kết thúc thật. Thanh gộp lấy giờ bắt đầu của
+  // mẻ đầu, giờ kết thúc của mẻ cuối; nhãn giữ nguyên "{mã màu}-{mã hàng}", KHÔNG ghi thêm
+  // số mẻ (yêu cầu 2026-08-03) — số mẻ chỉ hiện trong bảng chi tiết khi bấm vào thanh.
+  // Phải chạy TRƯỚC lượt 1/lượt 2 bên dưới: gộp xong mới biết còn bao nhiêu thanh thật sự
+  // cần chừa chỗ tối thiểu, tránh đẩy giờ sang phải một cách vô ích.
+  for (const [groupId, tankItems] of itemsByTank) {
     tankItems.sort((a, b) => a.start.getTime() - b.start.getTime());
+    const merged: GanttItem[] = [];
+    for (const item of tankItems) {
+      const prev = merged[merged.length - 1];
+      const canMerge = !!prev && !prev.uncompleted && !item.uncompleted
+        && prev.mergeKey !== '' && prev.mergeKey === item.mergeKey;
+      if (!canMerge) {
+        merged.push(item);
+        continue;
+      }
+      prev.mergedCount++;
+      if (item.end.getTime() > prev.end.getTime()) prev.end = item.end;
+      if (item.realEnd.getTime() > prev.realEnd.getTime()) prev.realEnd = item.realEnd;
+      const detail = itemDetails.get(prev.id);
+      if (detail) {
+        detail.mergedCount = prev.mergedCount;
+        detail.endText = formatTime(prev.realEnd.toISOString());
+      }
+      // Mẻ bị nuốt không còn thanh riêng để bấm vào nữa -> bỏ luôn chi tiết cho khỏi rác.
+      itemDetails.delete(item.id);
+    }
+    itemsByTank.set(groupId, merged);
+  }
+  items = Array.from(itemsByTank.values()).flat();
 
+  for (const tankItems of itemsByTank.values()) {
     // Lượt 1 — dịch giờ bắt đầu sang phải sao cho 2 mẻ liên tiếp luôn cách nhau ít nhất
     // MIN_VISUAL_DURATION_MS. cursor = mốc sớm nhất mà mẻ kế tiếp được phép bắt đầu.
     let cursor = -Infinity;
