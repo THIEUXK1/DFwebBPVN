@@ -533,14 +533,20 @@ const normalizeVdCode = (code: string): string => {
   return upper;
 };
 
+/** Dạng 2 chữ số VD01-VD18 — đúng arrVD của VBA gốc, cũng là mã trong danh mục máy. */
+const shortVdCode = (code: string): string => {
+  const upper = code.toUpperCase().trim();
+  if (!upper.startsWith('VD')) return upper;
+  return 'VD' + String(parseInt(upper.slice(2), 10) || 0).padStart(2, '0');
+};
+
+// Thử nguyên văn -> 3 chữ số -> 2 chữ số: QR ngoài xưởng bắn mã 2 chữ số nhưng vẫn có nguồn
+// ghi 3 chữ số, còn danh mục máy nay là 2 chữ số. Thiếu bước lui, một trong hai dạng tra trượt.
 const resolveMachineIdFromCode = (code: string): number | null => {
   if (!code) return null;
   const upper = code.toUpperCase().trim();
-  let match = machines.value.find(m => m.code.toUpperCase() === upper);
-  if (!match) {
-    const normalized = normalizeVdCode(upper);
-    match = machines.value.find(m => m.code.toUpperCase() === normalized);
-  }
+  const timKiem = (c: string) => machines.value.find(m => m.code.toUpperCase() === c);
+  const match = timKiem(upper) || timKiem(normalizeVdCode(upper)) || timKiem(shortVdCode(upper));
   return match ? match.id : null;
 };
 

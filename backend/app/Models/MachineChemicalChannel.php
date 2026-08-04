@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\QrPayloadService;
 use Illuminate\Database\Eloquent\Model;
 
 class MachineChemicalChannel extends Model
@@ -51,7 +52,12 @@ class MachineChemicalChannel extends Model
         ), fn ($p) => $p !== '');
 
         $combo = implode('+', $parts);
-        $filename = "QR_{$this->machine->code}_{$combo}.jpg";
+        // Tên file trên đĩa dùng mã 3 chữ số ("QR_VD006_...") vì ảnh được xuất từ tem in ở
+        // xưởng theo định dạng QR. Danh mục máy nay dùng mã 2 chữ số VD01-VD18 đúng arrVD của
+        // VBA gốc (mainform.CommandButton5_Click), nên PHẢI chuẩn hóa lại khi tra tên file —
+        // nếu không toàn bộ 38 ảnh QR thật trả null và màn Gọi hóa chất mất sạch mã QR.
+        $machineCode = app(QrPayloadService::class)->normalizeVdCode($this->machine->code);
+        $filename = "QR_{$machineCode}_{$combo}.jpg";
 
         if (!isset(static::danhSachAnhQr()[$filename])) {
             return null;

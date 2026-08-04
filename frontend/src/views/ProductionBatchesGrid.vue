@@ -301,7 +301,18 @@ const normalizeVdCode = (code: string) => {
   return 'VD' + String(parseInt(upper.slice(2), 10) || 0).padStart(3, '0');
 };
 
-const resolveMachine = (code: string) => findMachineByCode(code) || findMachineByCode(normalizeVdCode(code));
+/** Dạng 2 chữ số VD01-VD18 — đúng arrVD của VBA gốc, cũng là mã trong danh mục máy. */
+const shortVdCode = (code: string) => {
+  const upper = (code || '').toUpperCase().trim();
+  if (!upper.startsWith('VD')) return upper;
+  return 'VD' + String(parseInt(upper.slice(2), 10) || 0).padStart(2, '0');
+};
+
+// Thử cả 3 dạng: nguyên văn -> 3 chữ số -> 2 chữ số. QR ngoài xưởng bắn mã 2 chữ số ("VD04",
+// xác nhận qua QR thật 2026-07-18) nhưng vẫn có nguồn ghi 3 chữ số, và danh mục máy đã đổi về
+// 2 chữ số — thiếu bước lui này thì một trong hai dạng sẽ không tra ra máy nào.
+const resolveMachine = (code: string) =>
+  findMachineByCode(code) || findMachineByCode(normalizeVdCode(code)) || findMachineByCode(shortVdCode(code));
 
 const currentMachine = computed(() => resolveMachine(form.machineCode));
 const currentTank = computed(() =>
