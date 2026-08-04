@@ -60,19 +60,25 @@ const routes = [
   },
   // Dựng lại ĐÚNG giao diện UserForm CHEM_ORDER gốc (2 cột, nút gọi = mã hóa chất,
   // ô đỏ/xanh ORDER/DONE, nút OK riêng) — xem ChemicalCallClassic.vue.
+  //
+  // requiresAuth:false theo yêu cầu 2026-08-04 — mở qua link không cần đăng nhập, KỂ CẢ
+  // thao tác gọi/OK. App.vue vì vậy KHÔNG bọc AppLayout cho route này (xem App.vue: điều
+  // kiện bọc chính là meta.requiresAuth) -> không sidebar/topbar, trang tự lo giao diện.
+  // API tương ứng phải là /api/public/... vì các endpoint cũ vẫn chặn ở tầng backend.
   {
     path: '/chemical-call/classic',
     name: 'ChemicalCallClassic',
     component: () => import('../views/ChemicalCallClassic.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: false }
   },
   // Dựng lại ĐÚNG giao diện UserForm CHEM_ORDER của "6.báo phát AC- 151.xlsm" — hàng đợi
   // dọc 4 ô (mã máy/OK/công thức/QR) — xem ChemicalCallPendingClassic.vue.
+  // Cùng lý do requiresAuth:false như route ngay trên.
   {
     path: '/chemical-call/pending-classic',
     name: 'ChemicalCallPendingClassic',
     component: () => import('../views/ChemicalCallPendingClassic.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: false }
   },
   {
     path: '/troubleshooting',

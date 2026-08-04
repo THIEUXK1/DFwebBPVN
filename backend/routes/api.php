@@ -60,6 +60,23 @@ Route::get('/public/bpdb-machines-gantt', [BpdbMachineController::class, 'gantt'
 // gọi riêng khi bấm vào 1 thanh (query quét toàn lịch sử, không nhét vào /gantt).
 Route::get('/public/bpdb-machines-gantt/lot-total', [BpdbMachineController::class, 'lotTotal']);
 
+// Public — 2 màn hình "Gọi hóa chất cổ điển" (/chemical-call/classic và
+// /chemical-call/pending-classic), theo yêu cầu 2026-08-04: mở màn hình treo xưởng không
+// cần đăng nhập, KỂ CẢ thao tác gọi và xác nhận xong.
+//
+// Hệ quả người dùng đã chấp nhận khi chốt: `auth()->id()` ở các action này trả null nên
+// mọi lệnh gọi qua đây KHÔNG có định danh người thực hiện (`requested_by_user_id`,
+// `confirmed_by_user_id`, `actor_user_id` để trống — các cột đều nullable sẵn nên không
+// cần migration). Bản thân sự kiện vẫn được ghi đầy đủ, chỉ thiếu "ai làm".
+//
+// Tách route riêng thay vì gỡ middleware của nhóm bảo vệ — giống cách đã làm cho Gantt ở
+// trên: chỉ mở ĐÚNG 4 endpoint 2 màn hình đó dùng, không mở lây các endpoint hóa chất
+// khác (acknowledge/cancel/events/sửa cấu hình kênh vẫn yêu cầu đăng nhập).
+Route::get('/public/chemical-channels', [ChemicalCallController::class, 'getChannels']);
+Route::post('/public/chemical-call-requests', [ChemicalCallController::class, 'createRequest']);
+Route::patch('/public/chemical-call-requests/{id}/complete', [ChemicalCallController::class, 'complete']);
+Route::patch('/public/chemical-call-requests/{id}/reset', [ChemicalCallController::class, 'reset']);
+
 // Protected Auth Routes
 Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);

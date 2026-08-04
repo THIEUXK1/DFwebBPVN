@@ -118,9 +118,15 @@ function isChannelRed(channel: ChemicalChannel): boolean {
   return !!channel.current_request && (channel.current_request.status === 'ORDERED' || channel.current_request.status === 'ACKNOWLEDGED');
 }
 
+// Route này là requiresAuth:false (xem router/index.ts) nên KHÔNG được gọi các endpoint
+// /api/chemical-* thường — chúng nằm sau KioskAuthenticationMiddleware, người chưa đăng
+// nhập sẽ nhận 401 và interceptor ở main.ts đá thẳng về trang đăng nhập. Nhóm
+// /api/public/... là đúng 4 endpoint đã mở riêng cho 2 màn hình cổ điển này.
+const API = '/api/public';
+
 async function fetchChannels() {
   try {
-    const res = await axios.get('/api/chemical-channels');
+    const res = await axios.get(`${API}/chemical-channels`);
     channelsList.value = res.data;
   } catch (err) {
     console.error('Failed to fetch channels:', err);
@@ -139,10 +145,10 @@ async function callChemical(channel: ChemicalChannel) {
 
   try {
     if (previousRequest?.id) {
-      await axios.patch(`/api/chemical-call-requests/${previousRequest.id}/reset`);
+      await axios.patch(`${API}/chemical-call-requests/${previousRequest.id}/reset`);
     }
     const idempotencyKey = `cc-classic-${channel.channel_id}-${Date.now()}`;
-    await axios.post('/api/chemical-call-requests', {
+    await axios.post(`${API}/chemical-call-requests`, {
       channel_id: channel.channel_id,
       idempotency_key: idempotencyKey
     });
@@ -165,8 +171,8 @@ async function markDone(channel: ChemicalChannel) {
   channel.current_request = null;
 
   try {
-    await axios.patch(`/api/chemical-call-requests/${requestId}/complete`);
-    await axios.patch(`/api/chemical-call-requests/${requestId}/reset`);
+    await axios.patch(`${API}/chemical-call-requests/${requestId}/complete`);
+    await axios.patch(`${API}/chemical-call-requests/${requestId}/reset`);
     await fetchChannels();
   } catch (err: any) {
     channel.current_request = previousRequest;
