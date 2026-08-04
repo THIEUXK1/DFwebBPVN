@@ -19,11 +19,19 @@ class ProductionBatchController extends Controller
      * Danh mục máy nhuộm thật (thay danh sách hardcode trước đây trong frontend —
      * bị thiếu máy khi máy mới được thêm vào DB mà không sửa code).
      */
+    /**
+     * Danh mục máy dùng cho các hộp chọn (Box4 màn Grid, PrintOrderEntry, ProductionBatches).
+     *
+     * Lọc `is_active` (2026-08-04): máy ngừng dùng vẫn phải nằm lại trong bảng để dữ liệu lịch
+     * sử trỏ tới nó không mồ côi (quy tắc soft delete), nhưng KHÔNG được hiện ra cho người vận
+     * hành chọn — sau khi gộp 2 bản ghi máy trùng, "VD04-GOP"/"VD10-GOP" lọt vào danh sách chọn
+     * và chọn trúng là đơn lại rơi vào máy chết đúng như lỗi vừa sửa.
+     */
     public function machines()
     {
         return response()->json([
             'status' => 'SUCCESS',
-            'data' => Machine::orderBy('code')->get(['id', 'code', 'name']),
+            'data' => Machine::where('is_active', true)->orderBy('code')->get(['id', 'code', 'name']),
         ]);
     }
 
