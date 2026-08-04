@@ -1916,3 +1916,30 @@ Trang can dang nhap nen khong chup truc tiep duoc -> dung `scratchpad/preview.mj
 - **Frontend (`BpdbMachinesGantt.vue`):** dong "Tong da chay" trong popup chi tiet (`lotTotal` + `loadLotTotal`), co trang thai *Dang dem…* / *Khong dem duoc (BPDB mat ket noi)*; khong cache ket qua khi BPDB rot de lan bam sau con thu lai. Me khong tach duoc mã màu/mã hàng thi an han dong nay.
 - **Kiem chung that:** `vue-tsc --noEmit` exit 0; goi that endpoint tren BPDB — `EP69725-L18032` tra `total=5`, chay lan dau 12/07/2026, lan cuoi 24/07/2026; thieu tham so tra 422 `LOT_REQUIRED`. **Chua xem bang mat tren trinh duyet** (backend cuc bo chi bat tam de test roi tat lai).
 - **Bo sung cung phien:** them hang **"Theo may"** trong chinh bang chi tiet cua me vua an — ma nay da chay o nhung may VD nao, moi may bao nhieu me (may nhieu nhat dung truoc), kem so may da tung chay ma nay. Query doi sang `GROUP BY Machine` roi cong don trong PHP (mot lan quet lich su ra ca tong lan phan chia, khong chay 2 query). **1 may VD co nhieu `machine_id`** (moi to hop Machine+Tank+MucNuoc la 1 dong `DyeMachines`) nen phai quy nguoc ve ma may vat ly truoc khi cong, neu khong moi machine_id se thanh mot "may" rieng. Kiem chung that: `EP69725-L18032` -> `VD003: 4`, `VD002: 1`, tong 5 (khop dung con so tong da do truoc do).
+
+### 102. Nut "Toan man hinh" thay phim F11 + luoi C3 tu vua man hinh (2026-08-04)
+
+- **Yeu cau nguoi dung:** `/production-batches/grid` phai tu co gian cho thay du 81 o; sau do them nut phong to thay F11 cho ca 8 man hinh van hanh.
+- **`ProductionBatchesGrid.vue`:** port dung co che da dung o `PrintOrderEntry.vue` — mat form giu nguyen toa do goc 768x540pt, thu/phong bang MOT phep `transform: scale()` (khoang 30%-200%) nen ti le o/co chu/do day vien khong lech so voi ban VBA. Chieu cao vung lam viec **do that** tu mep tren phan tu (khong dat cung `100vh`) nen dung ca khi an sidebar/topbar hay F11. Dai trang thai luon hien (neu `v-if` thi luc an/hien chieu cao doi va ca luoi nhay co) va co them chi so "Vua man hinh: N%".
+- **Component dung chung `components/FullscreenButton.vue`** (8 man hinh can nen tach, khong chep 8 lan): mot nut noi goc phai duoi an ca hai lop che man hinh — Fullscreen API bo thanh trinh duyet (dung phan F11 lam) + co `isFullscreen` cua AppLayout bo sidebar/topbar.
+  - Nghe `fullscreenchange` de thoat bang **ESC/F11 that** thi nhan nut va menu app tro ve dung trang thai, khong bi ket.
+  - `watch(isFullscreen)` dong bo nguoc voi nut thoat cua AppLayout, tranh canh menu hien lai ma thanh trinh duyet van mat. Unmount thi tat het, khong de man hinh ke tiep mat menu.
+  - Prop `variant` ('vba' giu he mau Windows co dien / 'app' dung design token) va prop **`zIndex`** — moi trang mot thang z-index rieng nen khong co so mac dinh nao dung cho tat ca: man can dung 40 (duoi `.queue-overlay` 50-60), `/chemical-call/monitor` va `/pending` dung 10 (duoi anh QR phong to khi re chuot = 20), con lai 900 (duoi hop thoai VBA = 1000).
+- **Da gan cho:** `/production-batches/grid`, `/print-order-entry`, `/print-sent-log`, `/chemical-call`, `/chemical-call/monitor`, `/chemical-call/pending`, `/weighing-station-large`, `/weighing-station-v2`.
+- **Kiem chung:** `vue-tsc --noEmit` exit 0, `vite build` thanh cong. **Chua xem bang mat tren trinh duyet** — can nguoi dung tu mo kiem tra.
+
+### 103. Man hinh "Bang may VD (MACHINE_ID)" — dung lai UserForm mainform cua MACHINE_ID_LOCKED.xlsm (2026-08-04)
+
+- **Nguon:** trich VBA that tu `MACHINE_ID_LOCKED.xlsm` (27 component, VBProject KHONG khoa) qua Excel COM; toa do/font/mau doc thang tu `Designer.Controls` chu khong doan.
+  - `mainform` = **man hinh chi doc**, 734 control, InsideWidth 1413pt x InsideHeight 755.25pt, font Tahoma 8.25pt.
+  - Bo cuc: nua tren VD10..VD18 (trai sang phai), nua duoi VD09..VD01; moi may 1 khoi rong 138pt (code 60 + color 54 + lv 24), cach nhau 156pt, bat dau Left 18pt. Moi may co khoi **da gui** 4 thung 1A/2B/3C/4D (moi thung 1 dong code/color/lv + 1 dong thoi gian 138pt) va khoi **dang cho** 6 dong. `TextBox541` (1386x3pt, nen COLOR_HIGHLIGHT) la vach ngan 2 nua.
+  - **Ma chet trong workbook:** `mainform` con nguyen handler `Box1..Box7`, `btnSAVE`, `btnClear`, `CommandButton3/4/5`, `sub1_Click..sub83_Click` nhung **cac control do khong con ton tai tren form** — ban con lai chi la bang theo doi. `col17..col19`/`sub17..sub19` nam o Top 786pt, tuc **ngoai chieu cao form 755pt** (khong bao gio hien) nen ban web khong ve lai.
+- **Quy tac to mau (giu nguyen ban goc):**
+  - Da gui (`Mod_load_sentlog.LoadAllVD`, `tbl_SentLog`, chi lay ban ghi moi nhat con trong 24h cho moi may+thung): <6h `#00B050`, <12h `#FFC000`, con lai `#FF0000`. O thoi gian **khong** bi to mau (ban goc chi set BackColor cho code/color/lv).
+  - Dang cho (`Mod_load_input.LoadAllVD_Input`, `tbl_input_all`, TOP 6 theo TIME1 tang dan): <24h trang, <48h `#B4CDE6`, con lai `#B4A0C8`.
+  - Nap lai moi **3 phut** (`Mod_time3min.RunAutoVD`).
+- **Ban web `views/MachineIdBoard.vue`** (route `/machine-id-board`, nhom menu VAN HANH): dung nguyen toa do pt, thu/phong bang MOT `transform: scale()` nhu `ProductionBatchesGrid`/`PrintOrderEntry`, co `FullscreenButton variant="vba"`.
+  - Nguon du lieu: `GET /api/machine-dispatches/history` (queue_state CONFIRMED) thay `tbl_SentLog`, `GET /api/machine-dispatches` (INPUT/WAITING/TO_SEND/PROCESSING/ERROR) thay `tbl_input_all`. Moc "da gui" lay print job DAU TIEN cua don — cung quy uoc voi `/print-sent-log` vi web khong co cot TIME3 rieng.
+  - **Ma may phai khop theo phan so**: web seed `VD001..VD018`, ban VBA dung `VD01..VD18`.
+  - Nap lai 3 phut dung nhip ban goc, co them listener Echo `production-batches` de khong phai cho het 3 phut khi co don moi.
+- **Kiem chung:** `vue-tsc --noEmit` exit 0. **Chua xem bang mat tren trinh duyet** — can nguoi dung tu mo `/machine-id-board` doi chieu voi form VBA that.

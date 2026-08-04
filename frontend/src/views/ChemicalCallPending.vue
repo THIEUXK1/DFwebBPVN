@@ -47,6 +47,9 @@
         </div>
       </TransitionGroup>
     </div>
+
+    <!-- z-index 10: dưới ảnh QR phóng to khi rê chuột (.chem-call-qr-thumb:hover = 20) -->
+    <FullscreenButton :z-index="10" />
   </div>
 </template>
 
@@ -56,6 +59,7 @@ import axios from 'axios';
 import echo from '../services/echo';
 import ChemicalCallQrThumb from '../components/ChemicalCallQrThumb.vue';
 import ChemicalCallQrImage from '../components/ChemicalCallQrImage.vue';
+import FullscreenButton from '../components/FullscreenButton.vue';
 
 interface RequestInfo {
   id: string;

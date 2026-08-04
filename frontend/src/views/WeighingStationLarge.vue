@@ -186,6 +186,9 @@
     </div>
 
     <WeighingCheckerModal :show="showChecker" @close="showChecker = false" />
+
+    <!-- z-index 40: dưới lớp phủ bảng hàng đợi (.queue-overlay = 60) -->
+    <FullscreenButton variant="vba" :z-index="40" @change="refit" />
   </div>
 </template>
 
@@ -219,6 +222,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import WeighingCheckerModal from '../components/weighing/WeighingCheckerModal.vue';
+import FullscreenButton from '../components/FullscreenButton.vue';
 import { currentWorkstation, adoptLocalWorkstation } from '../services/workstation';
 import { scannerService } from '../services/scanner';
 import { isFullscreen } from '../services/layout';
@@ -384,6 +388,10 @@ function fitAll() {
   // và mặt form bị thu nhỏ hơn mức cần thiết đúng một nhịp.
   nextTick(fitStage);
 }
+
+// Bật/tắt Toàn màn hình: đợi trình duyệt vẽ lại xong khung mới rồi mới đo, không thì đo trúng
+// kích thước cũ.
+const refit = () => requestAnimationFrame(fitAll);
 
 /* ============================================================================
  * TRẠNG THÁI

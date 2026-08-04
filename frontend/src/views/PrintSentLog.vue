@@ -59,6 +59,8 @@
         print job đầu tiên của đơn — web không ghi cột thời điểm xác nhận riêng.
       </p>
     </div>
+
+    <FullscreenButton variant="vba" />
   </div>
 </template>
 
@@ -66,6 +68,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import echo from '../services/echo';
+import FullscreenButton from '../components/FullscreenButton.vue';
 
 const windowHours = ref(48);
 const search = ref('');

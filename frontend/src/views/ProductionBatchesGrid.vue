@@ -5,63 +5,73 @@
        Bảng màu cố định theo hệ màu Windows cổ điển của MSForms (BTNFACE #F0F0F0,
        WINDOW #FFFFFF) — cố ý KHÔNG dùng design token dark/light của app, vì yêu cầu là
        giao diện giống hệt bản gốc. -->
-  <div class="vba-scroll">
-    <div class="vba-form" :style="{ width: FORM_W + 'pt', height: FORM_H + 'pt' }">
+  <div class="vba-scroll" ref="rootRef" :style="rootH ? { height: rootH + 'px' } : undefined">
+    <!-- Cả mặt form được thu/phóng bằng MỘT phép transform: scale() nên tỉ lệ giữa các ô, cỡ chữ
+         và độ dày viền không bao giờ lệch so với bản gốc dù màn hình to nhỏ thế nào. -->
+    <div class="vba-stage-wrap" ref="wrapRef">
+      <!-- Lớp đệm mang ĐÚNG kích thước SAU khi thu/phóng: transform: scale() không đổi ô layout của
+           phần tử, thiếu lớp này thì lúc phóng > 1 mặt form tràn ra ngoài vùng cuộn và bị cắt mép. -->
+      <div class="vba-fit"
+           :style="{ width: Math.round(FORM_W * PT * scale) + 'px', height: Math.round(FORM_H * PT * scale) + 'px' }">
+        <div class="vba-form"
+             :style="{ width: FORM_W + 'pt', height: FORM_H + 'pt', transform: `scale(${scale})` }">
 
-      <!-- ===================== Dải header (T = 0..48pt) ===================== -->
-      <label class="vba-label" :style="box(0, 6, 72, 18)">SCAN QR</label>
+          <!-- ===================== Dải header (T = 0..48pt) ===================== -->
+          <label class="vba-label" :style="box(0, 6, 72, 18)">SCAN QR</label>
 
-      <button class="vba-btn" :style="box(132, 0, 42, 24)" @click="machinePickerOpen = true">MACHINE</button>
-      <button class="vba-btn" :style="box(174, 0, 36, 24)" @click="openTankPicker">TANK</button>
-      <!-- CommandButton4_Click: Me.Box7.Text = "OK" — bật cờ confirm2 để Save xong duyệt luôn. -->
-      <button class="vba-btn" :style="box(210, 0, 48.05, 24)" @click="form.box7 = 'OK'">OK</button>
+          <button class="vba-btn" :style="box(132, 0, 42, 24)" @click="machinePickerOpen = true">MACHINE</button>
+          <button class="vba-btn" :style="box(174, 0, 36, 24)" @click="openTankPicker">TANK</button>
+          <!-- CommandButton4_Click: Me.Box7.Text = "OK" — bật cờ confirm2 để Save xong duyệt luôn. -->
+          <button class="vba-btn" :style="box(210, 0, 48.05, 24)" @click="form.box7 = 'OK'">OK</button>
 
-      <!-- Box3 (confirm1) trong bản gốc có Visible = False nên KHÔNG vẽ ra đây; nó luôn
-           mang giá trị "OK" và chỉ được ghi xuống DB. -->
+          <!-- Box3 (confirm1) trong bản gốc có Visible = False nên KHÔNG vẽ ra đây; nó luôn
+               mang giá trị "OK" và chỉ được ghi xuống DB. -->
 
-      <!-- Box1 KHÔNG dùng v-model: máy quét QR bắn ~100 ký tự trong vài chục mili-giây,
-           v-model làm Vue re-render sau mỗi ký tự và trình duyệt RỚT ký tự giữa chừng
-           (đã xác minh thực tế ở /production-batches). Đọc .value một lần khi Enter. -->
-      <input
-        ref="box1Ref"
-        class="vba-text"
-        :style="box(0, 24, 72, 25.5)"
-        :disabled="scanning"
-        title="Box1 — quét QR vào đây rồi Enter; hệ thống tự tách ra Box2/Box4/Box6. Sau khi tách, ô này giữ Mã màu."
-        @keyup.enter="handleScan"
-      />
-      <input v-model="form.code" class="vba-text" :style="box(72, 24, 60, 25.5)" title="Box2 — Mã hàng (code)" />
-      <!-- Box4/Box5 có Locked = True trong bản gốc: chỉ điền được qua nút MACHINE/TANK. -->
-      <input :value="form.machineCode" readonly class="vba-text" :style="box(132, 24, 42, 25.5)" title="Box4 — Máy nhuộm (chọn bằng nút MACHINE)" />
-      <input :value="form.tankCode" readonly class="vba-text" :style="box(174, 24, 36, 25.5)" title="Box5 — Thùng (chọn bằng nút TANK)" />
-      <input v-model="form.level" class="vba-text" :style="box(210, 24, 24, 25.5)" title="Box6 — Mực nước" />
-      <input v-model="form.box7" class="vba-text" :style="box(234.05, 24, 24, 25.5)" title="Box7 — confirm2; = OK thì Save xong tự PHÊ DUYỆT (cần có Thùng)" />
+          <!-- Box1 KHÔNG dùng v-model: máy quét QR bắn ~100 ký tự trong vài chục mili-giây,
+               v-model làm Vue re-render sau mỗi ký tự và trình duyệt RỚT ký tự giữa chừng
+               (đã xác minh thực tế ở /production-batches). Đọc .value một lần khi Enter. -->
+          <input
+            ref="box1Ref"
+            class="vba-text"
+            :style="box(0, 24, 72, 25.5)"
+            :disabled="scanning"
+            title="Box1 — quét QR vào đây rồi Enter; hệ thống tự tách ra Box2/Box4/Box6. Sau khi tách, ô này giữ Mã màu."
+            @keyup.enter="handleScan"
+          />
+          <input v-model="form.code" class="vba-text" :style="box(72, 24, 60, 25.5)" title="Box2 — Mã hàng (code)" />
+          <!-- Box4/Box5 có Locked = True trong bản gốc: chỉ điền được qua nút MACHINE/TANK. -->
+          <input :value="form.machineCode" readonly class="vba-text" :style="box(132, 24, 42, 25.5)" title="Box4 — Máy nhuộm (chọn bằng nút MACHINE)" />
+          <input :value="form.tankCode" readonly class="vba-text" :style="box(174, 24, 36, 25.5)" title="Box5 — Thùng (chọn bằng nút TANK)" />
+          <input v-model="form.level" class="vba-text" :style="box(210, 24, 24, 25.5)" title="Box6 — Mực nước" />
+          <input v-model="form.box7" class="vba-text" :style="box(234.05, 24, 24, 25.5)" title="Box7 — confirm2; = OK thì Save xong tự PHÊ DUYỆT (cần có Thùng)" />
 
-      <input :value="form.rawQrDye" readonly class="vba-text vba-raw" :style="box(258, 0, 114, 26.4)" title="raw_qr_dye" />
-      <input :value="form.rawQrChem" readonly class="vba-text vba-raw" :style="box(258, 24, 114, 26.4)" title="raw_qr_chem" />
+          <input :value="form.rawQrDye" readonly class="vba-text vba-raw" :style="box(258, 0, 114, 26.4)" title="raw_qr_dye" />
+          <input :value="form.rawQrChem" readonly class="vba-text vba-raw" :style="box(258, 24, 114, 26.4)" title="raw_qr_chem" />
 
-      <button class="vba-btn" :style="box(378, 0, 120, 48)" :disabled="saving" @click="handleSave">
-        {{ saving ? '...' : 'SAVE' }}
-      </button>
-      <button class="vba-btn" :style="box(498, 0, 60, 48)" @click="handleClear">CLEAR</button>
-      <button class="vba-btn" :style="box(558, 0, 78, 48)" :disabled="saving" @click="handleApproveFromHeader">PHE DUYET</button>
-      <button class="vba-btn" :style="box(636, 0, 72, 48)" @click="checkFormOpen = true">CHECK</button>
-      <button class="vba-btn" :style="box(708, 0, 60, 48)" @click="handleClose">CLOSE</button>
+          <button class="vba-btn" :style="box(378, 0, 120, 48)" :disabled="saving" @click="handleSave">
+            {{ saving ? '...' : 'SAVE' }}
+          </button>
+          <button class="vba-btn" :style="box(498, 0, 60, 48)" @click="handleClear">CLEAR</button>
+          <button class="vba-btn" :style="box(558, 0, 78, 48)" :disabled="saving" @click="handleApproveFromHeader">PHE DUYET</button>
+          <button class="vba-btn" :style="box(636, 0, 72, 48)" @click="checkFormOpen = true">CHECK</button>
+          <button class="vba-btn" :style="box(708, 0, 60, 48)" @click="handleClose">CLOSE</button>
 
-      <!-- ===================== Lưới 81 ô: 3 cột × 27 dòng (T = 54..540pt) ===================== -->
-      <template v-for="(slot, i) in slots" :key="'slot-' + i">
-        <input :value="slot ? i + 1 : ''" readonly class="vba-text vba-id" :style="box(slotLeft(i), slotTop(i), 12, 18)" :title="slot?.id" />
-        <input :value="slot?.color || ''" readonly class="vba-text vba-cell" :style="box(slotLeft(i) + 12, slotTop(i), 66, 18)" />
-        <input :value="slot?.product_code || ''" readonly class="vba-text vba-cell" :style="box(slotLeft(i) + 78, slotTop(i), 72, 18)" />
-        <input :value="slot?.machine?.code || ''" readonly class="vba-text vba-cell" :style="box(slotLeft(i) + 150, slotTop(i), 42, 18)" />
-        <input :value="slot?.level_code || ''" readonly class="vba-text vba-cell" :style="box(slotLeft(i) + 192, slotTop(i), 36, 18)" />
-        <button
-          class="vba-btn vba-btn-plus"
-          :style="box(slotLeft(i) + 228, slotTop(i), 24, 18)"
-          :disabled="!slot"
-          @click="openSubForm(slot)"
-        >+</button>
-      </template>
+          <!-- ===================== Lưới 81 ô: 3 cột × 27 dòng (T = 54..540pt) ===================== -->
+          <template v-for="(slot, i) in slots" :key="'slot-' + i">
+            <input :value="slot ? i + 1 : ''" readonly class="vba-text vba-id" :style="box(slotLeft(i), slotTop(i), 12, 18)" :title="slot?.id" />
+            <input :value="slot?.color || ''" readonly class="vba-text vba-cell" :style="box(slotLeft(i) + 12, slotTop(i), 66, 18)" />
+            <input :value="slot?.product_code || ''" readonly class="vba-text vba-cell" :style="box(slotLeft(i) + 78, slotTop(i), 72, 18)" />
+            <input :value="slot?.machine?.code || ''" readonly class="vba-text vba-cell" :style="box(slotLeft(i) + 150, slotTop(i), 42, 18)" />
+            <input :value="slot?.level_code || ''" readonly class="vba-text vba-cell" :style="box(slotLeft(i) + 192, slotTop(i), 36, 18)" />
+            <button
+              class="vba-btn vba-btn-plus"
+              :style="box(slotLeft(i) + 228, slotTop(i), 24, 18)"
+              :disabled="!slot"
+              @click="openSubForm(slot)"
+            >+</button>
+          </template>
+        </div>
+      </div>
     </div>
 
     <!-- ===================== SubForm ===================== -->
@@ -131,19 +141,76 @@
       </div>
     </div>
 
-    <div v-if="statusMsg" class="vba-statusbar" :class="{ 'is-error': statusIsError }">{{ statusMsg }}</div>
+    <!-- Luôn vẽ dải trạng thái (kể cả khi chưa có thông báo): nếu để `v-if`, lúc nó hiện/ẩn thì
+         chiều cao vùng chứa mặt form đổi đột ngột và cả lưới nhảy cỡ theo. -->
+    <div class="vba-statusbar">
+      <span class="vba-zoom">Vừa màn hình: {{ Math.round(scale * 100) }}%</span>
+      <span v-if="statusMsg" :class="{ 'is-error': statusIsError }">{{ statusMsg }}</span>
+    </div>
+
+    <FullscreenButton variant="vba" @change="refit" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, reactive, nextTick } from 'vue';
 import axios from 'axios';
+import FullscreenButton from '../components/FullscreenButton.vue';
 import { currentWorkstation } from '../services/workstation';
 import echo from '../services/echo';
 import { applyVbaRowLock } from '../utils/vbaRowLock';
 
 const FORM_W = 768;
 const FORM_H = 540;
+
+/* ===== Thu/phóng cả mặt form cho vừa MỘT màn hình (dùng chung cách làm với PrintOrderEntry) ===== */
+
+/** Toạ độ form là pt (đơn vị của MSForms); ở 96dpi 1pt = 4/3 px — cần để tính ô layout theo px. */
+const PT = 4 / 3;
+
+const rootRef = ref<HTMLElement | null>(null);
+const wrapRef = ref<HTMLElement | null>(null);
+const scale = ref(1);
+const rootH = ref<number | null>(null);
+let ro: ResizeObserver | null = null;
+
+/**
+ * Chiều cao màn hình PHẢI đo, không đặt cứng `100vh`: route này nằm trong `AppLayout` nên nội dung
+ * đã bị đẩy xuống dưới thanh trên và nằm trong `.content-container` (bản thân nó đã là vùng cuộn,
+ * có padding 24px). Đo từ mép trên thật của chính phần tử này thì đúng trong mọi trường hợp — kể cả
+ * khi bấm nút toàn màn hình của AppLayout (ẩn sidebar + thanh trên) hay bấm F11.
+ */
+function fitRoot() {
+  const el = rootRef.value;
+  if (!el) return;
+  const top = el.getBoundingClientRect().top;
+  const parent = el.parentElement;
+  const padBottom = parent ? parseFloat(getComputedStyle(parent).paddingBottom) || 0 : 0;
+  rootH.value = Math.max(360, Math.floor(window.innerHeight - top - padBottom));
+}
+
+function fitStage() {
+  const el = wrapRef.value;
+  if (!el) return;
+  // Chừa 4px cho viền + đổ bóng của mặt form, không thì mép ngoài bị vùng cuộn cắt mất.
+  const w = el.clientWidth - 4;
+  const h = el.clientHeight - 4;
+  if (w <= 0 || h <= 0) return;
+  // Chặn trên 2.0: toạ độ form là số cố định, phóng quá to thì chỉ còn vài ô chiếm cả màn hình.
+  scale.value = Math.max(0.3, Math.min(w / (FORM_W * PT), h / (FORM_H * PT), 2));
+}
+
+function fitAll() {
+  fitRoot();
+  // Đo lại khung SAU khi chiều cao mới đã được áp — nếu không, `fitStage` vẫn dùng chiều cao cũ và
+  // mặt form bị thu nhỏ hơn mức cần thiết đúng một nhịp.
+  nextTick(fitStage);
+}
+
+// Bật/tắt Toàn màn hình: đợi trình duyệt vẽ lại xong khung mới rồi mới đo, không thì đo trúng
+// kích thước cũ.
+const refit = () => requestAnimationFrame(fitAll);
+
 // Lưới gốc: 81 ô chia 3 khối cột (Left 0 / 258 / 516), mỗi khối 27 dòng cao 18pt bắt đầu từ T=54.
 const GRID_SLOTS = 81;
 const ROWS_PER_BLOCK = 27;
@@ -525,25 +592,60 @@ onMounted(() => {
   // Thay cho Mod_TIMER_AUTOGRID (VBA tự nạp lại lưới theo timer).
   echo.channel('production-batches').listen('.updated', fetchWaiting);
   pollInterval = setInterval(fetchWaiting, 15000);
+
+  fitAll();
+  // Đo lại một nhịp nữa sau khi trình duyệt vẽ xong: lúc onMounted chạy, AppLayout có thể chưa dựng
+  // xong thanh trên nên `getBoundingClientRect().top` còn là số tạm.
+  requestAnimationFrame(fitAll);
+  if (typeof ResizeObserver !== 'undefined') {
+    ro = new ResizeObserver(fitAll);
+    // Nút toàn màn hình của AppLayout chỉ ẩn sidebar/topbar bằng CSS, KHÔNG bắn `resize` — phải
+    // quan sát khung chứa mới bắt được nhịp đổi kích thước đó. Quan sát khung NGOÀI chứ không phải
+    // `wrapRef`: `fitAll` đặt lại chiều cao cho chính vùng bên trong nên quan sát vùng đó sẽ tự
+    // kích hoạt lại chính nó thành vòng lặp.
+    const outer = rootRef.value?.parentElement;
+    if (outer) ro.observe(outer);
+  }
+  window.addEventListener('resize', fitAll);
 });
 
 onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval);
   echo.leaveChannel('production-batches');
+  window.removeEventListener('resize', fitAll);
+  ro?.disconnect();
 });
 </script>
 
 <style scoped>
 .vba-scroll {
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 8px;
   background-color: #808080;
-  min-height: 100%;
+  min-height: 360px;
+}
+
+/* Vùng chứa mặt form: chiếm hết chỗ còn lại sau dải trạng thái. Vẫn để `auto` chứ không `hidden` —
+   khi cửa sổ bé hơn cả mức thu nhỏ tối thiểu (30%) thì còn cuộn được thay vì mất nội dung. */
+.vba-stage-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.vba-fit {
+  flex: none;
 }
 
 /* Nền form = COLOR_BTNFACE của Windows, viền nổi kiểu cửa sổ MSForms */
 .vba-form {
   position: relative;
+  transform-origin: top left;
   background-color: #f0f0f0;
   border: 1px solid;
   border-color: #ffffff #808080 #808080 #ffffff;
@@ -651,8 +753,7 @@ onUnmounted(() => {
 }
 
 .vba-statusbar {
-  position: sticky;
-  bottom: 0;
+  flex: none;
   margin-top: 8px;
   padding: 4px 8px;
   background-color: #f0f0f0;
@@ -660,10 +761,18 @@ onUnmounted(() => {
   border-color: #808080 #ffffff #ffffff #808080;
   font: 8pt Tahoma, 'MS Sans Serif', sans-serif;
   color: #000000;
-  max-width: 768pt;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
-.vba-statusbar.is-error {
+.vba-zoom {
+  color: #404040;
+  white-space: nowrap;
+}
+
+.vba-statusbar .is-error {
   color: #a00000;
   font-weight: bold;
 }

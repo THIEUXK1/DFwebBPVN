@@ -100,6 +100,14 @@ const routes = [
     component: () => import('../views/PrintSentLog.vue'),
     meta: { requiresAuth: true }
   },
+  // Bảng thông tin đơn theo máy VD — dựng lại UserForm "mainform" của workbook
+  // MACHINE_ID_LOCKED.xlsm (màn hình treo xưởng, chỉ đọc, tự nạp lại mỗi 3 phút).
+  {
+    path: '/machine-id-board',
+    name: 'MachineIdBoard',
+    component: () => import('../views/MachineIdBoard.vue'),
+    meta: { requiresAuth: true }
+  },
   {
     path: '/order-scan',
     name: 'OrderScan',

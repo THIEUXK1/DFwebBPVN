@@ -82,6 +82,8 @@
       <span class="vba-zoom">Vừa màn hình: {{ Math.round(scale * 100) }}%</span>
       <span v-if="statusMsg" :class="{ 'is-error': statusIsError }">{{ statusMsg }}</span>
     </div>
+
+    <FullscreenButton variant="vba" @change="refit" />
   </div>
 </template>
 
@@ -92,6 +94,7 @@ import echo from '../services/echo';
 import { currentWorkstation } from '../services/workstation';
 import { applyVbaRowLock, vbaAgeColor } from '../utils/vbaRowLock';
 import VbaPrintForm, { type VbaPrintFormData } from '../components/VbaPrintForm.vue';
+import FullscreenButton from '../components/FullscreenButton.vue';
 
 const FORM_W = 1416;
 const FORM_H = 733;
@@ -139,6 +142,10 @@ function fitAll() {
   // mặt form bị thu nhỏ hơn mức cần thiết đúng một nhịp.
   nextTick(fitStage);
 }
+
+// Bật/tắt Toàn màn hình: đợi trình duyệt vẽ lại xong khung mới rồi mới đo, không thì đo trúng
+// kích thước cũ.
+const refit = () => requestAnimationFrame(fitAll);
 
 // Lưới TO_SEND: 27 dòng chia 3 khối cột (Left 18 / 492 / 978), mỗi khối 9 dòng cao 24pt từ T=6.
 const SEND_SLOTS = 27;

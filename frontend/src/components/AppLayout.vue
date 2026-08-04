@@ -406,8 +406,17 @@ const menuGroupsRaw = [
     title: 'VẬN HÀNH',
     items: [
       { path: '/', label: 'Giám sát', icon: 'dashboard' },
-      { path: '/order-scan', label: 'Quét đơn QR', icon: 'search' },
-      { path: '/weighing-station', label: 'Trạm cân', icon: 'scale' },
+      // 3 màn hình dựng lại đúng workbook VBA đang chạy ngoài xưởng — dùng hằng ngày nhiều nhất
+      // nên để ngay đầu nhóm Vận hành (yêu cầu 2026-08-04), trước đây nằm trong nhóm Công nghệ.
+      // MainForm (bản dựng lại Workbook C3) là màn hình nhập đơn CHÍNH.
+      { path: '/production-batches/grid', label: 'Nhập đơn (MainForm)', icon: 'batch' },
+      // Dựng lại UserForm TO_SEND của workbook DF002 (PRINTER LANDSCAPE / jit qr sending).
+      { path: '/print-order-entry', label: 'In tem nhập đơn', icon: 'recipe' },
+      // Bản web của sheet "sent" (Mod_load_sentlog_sheet) — đơn đã tích & đã bấm OK.
+      { path: '/print-sent-log', label: 'Sent log (đã OK)', icon: 'recipe' },
+      // Dựng lại UserForm "mainform" của workbook MACHINE_ID_LOCKED — bảng treo xưởng,
+      // chỉ đọc: 18 máy VD × (4 thùng đã gửi trong 24h + 6 đơn đang chờ).
+      { path: '/machine-id-board', label: 'Bảng máy VD (MACHINE_ID)', icon: 'dashboard' },
       // Cặp "Cân nhỏ" (<6kg) / "Cân to" (>=6kg) — đúng 2 workbook VBA vật lý tách riêng
       // (4.semiauto-small scale.xlsm vs 5.Semiauto-lockmove SEND OVER6.xlsm), tức 2 công đoạn
       // và 2 máy trạm khác nhau ngoài xưởng.
@@ -418,9 +427,6 @@ const menuGroupsRaw = [
       { path: '/weighing-station-v2', label: 'Cân nhỏ', icon: 'scale', adminOnly: true },
       { path: '/weighing-station-large', label: 'Cân to', icon: 'scale', adminOnly: true },
       { path: '/weighing-history', label: 'Lịch sử cân', icon: 'scale', adminOnly: true },
-      { path: '/print-station', label: 'In tem', icon: 'recipe' },
-      { path: '/material-transports', label: 'Vận chuyển', icon: 'transfer' },
-      { path: '/feeding-monitor', label: 'Cấp máy', icon: 'feed' },
       { path: '/chemical-call', label: 'Gọi hóa chất', icon: 'recipe' },
       { path: '/chemical-call/monitor', label: 'Giám sát Hóa chất', icon: 'dashboard' },
       { path: '/chemical-call/pending', label: 'Đang chờ xử lý', icon: 'bell' }
@@ -429,12 +435,13 @@ const menuGroupsRaw = [
   {
     title: 'CÔNG NGHỆ',
     items: [
-      // MainForm (bản dựng lại Workbook C3) là màn hình nhập đơn CHÍNH — để đầu nhóm.
-      { path: '/production-batches/grid', label: 'Nhập đơn (MainForm)', icon: 'batch' },
-      // Dựng lại UserForm TO_SEND của workbook DF002 (PRINTER LANDSCAPE / jit qr sending).
-      { path: '/print-order-entry', label: 'In tem nhập đơn', icon: 'recipe' },
-      // Bản web của sheet "sent" (Mod_load_sentlog_sheet) — đơn đã tích & đã bấm OK.
-      { path: '/print-sent-log', label: 'Sent log (đã OK)', icon: 'recipe' },
+      // Các màn hình bản web (không port từ workbook nào) — chuyển hẳn khỏi nhóm Vận hành sang
+      // đây theo yêu cầu 2026-08-04, xếp cạnh "Quét đơn (bản web)" cho cùng một mạch bản web.
+      { path: '/order-scan', label: 'Quét đơn QR', icon: 'search' },
+      { path: '/weighing-station', label: 'Trạm cân', icon: 'scale' },
+      { path: '/print-station', label: 'In tem', icon: 'recipe' },
+      { path: '/material-transports', label: 'Vận chuyển', icon: 'transfer' },
+      { path: '/feeding-monitor', label: 'Cấp máy', icon: 'feed' },
       { path: '/production-batches', label: 'Quét đơn (bản web)', icon: 'batch' },
       { path: '/production-batches/list', label: 'Danh sách Lô SX', icon: 'batch' },
       { path: '/machine-queue', label: 'Điều phối máy', icon: 'queue' },
@@ -487,6 +494,7 @@ const currentRouteName = computed(() => {
     '/production-batches/grid': 'Nhập đơn sản xuất — MainForm (C3)',
     '/print-order-entry': 'In tem nhập đơn — TO_SEND (DF002)',
     '/print-sent-log': 'Sent log — đơn đã xác nhận (DF002)',
+    '/machine-id-board': 'DF PRODUCTION ORDER INFORMATION (MACHINE_ID)',
     '/machine-queue': 'Hàng chờ Điều phối',
     '/materials': 'Danh mục Vật tư',
     '/water-configs': 'Cấu hình Mực nước',

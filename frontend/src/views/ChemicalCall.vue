@@ -229,6 +229,7 @@
       </div>
     </div>
 
+    <FullscreenButton />
   </div>
 </template>
 
@@ -238,6 +239,7 @@ import { useRoute } from 'vue-router';
 import axios from 'axios';
 import echo from '../services/echo';
 import { isFullscreen } from '../services/layout';
+import FullscreenButton from '../components/FullscreenButton.vue';
 
 const route = useRoute();
 const isImpersonating = computed(() => route.query.impersonate === 'true');

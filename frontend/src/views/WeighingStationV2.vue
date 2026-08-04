@@ -233,6 +233,9 @@
     </div>
 
     <WeighingCheckerModal :show="showChecker" @close="showChecker = false" />
+
+    <!-- z-index 40: dưới lớp phủ bảng hàng đợi (.queue-overlay = 50) -->
+    <FullscreenButton variant="vba" :z-index="40" />
   </div>
 </template>
 
@@ -255,6 +258,7 @@ import { useRouter } from 'vue-router';
 import axios from 'axios';
 import WeighingCheckerModal from '../components/weighing/WeighingCheckerModal.vue';
 import VbaRackGrid from '../components/weighing/VbaRackGrid.vue';
+import FullscreenButton from '../components/FullscreenButton.vue';
 import { currentWorkstation, adoptLocalWorkstation } from '../services/workstation';
 import { scannerService } from '../services/scanner';
 import { isFullscreen } from '../services/layout';
