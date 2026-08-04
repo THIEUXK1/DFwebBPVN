@@ -10,6 +10,7 @@ use App\Services\ApproveProductionOrderService;
 use App\Services\QrPayloadService;
 use App\Exceptions\BusinessRuleException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class ProductionBatchController extends Controller
@@ -26,9 +27,19 @@ class ProductionBatchController extends Controller
         ]);
     }
 
+    /** Thùng trộn chuẩn theo VBA (Box5 / formselect1) — mã CHUNG, không tiền tố máy. */
+    public const TANK_CODES_MAC_DINH = ['1A', '2B', '3C', '4D', 'FB'];
+
     /**
      * Thêm máy nhuộm mới vào danh mục dùng chung (production batches + kênh gọi hóa
      * chất đều tham chiếu cùng bảng machines qua machine_id).
+     *
+     * Tạo LUÔN 5 thùng chuẩn cho máy mới (2026-08-04). Trước đây endpoint này chỉ tạo bản ghi
+     * máy, còn thùng thì chỉ được seed một lần bằng migration cho dải máy có sẵn lúc đó — nên
+     * mọi máy thêm qua giao diện sau đó đều KHÔNG duyệt đơn được: SubForm ghi `tank_id` theo
+     * từng máy và updateTank() chặn thùng không thuộc máy của lô, mà máy mới không có thùng nào
+     * để khớp. Người dùng chỉ thấy nút OK khóa cứng, không có cách nào tự gỡ (lỗi thật với máy
+     * VD04/VD10).
      */
     public function storeMachine(Request $request)
     {
@@ -37,11 +48,23 @@ class ProductionBatchController extends Controller
             'name' => 'required|string|max:255',
         ]);
 
-        $machine = Machine::create([
-            'code' => $request->input('code'),
-            'name' => $request->input('name'),
-            'is_active' => true,
-        ]);
+        $machine = DB::transaction(function () use ($request) {
+            $machine = Machine::create([
+                'code' => $request->input('code'),
+                'name' => $request->input('name'),
+                'is_active' => true,
+            ]);
+
+            foreach (self::TANK_CODES_MAC_DINH as $tankCode) {
+                Tank::create([
+                    'machine_id' => $machine->id,
+                    'code' => $tankCode,
+                    'name' => "Thùng {$tankCode} - {$machine->code}",
+                ]);
+            }
+
+            return $machine;
+        });
 
         return response()->json([
             'status' => 'SUCCESS',
