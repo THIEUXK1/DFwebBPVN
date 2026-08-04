@@ -4,7 +4,11 @@
        nên tỉ lệ khớp 1:1 với form VBA thật: form rộng 768pt × cao 540pt.
        Bảng màu cố định theo hệ màu Windows cổ điển của MSForms (BTNFACE #F0F0F0,
        WINDOW #FFFFFF) — cố ý KHÔNG dùng design token dark/light của app, vì yêu cầu là
-       giao diện giống hệt bản gốc. -->
+       giao diện giống hệt bản gốc.
+
+       `pageWrapper` là HẰNG SỐ quyết định một lần lúc khởi tạo (xem script) — đổi nó sau khi
+       mount sẽ buộc Vue dựng lại toàn bộ cây con và mất trạng thái đo/thu phóng của trang. -->
+  <component :is="pageWrapper">
   <div class="vba-scroll" ref="rootRef" :style="rootH ? { height: rootH + 'px' } : undefined">
     <!-- Cả mặt form được thu/phóng bằng MỘT phép transform: scale() nên tỉ lệ giữa các ô, cỡ chữ
          và độ dày viền không bao giờ lệch so với bản gốc dù màn hình to nhỏ thế nào. -->
@@ -149,16 +153,31 @@
     </div>
 
     <FullscreenButton variant="vba" @change="refit" />
+    <NavToggleButton variant="vba" />
   </div>
+  </component>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, reactive, nextTick } from 'vue';
 import axios from 'axios';
+import AppLayout from '../components/AppLayout.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
+import NavToggleButton from '../components/NavToggleButton.vue';
 import { currentWorkstation } from '../services/workstation';
+import { isFullscreen } from '../services/layout';
+import { useAuthStore } from '../stores/auth';
 import echo from '../services/echo';
 import { applyVbaRowLock } from '../utils/vbaRowLock';
+
+// Trang công khai (requiresAuth:false) — App.vue không bọc AppLayout, trang tự bọc lấy khi
+// người xem đã đăng nhập để vẫn có menu điều hướng (mở bằng nút 3 gạch, xem NavToggleButton).
+const isLoggedIn = useAuthStore().isAuthenticated;
+const pageWrapper = isLoggedIn ? AppLayout : 'div';
+const previousIsFullscreen = isFullscreen.value;
+
+// Endpoint /api/public/... — trang không đăng nhập không gọi được nhóm /api/ thường.
+const API = '/api/public';
 
 const FORM_W = 768;
 const FORM_H = 540;
@@ -298,7 +317,7 @@ const handleScan = async () => {
   scanning.value = true;
   say('');
   try {
-    const res = await axios.post('/api/production-batches/scan-parse', { raw_scan: raw });
+    const res = await axios.post(`${API}/production-batches/scan-parse`, { raw_scan: raw });
     const d = res.data.data;
     // PUT INTO BOX1, BOX2, BOX4, BOX6 — đúng Box1_AfterUpdate của VBA gốc.
     if (el) el.value = d.color;
@@ -343,7 +362,7 @@ const handleClose = () => {
 const doApprove = async (id: string) => {
   approving.value = true;
   try {
-    await axios.post(`/api/production-batches/${id}/approve`, {
+    await axios.post(`${API}/production-batches/${id}/approve`, {
       workstation_id: currentWorkstation.value?.code,
     });
   } finally {
@@ -365,7 +384,7 @@ const saveOrder = async (confirmDuplicate: boolean): Promise<any | null> => {
 
   saving.value = true;
   try {
-    const res = await axios.post('/api/production-batches', {
+    const res = await axios.post(`${API}/production-batches`, {
       legacy_batch_id: `${color}-${form.code}-${Date.now()}`,
       color,
       product_code: form.code,
@@ -447,7 +466,7 @@ const approveFromSubForm = async () => {
   if (!batch || !subFormTankId.value) return;
   try {
     if (subFormTankId.value !== batch.tank_id) {
-      await axios.put(`/api/production-batches/${batch.id}/tank`, { tank_id: subFormTankId.value });
+      await axios.put(`${API}/production-batches/${batch.id}/tank`, { tank_id: subFormTankId.value });
     }
     await doApprove(batch.id);
     say(`Đã PHÊ DUYỆT đơn ${batch.color} - ${batch.product_code}.`);
@@ -464,7 +483,7 @@ const deleteFromSubForm = async () => {
   if (!batch) return;
   if (!confirm(`Hủy đơn ${batch.color} - ${batch.product_code}? Đơn sẽ chuyển sang CANCELLED.`)) return;
   try {
-    await axios.put(`/api/production-batches/${batch.id}/status`, { status: 'CANCELLED' });
+    await axios.put(`${API}/production-batches/${batch.id}/status`, { status: 'CANCELLED' });
     say(`Đã hủy đơn ${batch.color} - ${batch.product_code}.`);
     subFormBatch.value = null;
     fetchWaiting();
@@ -554,7 +573,7 @@ const closeCheckForm = () => {
 // ---------- Dữ liệu ----------
 const fetchMetadata = async () => {
   try {
-    const [machinesRes, tanksRes] = await Promise.all([axios.get('/api/machines'), axios.get('/api/tanks')]);
+    const [machinesRes, tanksRes] = await Promise.all([axios.get(`${API}/machines`), axios.get(`${API}/tanks`)]);
     machines.value = machinesRes.data.data || [];
     tanks.value = tanksRes.data.data || [];
   } catch (error) {
@@ -572,7 +591,7 @@ const fetchMetadata = async () => {
 // đưa cả danh sách cho row lock tự lấp — hết ô thì nó tự dừng, đúng hành vi bản gốc.
 const fetchWaiting = async () => {
   try {
-    const res = await axios.get('/api/production-batches', { params: { status: 'NEW', per_page: 100 } });
+    const res = await axios.get(`${API}/production-batches`, { params: { status: 'NEW', per_page: 100 } });
     const rows = [...res.data.data].sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
@@ -586,6 +605,8 @@ const fetchWaiting = async () => {
 let pollInterval: any = null;
 
 onMounted(() => {
+  // Ẩn sẵn sidebar+topbar khi vào trang — người đã đăng nhập bấm nút 3 gạch mới lộ menu.
+  if (isLoggedIn) isFullscreen.value = true;
   fetchMetadata();
   fetchWaiting();
   box1Ref.value?.focus();
@@ -614,6 +635,7 @@ onUnmounted(() => {
   echo.leaveChannel('production-batches');
   window.removeEventListener('resize', fitAll);
   ro?.disconnect();
+  isFullscreen.value = previousIsFullscreen;
 });
 </script>
 

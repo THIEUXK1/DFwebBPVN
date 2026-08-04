@@ -104,17 +104,24 @@ const routes = [
     component: () => import('../views/ProductionBatchesList.vue'),
     meta: { requiresAuth: true }
   },
+  // 3 route dưới đây (grid / print-order-entry / machine-id-board) để requiresAuth:false theo
+  // yêu cầu 2026-08-04 — máy xưởng mở thẳng bằng link, không phải đăng nhập, KỂ CẢ thao tác
+  // ghi. Chúng gọi nhóm /api/public/... (xem routes/api.php); người ĐÃ đăng nhập vẫn có menu
+  // vì mỗi trang tự bọc AppLayout và lộ ra bằng nút 3 gạch (xem NavToggleButton.vue).
+  //
+  // 2 trạm cân (/weighing-station-v2, /weighing-station-large) CỐ Ý giữ requiresAuth:true —
+  // phải lưu được người cân và tài khoản duyệt override dung sai (CLAUDE.md mục 5).
   {
     path: '/production-batches/grid',
     name: 'ProductionBatchesGrid',
     component: () => import('../views/ProductionBatchesGrid.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: false }
   },
   {
     path: '/print-order-entry',
     name: 'PrintOrderEntry',
     component: () => import('../views/PrintOrderEntry.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: false }
   },
   {
     path: '/print-sent-log',
@@ -128,7 +135,7 @@ const routes = [
     path: '/machine-id-board',
     name: 'MachineIdBoard',
     component: () => import('../views/MachineIdBoard.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: false }
   },
   {
     path: '/order-scan',

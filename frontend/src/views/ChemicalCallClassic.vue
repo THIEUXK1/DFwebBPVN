@@ -1,4 +1,6 @@
 <template>
+  <!-- `pageWrapper` là HẰNG SỐ quyết định một lần lúc khởi tạo (xem script). -->
+  <component :is="pageWrapper">
   <div class="classic-container">
     <div v-if="errorMsg" class="alert-box alert-error">⚠️ {{ errorMsg }}</div>
 
@@ -45,14 +47,26 @@
     </div>
 
     <FullscreenButton />
+    <NavToggleButton />
   </div>
+  </component>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import echo from '../services/echo';
+import AppLayout from '../components/AppLayout.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
+import NavToggleButton from '../components/NavToggleButton.vue';
+import { isFullscreen } from '../services/layout';
+import { useAuthStore } from '../stores/auth';
+
+// Trang công khai (requiresAuth:false) — App.vue không bọc AppLayout, trang tự bọc lấy khi
+// người xem đã đăng nhập để vẫn có menu điều hướng (mở bằng nút 3 gạch, xem NavToggleButton).
+const isLoggedIn = useAuthStore().isAuthenticated;
+const pageWrapper = isLoggedIn ? AppLayout : 'div';
+const previousIsFullscreen = isFullscreen.value;
 
 // Bảng gọi hóa chất "cổ điển" — dựng lại ĐÚNG giao diện UserForm CHEM_ORDER của
 // "1.báo phát AC XƯỞNG -193.xlsm" (2 cột máy, mỗi thùng 1 hàng: số thùng + nút gọi
@@ -183,6 +197,8 @@ async function markDone(channel: ChemicalChannel) {
 }
 
 onMounted(async () => {
+  // Ẩn sẵn sidebar+topbar khi vào trang — người đã đăng nhập bấm nút 3 gạch mới lộ menu.
+  if (isLoggedIn) isFullscreen.value = true;
   await fetchChannels();
 
   echo.channel('chemical-channels').listen('.updated', fetchChannels);
@@ -196,6 +212,7 @@ onMounted(async () => {
 onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval);
   echo.leaveChannel('chemical-channels');
+  isFullscreen.value = previousIsFullscreen;
 });
 </script>
 

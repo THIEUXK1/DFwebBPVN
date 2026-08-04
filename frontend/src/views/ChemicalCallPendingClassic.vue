@@ -1,4 +1,6 @@
 <template>
+  <!-- `pageWrapper` là HẰNG SỐ quyết định một lần lúc khởi tạo (xem script). -->
+  <component :is="pageWrapper">
   <div class="classic-container" ref="rootRef" :style="rootH ? { height: rootH + 'px' } : undefined">
     <div v-if="errorMsg" class="alert-box alert-error">⚠️ {{ errorMsg }}</div>
 
@@ -44,7 +46,9 @@
     </div>
 
     <FullscreenButton />
+    <NavToggleButton />
   </div>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -53,7 +57,17 @@ import axios from 'axios';
 import echo from '../services/echo';
 import ChemicalCallQrThumb from '../components/ChemicalCallQrThumb.vue';
 import ChemicalCallQrImage from '../components/ChemicalCallQrImage.vue';
+import AppLayout from '../components/AppLayout.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
+import NavToggleButton from '../components/NavToggleButton.vue';
+import { isFullscreen } from '../services/layout';
+import { useAuthStore } from '../stores/auth';
+
+// Trang công khai (requiresAuth:false) — App.vue không bọc AppLayout, trang tự bọc lấy khi
+// người xem đã đăng nhập để vẫn có menu điều hướng (mở bằng nút 3 gạch, xem NavToggleButton).
+const isLoggedIn = useAuthStore().isAuthenticated;
+const pageWrapper = isLoggedIn ? AppLayout : 'div';
+const previousIsFullscreen = isFullscreen.value;
 
 // Dựng lại ĐÚNG giao diện UserForm CHEM_ORDER của "6.báo phát AC- 151.xlsm" — hàng đợi
 // dọc CỐ ĐỊNH 4 ô (txt_mac1..4/btnok1..4/txt_chem1..4/imgQR1..4, xem
@@ -168,6 +182,8 @@ async function markDone(channel: ChemicalChannel) {
 }
 
 onMounted(async () => {
+  // Ẩn sẵn sidebar+topbar khi vào trang — người đã đăng nhập bấm nút 3 gạch mới lộ menu.
+  if (isLoggedIn) isFullscreen.value = true;
   await fetchChannels();
 
   echo.channel('chemical-channels').listen('.updated', fetchChannels);
@@ -188,6 +204,7 @@ onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval);
   echo.leaveChannel('chemical-channels');
   window.removeEventListener('resize', refit);
+  isFullscreen.value = previousIsFullscreen;
 });
 </script>
 

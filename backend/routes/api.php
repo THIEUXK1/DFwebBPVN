@@ -77,6 +77,29 @@ Route::post('/public/chemical-call-requests', [ChemicalCallController::class, 'c
 Route::patch('/public/chemical-call-requests/{id}/complete', [ChemicalCallController::class, 'complete']);
 Route::patch('/public/chemical-call-requests/{id}/reset', [ChemicalCallController::class, 'reset']);
 
+// Public — 3 màn hình dựng lại form VBA chạy ở máy xưởng, theo yêu cầu 2026-08-04:
+// /production-batches/grid (MainForm C3), /print-order-entry (TO_SEND DF002) và
+// /machine-id-board (bảng thông tin đơn theo máy). Mở đúng các endpoint 3 màn đó gọi.
+//
+// KHÔNG mở nhóm cân (`weighing-jobs/*`, `scanner/*`): 2 trạm cân vẫn yêu cầu đăng nhập vì
+// phải giữ định danh người cân và tài khoản QA/QC duyệt override dung sai (CLAUDE.md mục 5
+// "Nhật ký Thay đổi"). Người dùng đã chốt ranh giới này ngày 2026-08-04.
+//
+// Cùng đánh đổi như nhóm hóa chất ở trên: `auth()->id()` trả null nên các thao tác ghi qua
+// đây (tạo/duyệt đơn, xác nhận gửi máy) không có định danh người thực hiện.
+Route::get('/public/production-batches', [ProductionBatchController::class, 'index']);
+Route::post('/public/production-batches', [ProductionBatchController::class, 'store']);
+Route::get('/public/machines', [ProductionBatchController::class, 'machines']);
+Route::get('/public/tanks', [ProductionBatchController::class, 'tanks']);
+Route::post('/public/production-batches/scan-parse', [ProductionBatchController::class, 'scanParse']);
+Route::put('/public/production-batches/{id}/status', [ProductionBatchController::class, 'updateStatus']);
+Route::put('/public/production-batches/{id}/tank', [ProductionBatchController::class, 'updateTank']);
+Route::post('/public/production-batches/{id}/approve', [ProductionBatchController::class, 'approve']);
+Route::get('/public/machine-dispatches', [MachineDispatchController::class, 'index']);
+Route::get('/public/machine-dispatches/history', [MachineDispatchController::class, 'history']);
+Route::post('/public/machine-dispatches/{id}/confirm', [MachineDispatchController::class, 'confirm']);
+Route::patch('/public/machine-dispatches/{id}/scale-checked', [MachineDispatchController::class, 'updateScaleChecked']);
+
 // Protected Auth Routes
 Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);

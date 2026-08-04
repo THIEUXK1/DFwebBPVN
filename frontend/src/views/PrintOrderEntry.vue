@@ -3,7 +3,11 @@
        - jit qr sending - 15l special(1).xlsm" theo ĐÚNG tọa độ trích từ VBA designer
        (đơn vị pt, form 1416 × 733pt — đúng tên "PRINTER LANDSCAPE").
        Bảng màu cố định theo hệ màu Windows cổ điển của MSForms, cố ý KHÔNG dùng design
-       token dark/light của app vì yêu cầu là giống hệt bản gốc. -->
+       token dark/light của app vì yêu cầu là giống hệt bản gốc.
+
+       `pageWrapper` là HẰNG SỐ quyết định một lần lúc khởi tạo (xem script) — đổi nó sau khi
+       mount sẽ buộc Vue dựng lại toàn bộ cây con và mất trạng thái đo/thu phóng của trang. -->
+  <component :is="pageWrapper">
   <div class="vba-scroll" ref="rootRef" :style="rootH ? { height: rootH + 'px' } : undefined">
     <!-- Cả mặt form được thu/phóng bằng MỘT phép transform: scale() nên tỉ lệ giữa các ô, cỡ chữ
          và độ dày viền không bao giờ lệch so với bản gốc dù màn hình to nhỏ thế nào. -->
@@ -84,7 +88,9 @@
     </div>
 
     <FullscreenButton variant="vba" @change="refit" />
+    <NavToggleButton variant="vba" />
   </div>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -94,7 +100,20 @@ import echo from '../services/echo';
 import { currentWorkstation } from '../services/workstation';
 import { applyVbaRowLock, vbaAgeColor } from '../utils/vbaRowLock';
 import VbaPrintForm, { type VbaPrintFormData } from '../components/VbaPrintForm.vue';
+import AppLayout from '../components/AppLayout.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
+import NavToggleButton from '../components/NavToggleButton.vue';
+import { isFullscreen } from '../services/layout';
+import { useAuthStore } from '../stores/auth';
+
+// Trang công khai (requiresAuth:false) — App.vue không bọc AppLayout, trang tự bọc lấy khi
+// người xem đã đăng nhập để vẫn có menu điều hướng (mở bằng nút 3 gạch, xem NavToggleButton).
+const isLoggedIn = useAuthStore().isAuthenticated;
+const pageWrapper = isLoggedIn ? AppLayout : 'div';
+const previousIsFullscreen = isFullscreen.value;
+
+// Endpoint /api/public/... — trang không đăng nhập không gọi được nhóm /api/ thường.
+const API = '/api/public';
 
 const FORM_W = 1416;
 const FORM_H = 733;
@@ -220,7 +239,7 @@ const fmt = (d: string) => (d ? new Date(d).toLocaleString('vi-VN', { hour12: fa
 const onToggleScaleCheck = async (slot: any, checked: boolean) => {
   if (!slot) return;
   try {
-    await axios.patch(`/api/machine-dispatches/${slot.id}/scale-checked`, { scale_checked: checked });
+    await axios.patch(`${API}/machine-dispatches/${slot.id}/scale-checked`, { scale_checked: checked });
     slot.scale_checked = checked;
     say(`Đã ${checked ? 'tick' : 'bỏ tick'} đối chiếu cân cho đơn ${slot.batch?.color || ''}.`);
   } catch (e: any) {
@@ -274,7 +293,7 @@ const onConfirm = async (slot: any) => {
   if (!slot) return;
   confirmingId.value = slot.id;
   try {
-    await axios.post(`/api/machine-dispatches/${slot.id}/confirm`, {
+    await axios.post(`${API}/machine-dispatches/${slot.id}/confirm`, {
       idempotency_key: `printorder_${slot.id}_${Date.now()}`,
       workstation_id: currentWorkstation.value?.code || undefined,
       printed_via_browser: true,
@@ -290,7 +309,7 @@ const onConfirm = async (slot: any) => {
 
 const fetchDispatches = async () => {
   try {
-    const res = await axios.get('/api/machine-dispatches');
+    const res = await axios.get(`${API}/machine-dispatches`);
     // VBA đọc "ORDER BY id" (cũ nhất trước), API trả created_at DESC -> đảo lại.
     const rows = [...res.data].reverse();
     dispatches.value = rows;
@@ -305,7 +324,7 @@ const fetchDispatches = async () => {
 // Mod_load_input.LoadAllVD_Input — đơn CHƯA duyệt (tbl_input_all), nhóm theo máy, cũ nhất trước.
 const fetchWaiting = async () => {
   try {
-    const res = await axios.get('/api/production-batches', { params: { status: 'NEW', per_page: 100 } });
+    const res = await axios.get(`${API}/production-batches`, { params: { status: 'NEW', per_page: 100 } });
     waitingBatches.value = res.data.data;
   } catch (e) {
     console.error('Error fetching waiting batches:', e);
@@ -317,6 +336,8 @@ const refreshAll = () => { fetchDispatches(); fetchWaiting(); };
 let pollInterval: any = null;
 
 onMounted(() => {
+  // Ẩn sẵn sidebar+topbar khi vào trang — người đã đăng nhập bấm nút 3 gạch mới lộ menu.
+  if (isLoggedIn) isFullscreen.value = true;
   refreshAll();
   // Mod_FE_REFRESH: bản gốc tự làm mới mỗi 15s.
   echo.channel('production-batches').listen('.updated', refreshAll);
@@ -343,6 +364,7 @@ onUnmounted(() => {
   echo.leaveChannel('production-batches');
   window.removeEventListener('resize', fitAll);
   ro?.disconnect();
+  isFullscreen.value = previousIsFullscreen;
 });
 </script>
 

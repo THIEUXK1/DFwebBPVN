@@ -6,7 +6,11 @@
 
        Bản gốc là màn hình CHỈ ĐỌC (không có nút, không nhập liệu): 18 máy VD, mỗi máy gồm
        khối "đã gửi" 4 thùng 1A/2B/3C/4D (tbl_SentLog, 24h gần nhất) và khối "đang chờ" 6
-       dòng (tbl_input_all). Nạp lại mỗi 3 phút — Mod_time3min.RunAutoVD. -->
+       dòng (tbl_input_all). Nạp lại mỗi 3 phút — Mod_time3min.RunAutoVD.
+
+       `pageWrapper` là HẰNG SỐ quyết định một lần lúc khởi tạo (xem script) — đổi nó sau khi
+       mount sẽ buộc Vue dựng lại toàn bộ cây con và mất trạng thái đo/thu phóng của trang. -->
+  <component :is="pageWrapper">
   <div class="vba-scroll" ref="rootRef" :style="rootH ? { height: rootH + 'px' } : undefined">
     <div class="vba-stage-wrap" ref="wrapRef">
       <div class="vba-fit"
@@ -81,14 +85,33 @@
     </div>
 
     <FullscreenButton variant="vba" @change="refit" />
+    <NavToggleButton variant="vba" />
   </div>
+  </component>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import axios from 'axios';
 import echo from '../services/echo';
+import AppLayout from '../components/AppLayout.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
+import NavToggleButton from '../components/NavToggleButton.vue';
+import { isFullscreen } from '../services/layout';
+import { useAuthStore } from '../stores/auth';
+
+// Trang công khai (requiresAuth:false) — App.vue vì vậy KHÔNG bọc AppLayout, trang tự bọc
+// lấy khi người xem đã đăng nhập để họ vẫn có menu điều hướng quen thuộc (mở bằng nút 3 gạch,
+// xem NavToggleButton). Người xem công khai thì chỉ là 'div' trần.
+const isLoggedIn = useAuthStore().isAuthenticated;
+const pageWrapper = isLoggedIn ? AppLayout : 'div';
+
+// isFullscreen là singleton dùng chung toàn app — nhớ giá trị cũ để trả lại khi rời trang,
+// tránh rò rỉ trạng thái ẩn sidebar sang trang khác trong cùng phiên SPA.
+const previousIsFullscreen = isFullscreen.value;
+
+// Endpoint /api/public/... — xem ghi chú cùng nội dung ở ChemicalCallClassic.vue.
+const API = '/api/public';
 
 /* ===== Kích thước thật của UserForm gốc (InsideWidth/InsideHeight, đơn vị point) ===== */
 const FORM_W = 1413;
@@ -193,7 +216,7 @@ const confirmTimeOf = (d: any): string =>
 
 /** tbl_SentLog: mỗi (máy, thùng) lấy bản ghi mới nhất còn trong 24h. */
 const loadSent = async () => {
-  const res = await axios.get('/api/machine-dispatches/history');
+  const res = await axios.get(`${API}/machine-dispatches/history`);
   const rows: any[] = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
   const next: Record<string, Cell> = {};
   const bestTs: Record<string, number> = {};
@@ -228,7 +251,7 @@ const loadSent = async () => {
 
 /** tbl_input_all: mỗi máy TOP 6 theo TIME1 tăng dần. */
 const loadWaiting = async () => {
-  const res = await axios.get('/api/machine-dispatches');
+  const res = await axios.get(`${API}/machine-dispatches`);
   const rows: any[] = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
   const buckets: Record<string, { ts: string; cell: Cell }[]> = {};
 
@@ -278,6 +301,9 @@ const loadAll = async () => {
 let timer: any = null;
 
 onMounted(() => {
+  // Vào trang là ẩn sẵn sidebar+topbar — giữ đúng bề ngoài gọn của bản công khai, người đã
+  // đăng nhập bấm nút 3 gạch mới lộ menu ra.
+  if (isLoggedIn) isFullscreen.value = true;
   fitAll();
   window.addEventListener('resize', refit);
   if (typeof ResizeObserver !== 'undefined' && wrapRef.value) {
@@ -295,6 +321,7 @@ onUnmounted(() => {
   ro?.disconnect();
   if (timer) clearInterval(timer);
   echo.leaveChannel('production-batches');
+  isFullscreen.value = previousIsFullscreen;
 });
 </script>
 
