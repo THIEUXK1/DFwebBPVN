@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
-import { setWorkstation } from '../services/workstation';
+import { hasManualWorkstation, setWorkstation } from '../services/workstation';
 
 interface Workstation {
   id: number;
@@ -155,7 +155,11 @@ export const useAuthStore = defineStore('auth', {
             this.setKioskSession(this.token, this.kioskClient);
           }
         } else {
-          if (this.user?.workstation) {
+          // KHÔNG đè lên trạm người dùng tự chọn: `initialize()` chạy ở mọi lần điều hướng và
+          // mọi lần F5 (router.beforeEach), trước bản vá 2026-08-04 nó đặt lại trạm gắn với tài
+          // khoản mỗi lần nạp trang -> chọn trạm khác xong F5 là mất. Trạm của tài khoản chỉ
+          // còn là mặc định lúc ĐĂNG NHẬP (xem `login()`), không phải mỗi lần nạp trang.
+          if (this.user?.workstation && !hasManualWorkstation()) {
             setWorkstation(this.user.workstation);
           }
         }

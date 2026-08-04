@@ -3,9 +3,11 @@
     <!-- Mobile Sidebar Drawer Overlay -->
     <div class="sidebar-overlay" @click="mobileOpen = false"></div>
 
-    <!-- Left Sidebar — hidden entirely for station-scoped accounts (1 máy tính = 1 nhiệm vụ)
-         hoặc khi đang bật chế độ Toàn màn hình (xem nút ⛶ ở topbar). -->
-    <aside class="sidebar" v-if="!isLockedStation && !isFullscreen">
+    <!-- Left Sidebar — CHỈ tài khoản ADMIN thấy (yêu cầu 2026-08-04). Tài khoản khách/vận hành
+         chỉ còn thanh trên cùng: vẫn đổi được trạm, xem được tên trạm và đăng xuất, nhưng không
+         có cây menu để đi lạc sang công đoạn khác.
+         Cũng ẩn khi đang bật chế độ Toàn màn hình (xem nút ⛶ ở topbar). -->
+    <aside class="sidebar" v-if="canSeeMenu && !isFullscreen">
       <div class="sidebar-header">
         <div class="logo-circle">DF</div>
         <span class="logo-text">DF Connector</span>
@@ -56,7 +58,7 @@
       <header class="topbar" v-if="!isFullscreen">
         <div class="topbar-left">
           <!-- Mobile Menu Burger -->
-          <button v-if="!isLockedStation" @click="mobileOpen = !mobileOpen" class="mobile-burger-btn">
+          <button v-if="canSeeMenu" @click="mobileOpen = !mobileOpen" class="mobile-burger-btn">
             <SvgIcon name="menu" size="20" />
           </button>
 
@@ -69,15 +71,19 @@
         </div>
 
         <div class="topbar-right">
-          <!-- Workstation Pill: clickable to change only for back-office accounts. Station-scoped
-               accounts are locked by Admin (WS-003) — no self-service switch. -->
+          <!-- Workstation Pill: mọi tài khoản đã đăng nhập đều bấm được để đổi trạm. Chỉ phiên
+               kiosk (mở bằng link máy, không đăng nhập) mới bị cố định trạm theo link. -->
           <div
             class="ws-pill mr-2"
-            :class="{ clickable: !isLockedStation }"
+            :class="{ clickable: !isLockedStation, mismatch: capabilityMismatch }"
             @click="!isLockedStation && openWsModal()"
-            :title="isLockedStation ? 'Trạm được Admin gán cố định cho tài khoản này' : 'Đổi trạm làm việc hiện tại'"
+            :title="isLockedStation
+              ? 'Phiên kiosk — trạm cố định theo link của máy này'
+              : (capabilityMismatch
+                ? `Trạm ${currentWorkstation?.code} không đúng loại cho màn hình này — dữ liệu sẽ ghi dưới tên trạm này. Bấm để đổi trạm.`
+                : 'Đổi trạm làm việc hiện tại')"
           >
-            <span class="ws-icon">🖥️</span>
+            <span class="ws-icon">{{ capabilityMismatch ? '⚠️' : '🖥️' }}</span>
             <span class="ws-text">{{ currentWorkstation ? currentWorkstation.code : 'Chưa cấu hình Trạm' }}</span>
           </div>
 
@@ -167,10 +173,10 @@
           </div>
         </div>
 
-        <!-- Trạm đang chọn KHÔNG có quyền cho màn hình đang mở (vd còn WS-ORDER-01 từ màn
-             hình trước nhưng đang mở /print-station) — báo lỗi rõ ràng, không âm thầm dùng
-             sai trạm hoặc tự chuyển trạm khác -->
-        <div v-else-if="currentWorkstation && capabilityMismatch" class="ws-blocker-overlay">
+        <!-- Phiên kiosk mở nhầm link: trạm của link không có quyền cho màn hình đang mở.
+             Chặn hẳn vì người đứng máy không tự đổi được trạm. Tài khoản đã đăng nhập KHÔNG
+             rơi vào đây nữa — chỉ bị cảnh báo ở ws-pill (xem blockOnMismatch). -->
+        <div v-else-if="currentWorkstation && blockOnMismatch" class="ws-blocker-overlay">
           <div class="ws-blocker-card">
             <h3>⚠️ Trạm "{{ currentWorkstation.code }}" không có quyền cho màn hình này</h3>
             <p class="text-muted mb-4">
@@ -243,13 +249,13 @@
           </div>
         </div>
 
-        <slot v-if="(currentWorkstation || authStore.isAdmin) && !resolvingFromLink && !capabilityMismatch"></slot>
+        <slot v-if="(currentWorkstation || authStore.isAdmin) && !resolvingFromLink && !blockOnMismatch"></slot>
       </div>
     </div>
 
     <!-- Nút thoát Toàn màn hình — nổi ở góc phải trên, luôn thấy được để quay lại layout bình thường -->
     <button v-if="isFullscreen" @click="isFullscreen = false" class="exit-fullscreen-btn" title="Thoát toàn màn hình">
-      ✕ Thoát toàn màn hình
+      ✕
     </button>
   </div>
 </template>
@@ -307,18 +313,22 @@ const agentInstallers = [
   },
 ].map(bo => ({ ...bo, url: `http://${window.location.hostname}:8500/downloads/agent-launcher/${bo.kind}` }));
 
-// Station-scoped account (WS-001) HOẶC phiên kiosk (link riêng máy, không đăng nhập):
-// công đoạn được cố định theo tài khoản/link, không cho đổi tay qua dropdown.
+// CHỈ phiên kiosk (mở bằng link riêng của máy, KHÔNG đăng nhập) mới bị khóa cứng trạm —
+// ở đó không có ai chịu trách nhiệm chọn đúng trạm nên trạm phải do link quyết định.
+//
+// Đã bỏ khóa theo tài khoản (2026-08-04, yêu cầu người dùng): trước đây tài khoản gắn cứng
+// trạm (canto/cannho, users.operation_client_id) bị ẩn sidebar và không bấm được nút đổi
+// trạm. Nay MỌI tài khoản đã đăng nhập đều đổi trạm được như tài khoản back-office —
+// trạm gán sẵn chỉ còn là giá trị mặc định lúc đăng nhập, không phải ràng buộc.
 const isLockedStation = computed(() => {
   if (authStore.isAdmin) return false;
-  if (authStore.isKiosk) return true;
-  const wsConfigStr = localStorage.getItem('df_workstation_config');
-  let wsConfig = null;
-  try {
-    wsConfig = wsConfigStr ? JSON.parse(wsConfigStr) : null;
-  } catch (e) {}
-  return !!authStore.user?.workstation || !!(wsConfig && wsConfig.locked_to_type);
+  return authStore.isKiosk;
 });
+
+// Cây menu bên trái là của riêng ADMIN (yêu cầu 2026-08-04). Mọi tài khoản khác — kể cả tài
+// khoản vận hành đã đăng nhập — chỉ thấy thanh trên cùng. Cố ý TÁCH khỏi `isLockedStation`:
+// hai thứ này từng dùng chung một cờ nên gỡ khóa trạm là menu tự hiện ra theo, sai ý đồ.
+const canSeeMenu = computed(() => authStore.isAdmin);
 
 const mobileOpen = ref(false);
 
@@ -340,10 +350,8 @@ const wsCodeParam = computed(() => route.query.ws as string | undefined);
 const resolvingFromLink = ref(!!wsCodeParam.value);
 const wsLinkInvalid = ref(false);
 
-// Trạm đang chọn (từ URL hoặc còn sót lại từ màn hình trước) không có capability cho
-// route hiện tại — vd currentWorkstation=WS-ORDER-01 (PRODUCTION_ORDER) nhưng route
-// đang mở là /print-station (cần QR_LABEL_PRINTING). KHÔNG được âm thầm render dữ
-// liệu sai trạm trong trường hợp này — phải chặn lại và báo lỗi rõ ràng.
+// Trạm đang chọn không có capability cho route hiện tại — vd currentWorkstation=WS-ORDER-01
+// (PRODUCTION_ORDER) nhưng route đang mở là /print-station (cần QR_LABEL_PRINTING).
 const capabilityMismatch = computed(() => {
   // Admin không bị chặn bởi capability của trạm đang chọn — có đủ quyền xem mọi màn
   // hình bất kể trạm hiện tại (nếu có) thuộc loại gì (yêu cầu 2026-07-24).
@@ -352,6 +360,14 @@ const capabilityMismatch = computed(() => {
   if (!ROUTE_CAPABILITY_MAP[route.path]) return false;
   return !workstationMatchesRoute(currentWorkstation.value, route.path);
 });
+
+// Chặn CỨNG (không render nội dung) chỉ còn áp dụng cho phiên kiosk — ở đó trạm do link của
+// máy quyết định, lệch capability nghĩa là link sai, người đứng máy không tự sửa được.
+//
+// Tài khoản đã đăng nhập thì KHÔNG chặn nữa (yêu cầu 2026-08-04: "1 tài khoản chọn trạm nào
+// cũng được"). Người chọn trạm là người chịu trách nhiệm; đổi lại vẫn cảnh báo bằng ws-pill
+// đỏ trên topbar để không âm thầm ghi dữ liệu dưới tên một trạm sai loại.
+const blockOnMismatch = computed(() => authStore.isKiosk && capabilityMismatch.value);
 
 async function resolveWorkstationForRoute() {
   const code = wsCodeParam.value;
@@ -396,7 +412,9 @@ const openWsModal = () => {
 const confirmWsSelection = () => {
   const ws = workstationsList.value.find(w => w.id === selectedWsId.value);
   if (ws) {
-    setWorkstation(ws);
+    // `manual: true` = ghim lại, sống qua F5 và không bị trạm của tài khoản / whoami-theo-IP
+    // đè lên ở lần nạp trang sau (yêu cầu 2026-08-04).
+    setWorkstation(ws, { manual: true });
     showWsModal.value = false;
   }
 };
@@ -421,11 +439,12 @@ const menuGroupsRaw = [
       // (4.semiauto-small scale.xlsm vs 5.Semiauto-lockmove SEND OVER6.xlsm), tức 2 công đoạn
       // và 2 máy trạm khác nhau ngoài xưởng.
       //
-      // Cả hai còn adminOnly vì tài khoản vận hành bị khóa cứng vào đúng 1 màn hình (router
-      // guard), bấm vào chỉ bị đá ngược về màn hình cũ. Bỏ cờ này khi chuyển default_route của
-      // WS-SMALL-* / WS-LARGE-01 sang đúng 2 route dưới đây.
-      { path: '/weighing-station-v2', label: 'Cân nhỏ', icon: 'scale', adminOnly: true },
-      { path: '/weighing-station-large', label: 'Cân to', icon: 'scale', adminOnly: true },
+      // Đã bỏ adminOnly (2026-08-04): default_route của WS-SMALL-* / WS-LARGE-01 nay trỏ đúng
+      // 2 route này, nên tài khoản trạm cân (cannho/canto) vào thẳng màn hình của mình sau khi
+      // đăng nhập. Cờ adminOnly ở đây giờ cũng gần như vô nghĩa với các mục còn lại: chỉ ADMIN
+      // mới thấy sidebar (canSeeMenu), tài khoản khác không có menu để mà lọc.
+      { path: '/weighing-station-v2', label: 'Cân nhỏ', icon: 'scale' },
+      { path: '/weighing-station-large', label: 'Cân to', icon: 'scale' },
       { path: '/weighing-history', label: 'Lịch sử cân', icon: 'scale', adminOnly: true },
       { path: '/chemical-call', label: 'Gọi hóa chất', icon: 'recipe' },
       { path: '/chemical-call/monitor', label: 'Giám sát Hóa chất', icon: 'dashboard' },
@@ -898,7 +917,9 @@ const handleLogout = () => {
   overflow-y: auto;
 }
 
-/* Nút thoát Toàn màn hình — nổi cố định ở góc phải trên, luôn nằm trên mọi nội dung */
+/* Nút thoát Toàn màn hình — nổi cố định ở góc phải trên, luôn nằm trên mọi nội dung.
+   Chỉ để dấu ✕ (nhãn chữ đầy đủ nằm ở tooltip): nút này che nội dung ở góc phải trên
+   suốt thời gian toàn màn hình nên phải chiếm ít chỗ nhất có thể. */
 .exit-fullscreen-btn {
   position: fixed;
   top: 16px;
@@ -906,13 +927,16 @@ const handleLogout = () => {
   z-index: 2000;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border-radius: var(--radius-full);
   background-color: var(--bg-card);
   border: 1px solid var(--border-card);
   color: var(--text-body);
-  font-size: 0.85rem;
+  font-size: 0.95rem;
+  line-height: 1;
   font-weight: 600;
   box-shadow: var(--shadow-lg);
   cursor: pointer;
@@ -983,6 +1007,14 @@ const handleLogout = () => {
 .ws-pill:hover {
   border-color: var(--status-blue);
   background-color: var(--bg-card-hover);
+}
+/* Trạm đang chọn không đúng loại cho màn hình đang mở. Từ 2026-08-04 việc này KHÔNG còn chặn
+   nội dung với tài khoản đã đăng nhập (họ được tự do chọn trạm), nên tín hiệu cảnh báo phải
+   nằm ở đây — nếu không thao tác cân/in sẽ ghi dưới tên một trạm sai loại mà không ai biết. */
+.ws-pill.mismatch {
+  color: var(--status-orange);
+  border-color: var(--status-orange-border);
+  background-color: var(--status-orange-bg);
 }
 .ws-blocker-overlay {
   display: flex;

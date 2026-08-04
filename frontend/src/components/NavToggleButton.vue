@@ -1,6 +1,5 @@
 <template>
-  <!-- Chỉ hiện với người ĐÃ đăng nhập: người xem công khai không được bọc AppLayout nên
-       không có menu nào để mở ra (xem `pageWrapper` trong các trang dùng nút này). -->
+  <!-- Người ĐÃ đăng nhập: nút 3 gạch mở lại menu điều hướng. -->
   <button
     v-if="isLoggedIn"
     class="nav-toggle-btn"
@@ -11,11 +10,28 @@
   >
     <SvgIcon name="menu" size="16" />
   </button>
+
+  <!-- Người xem công khai: không được bọc AppLayout nên không có menu để mở, cũng không có
+       nút Đăng xuất/Hồ sơ ở topbar — trước bản này họ không có đường nào quay về trang đăng
+       nhập ngoài việc tự gõ URL (báo lỗi 2026-08-04). Đưa kèm ?redirect= để đăng nhập xong
+       quay lại đúng màn hình đang xem. -->
+  <button
+    v-else
+    class="nav-toggle-btn"
+    :class="variant === 'vba' ? 'nav-vba' : 'nav-app'"
+    :style="{ zIndex }"
+    title="Đăng nhập tài khoản"
+    @click="goToLogin"
+  >
+    <SvgIcon name="user" size="16" />
+    <span class="nav-toggle-label">Đăng nhập</span>
+  </button>
 </template>
 
 <script setup lang="ts">
 import { isFullscreen } from '../services/layout';
 import { useAuthStore } from '../stores/auth';
+import { useRoute, useRouter } from 'vue-router';
 import SvgIcon from './SvgIcon.vue';
 
 /**
@@ -40,6 +56,13 @@ withDefaults(defineProps<{
 // Đọc MỘT LẦN: phiên đăng nhập không đổi giữa chừng trong lúc đang xem một trang, mà để
 // reactive thì nút xuất hiện/biến mất lệch nhịp với `pageWrapper` vốn đã cố định lúc mount.
 const isLoggedIn = useAuthStore().isAuthenticated;
+
+const router = useRouter();
+const route = useRoute();
+
+const goToLogin = () => {
+  router.push({ path: '/login', query: { redirect: route.fullPath } });
+};
 </script>
 
 <style scoped>
@@ -50,8 +73,17 @@ const isLoggedIn = useAuthStore().isAuthenticated;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   cursor: pointer;
   opacity: 0.9;
+}
+
+/* Nút Đăng nhập có kèm chữ (khác nút 3 gạch chỉ có icon) — icon người dùng một mình dễ bị
+   hiểu nhầm là "hồ sơ tài khoản" trong khi ở đây chưa hề đăng nhập. */
+.nav-toggle-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .nav-toggle-btn:hover {

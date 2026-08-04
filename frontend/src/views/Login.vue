@@ -64,10 +64,11 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 
 const username = ref('');
@@ -76,7 +77,15 @@ const password = ref('');
 const handleLogin = async () => {
   const success = await authStore.login(username.value, password.value);
   if (success) {
-    router.push('/');
+    // Vào đây từ nút "Đăng nhập" của một trang công khai (NavToggleButton) thì quay lại đúng
+    // trang đó. Chỉ nhận đường dẫn nội bộ bắt đầu bằng "/" (không phải "//") — chuỗi tuỳ ý
+    // trên URL không được phép trở thành đích điều hướng ra ngoài.
+    const redirect = route.query.redirect;
+    const target =
+      typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')
+        ? redirect
+        : '/';
+    router.push(target);
   }
 };
 </script>

@@ -1943,3 +1943,49 @@ Trang can dang nhap nen khong chup truc tiep duoc -> dung `scratchpad/preview.mj
   - **Ma may phai khop theo phan so**: web seed `VD001..VD018`, ban VBA dung `VD01..VD18`.
   - Nap lai 3 phut dung nhip ban goc, co them listener Echo `production-batches` de khong phai cho het 3 phut khi co don moi.
 - **Kiem chung:** `vue-tsc --noEmit` exit 0. **Chua xem bang mat tren trinh duyet** — can nguoi dung tu mo `/machine-id-board` doi chieu voi form VBA that.
+
+### 104. 2 tai khoan rieng cho 2 tram can + thu gon nut thoat Toan man hinh (2026-08-04)
+
+- **Yeu cau nguoi dung:** nut thoat Toan man hinh cua layout dai qua, can gon lai; va can **2 tai khoan** — mot cho "Can nho", mot cho "Can to" — dang nhap vao **chi thay dung man hinh cua minh**.
+- **Nut thoat Toan man hinh (`AppLayout.vue`):** bo nhan chu, chi con dau `✕` trong nut tron 32x32 (nhan day du chuyen vao `title`). Nut nay nam de o goc phai tren suot thoi gian toan man hinh nen phai chiem it cho nhat co the. **Khong dung** toi `FullscreenButton.vue` (nut noi goc phai duoi cua 8 man van hanh) — component khac.
+- **2 tai khoan:** `ScaleOperatorUsersSeeder` (chay rieng: `php artisan db:seed --class=ScaleOperatorUsersSeeder`).
+  - `cannho` / `cannho@123` -> tram `WS-SMALL-01` -> `/weighing-station-v2` (ban dung lai `4.semiauto-small scale.xlsm`).
+  - `canto` / `canto@123` -> tram `WS-LARGE-01` -> `/weighing-station-large` (ban dung lai `5.Semiauto- lockmove SEND OVER6.xlsm`).
+  - **Khong viet co che khoa moi** — noi vao co che WS-001 da co: `users.operation_client_id` -> AuthController tra kem `workstation` -> `router/index.ts` da moi route khac ve `default_route` (tai khoan khong phai ADMIN) -> `AppLayout.vue` an han sidebar va khoa nut doi tram (`isLockedStation`).
+  - Seeder **tu tao luon 2 tram** neu chua co: DB dev/production duoc dung dan bang dang ky Agent theo IP, khong phai luc nao cung da chay `WorkstationsSeeder` (DB dev thuc te khong he co `WS-SMALL-01`/`WS-LARGE-01`). Phai gan du capability (`SMALL_SCALE`/`LARGE_SCALE` + WEIGH/PRINT/SCAN_QR/LOCAL_AGENT), thieu la `AppLayout` chan nham "tram khong co quyen cho man hinh nay".
+  - **KHONG goi trong `DatabaseSeeder`**: `WorkstationsSeeder` xoa sach `operation_clients`/`devices` truoc khi seed lai, chay ca bo tren may dang co du lieu la mat tram. Seeder moi chi `updateOrCreate`, chay lai bao nhieu lan cung duoc (chi dat lai mat khau 2 tai khoan).
+- **Sua kem:**
+  - `WorkstationsSeeder`: `default_route` cua `WS-SMALL-01/02` va `WS-LARGE-01` truoc day deu tro `/weighing-station` (man quan ly tram can ban web, khong port tu workbook nao) — nay tro dung 2 man dung lai. Link kiosk `/scalesmin`, `/scalesmax` vi vay cung vao dung man.
+  - `AuthController::workstationPayload()`: them `default_route` (router doc truong nay TRUOC roi moi roi ve `default_screen`).
+  - `AppLayout.vue`: bo `adminOnly` o 2 muc menu "Can nho"/"Can to" — dung nhu ghi chu cu da dan (bo co nay khi `default_route` tro dung 2 route do).
+- **Kiem chung that:** seeder chay tren DB dev thanh cong; goi that `AuthController::login` cho `cannho` -> tra `workstation.default_route = /weighing-station-v2`, `capability_codes` co `SMALL_SCALE`; `canto` -> `WS-LARGE-01` + `LARGE_SCALE`. `vue-tsc --noEmit` exit 0. **Chua xem bang mat tren trinh duyet**; `php artisan test` khong chay duoc (DB test port 5433 chua bat) — loi moi truong, khong lien quan thay doi nay.
+
+### 105. Nut "Dang nhap" tren cac trang cong khai (2026-08-04)
+
+- **Yeu cau nguoi dung:** cac trang mo khong can dang nhap (muc 0f716b3) khong co nut nao de quay ve man hinh dang nhap tai khoan — chi con cach tu go URL `/login`.
+- **`NavToggleButton.vue`:** truoc day chi render nut 3 gach cho nguoi DA dang nhap, nguoi xem cong khai khong thay gi (khong co AppLayout nen cung khong co nut Dang xuat o topbar). Nay them nhanh `v-else`: nut **Dang nhap** (icon `user` + chu, cung 2 he mau `vba`/`app`, cung vi tri goc phai duoi) day sang `/login?redirect=<duong dan hien tai>`.
+- **`Login.vue`:** dang nhap xong doc `?redirect=` de quay lai dung trang dang xem. Chi chap nhan duong dan noi bo (bat dau `/` va khong phai `//`) — khong de chuoi tren URL tro thanh dich dieu huong ra ngoai; khong hop le thi ve `/` nhu cu.
+- Ap dung ngay cho ca 5 trang dang dung `NavToggleButton`: `/production-batches/grid`, `/print-order-entry`, `/machine-id-board`, `/chemical-call/classic`, `/chemical-call/pending-classic`. Trang Gantt (`/bpdb-machines/gantt`) co bo nut rieng, khong dung component nay — chua dong toi.
+- **Kiem chung:** `vue-tsc --noEmit` exit 0. **Chua xem bang mat tren trinh duyet.**
+
+### 106. Tach "khoa tram" khoi "an menu": tai khoan van hanh tu doi tram duoc, menu chi con cua ADMIN (2026-08-04)
+
+- **Yeu cau nguoi dung (3 buoc lam ro trong cung 1 phien):**
+  1. "Dang nhap tai khoan nao cung van chon duoc tram nhu binh thuong" -> bo khoa tram theo tai khoan.
+  2. "Admin thay duoc menu, cac tai khoan khach chi thay phan ben tren" -> sidebar chi cua ADMIN.
+  3. "Dang nhap can nho bay thang toi /weighing-station-v2, can to tuong tu /weighing-station-large" -> **khoa han o do**, go tay URL man khac cung bi da ve.
+- **Van de goc:** `isLockedStation` (AppLayout) truoc day gom 3 viec vao 1 co — an sidebar, khoa nut doi tram, va di kem voi router guard khoa man hinh. Go 1 thu la 2 thu kia di theo. Nay tach doi:
+  - `isLockedStation` = **chi phien kiosk** (mo bang link may, KHONG dang nhap). Moi tai khoan da dang nhap deu bam duoc nut tram tren topbar de doi tram. Tram gan san (`users.operation_client_id`) nay chi con la **gia tri mac dinh luc dang nhap**, khong phai rang buoc.
+  - `canSeeMenu` = **chi ADMIN** (co moi) — dung cho `<aside class="sidebar">` va nut 3 gach mobile. Tai khoan khac chi con thanh tren cung (ten tram, doi tram, dang xuat).
+  - Co `wsConfig.locked_to_type` (localStorage `df_workstation_config`) khong con duoc dung de khoa nua — no la cau hinh may, khong phai tai khoan.
+- **Router guard (`router/index.ts`)**: **giu nguyen quy tac WS-001** — `requiresAuth && !isAdmin && lockedScreen && to.path !== lockedScreen` -> `next(lockedScreen)`. Da thu go han o giua phien (theo doc y buoc 1) roi **bat lai theo xac nhan cua nguoi dung o buoc 3**. Doi trang thai co y: doi tram la de can dung thiet bi cua minh, khong phai de di sang cong doan khac.
+  - Khong cham 3 man cong khai (`requiresAuth:false`): dieu kien `requiresAuth` bo qua chung, nguoi da dang nhap van mo bang link nhu may xuong.
+  - Nhanh `?ws=` va nhanh kiosk giu nguyen nhu truoc.
+- **Anh huong tai lieu:** mo hinh WS-001 "1 may tinh = 1 cong doan" nay **chi con khoa MAN HINH, khong con khoa TRAM**. `workstation-redesign-audit.md` mo ta "khoa nut doi tram" da lac hau tu ban nay.
+- **Kiem chung:** `vue-tsc --noEmit` exit 0 sau moi lan sua; Vite HMR nap sach, khong loi runtime trong log dev server. **Chua xem bang mat tren trinh duyet** — can nguoi dung dang nhap `cannho`/`canto` doi chieu.
+- **Bo sung cung phien:** "1 tai khoan chon tram nao cung duoc" -> `capabilityMismatch` khong con chan cung noi dung voi tai khoan da dang nhap. Tach ra `blockOnMismatch = isKiosk && capabilityMismatch`: chi phien kiosk moi bi man chan (tram do LINK quyet dinh, nguoi dung may khong tu sua duoc). Doi lai, ws-pill tren topbar chuyen mau cam + icon ⚠️ + tooltip khi tram dang chon sai loai — giu lai tin hieu "khong am tham ghi du lieu duoi ten tram sai loai" von la ly do khoi sinh cua man chan nay. Dropdown chon tram truoc gio VON KHONG loc theo capability, khong phai sua.
+- **Giu tram da chon qua F5 (cung phien):** chon tram xong nhan F5 la mat, quay ve tram gan voi tai khoan. Nguyen nhan: `df_current_workstation` VAN luu dung, nhung 2 nguon tu dong ghi de len o moi lan nap trang — `authStore.initialize()` (chay trong `router.beforeEach`, tuc moi lan dieu huong/F5) dat lai `user.workstation`, va `adoptLocalWorkstation()` hoi backend "may nay la tram nao" theo IP. Ban than localStorage khong he mat du lieu.
+  - Them co `df_workstation_manual` (`services/workstation.ts`): `setWorkstation(ws, { manual: true })` ghim tram do NGUOI DUNG tu chon; moi nguon tu dong goi khong kem `manual` thi XOA ghim.
+  - Thu tu uu tien sau ban nay: **link `?ws=CODE`** (chi dinh tuong minh, thang tuyet doi) > **tram chon tay** (ghim, song qua F5) > **tram cua tai khoan luc DANG NHAP** > **whoami theo IP cua Agent**. Dang xuat xoa sach ghim.
+  - `initialize()` khong con dat lai tram khi da co ghim; `adoptLocalWorkstation()` return false som khi da co ghim.
+- **Bo sung cung ngay:** bang thong tin me o `/bpdb-machines/gantt` doi nhan `Tong da chay` -> **`So lan danh mau`** (cach goi cua xuong). Chi doi nhan hien thi, con so va cach dem (`loadLotTotal`, API BPDB) giu nguyen; don vi ben canh van la "me".

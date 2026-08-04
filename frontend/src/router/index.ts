@@ -348,15 +348,21 @@ router.beforeEach((to, _from, next) => {
       next(lockedScreen);
       return;
     }
-  } else {
-    // Admin không bị khóa cứng vào 1 màn hình theo workstation binding — dùng được toàn
-    // bộ route mà tài khoản có quyền, không cần "chọn trạm" trước (yêu cầu 2026-07-24).
-    // Quy tắc khóa màn hình này chỉ áp dụng cho tài khoản vận hành (OPERATOR) gắn cứng
-    // công đoạn theo đúng mô hình "1 máy tính = 1 công đoạn".
-    if (requiresAuth && !authStore.isAdmin && lockedScreen && to.path !== lockedScreen) {
-      next(lockedScreen);
-      return;
-    }
+  } else if (requiresAuth && !authStore.isAdmin && lockedScreen && to.path !== lockedScreen) {
+    // "1 máy tính = 1 công đoạn" (WS-001): tài khoản vận hành gắn cứng trạm chỉ ở đúng màn
+    // hình của công đoạn mình — cannho -> /weighing-station-v2, canto -> /weighing-station-large.
+    // Đây vừa là đích sau khi đăng nhập, vừa là hàng rào: gõ tay URL màn khác cũng bị đá về
+    // (xác nhận lại 2026-08-04). ADMIN không bị chặn (yêu cầu 2026-07-24).
+    //
+    // Khóa này CỐ Ý không đi kèm khóa chọn trạm: người vận hành vẫn tự đổi trạm được trên
+    // topbar (AppLayout.isLockedStation) — đổi trạm là để cân đúng thiết bị của mình, không
+    // phải để đi sang công đoạn khác.
+    //
+    // Không chạm tới 3 màn công khai (requiresAuth:false — grid / print-order-entry /
+    // machine-id-board): điều kiện `requiresAuth` ở trên bỏ qua chúng, người đã đăng nhập vẫn
+    // mở được bằng link như máy xưởng.
+    next(lockedScreen);
+    return;
   }
 
   next();

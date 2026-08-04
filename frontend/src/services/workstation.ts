@@ -62,6 +62,23 @@ export function workstationMatchesRoute(ws: Workstation | null, path: string): b
 
 const STORAGE_KEY = 'df_current_workstation';
 
+/**
+ * Cờ "trạm này do NGƯỜI DÙNG tự chọn tay", tách riêng khỏi `df_current_workstation` (chỉ lưu
+ * trạm đang dùng, không nói ai đặt ra nó).
+ *
+ * Cần cờ này vì mỗi lần nạp lại trang có 2 chỗ tự đặt trạm đè lên lựa chọn tay (lỗi 2026-08-04:
+ * chọn trạm xong F5 là mất):
+ *   1. `authStore.initialize()` — đặt lại trạm gắn với tài khoản (`users.operation_client_id`).
+ *   2. `adoptLocalWorkstation()` — hỏi backend "máy này là trạm nào" theo IP.
+ * Cả hai đều là suy đoán mặc định, phải nhường lựa chọn tường minh của người dùng.
+ */
+const MANUAL_KEY = 'df_workstation_manual';
+
+/** true khi trạm hiện tại do người dùng tự chọn — đừng tự đặt trạm khác đè lên. */
+export function hasManualWorkstation(): boolean {
+  return !!localStorage.getItem(MANUAL_KEY);
+}
+
 export const currentWorkstation = ref<Workstation | null>(null);
 export const workstationsList = ref<Workstation[]>([]);
 export const loadingWorkstations = ref<boolean>(false);
@@ -95,13 +112,23 @@ export async function fetchWorkstations() {
 
 /**
  * Assign the current client to a specific workstation.
+ *
+ * `manual: true` = người dùng tự chọn trong hộp thoại đổi trạm -> GHIM lại, sống qua F5.
+ * Mặc định (false) là các nguồn tự động (tài khoản, link `?ws=`, whoami theo IP) — chúng
+ * XOÁ ghim, vì đó đều là chỉ định tường minh mới đè lên lựa chọn cũ một cách có chủ đích.
  */
-export function setWorkstation(ws: Workstation | null) {
+export function setWorkstation(ws: Workstation | null, opts: { manual?: boolean } = {}) {
   currentWorkstation.value = ws;
   if (ws) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(ws));
+    if (opts.manual) {
+      localStorage.setItem(MANUAL_KEY, ws.code);
+    } else {
+      localStorage.removeItem(MANUAL_KEY);
+    }
   } else {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(MANUAL_KEY);
     localStorage.removeItem('df_workstation_config');
     localStorage.removeItem('df_workstation_token');
   }
@@ -124,6 +151,8 @@ export function setWorkstation(ws: Workstation | null) {
  */
 export async function adoptLocalWorkstation(kind: 'SMALL' | 'LARGE' = 'SMALL'): Promise<boolean> {
   if (localStorage.getItem('df_workstation_config')) return false;
+  // Người dùng đã tự chọn trạm -> suy đoán theo IP không được đè lên (2026-08-04).
+  if (hasManualWorkstation()) return false;
 
   try {
     const res = await axios.get(`/api/workstations/whoami?kind=${kind}`);

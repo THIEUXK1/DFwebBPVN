@@ -130,9 +130,11 @@
         </template>
         <!-- Tổng số mẻ mã này đã chạy từ trước tới nay (yêu cầu 2026-08-03) — KHÁC hai
              con số phía trên: không giới hạn theo khoảng ngày đang lọc, cũng không giới
-             hạn trong 1 Tank/1 máy. Gọi API riêng khi mở bảng, xem loadLotTotal(). -->
+             hạn trong 1 Tank/1 máy. Gọi API riêng khi mở bảng, xem loadLotTotal().
+             Nhãn "Số lần đánh mẫu" theo cách gọi của xưởng (yêu cầu 2026-08-04) — mỗi mẻ
+             chạy của cùng mã màu - mã hàng là một lần đánh mẫu. -->
         <template v-if="detailPopup.color && detailPopup.productCode">
-          <dt>Tổng đã chạy</dt>
+          <dt>Số lần đánh mẫu</dt>
           <dd>
             <template v-if="lotTotal?.loading">Đang đếm…</template>
             <template v-else-if="lotTotal?.failed">Không đếm được (BPDB mất kết nối)</template>

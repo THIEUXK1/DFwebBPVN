@@ -85,6 +85,9 @@ class AuthController extends Controller
             'assigned_scale_device_id' => $workstation->assigned_scale_device_id,
             'assigned_printer_device_id' => $workstation->assigned_printer_device_id,
             'default_screen' => $workstation->default_screen,
+            // router/index.ts đọc `default_route` TRƯỚC rồi mới rơi về `default_screen` — trả
+            // cả hai để không phụ thuộc vào việc getDefaultScreenAttribute() còn alias hay không.
+            'default_route' => $workstation->default_route,
             'allowed_actions' => $workstation->allowed_actions,
             // Thiếu trường này gây lỗi tương tự setKioskSession() (frontend): AppLayout.vue
             // chặn nhầm "trạm không có quyền" cho tài khoản gắn cứng trạm vì không tìm thấy
