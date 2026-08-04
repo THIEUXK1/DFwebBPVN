@@ -56,6 +56,9 @@ Route::post('/kiosk/session', [KioskSessionController::class, 'establishSession'
 // vô tình mở luôn các endpoint BPDB admin khác nếu sau này có ai copy-paste nhầm route
 // này vào trong group admin. Cùng 1 controller action, không lặp logic.
 Route::get('/public/bpdb-machines-gantt', [BpdbMachineController::class, 'gantt']);
+// Cùng trang Gantt public ở trên: tổng số mẻ 1 mã màu-mã hàng đã chạy từ đầu tới nay,
+// gọi riêng khi bấm vào 1 thanh (query quét toàn lịch sử, không nhét vào /gantt).
+Route::get('/public/bpdb-machines-gantt/lot-total', [BpdbMachineController::class, 'lotTotal']);
 
 // Protected Auth Routes
 Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {

@@ -89,6 +89,25 @@ class BpdbMachineController extends Controller
     }
 
     /**
+     * Tổng số mẻ của 1 mã màu - mã hàng đã từng chạy từ đầu tới hiện tại (bảng chi tiết
+     * khi bấm vào thanh Gantt). Tách khỏi /gantt vì quét toàn bộ lịch sử — chỉ gọi khi
+     * người dùng thật sự mở 1 mẻ ra xem.
+     */
+    public function lotTotal(Request $request, BpdbMachineMonitoringService $service)
+    {
+        $color = trim((string) $request->query('color', ''));
+        $productCode = trim((string) $request->query('productCode', ''));
+
+        if ($color === '' || $productCode === '') {
+            return response()->json(['error' => 'LOT_REQUIRED'], 422);
+        }
+
+        $data = $service->getLotRunTotal($color, $productCode);
+
+        return response()->json(array_merge($data, $this->envelope(now()->toIso8601String())));
+    }
+
+    /**
      * Envelope chung (mục 9): lastSyncedAt/dataAgeSeconds/source/readOnly/stale.
      * Ngưỡng "cũ" cấu hình qua feature_flags (Admin sửa được), mặc định 60 giây.
      */

@@ -128,6 +128,36 @@
           <dt>Số mẻ</dt>
           <dd>{{ detailPopup.mergedCount }} mẻ liên tiếp cùng mã màu - mã hàng (đã gộp)</dd>
         </template>
+        <!-- Tổng số mẻ mã này đã chạy từ trước tới nay (yêu cầu 2026-08-03) — KHÁC hai
+             con số phía trên: không giới hạn theo khoảng ngày đang lọc, cũng không giới
+             hạn trong 1 Tank/1 máy. Gọi API riêng khi mở bảng, xem loadLotTotal(). -->
+        <template v-if="detailPopup.color && detailPopup.productCode">
+          <dt>Tổng đã chạy</dt>
+          <dd>
+            <template v-if="lotTotal?.loading">Đang đếm…</template>
+            <template v-else-if="lotTotal?.failed">Không đếm được (BPDB mất kết nối)</template>
+            <template v-else-if="lotTotal">
+              <strong>{{ lotTotal.total }}</strong> mẻ
+              <span class="gantt-detail-note">
+                trên toàn bộ máy VD<template v-if="lotTotal.firstRunAt">, từ {{ formatDay(lotTotal.firstRunAt) }} tới nay</template>
+              </span>
+            </template>
+            <template v-else>—</template>
+          </dd>
+          <!-- Chia theo từng máy VD (yêu cầu 2026-08-03) — cùng 1 lần đếm ở trên, không gọi
+               thêm API. Máy chạy nhiều mẻ nhất đứng trước. -->
+          <template v-if="lotTotal && !lotTotal.loading && !lotTotal.failed && lotTotal.byMachine.length">
+            <dt>Theo máy</dt>
+            <dd>
+              <span class="gantt-detail-machines">
+                <span v-for="m in lotTotal.byMachine" :key="m.machineCode" class="gantt-detail-machine">
+                  {{ m.machineCode }}: <strong>{{ m.count }}</strong>
+                </span>
+              </span>
+              <span class="gantt-detail-note">{{ lotTotal.byMachine.length }} máy đã từng chạy mã này</span>
+            </dd>
+          </template>
+        </template>
         <dt>Bắt đầu</dt>
         <dd>{{ detailPopup.startText }}</dd>
         <dt>Kết thúc</dt>
@@ -339,6 +369,12 @@ const formatTime = (iso: string | null) => {
   return new Date(iso).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
 };
 
+/** Chỉ ngày (không giờ) — dùng cho mốc "chạy lần đầu từ ..." vốn có thể cách đây nhiều năm. */
+const formatDay = (iso: string | null) => {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
 const rawTaskStatusLabel = (status: number) => RAW_TASK_STATUS_LABELS[String(status)] || `Không xác định (${status})`;
 
 // Màu thanh Gantt = màu ĐẠI DIỆN HỌ MÀU của mẻ, do backend suy ra từ mã màu
@@ -438,8 +474,59 @@ const itemDetails = new Map<string, GanttDetail>();
 const detailPopup = ref<GanttDetail | null>(null);
 const detailPopupStyle = ref('');
 
+/** Tổng số mẻ của 1 mã màu - mã hàng đã chạy từ đầu tới nay (API riêng, xem loadLotTotal). */
+interface LotTotal {
+  /** "{mã màu}|{mã hàng}" — dùng để bỏ qua phản hồi đến muộn của mẻ đã đóng/đổi sang mẻ khác. */
+  key: string;
+  total: number | null;
+  firstRunAt: string | null;
+  /** Chia theo từng máy VD, máy chạy nhiều nhất đứng trước. */
+  byMachine: { machineCode: string; count: number }[];
+  loading: boolean;
+  failed: boolean;
+}
+
+const lotTotal = ref<LotTotal | null>(null);
+// Đếm theo MÃ (không theo mẻ) nên nhiều thanh khác nhau dùng chung 1 kết quả; giữ lại trong
+// phiên xem để bấm qua lại giữa các mẻ cùng mã không gọi lại BPDB (backend cũng đã cache 5
+// phút, đây là lớp chặn thứ hai ngay tại trình duyệt).
+const lotTotalCache = new Map<string, { total: number; firstRunAt: string | null; byMachine: { machineCode: string; count: number }[] }>();
+
+const lotKeyOf = (d: GanttDetail) => (d.color && d.productCode ? `${d.color}|${d.productCode}` : '');
+
+const loadLotTotal = async (detail: GanttDetail) => {
+  const key = lotKeyOf(detail);
+  if (!key) {
+    lotTotal.value = null;
+    return;
+  }
+  const cached = lotTotalCache.get(key);
+  if (cached) {
+    lotTotal.value = { key, ...cached, loading: false, failed: false };
+    return;
+  }
+  lotTotal.value = { key, total: null, firstRunAt: null, byMachine: [], loading: true, failed: false };
+  try {
+    const res = await axios.get('/api/public/bpdb-machines-gantt/lot-total', {
+      params: { color: detail.color, productCode: detail.productCode },
+    });
+    const total = typeof res.data.total === 'number' ? res.data.total : null;
+    const firstRunAt = res.data.firstRunAt ?? null;
+    const byMachine = Array.isArray(res.data.byMachine) ? res.data.byMachine : [];
+    // total === null nghĩa là BPDB mất kết nối lúc đếm — KHÔNG cache lại, để lần bấm sau
+    // còn thử lại được khi BPDB sống lại.
+    if (total !== null) lotTotalCache.set(key, { total, firstRunAt, byMachine });
+    if (lotTotal.value?.key !== key) return;
+    lotTotal.value = { key, total, firstRunAt, byMachine, loading: false, failed: total === null };
+  } catch {
+    if (lotTotal.value?.key !== key) return;
+    lotTotal.value = { key, total: null, firstRunAt: null, byMachine: [], loading: false, failed: true };
+  }
+};
+
 const closeDetailPopup = () => {
   detailPopup.value = null;
+  lotTotal.value = null;
 };
 
 // Ước lượng khổ popup để kẹp trong khung nhìn — chỉ dùng cho phép tính vị trí, kích thước
@@ -459,6 +546,7 @@ const openDetailPopup = (id: string, pageX: number, pageY: number) => {
     : y + 14;
   detailPopupStyle.value = `left: ${left}px; top: ${top}px;`;
   detailPopup.value = detail;
+  loadLotTotal(detail);
 };
 
 // Bấm ra ngoài popup thì đóng. Bỏ qua thao tác bấm bên trong vùng biểu đồ — sự kiện 'click'
@@ -698,7 +786,12 @@ const applyMachineFilter = () => {
     const stillVisible = visibleItems.some(it => it.id === detailPopup.value!.id);
     const fresh = itemDetails.get(detailPopup.value.id);
     if (!stillVisible || !fresh) closeDetailPopup();
-    else detailPopup.value = fresh;
+    else {
+      detailPopup.value = fresh;
+      // Cùng id thì gần như luôn cùng mã, nhưng vẫn kiểm tra khoá: nếu khác (hoặc lần trước
+      // đếm hụt do BPDB rớt) thì đếm lại, còn trùng thì lấy ngay từ lotTotalCache.
+      if (lotTotal.value?.key !== lotKeyOf(fresh)) loadLotTotal(fresh);
+    }
   }
 
   // clear()+add() phát sự kiện 'add' bình thường (đủ để vẽ lại nội dung/nhãn — search và
@@ -1421,6 +1514,26 @@ onUnmounted(() => {
 .gantt-detail-list dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+.gantt-detail-note {
+  display: block;
+  color: var(--text-secondary, #6b7280);
+  font-size: 0.72rem;
+}
+/* Danh sách máy có thể dài (1 mã chạy trên chục máy) — cho cuộn trong ô thay vì đẩy popup
+   cao quá khung nhìn, vì vị trí popup đã chốt lúc bấm (xem openDetailPopup). */
+.gantt-detail-machines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  max-height: 92px;
+  overflow-y: auto;
+}
+.gantt-detail-machine {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bg-hover, rgba(148, 163, 184, 0.18));
+  white-space: nowrap;
 }
 :deep(.gantt-item-running) {
   border: 2px solid #ef4444 !important;

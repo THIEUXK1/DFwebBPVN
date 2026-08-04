@@ -4,64 +4,74 @@
        (đơn vị pt, form 1416 × 733pt — đúng tên "PRINTER LANDSCAPE").
        Bảng màu cố định theo hệ màu Windows cổ điển của MSForms, cố ý KHÔNG dùng design
        token dark/light của app vì yêu cầu là giống hệt bản gốc. -->
-  <div class="vba-scroll">
-    <div class="vba-form" :style="{ width: FORM_W + 'pt', height: FORM_H + 'pt' }">
+  <div class="vba-scroll" ref="rootRef" :style="rootH ? { height: rootH + 'px' } : undefined">
+    <!-- Cả mặt form được thu/phóng bằng MỘT phép transform: scale() nên tỉ lệ giữa các ô, cỡ chữ
+         và độ dày viền không bao giờ lệch so với bản gốc dù màn hình to nhỏ thế nào. -->
+    <div class="vba-stage-wrap" ref="wrapRef">
+      <!-- Lớp đệm mang ĐÚNG kích thước SAU khi thu/phóng: transform: scale() không đổi ô layout của
+           phần tử, thiếu lớp này thì lúc phóng > 1 mặt form tràn ra ngoài vùng cuộn và bị cắt mép. -->
+      <div class="vba-fit"
+           :style="{ width: Math.round(FORM_W * PT * scale) + 'px', height: Math.round(FORM_H * PT * scale) + 'px' }">
+        <div class="vba-form"
+             :style="{ width: FORM_W + 'pt', height: FORM_H + 'pt', transform: `scale(${scale})` }">
 
-      <!-- ============ Lưới TO_SEND: 27 dòng, 3 khối cột × 9 dòng ============ -->
-      <template v-for="(slot, i) in sendSlots" :key="'send-' + i">
-        <input
-          :value="slot ? i + 1 : ''"
-          readonly
-          class="vba-text vba-cell"
-          :style="{ ...box(sendLeft(i), sendTop(i), 48, 25.5), backgroundColor: rowBg(slot) }"
-          :title="slot?.id"
-        />
-        <input :value="slot?.batch?.color || ''" readonly class="vba-text vba-cell"
-               :style="{ ...box(sendLeft(i) + 48, sendTop(i), 120, 25.5), backgroundColor: rowBg(slot) }" />
-        <input :value="slot?.batch?.product_code || ''" readonly class="vba-text vba-cell"
-               :style="{ ...box(sendLeft(i) + 168, sendTop(i), 72, 25.5), backgroundColor: rowBg(slot) }" />
-        <input :value="slot?.batch?.machine?.code || ''" readonly class="vba-text vba-cell"
-               :style="{ ...box(sendLeft(i) + 240, sendTop(i), 54, 25.5), backgroundColor: rowBg(slot) }" />
-        <input :value="slot?.batch?.tank?.code || ''" readonly class="vba-text vba-cell"
-               :style="{ ...box(sendLeft(i) + 294, sendTop(i), 36, 25.5), backgroundColor: rowBg(slot) }" />
+          <!-- ============ Lưới TO_SEND: 27 dòng, 3 khối cột × 9 dòng ============ -->
+          <template v-for="(slot, i) in sendSlots" :key="'send-' + i">
+            <input
+              :value="slot ? i + 1 : ''"
+              readonly
+              class="vba-text vba-cell"
+              :style="{ ...box(sendLeft(i), sendTop(i), 48, 25.5), backgroundColor: rowBg(slot) }"
+              :title="slot?.id"
+            />
+            <input :value="slot?.batch?.color || ''" readonly class="vba-text vba-cell"
+                   :style="{ ...box(sendLeft(i) + 48, sendTop(i), 120, 25.5), backgroundColor: rowBg(slot) }" />
+            <input :value="slot?.batch?.product_code || ''" readonly class="vba-text vba-cell"
+                   :style="{ ...box(sendLeft(i) + 168, sendTop(i), 72, 25.5), backgroundColor: rowBg(slot) }" />
+            <input :value="slot?.batch?.machine?.code || ''" readonly class="vba-text vba-cell"
+                   :style="{ ...box(sendLeft(i) + 240, sendTop(i), 54, 25.5), backgroundColor: rowBg(slot) }" />
+            <input :value="slot?.batch?.tank?.code || ''" readonly class="vba-text vba-cell"
+                   :style="{ ...box(sendLeft(i) + 294, sendTop(i), 36, 25.5), backgroundColor: rowBg(slot) }" />
 
-        <button class="vba-btn" :style="box(sendLeft(i) + 330, sendTop(i), 48, 24)"
-                :disabled="!slot" title="Mở phiếu xem trước để in (TO_SEND.HandleSendPrint)"
-                @click="onSendPrint(slot)">print</button>
+            <button class="vba-btn" :style="box(sendLeft(i) + 330, sendTop(i), 48, 24)"
+                    :disabled="!slot" title="Mở phiếu xem trước để in (TO_SEND.HandleSendPrint)"
+                    @click="onSendPrint(slot)">print</button>
 
-        <input type="checkbox" class="vba-check" :style="box(sendLeft(i) + 384, sendTop(i) + 6, 11.25, 18)"
-               :checked="!!slot?.scale_checked" :disabled="!slot"
-               title="scale_check — tick là ghi thẳng xuống DB ngay (TO_SEND.SavePrintCheck)"
-               @change="onToggleScaleCheck(slot, ($event.target as HTMLInputElement).checked)" />
+            <input type="checkbox" class="vba-check" :style="box(sendLeft(i) + 384, sendTop(i) + 6, 11.25, 18)"
+                   :checked="!!slot?.scale_checked" :disabled="!slot"
+                   title="scale_check — tick là ghi thẳng xuống DB ngay (TO_SEND.SavePrintCheck)"
+                   @change="onToggleScaleCheck(slot, ($event.target as HTMLInputElement).checked)" />
 
-        <button class="vba-btn" :style="box(sendLeft(i) + 402, sendTop(i), 36, 24)"
-                :disabled="!slot || confirmingId === slot?.id"
-                title="Xác nhận đã in & đã gửi — đơn rời hàng chờ sang lịch sử (TO_SEND.ConfirmRow)"
-                @click="onConfirm(slot)">OK</button>
-      </template>
+            <button class="vba-btn" :style="box(sendLeft(i) + 402, sendTop(i), 36, 24)"
+                    :disabled="!slot || confirmingId === slot?.id"
+                    title="Xác nhận đã in & đã gửi — đơn rời hàng chờ sang lịch sử (TO_SEND.ConfirmRow)"
+                    @click="onConfirm(slot)">OK</button>
+          </template>
 
-      <!-- ============ 18 bảng chờ in theo máy, 2 băng × 9 máy ============ -->
-      <template v-for="p in panels" :key="'panel-' + p.machineNo">
-        <label class="vba-label vba-panel-label" :style="box(p.left + 6, p.labelTop, 42, 18)">{{ p.label }}</label>
+          <!-- ============ 18 bảng chờ in theo máy, 2 băng × 9 máy ============ -->
+          <template v-for="p in panels" :key="'panel-' + p.machineNo">
+            <label class="vba-label vba-panel-label" :style="box(p.left + 6, p.labelTop, 42, 18)">{{ p.label }}</label>
 
-        <template v-for="(b, r) in p.rows" :key="'panel-' + p.machineNo + '-' + r">
-          <!-- Ô id rộng 6pt: bản gốc dùng nó làm dải màu báo tuổi đơn, không hiện chữ -->
-          <input readonly class="vba-text vba-cell"
-                 :style="{ ...box(p.left, p.rowTop + r * 18, 6, 18), backgroundColor: vbaAgeColor(b?.created_at) }"
-                 :title="b ? 'Tạo lúc ' + fmt(b.created_at) : ''" />
-          <input :value="b?.color || ''" readonly class="vba-text vba-cell"
-                 :style="box(p.left + 6, p.rowTop + r * 18, 48, 18)" />
-          <input :value="b?.product_code || ''" readonly class="vba-text vba-cell"
-                 :style="box(p.left + 54, p.rowTop + r * 18, 36, 18)" />
-          <input :value="b?.level_code || ''" readonly class="vba-text vba-cell"
-                 :style="box(p.left + 90, p.rowTop + r * 18, 24, 18)" />
-          <button class="vba-btn vba-btn-tiny" :style="box(p.left + 114, p.rowTop + r * 18, 24, 18)"
-                  :disabled="!b" title="Mở phiếu xem trước để in (TO_SEND.HandlewaitPrint)"
-                  @click="onWaitPrint(b)">print</button>
-          <input type="checkbox" class="vba-check" :style="box(p.left + 138, p.rowTop + r * 18, 11.5, 18.75)"
-                 disabled title="Bảng production_batches chưa có cột scale_check tương ứng — xem ghi chú" />
-        </template>
-      </template>
+            <template v-for="(b, r) in p.rows" :key="'panel-' + p.machineNo + '-' + r">
+              <!-- Ô id rộng 6pt: bản gốc dùng nó làm dải màu báo tuổi đơn, không hiện chữ -->
+              <input readonly class="vba-text vba-cell"
+                     :style="{ ...box(p.left, p.rowTop + r * 18, 6, 18), backgroundColor: vbaAgeColor(b?.created_at) }"
+                     :title="b ? 'Tạo lúc ' + fmt(b.created_at) : ''" />
+              <input :value="b?.color || ''" readonly class="vba-text vba-cell"
+                     :style="box(p.left + 6, p.rowTop + r * 18, 48, 18)" />
+              <input :value="b?.product_code || ''" readonly class="vba-text vba-cell"
+                     :style="box(p.left + 54, p.rowTop + r * 18, 36, 18)" />
+              <input :value="b?.level_code || ''" readonly class="vba-text vba-cell"
+                     :style="box(p.left + 90, p.rowTop + r * 18, 24, 18)" />
+              <button class="vba-btn vba-btn-tiny" :style="box(p.left + 114, p.rowTop + r * 18, 24, 18)"
+                      :disabled="!b" title="Mở phiếu xem trước để in (TO_SEND.HandlewaitPrint)"
+                      @click="onWaitPrint(b)">print</button>
+              <input type="checkbox" class="vba-check" :style="box(p.left + 138, p.rowTop + r * 18, 11.5, 18.75)"
+                     disabled title="Bảng production_batches chưa có cột scale_check tương ứng — xem ghi chú" />
+            </template>
+          </template>
+        </div>
+      </div>
     </div>
 
     <!-- printform / wait_printform — cùng một hộp thoại, chỉ khác nguồn dữ liệu -->
@@ -69,13 +79,14 @@
 
     <div class="vba-statusbar">
       <router-link to="/print-sent-log" class="sent-log-link">📄 SENT LOG — xem đơn đã tích &amp; đã bấm OK →</router-link>
+      <span class="vba-zoom">Vừa màn hình: {{ Math.round(scale * 100) }}%</span>
       <span v-if="statusMsg" :class="{ 'is-error': statusIsError }">{{ statusMsg }}</span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import axios from 'axios';
 import echo from '../services/echo';
 import { currentWorkstation } from '../services/workstation';
@@ -84,6 +95,50 @@ import VbaPrintForm, { type VbaPrintFormData } from '../components/VbaPrintForm.
 
 const FORM_W = 1416;
 const FORM_H = 733;
+
+/* ===== Thu/phóng cả mặt form cho vừa MỘT màn hình ===== */
+
+/** Toạ độ form là pt (đơn vị của MSForms); ở 96dpi 1pt = 4/3 px — cần để tính ô layout theo px. */
+const PT = 4 / 3;
+
+const rootRef = ref<HTMLElement | null>(null);
+const wrapRef = ref<HTMLElement | null>(null);
+const scale = ref(1);
+const rootH = ref<number | null>(null);
+let ro: ResizeObserver | null = null;
+
+/**
+ * Chiều cao màn hình PHẢI đo, không đặt cứng `100vh`: route này nằm trong `AppLayout` nên nội dung
+ * đã bị đẩy xuống dưới thanh trên và nằm trong `.content-container` (bản thân nó đã là vùng cuộn,
+ * có padding 24px). Đo từ mép trên thật của chính phần tử này thì đúng trong mọi trường hợp — kể cả
+ * khi bấm nút toàn màn hình của AppLayout (ẩn sidebar + thanh trên) hay bấm F11.
+ */
+function fitRoot() {
+  const el = rootRef.value;
+  if (!el) return;
+  const top = el.getBoundingClientRect().top;
+  const parent = el.parentElement;
+  const padBottom = parent ? parseFloat(getComputedStyle(parent).paddingBottom) || 0 : 0;
+  rootH.value = Math.max(360, Math.floor(window.innerHeight - top - padBottom));
+}
+
+function fitStage() {
+  const el = wrapRef.value;
+  if (!el) return;
+  // Chừa 4px cho viền + đổ bóng của mặt form, không thì mép ngoài bị vùng cuộn cắt mất.
+  const w = el.clientWidth - 4;
+  const h = el.clientHeight - 4;
+  if (w <= 0 || h <= 0) return;
+  // Chặn trên 2.0: toạ độ form là số cố định, phóng quá to thì chỉ còn vài ô chiếm cả màn hình.
+  scale.value = Math.max(0.3, Math.min(w / (FORM_W * PT), h / (FORM_H * PT), 2));
+}
+
+function fitAll() {
+  fitRoot();
+  // Đo lại khung SAU khi chiều cao mới đã được áp — nếu không, `fitStage` vẫn dùng chiều cao cũ và
+  // mặt form bị thu nhỏ hơn mức cần thiết đúng một nhịp.
+  nextTick(fitStage);
+}
 
 // Lưới TO_SEND: 27 dòng chia 3 khối cột (Left 18 / 492 / 978), mỗi khối 9 dòng cao 24pt từ T=6.
 const SEND_SLOTS = 27;
@@ -259,24 +314,59 @@ onMounted(() => {
   // Mod_FE_REFRESH: bản gốc tự làm mới mỗi 15s.
   echo.channel('production-batches').listen('.updated', refreshAll);
   pollInterval = setInterval(refreshAll, 15000);
+
+  fitAll();
+  // Đo lại một nhịp nữa sau khi trình duyệt vẽ xong: lúc onMounted chạy, AppLayout có thể chưa dựng
+  // xong thanh trên nên `getBoundingClientRect().top` còn là số tạm.
+  requestAnimationFrame(fitAll);
+  if (typeof ResizeObserver !== 'undefined') {
+    ro = new ResizeObserver(fitAll);
+    // Nút toàn màn hình của AppLayout chỉ ẩn sidebar/topbar bằng CSS, KHÔNG bắn `resize` — phải
+    // quan sát khung chứa mới bắt được nhịp đổi kích thước đó. Quan sát khung NGOÀI chứ không phải
+    // `wrapRef`: `fitAll` đặt lại chiều cao cho chính vùng bên trong nên quan sát vùng đó sẽ tự
+    // kích hoạt lại chính nó thành vòng lặp.
+    const outer = rootRef.value?.parentElement;
+    if (outer) ro.observe(outer);
+  }
+  window.addEventListener('resize', fitAll);
 });
 
 onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval);
   echo.leaveChannel('production-batches');
+  window.removeEventListener('resize', fitAll);
+  ro?.disconnect();
 });
 </script>
 
 <style scoped>
 .vba-scroll {
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 8px;
   background-color: #808080;
-  min-height: 100%;
+  min-height: 360px;
+}
+
+/* Vùng chứa mặt form: chiếm hết chỗ còn lại sau dải trạng thái. Vẫn để `auto` chứ không `hidden` —
+   khi cửa sổ bé hơn cả mức thu nhỏ tối thiểu (30%) thì còn cuộn được thay vì mất nội dung. */
+.vba-stage-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.vba-fit {
+  flex: none;
 }
 
 .vba-form {
   position: relative;
+  transform-origin: top left;
   background-color: #f0f0f0;
   border: 1px solid;
   border-color: #ffffff #808080 #808080 #ffffff;
@@ -353,8 +443,7 @@ onUnmounted(() => {
 }
 
 .vba-statusbar {
-  position: sticky;
-  bottom: 0;
+  flex: none;
   margin-top: 8px;
   padding: 4px 8px;
   background-color: #f0f0f0;
@@ -369,6 +458,11 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.vba-zoom {
+  color: #404040;
+  white-space: nowrap;
 }
 
 .vba-statusbar .is-error {

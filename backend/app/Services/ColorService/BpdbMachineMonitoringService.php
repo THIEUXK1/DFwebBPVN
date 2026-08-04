@@ -38,6 +38,10 @@ class BpdbMachineMonitoringService
     private const IDLE_LOOKBACK_DAYS = 30;
     private const LAST_ACTIVITY_CACHE_TTL = 60;
 
+    // Tổng số mẻ theo mã màu-mã hàng (getLotRunTotal): quét toàn bộ lịch sử nên đắt, mà
+    // con số này gần như đứng yên (chỉ +1 khi có mẻ mới cùng mã chạy) -> cache dài 5 phút.
+    private const LOT_TOTAL_CACHE_TTL = 300;
+
     public function __construct(
         private readonly BpdbReadOnlyClient $client,
         private readonly ColorCodePalette $palette,
@@ -304,6 +308,115 @@ class BpdbMachineMonitoringService
             'bpdb_connected' => $bpdbConnected,
             'fetched_at' => now()->toIso8601String(),
         ];
+    }
+
+    /**
+     * Tổng số mẻ của MỘT mã màu - mã hàng đã từng chạy trên toàn bộ máy VD, tính từ bản
+     * ghi cũ nhất còn trong BPDB tới hiện tại (yêu cầu 2026-08-03: bấm vào thanh Gantt
+     * phải thấy cả tổng số mẻ mã đó đã chạy từ đầu, không chỉ số mẻ trong khoảng ngày lọc).
+     *
+     * KHÔNG gộp vào getGanttTimeline: query này quét toàn bộ lịch sử SUP_Tasks, chạy sẵn
+     * cho mọi mẻ đang vẽ (hàng trăm thanh) sẽ nện BPDB vô ích trong khi người dùng chỉ bấm
+     * xem vài mẻ — nên tách endpoint gọi theo yêu cầu, cache 5 phút mỗi mã.
+     *
+     * "Đã từng chạy" đếm đúng theo tiêu chí thanh Gantt: có WorkStartTime (thật sự khởi
+     * chạy), chưa bị xóa, không phải task hủy (TaskStatus=99).
+     */
+    public function getLotRunTotal(string $color, string $productCode): array
+    {
+        $lot = $color . '-' . $productCode;
+        $cacheKey = 'bpdb_lot_run_total:' . md5($lot);
+
+        return Cache::remember($cacheKey, self::LOT_TOTAL_CACHE_TTL, function () use ($lot) {
+            $registry = $this->getMachineRegistry();
+            // 1 máy VD có NHIỀU machine_id (mỗi tổ hợp Machine+Tank+MứcNước là 1 dòng
+            // DyeMachines — xem ghi chú đầu file), nên phải quy ngược machine_id về mã máy
+            // vật lý để cộng dồn, không đếm mỗi machine_id thành một "máy" riêng.
+            $machineIdToCode = [];
+            foreach ($registry as $code => $variant) {
+                foreach ($variant['variants'] as $v) {
+                    $machineIdToCode[$v['machine_id']] = $code;
+                }
+            }
+            $machineIds = array_keys($machineIdToCode);
+
+            if (!$machineIds) {
+                return ['lot' => $lot, 'total' => 0, 'firstRunAt' => null, 'lastRunAt' => null, 'byMachine' => [], 'bpdbConnected' => true];
+            }
+
+            // TaskTitle = "{mã màu}-{mã hàng} {yyyymmddhhmm}" (xem splitColorProductFromTitle).
+            // Khớp theo tiền tố CÓ dấu cách phía sau, không phải LIKE 'lot%' trần — nếu không
+            // "RED-L1803" sẽ đếm nhầm cả mẻ của "RED-L18032". Vẫn nhận trường hợp TaskTitle
+            // không có phần thời gian ở đuôi (so sánh bằng).
+            // Escape ký tự đại diện của LIKE trong chính mã màu/mã hàng ('[' phải thay TRƯỚC).
+            $prefix = str_replace(['[', '%', '_'], ['[[]', '[%]', '[_]'], $lot) . ' %';
+            $placeholders = implode(',', array_fill(0, count($machineIds), '?'));
+
+            try {
+                // GROUP BY Machine (không phải 1 dòng tổng): cùng 1 lần quét lịch sử cho ra
+                // luôn phần chia theo máy, cộng dồn lại trong PHP để có tổng — tránh phải
+                // chạy 2 query trên cùng tập dữ liệu.
+                $rows = $this->client->select(
+                    "SELECT Machine, COUNT(*) AS Total, MIN(WorkStartTime) AS FirstRun, MAX(WorkStartTime) AS LastRun
+                     FROM dbo.SUP_Tasks
+                     WHERE Machine IN ($placeholders)
+                       AND WorkStartTime IS NOT NULL
+                       AND ISNULL(IsDeleted, 0) = 0
+                       AND TaskStatus <> 99
+                       AND (TaskTitle = ? OR TaskTitle LIKE ?)
+                     GROUP BY Machine",
+                    [...$machineIds, $lot, $prefix]
+                );
+            } catch (\Throwable $e) {
+                Log::warning('BpdbMachineMonitoringService: BPDB unavailable, cannot count lot run total', [
+                    'lot' => $lot,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return ['lot' => $lot, 'total' => null, 'firstRunAt' => null, 'lastRunAt' => null, 'byMachine' => [], 'bpdbConnected' => false];
+            }
+
+            $total = 0;
+            $firstRun = null;
+            $lastRun = null;
+            $byMachine = [];
+
+            foreach ($rows as $row) {
+                $code = $machineIdToCode[$row['Machine']] ?? null;
+                if ($code === null) {
+                    continue;
+                }
+                $count = (int) $row['Total'];
+                $total += $count;
+                $byMachine[$code] = ($byMachine[$code] ?? 0) + $count;
+
+                $rowFirst = !empty($row['FirstRun']) ? Carbon::parse($row['FirstRun'], 'Asia/Ho_Chi_Minh') : null;
+                $rowLast = !empty($row['LastRun']) ? Carbon::parse($row['LastRun'], 'Asia/Ho_Chi_Minh') : null;
+                if ($rowFirst && (!$firstRun || $rowFirst->lt($firstRun))) {
+                    $firstRun = $rowFirst;
+                }
+                if ($rowLast && (!$lastRun || $rowLast->gt($lastRun))) {
+                    $lastRun = $rowLast;
+                }
+            }
+
+            $byMachineList = [];
+            foreach ($byMachine as $code => $count) {
+                $byMachineList[] = ['machineCode' => $code, 'count' => $count];
+            }
+            // Máy chạy nhiều mẻ nhất lên trước; đồng số mẻ thì theo mã máy cho ổn định thứ tự
+            // giữa các lần gọi (nếu không, thứ tự sẽ đổi lung tung theo cách SQL Server trả về).
+            usort($byMachineList, fn ($a, $b) => ($b['count'] <=> $a['count']) ?: strcmp($a['machineCode'], $b['machineCode']));
+
+            return [
+                'lot' => $lot,
+                'total' => $total,
+                'firstRunAt' => $firstRun?->toIso8601String(),
+                'lastRunAt' => $lastRun?->toIso8601String(),
+                'byMachine' => $byMachineList,
+                'bpdbConnected' => true,
+            ];
+        });
     }
 
     /** @return array{0: ?string, 1: ?string} [color, productCode] — null nếu không tách được. */
