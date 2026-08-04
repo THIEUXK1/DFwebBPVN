@@ -361,6 +361,74 @@ class ScaleLiveWeightTest extends TestCase
     }
 
     /**
+     * Cài Agent xong là trạm phải hiện ra, KHÔNG cần đọc được số cân nào (2026-08-04).
+     *
+     * Lỗi thật của bộ cài CÂN TO: nó đọc file log riêng `putty_log_large.txt` trong khi máy trạm
+     * chỉ có một PuTTY ghi vào `putty_log.txt`, nên Agent không đẩy được số nào — mà đó lại là
+     * thứ DUY NHẤT tạo ra trạm và cặp máy→trạm. Kết quả: /weighing-station-large không tự nhận
+     * được trạm nào, còn cân nhỏ thì chạy tốt vì nó đọc đúng file đang có sẵn.
+     */
+    public function test_hello_dang_ky_tram_can_to_khi_chua_doc_duoc_so_can_nao(): void
+    {
+        Cache::forget('scale_machine_station_machine_10_0_2_10_LARGE');
+
+        $this->postJson('/api/devices/hello', [
+            'workstation_id' => 'WS-LARGE-PC09',
+            'role' => 'SCALE_ONLY',
+            'scale_kind' => 'LARGE',
+            'machine_name' => 'PC09',
+        ], [
+            // Bắt AgentAuth chạy thật (môi trường test mặc định cho qua) để kiểm luôn nhánh tự
+            // đăng ký trạm theo role + scale_kind.
+            'X-Enforce-Workstation-Guard' => '1',
+            'REMOTE_ADDR' => '10.0.2.10',
+        ])->assertStatus(200);
+
+        $station = Workstation::where('code', 'WS-LARGE-PC09')->first();
+        $this->assertNotNull($station, 'Báo danh phải tự tạo bản ghi trạm cân to');
+        $this->assertContains('LARGE_SCALE', $station->capability_codes ?? [],
+            'Thiếu LARGE_SCALE thì router chặn không cho vào /weighing-station-large');
+
+        // Trình duyệt trên chính máy đó tự nhận ra trạm của mình.
+        $this->actingAs($this->operator)
+            ->getJson('/api/workstations/whoami?kind=LARGE', ['REMOTE_ADDR' => '10.0.2.10'])
+            ->assertJsonPath('data.code', 'WS-LARGE-PC09');
+
+        // Nhưng KHÔNG được bịa ra số cân: màn hình phải báo mất tín hiệu cân, không tô xanh ĐẠT.
+        $this->actingAs($this->operator)
+            ->getJson('/api/devices/readings/WS-LARGE-PC09?local=1&kind=LARGE', ['REMOTE_ADDR' => '10.0.2.10'])
+            ->assertJsonPath('has_reading', false);
+    }
+
+    /**
+     * Báo danh của cân to KHÔNG được ghi đè cặp máy→trạm của cân nhỏ trên cùng một máy.
+     */
+    public function test_hello_tach_rieng_theo_loai_can_tren_cung_mot_may(): void
+    {
+        Cache::forget('scale_machine_station_machine_10_0_2_20');
+        Cache::forget('scale_machine_station_machine_10_0_2_20_LARGE');
+
+        Workstation::firstOrCreate(['code' => 'WS-SCALE-PC10'], ['name' => 'PC10 can nho', 'status' => 'ACTIVE']);
+        Workstation::firstOrCreate(['code' => 'WS-LARGE-PC10'], ['name' => 'PC10 can to', 'status' => 'ACTIVE']);
+
+        $this->postJson('/api/devices/hello',
+            ['workstation_id' => 'WS-SCALE-PC10', 'role' => 'SCALE_ONLY', 'scale_kind' => 'SMALL'],
+            ['REMOTE_ADDR' => '10.0.2.20'])->assertStatus(200);
+
+        $this->postJson('/api/devices/hello',
+            ['workstation_id' => 'WS-LARGE-PC10', 'role' => 'SCALE_ONLY', 'scale_kind' => 'LARGE'],
+            ['REMOTE_ADDR' => '10.0.2.20'])->assertStatus(200);
+
+        $this->actingAs($this->operator)
+            ->getJson('/api/workstations/whoami', ['REMOTE_ADDR' => '10.0.2.20'])
+            ->assertJsonPath('data.code', 'WS-SCALE-PC10');
+
+        $this->actingAs($this->operator)
+            ->getJson('/api/workstations/whoami?kind=LARGE', ['REMOTE_ADDR' => '10.0.2.20'])
+            ->assertJsonPath('data.code', 'WS-LARGE-PC10');
+    }
+
+    /**
      * Agent/PuTTY chết ở máy này: số cân hết TTL 15s nhưng mốc thời gian (TTL 1 giờ) vẫn còn, đủ để
      * biết "máy này CÓ cân". Phải báo mất tín hiệu, TUYỆT ĐỐI không âm thầm tụt về khóa mã trạm và
      * hiển thị số cân của trạm khác — cân sai mà vẫn tô xanh ĐẠT nguy hiểm hơn hẳn mất số.

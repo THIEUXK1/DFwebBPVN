@@ -311,6 +311,9 @@ Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
 // Device / Agent Integration Routes — xác thực bằng token workstation (agent.auth),
 // KHÔNG dùng auth:sanctum (Local Agent không phải người dùng đăng nhập).
 Route::post('/devices/readings', [DeviceController::class, 'storeReading'])->middleware('agent.auth');
+// Bao danh "may nay la tram nao" — KHONG kem so can. Tach khoi /devices/readings de tram van
+// hien ra khi PuTTY chua ghi dung file log Agent dang doc (loi bo cai can to, 2026-08-04).
+Route::post('/devices/hello', [DeviceController::class, 'hello'])->middleware('agent.auth');
 Route::get('/agents/{workstation_id}/jobs', [AgentJobsController::class, 'getJobs'])->middleware('agent.auth');
 Route::post('/jobs/{job_id}/ack', [AgentJobsController::class, 'acknowledgeJob'])->middleware('agent.auth');
 Route::post('/agents/{workstation_id}/printers', [AgentJobsController::class, 'reportPrinters'])->middleware('agent.auth');

@@ -1,5 +1,5 @@
 <template>
-  <!-- Người ĐÃ đăng nhập: nút 3 gạch mở lại menu điều hướng. -->
+  <!-- Người ĐÃ đăng nhập: nút 3 gạch ẩn/hiện menu điều hướng (mặc định vào trang là đang hiện). -->
   <button
     v-if="isLoggedIn"
     class="nav-toggle-btn"

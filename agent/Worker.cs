@@ -40,10 +40,21 @@ public class Worker : BackgroundService
     // nhất. Chỉ ghi khi trạng thái ĐỔI: lúc hỏng lần đầu, và lúc sống lại.
     private readonly System.Collections.Generic.Dictionary<string, bool> _backendOk = new();
 
+    // Trạng thái lần BÁO DANH gần nhất — tách riêng khỏi _backendOk vì hai việc hỏng độc lập
+    // nhau: cân chết thì không còn số để đẩy nhưng báo danh vẫn phải chạy, và trộn chung sẽ ghi
+    // ra những dòng log mâu thuẫn ("backend nhận lại được số cân" trong khi không có số nào).
+    private readonly System.Collections.Generic.Dictionary<string, bool> _helloOk = new();
+
     // Danh sách máy in cài sẵn hiếm khi đổi — không cần báo cáo mỗi vòng lặp 500ms
     // như số cân. Báo lại mỗi 60 giây (đủ nhanh để phát hiện máy in mới cắm vào).
     private DateTime _nextPrinterReportAt = DateTime.MinValue;
     private static readonly TimeSpan PrinterReportInterval = TimeSpan.FromSeconds(60);
+
+    // Nhịp BÁO DANH (xem AnnounceStationAsync). Thưa hơn hẳn nhịp đẩy số cân vì đây chỉ là việc
+    // giữ cho cặp MÁY -> TRẠM còn hiệu lực phía backend; 60 giây là dư nhanh so với TTL 12 giờ
+    // của cặp đó, mà vẫn đủ để trạm hiện ra gần như tức thì sau khi cài xong.
+    private DateTime _nextHelloAt = DateTime.MinValue;
+    private static readonly TimeSpan HelloInterval = TimeSpan.FromSeconds(60);
 
     public Worker(
         ILogger<Worker> logger,
@@ -231,6 +242,7 @@ public class Worker : BackgroundService
         Task? pushInFlight = null;
         Task? printPollInFlight = null;
         Task? rackPollInFlight = null;
+        Task? helloInFlight = null;
         DateTime nextRackPollAt = DateTime.MinValue;
 
         static bool Idle(Task? t) => t is null || t.IsCompleted;
@@ -242,6 +254,13 @@ public class Worker : BackgroundService
         {
             try
             {
+                // BÁO DANH trước mọi thứ khác và KHÔNG phụ thuộc số cân — xem AnnounceStationAsync.
+                if (DateTime.UtcNow >= _nextHelloAt && Idle(helloInFlight))
+                {
+                    helloInFlight = AnnounceStationAsync();
+                    _nextHelloAt = DateTime.UtcNow.Add(HelloInterval);
+                }
+
                 if (_scaleEnabled)
                 {
                     // Nạp MỌI lần đọc vào StableFilter, kể cả khi giá trị không đổi — chính việc
@@ -310,6 +329,71 @@ public class Worker : BackgroundService
         {
             await ReportInstalledPrintersAsync();
             _nextPrinterReportAt = DateTime.UtcNow.Add(PrinterReportInterval);
+        }
+    }
+
+    /// <summary>
+    /// BÁO DANH: "máy này có Agent cân, nó là trạm {_workstationId}".
+    ///
+    /// LÝ DO TỒN TẠI (lỗi thật 2026-08-04, bản CÂN TO): trước đây điều DUY NHẤT tạo ra bản ghi
+    /// trạm và cặp MÁY -> TRẠM phía backend là request ĐẨY SỐ CÂN. Nên chừng nào PuTTY chưa ghi
+    /// đúng file log mà Agent đang đọc, máy đó KHÔNG TỒN TẠI đối với hệ thống: `whoami` trả null,
+    /// màn hình /weighing-station-large không tự nhận được trạm nào, và người dùng không có cách
+    /// nào biết vì sao — bộ cài cân nhỏ thì lại chạy tốt vì nó đọc đúng file PuTTY đang có sẵn.
+    ///
+    /// Cài xong là trạm phải hiện ra, độc lập hoàn toàn với tình trạng cái cân. Thiếu tín hiệu
+    /// cân là một trạng thái RIÊNG, đã có `has_reading`/`age_ms` lo (màn hình báo "MẤT TÍN HIỆU
+    /// CÂN") — chứ không được biểu hiện thành "không có trạm nào".
+    ///
+    /// Gửi tới MỌI backend, song song, cùng lý do với PushWeightToBackendAsync.
+    /// </summary>
+    private async Task AnnounceStationAsync()
+    {
+        await Task.WhenAll(_backendUrls.Select(AnnounceToOneAsync));
+    }
+
+    private async Task AnnounceToOneAsync(string backendUrl)
+    {
+        try
+        {
+            var payload = new
+            {
+                workstation_id = _workstationId,
+                // Cùng bộ trường với lượt đẩy số cân: middleware AgentAuth suy ra loại trạm và
+                // capability (SMALL_SCALE / LARGE_SCALE) từ đúng hai trường role + scale_kind này.
+                role = _role,
+                scale_kind = _scaleKind,
+                machine_name = Environment.MachineName
+            };
+
+            HttpResponseMessage response = await _httpClient.PostAsJsonAsync($"{backendUrl}/devices/hello", payload);
+
+            GhiNhanTrangThaiBaoDanh(backendUrl, response.IsSuccessStatusCode,
+                response.IsSuccessStatusCode ? null : $"tra ve {(int)response.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            GhiNhanTrangThaiBaoDanh(backendUrl, false, ex.Message);
+        }
+    }
+
+    /// <summary>Ghi log CHỈ khi tình trạng báo danh của một backend thay đổi.</summary>
+    private void GhiNhanTrangThaiBaoDanh(string backendUrl, bool ok, string? lyDo)
+    {
+        if (_helloOk.TryGetValue(backendUrl, out bool truoc) && truoc == ok)
+        {
+            return;
+        }
+
+        _helloOk[backendUrl] = ok;
+
+        if (ok)
+        {
+            _logger.LogInformation("Đã báo danh trạm {WS} (loại cân {Kind}) với backend {Url}.", _workstationId, _scaleKind, backendUrl);
+        }
+        else
+        {
+            _logger.LogWarning("Backend {Url} KHÔNG nhận được báo danh trạm {WS}: {Msg}", backendUrl, _workstationId, lyDo);
         }
     }
 

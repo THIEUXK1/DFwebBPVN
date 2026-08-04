@@ -107,7 +107,7 @@ const routes = [
   // 3 route dưới đây (grid / print-order-entry / machine-id-board) để requiresAuth:false theo
   // yêu cầu 2026-08-04 — máy xưởng mở thẳng bằng link, không phải đăng nhập, KỂ CẢ thao tác
   // ghi. Chúng gọi nhóm /api/public/... (xem routes/api.php); người ĐÃ đăng nhập vẫn có menu
-  // vì mỗi trang tự bọc AppLayout và lộ ra bằng nút 3 gạch (xem NavToggleButton.vue).
+  // vì mỗi trang tự bọc AppLayout và hiện sẵn menu, thu gọn bằng nút 3 gạch (NavToggleButton.vue).
   //
   // 2 trạm cân (/weighing-station-v2, /weighing-station-large) CỐ Ý giữ requiresAuth:true —
   // phải lưu được người cân và tài khoản duyệt override dung sai (CLAUDE.md mục 5).

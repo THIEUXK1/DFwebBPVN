@@ -84,8 +84,15 @@
      3.2.0.0 (2026-08-03): them SEND OVER 6 — Agent mo phong chuot/ban phim day ma rack sang
      ung dung pha mau (RackSender, port 1-1 tu VBA scaleform/Mod_sendRackauto, xem ADR-012).
      Chi ban CAN TO co muc cau hinh "Rack" trong appsettings; mac dinh Enabled=false nen nang
-     cap len ban nay KHONG lam may nao tu nhien chiem chuot. -->
-<?define PackageVersion = "3.2.0.0"?>
+     cap len ban nay KHONG lam may nao tu nhien chiem chuot.
+
+     3.3.0.0 (2026-08-04): sua loi bo cai CAN TO khong tu hien ra tram tai may tram. Hai thay doi:
+     (1) Agent BAO DANH voi backend moi 60 giay (POST /api/devices/hello), khong con phu thuoc
+     vao viec doc duoc so can — cai xong la tram hien ra, thieu tin hieu can chi con la canh bao
+     rieng tren man hinh; (2) ban CAN TO co Scale:LogFilePathFallback tro ve duong dan chuan cu
+     D:\scale\putty_log.txt, dung cho may tram chi mo MOT PuTTY (file rieng putty_log_large.txt
+     van duoc uu tien tuyet doi). -->
+<?define PackageVersion = "3.3.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.ProductLabel))"

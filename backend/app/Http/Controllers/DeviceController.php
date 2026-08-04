@@ -78,41 +78,93 @@ class DeviceController extends Controller
         // một ca làm việc: Agent đẩy số liên tục nên mốc này được làm mới suốt ca.
         Cache::put("scale_machine_station_{$machineKey}", $workstationId, 43200);
 
-        // Tu dong gan thiet bi Can cho tram neu chua co (2026-07-30, "cai la dung thoi"):
-        // truoc day nguoi dung phai tu bam "Cau hinh can ngay" tren UI (QrScanPanel.vue)
-        // truoc khi xem duoc so can, du Agent da bao cao so that roi. Agent gui duoc so
-        // can that qua day la du bang chung de tu tao/gan Device — giu nguyen co che
-        // Device/OperationClientDevice hien co (giong WorkstationLocalConfigController)
-        // thay vi bo qua han buoc gan thiet bi.
-        // Chi tra theo code (Agent luon gui Workstation:Id dang chuoi ma tram, vd
-        // "WS-WEIGH-SCALE") — KHONG orWhere('id', ...) vi id la cot bigint, Postgres loi
-        // ngay "invalid input syntax for type bigint" khi so sanh voi chuoi khong phai so.
-        $client = OperationClient::where('code', $workstationId)->first();
-        if ($client) {
-            $hasScale = OperationClientDevice::where('operation_client_id', $client->id)
-                ->where('device_role', 'PRIMARY_SCALE')
-                ->exists();
-
-            if (!$hasScale) {
-                $device = Device::firstOrCreate(
-                    ['code' => "SCALE_{$workstationId}"],
-                    ['device_type' => 'SCALE', 'status' => 'ACTIVE']
-                );
-
-                OperationClientDevice::create([
-                    'operation_client_id' => $client->id,
-                    'device_id' => $device->id,
-                    'device_role' => 'PRIMARY_SCALE',
-                    'is_default' => true,
-                    'priority' => 1,
-                    'enabled' => true,
-                ]);
-            }
-        }
+        $this->ensureScaleDeviceAttached($workstationId);
 
         return response()->json([
             'status' => 'SUCCESS',
             'message' => 'Scale reading cached successfully'
+        ]);
+    }
+
+    /**
+     * "Máy này có Agent cân, nó là trạm X" — Agent báo danh, KHÔNG kèm số cân nào.
+     *
+     * Trước 2026-08-04, thứ DUY NHẤT tạo ra bản ghi trạm (middleware AgentAuth) và cặp
+     * MÁY -> TRẠM dùng cho whoami() là chính request đẩy số cân. Hệ quả: máy nào Agent chưa đọc
+     * được cân thì KHÔNG TỒN TẠI với hệ thống — không có trạm, whoami trả null, màn hình cân
+     * không tự nhận được trạm của mình. Lỗi lộ ra ở bộ cài CÂN TO: nó đọc file log riêng
+     * `putty_log_large.txt`, mà máy trạm ngoài xưởng chỉ có một PuTTY ghi vào `putty_log.txt`
+     * (đường dẫn chuẩn cũ) — nên cân to không bao giờ tự hiện ra trạm, còn cân nhỏ thì chạy tốt.
+     *
+     * Tách hẳn hai chuyện: "máy này là trạm nào" (endpoint này, chỉ cần Agent sống) và "cân đang
+     * đọc được gì" (storeReading + has_reading/age_ms). Trạm mất tín hiệu cân phải hiện ra kèm
+     * cảnh báo MẤT TÍN HIỆU CÂN, chứ không được biến mất khỏi hệ thống.
+     */
+    public function hello(Request $request)
+    {
+        $request->validate([
+            'workstation_id' => 'required|string|max:50',
+            'scale_kind' => 'nullable|string|in:SMALL,LARGE',
+        ]);
+
+        $workstationId = $request->input('workstation_id');
+        $machineKey = self::machineKey($request->ip(), self::scaleKind($request->input('scale_kind')));
+
+        // CHỈ ghi cặp máy -> trạm. Tuyệt đối không đụng tới 3 khóa số cân: báo danh không phải
+        // bằng chứng cân đang sống, ghi vào đó là dựng lại đúng cái "0.0 giả" mà TV6 đã gỡ bỏ.
+        Cache::put("scale_machine_station_{$machineKey}", $workstationId, 43200);
+
+        $this->ensureScaleDeviceAttached($workstationId);
+
+        // Bản ghi trạm do middleware AgentAuth tạo/lấy ra (nhánh tự đăng ký theo role +
+        // scale_kind) — trả về để Agent ghi log thấy ngay mình được nhận dạng thành trạm nào.
+        $workstation = $request->attributes->get('agent_workstation');
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'workstation_id' => $workstationId,
+            'workstation_code' => $workstation?->code,
+        ]);
+    }
+
+    /**
+     * Tu dong gan thiet bi Can cho tram neu chua co (2026-07-30, "cai la dung thoi"):
+     * truoc day nguoi dung phai tu bam "Cau hinh can ngay" tren UI (QrScanPanel.vue)
+     * truoc khi xem duoc so can, du Agent da bao cao so that roi. Agent chay tren may tram
+     * la du bang chung de tu tao/gan Device — giu nguyen co che Device/OperationClientDevice
+     * hien co (giong WorkstationLocalConfigController) thay vi bo qua han buoc gan thiet bi.
+     *
+     * Chi tra theo code (Agent luon gui Workstation:Id dang chuoi ma tram, vd "WS-WEIGH-SCALE")
+     * — KHONG orWhere('id', ...) vi id la cot bigint, Postgres loi ngay "invalid input syntax
+     * for type bigint" khi so sanh voi chuoi khong phai so.
+     */
+    private function ensureScaleDeviceAttached(string $workstationId): void
+    {
+        $client = OperationClient::where('code', $workstationId)->first();
+        if (! $client) {
+            return;
+        }
+
+        $hasScale = OperationClientDevice::where('operation_client_id', $client->id)
+            ->where('device_role', 'PRIMARY_SCALE')
+            ->exists();
+
+        if ($hasScale) {
+            return;
+        }
+
+        $device = Device::firstOrCreate(
+            ['code' => "SCALE_{$workstationId}"],
+            ['device_type' => 'SCALE', 'status' => 'ACTIVE']
+        );
+
+        OperationClientDevice::create([
+            'operation_client_id' => $client->id,
+            'device_id' => $device->id,
+            'device_role' => 'PRIMARY_SCALE',
+            'is_default' => true,
+            'priority' => 1,
+            'enabled' => true,
         ]);
     }
 

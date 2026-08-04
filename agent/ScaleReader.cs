@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.IO.Ports;
+using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -14,7 +15,7 @@ public class ScaleReader : IDisposable
     private readonly ILogger<ScaleReader> _logger;
     private readonly IConfiguration _config;
     private SerialPort? _serialPort;
-    private readonly string _simulationFilePath;
+    private readonly string[] _logFilePaths;
     private readonly bool _useSimulation;
 
     public ScaleReader(ILogger<ScaleReader> logger, IConfiguration config)
@@ -34,12 +35,7 @@ public class ScaleReader : IDisposable
             ? _config.GetValue<bool>("Scale:UseSimulation", true)
             : !string.Equals(source, "SERIAL", StringComparison.OrdinalIgnoreCase);
 
-        // LogFilePath là tên khoá chính thức; SimulationFilePath giữ làm dự phòng cho cấu hình cũ
-        // trên máy đã cài (cùng lý do với Source/UseSimulation ở trên — file log PuTTY là đường
-        // chạy THẬT của xưởng, không phải đồ giả lập).
-        _simulationFilePath = _config.GetValue<string>("Scale:LogFilePath")
-                              ?? _config.GetValue<string>("Scale:SimulationFilePath")
-                              ?? DefaultLogFilePath;
+        _logFilePaths = ResolveLogFilePaths(_config);
 
         if (!_useSimulation)
         {
@@ -47,8 +43,40 @@ public class ScaleReader : IDisposable
         }
         else
         {
-            _logger.LogInformation("Đọc cân từ file log PuTTY (cách cũ, giống Excel VBA): {Path}", _simulationFilePath);
+            _logger.LogInformation(
+                "Đọc cân từ file log PuTTY (cách cũ, giống Excel VBA). Thứ tự ưu tiên: {Paths}",
+                string.Join(" -> ", _logFilePaths));
         }
+    }
+
+    /// <summary>
+    /// Danh sách file log PuTTY sẽ đọc, THEO THỨ TỰ ƯU TIÊN. Luôn trả về ít nhất 1 phần tử.
+    ///
+    /// `Scale:LogFilePath` là khoá chính thức; `Scale:SimulationFilePath` giữ làm dự phòng cho
+    /// cấu hình cũ trên máy đã cài (cùng lý do với Source/UseSimulation ở trên — file log PuTTY
+    /// là đường chạy THẬT của xưởng, không phải đồ giả lập).
+    ///
+    /// `Scale:LogFilePathFallback` (2026-08-04) chỉ có ý nghĩa với bản CÂN TO. Bản đó đặt mặc
+    /// định `putty_log_large.txt` để hai Agent trên CÙNG một máy không đọc chung một cái cân —
+    /// nhưng ở máy trạm ngoài xưởng chỉ có MỘT PuTTY, ghi vào đường dẫn chuẩn cũ
+    /// `D:\scale\putty_log.txt`. Không có bước lui này thì Agent cân to không đọc được gì, và
+    /// vì trạm chỉ được tự đăng ký khi có số cân nên máy đó KHÔNG BAO GIỜ hiện ra trạm cân to
+    /// (lỗi thật 2026-08-04). File riêng vẫn được ưu tiên tuyệt đối: máy nào đã mở PuTTY thứ hai
+    /// thì bước lui không bao giờ chạy tới.
+    /// </summary>
+    public static string[] ResolveLogFilePaths(IConfiguration config)
+    {
+        string chinh = config.GetValue<string>("Scale:LogFilePath")
+                       ?? config.GetValue<string>("Scale:SimulationFilePath")
+                       ?? DefaultLogFilePath;
+
+        string? duPhong = config.GetValue<string>("Scale:LogFilePathFallback");
+
+        return new[] { chinh, duPhong ?? string.Empty }
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private void InitializeSerialPort()
@@ -199,7 +227,25 @@ public class ScaleReader : IDisposable
     // Throttle cảnh báo "chưa thấy file log cân" — vòng lặp Worker nay chạy mỗi ReadIntervalMs
     // (mặc định 10ms), log mỗi vòng sẽ ghi 100 dòng/giây và làm ngập file log.
     private DateTime _nextMissingFileWarnAt = DateTime.MinValue;
+    private DateTime _nextFallbackWarnAt = DateTime.MinValue;
     private static readonly TimeSpan MissingFileWarnInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// File log đang dùng: ứng viên ĐẦU TIÊN thực sự tồn tại, hoặc null nếu không có cái nào.
+    ///
+    /// Tra lại mỗi lần đọc (không chốt cứng lúc khởi động) để PuTTY bật SAU Agent vẫn được nhận
+    /// ra ngay, và để máy mở thêm PuTTY riêng cho cân to tự chuyển về file riêng mà không phải
+    /// khởi động lại service.
+    /// </summary>
+    private string? ResolveActiveLogFile()
+    {
+        foreach (string path in _logFilePaths)
+        {
+            if (File.Exists(path)) return path;
+        }
+
+        return null;
+    }
 
     private (double? Weight, bool IsStable) ReadSimulatedWeight()
     {
@@ -210,19 +256,32 @@ public class ScaleReader : IDisposable
             // đúng đường dẫn. Nay coi "không thấy file" là CHƯA NHẬN được tín hiệu cân thật
             // (weight=null, đúng quy ước TV6 — xem CleanWeight/ReadCurrentWeightWithStability)
             // — không tự bịa số, không tự tạo file.
-            if (!File.Exists(_simulationFilePath))
+            string? activePath = ResolveActiveLogFile();
+            if (activePath is null)
             {
                 if (DateTime.UtcNow >= _nextMissingFileWarnAt)
                 {
                     _logger.LogWarning(
-                        "Chưa nhận tín hiệu cân — không tìm thấy file log tại {Path}. Kiểm tra PuTTY đã bật Session Logging đúng đường dẫn này chưa.",
-                        _simulationFilePath);
+                        "Chưa nhận tín hiệu cân — không tìm thấy file log nào trong: {Paths}. Kiểm tra PuTTY đã bật Session Logging đúng một trong các đường dẫn này chưa.",
+                        string.Join(" , ", _logFilePaths));
                     _nextMissingFileWarnAt = DateTime.UtcNow.Add(MissingFileWarnInterval);
                 }
                 return (null, false);
             }
 
-            string lastLine = ReadLastCompleteLine(_simulationFilePath);
+            // Đang phải lui về file dự phòng — nói to ra, vì trên máy cài CẢ HAI bộ Agent thì
+            // file dự phòng chính là log của CÂN NHỎ: số của cân nhỏ sẽ chạy trên màn hình cân
+            // to mà không có dấu hiệu nào khác. Mở PuTTY riêng cho cân to là hết cảnh báo này.
+            if (!string.Equals(activePath, _logFilePaths[0], StringComparison.OrdinalIgnoreCase)
+                && DateTime.UtcNow >= _nextFallbackWarnAt)
+            {
+                _logger.LogWarning(
+                    "Không thấy file log riêng {Chinh} nên đang đọc file DỰ PHÒNG {DuPhong}. Nếu máy này chạy cả Agent cân nhỏ thì hai bên đang đọc CHUNG một cái cân — hãy mở PuTTY riêng ghi vào file log riêng đó.",
+                    _logFilePaths[0], activePath);
+                _nextFallbackWarnAt = DateTime.UtcNow.Add(MissingFileWarnInterval);
+            }
+
+            string lastLine = ReadLastCompleteLine(activePath);
             if (lastLine.Length > 0)
             {
                 var (weight, isStable) = ReadWeightWithStability(lastLine);

@@ -336,8 +336,10 @@ const refreshAll = () => { fetchDispatches(); fetchWaiting(); };
 let pollInterval: any = null;
 
 onMounted(() => {
-  // Ẩn sẵn sidebar+topbar khi vào trang — người đã đăng nhập bấm nút 3 gạch mới lộ menu.
-  if (isLoggedIn) isFullscreen.value = true;
+  // Người ĐÃ đăng nhập vào trang là thấy menu ngay (yêu cầu 2026-08-04) — muốn xem rộng thì
+  // tự bấm nút 3 gạch để thu gọn. Người xem công khai không được bọc AppLayout nên không
+  // có menu nào để hiện.
+  if (isLoggedIn) isFullscreen.value = false;
   refreshAll();
   // Mod_FE_REFRESH: bản gốc tự làm mới mỗi 15s.
   echo.channel('production-batches').listen('.updated', refreshAll);

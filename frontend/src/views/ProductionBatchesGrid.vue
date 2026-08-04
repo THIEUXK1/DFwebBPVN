@@ -120,7 +120,7 @@
     <div v-if="tankPickerOpen" class="vba-modal-backdrop" @click.self="tankPickerOpen = false">
       <div class="vba-form vba-modal" :style="{ width: '90pt', height: '182pt' }">
         <select v-model="tankPickerValue" size="8" class="vba-listbox" :style="box(12, 6, 64.5, 114.75)">
-          <option v-for="t in tankPickerOptions" :key="t.id" :value="t.code">{{ t.code }}</option>
+          <option v-for="code in tankPickerOptions" :key="code" :value="code">{{ code }}</option>
         </select>
         <button class="vba-btn" :style="box(12, 132, 66, 42)" @click="confirmTankPick">OK</button>
       </div>
@@ -506,10 +506,22 @@ const confirmMachinePick = () => {
   machinePickerOpen.value = false;
 };
 
-const tankPickerOptions = computed(() => {
-  const machineId =
-    tankPickerTarget.value === 'subform' ? subFormBatch.value?.machine_id : currentMachine.value?.id;
-  return tanks.value.filter(t => t.machine_id === machineId);
+// VBA gốc (`mainform.CommandButton3_Click`) đổ vào ListBox một MẢNG CỐ ĐỊNH:
+//     arrVD = Array("1A", "2B", "3C", "4D", "FB")
+// — không liên quan gì tới máy đang chọn, nên bấm nút TANK lúc nào cũng có đủ 5 thùng, kể cả
+// khi Box4 (máy) còn trống. Bản port trước đây lọc `t.machine_id === machineId`, mà Box4 mặc
+// định rỗng nên hộp chọn thùng RỖNG HOÀN TOÀN cho tới khi chọn máy trước — không có thông báo
+// nào, nhìn y như hỏng (lỗi thật 2026-08-04). VBA cũng không bắt thứ tự: thùng chọn trước hay
+// sau máy đều được, và SAVE của bản gốc chỉ đòi Box1 + Box2.
+//
+// Vẫn lấy danh sách từ danh mục thật thay vì chép cứng mảng trên, để thêm loại thùng trong
+// Master Data là màn này có ngay; mảng VBA chỉ dùng khi danh mục chưa nạp được (mất API) — đúng
+// bằng cái bản gốc luôn có sẵn ngay cả lúc mất kết nối.
+const TANK_CODES_VBA = ['1A', '2B', '3C', '4D', 'FB'];
+
+const tankPickerOptions = computed<string[]>(() => {
+  const codes = [...new Set(tanks.value.map(t => t.code))].sort();
+  return codes.length ? codes : TANK_CODES_VBA;
 });
 
 const openTankPicker = () => {
@@ -526,7 +538,14 @@ const openTankPickerForSubForm = () => {
 
 const confirmTankPick = () => {
   if (tankPickerTarget.value === 'subform') {
-    subFormTankId.value = tankPickerOptions.value.find(t => t.code === tankPickerValue.value)?.id ?? null;
+    // SubForm ghi thẳng `tank_id` (khóa ngoại theo TỪNG máy) nên phải quy mã thùng về đúng bản
+    // ghi thùng của máy thuộc đơn này — danh sách chọn nay không còn lọc sẵn theo máy nữa.
+    const machineId = subFormBatch.value?.machine_id;
+    const tank = tanks.value.find(t => t.machine_id === machineId && t.code === tankPickerValue.value);
+    subFormTankId.value = tank?.id ?? null;
+    if (!tank) {
+      say(`Máy của đơn này không có thùng ${tankPickerValue.value} trong danh mục.`, true);
+    }
   } else {
     form.tankCode = tankPickerValue.value;
   }
@@ -605,8 +624,10 @@ const fetchWaiting = async () => {
 let pollInterval: any = null;
 
 onMounted(() => {
-  // Ẩn sẵn sidebar+topbar khi vào trang — người đã đăng nhập bấm nút 3 gạch mới lộ menu.
-  if (isLoggedIn) isFullscreen.value = true;
+  // Người ĐÃ đăng nhập vào trang là thấy menu ngay (yêu cầu 2026-08-04) — muốn xem rộng thì
+  // tự bấm nút 3 gạch để thu gọn. Người xem công khai không được bọc AppLayout nên không
+  // có menu nào để hiện.
+  if (isLoggedIn) isFullscreen.value = false;
   fetchMetadata();
   fetchWaiting();
   box1Ref.value?.focus();

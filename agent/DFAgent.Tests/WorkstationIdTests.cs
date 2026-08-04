@@ -159,6 +159,61 @@ public class WorkstationIdTests
         Assert.Equal(new[] { "http://127.0.0.1:8500/api" }, Worker.ResolveBackendUrls(config));
     }
 
+    // ---- File log PuTTY va buoc lui du phong (2026-08-04) -------------------------------
+    //
+    // Ban CAN TO doc file rieng putty_log_large.txt de khong dung chung cai can voi ban can nho.
+    // Nhung may tram ngoai xuong chi co MOT PuTTY, ghi vao duong dan chuan cu putty_log.txt —
+    // khong co buoc lui thi Agent can to khong doc duoc gi, va (truoc khi co /devices/hello)
+    // tram can to khong bao gio hien ra.
+
+    [Fact]
+    public void Khong_khai_bao_gi_thi_doc_duong_dan_chuan_cu()
+    {
+        Assert.Equal(new[] { ScaleReader.DefaultLogFilePath }, ScaleReader.ResolveLogFilePaths(Config()));
+    }
+
+    [Fact]
+    public void Khoa_cu_SimulationFilePath_van_duoc_doc()
+    {
+        // Cau hinh tren may da cai KHONG duoc bi bo qua im lang sau khi cap nhat Agent.
+        Assert.Equal(
+            new[] { @"D:\scale\cu.txt" },
+            ScaleReader.ResolveLogFilePaths(Config(("Scale:SimulationFilePath", @"D:\scale\cu.txt"))));
+    }
+
+    [Fact]
+    public void File_rieng_luon_dung_truoc_file_du_phong()
+    {
+        var config = Config(
+            ("Scale:LogFilePath", @"D:\scale\putty_log_large.txt"),
+            ("Scale:LogFilePathFallback", @"D:\scale\putty_log.txt"));
+
+        Assert.Equal(
+            new[] { @"D:\scale\putty_log_large.txt", @"D:\scale\putty_log.txt" },
+            ScaleReader.ResolveLogFilePaths(config));
+    }
+
+    [Fact]
+    public void Du_phong_trung_file_chinh_thi_bi_loai()
+    {
+        // Trung nhau se lam ResolveActiveLogFile bao "dang doc file du phong" oan, va canh bao
+        // do chinh la thu de nguoi van hanh biet hai Agent co the dang doc chung mot cai can.
+        var config = Config(
+            ("Scale:LogFilePath", @"D:\scale\putty_log.txt"),
+            ("Scale:LogFilePathFallback", @"d:\SCALE\PUTTY_LOG.TXT"));
+
+        Assert.Single(ScaleReader.ResolveLogFilePaths(config));
+    }
+
+    [Fact]
+    public void Ban_can_nho_khong_co_du_phong_thi_chi_doc_dung_mot_file()
+    {
+        // Ban can nho CO Y khong co buoc lui: no von da doc dung duong dan chuan cu.
+        Assert.Equal(
+            new[] { @"D:\scale\putty_log.txt" },
+            ScaleReader.ResolveLogFilePaths(Config(("Scale:LogFilePath", @"D:\scale\putty_log.txt"))));
+    }
+
     [Fact]
     public void Cau_hinh_cu_chua_co_ScaleKind_giu_nguyen_tien_to_WS_SCALE()
     {
