@@ -429,7 +429,9 @@ const menuGroupsRaw = [
       { path: '/weighing-history', label: 'Lịch sử cân', icon: 'scale', adminOnly: true },
       { path: '/chemical-call', label: 'Gọi hóa chất', icon: 'recipe' },
       { path: '/chemical-call/monitor', label: 'Giám sát Hóa chất', icon: 'dashboard' },
-      { path: '/chemical-call/pending', label: 'Đang chờ xử lý', icon: 'bell' }
+      { path: '/chemical-call/pending', label: 'Đang chờ xử lý', icon: 'bell' },
+      { path: '/chemical-call/classic', label: 'Bảng cổ điển (Excel)', icon: 'recipe' },
+      { path: '/chemical-call/pending-classic', label: 'Hàng đợi cổ điển (Excel)', icon: 'bell' }
     ]
   },
   {
@@ -512,7 +514,9 @@ const currentRouteName = computed(() => {
     '/print-station': 'Trạm In tem',
     '/chemical-call': 'Trạm Gọi Hóa chất',
     '/chemical-call/monitor': 'Giám sát Hệ thống Gọi Hóa chất',
-    '/chemical-call/pending': 'Danh sách Hóa chất Đang chờ Xử lý'
+    '/chemical-call/pending': 'Danh sách Hóa chất Đang chờ Xử lý',
+    '/chemical-call/classic': 'Bảng Gọi Hóa chất — Giao diện cổ điển',
+    '/chemical-call/pending-classic': 'Hàng đợi Đang chờ — Giao diện cổ điển'
   };
   return nameMap[route.path] || 'Trang chủ';
 });

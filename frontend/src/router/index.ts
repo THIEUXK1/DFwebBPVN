@@ -58,6 +58,22 @@ const routes = [
     component: () => import('../views/ChemicalCallPending.vue'),
     meta: { requiresAuth: true }
   },
+  // Dựng lại ĐÚNG giao diện UserForm CHEM_ORDER gốc (2 cột, nút gọi = mã hóa chất,
+  // ô đỏ/xanh ORDER/DONE, nút OK riêng) — xem ChemicalCallClassic.vue.
+  {
+    path: '/chemical-call/classic',
+    name: 'ChemicalCallClassic',
+    component: () => import('../views/ChemicalCallClassic.vue'),
+    meta: { requiresAuth: true }
+  },
+  // Dựng lại ĐÚNG giao diện UserForm CHEM_ORDER của "6.báo phát AC- 151.xlsm" — hàng đợi
+  // dọc 4 ô (mã máy/OK/công thức/QR) — xem ChemicalCallPendingClassic.vue.
+  {
+    path: '/chemical-call/pending-classic',
+    name: 'ChemicalCallPendingClassic',
+    component: () => import('../views/ChemicalCallPendingClassic.vue'),
+    meta: { requiresAuth: true }
+  },
   {
     path: '/troubleshooting',
     name: 'Troubleshooting',
