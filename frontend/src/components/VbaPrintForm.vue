@@ -72,8 +72,10 @@ const box = (l: number, t: number, w: number, h: number) => ({
 const dyeLines = computed(() => parseRackLines(props.data.rawQrDye).slice(0, 9));
 const chemLines = computed(() => parseRackLines(props.data.rawQrChem).slice(0, 9));
 
-// Nút PRINT — in ĐÚNG tem 70x100mm của Trạm in (utils/dispatchSlipPrint.ts), không phải một
-// phiếu text riêng như bản trước (yêu cầu 2026-08-03: "in ở đây ra tem giống ở print-station").
+// Nút PRINT — in ĐÚNG tem của Trạm in (utils/dispatchSlipPrint.ts), không phải một phiếu
+// text riêng như bản trước (yêu cầu 2026-08-03: "in ở đây ra tem giống ở print-station").
+// Từ 2026-08-05 tem đó được dựng 1:1 theo sheet DF_WEIGHING_SLIP + Mod_printslip của
+// workbook 3.DF028 (khổ 72.6x97.5mm của máy TSC TE200), không còn theo bố cục TSPL.
 // Cửa sổ in phải mở ĐỒNG BỘ ngay trong handler click, trước await dựng QR — nếu mở sau,
 // Chrome/Edge coi như mất "user gesture" và chặn popup.
 const printing = ref(false);

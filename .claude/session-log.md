@@ -2099,3 +2099,34 @@ Trang can dang nhap nen khong chup truc tiep duoc -> dung `scratchpad/preview.mj
 - **Chua build lai 3 file MSI** va **chua deploy** (MSI phai copy sang `backend/public/downloads/` + server tai ve cong 8501).
 - **Chua chay unit test cua Agent**: may dev chi co .NET 10 runtime, project test nham net8.0 -> `dotnet test` abort ("missing Microsoft.NETCore.App 8.0.0"). Day la thieu runtime san co tu truoc, khong lien quan thay doi nay.
 - **Kiem chung da chay:** `dotnet build DFAgent.csproj -c Release` 0 loi; `wix build` thanh cong ca 2 che do + doi chieu bang trong MSI nhu tren; `vue-tsc --noEmit` exit 0; JSON ca 2 file appsettings parse sach; `build.ps1` parse sach. **Chua thu tay tren may that.**
+
+### 113. Tem in qua trinh duyet: dung lai 1:1 theo sheet DF_WEIGHING_SLIP + Mod_printslip cua 3.DF028 (2026-08-05)
+
+**A. Cau hoi goc:** "tem in o /print-order-entry da giong het trong 3.DF028 formulas - PRINTER LANDSCAPE - jit qr sending - 15l special.xlsm chua?" -> **Chua**. Doi chieu bang cach bung workbook va giai nen truc tiep `xl/vbaProject.bin` (script CFB + RLE tu viet, lay MODULEOFFSET tu stream `dir`) de doc **VBA that trong chinh file DF028**.
+
+- `Mod_printslip.PrintSlip_70x100` cua DF028 giong hoan toan ban `Mod_printslip_full.txt` dang dung lam nguon port, **tru mot diem: khong goi `SetupSlipPage`** - in thang bang page setup luu san trong sheet.
+- Page setup that (doc tu `xl/printerSettings/printerSettings2.bin`, DEVMODE): may in **TSC TE200**, kho giay tuy bien **72.6 x 97.5 mm** (paperSize=256), vung in `$B$1:$H$24`, `fitToPage=1`, chi `horizontalCentered` (KHONG can giua doc). => Excel in ra noi dung **56.7 x 96.2 mm can giua ngang**, chua trang ~7.9mm moi ben. Ban web cu ve tran 66.85 x 95.5mm nen chu be ngang hon ~16%.
+- Sheet `DF_WEIGHING_SLIP` cua DF028 va cua "Copy of Copy of DF002 no formulas..." **giong het nhau** ve o/kieu/vien (chi khac du lieu mau con sot), nen nguon do bo cuc truoc day van dung - cai lech la o cach dung lai.
+
+**B. Cac lech da phat hien va da sua (`frontend/src/utils/dispatchSlipPrint.ts` viet lai toan bo)**
+
+- **Hinh hoc:** khong con toa do dot TSPL tu tinh. Lay thang do rong cot B..H (78/68/51/11/69/76/44 px), chieu cao dong 1..24 tu `sheet2.xml`, roi ep vua 1 trang **54%** dung cong thuc fit-to-page cua Excel, dat trong `@page 72.6mm 97.5mm`, can giua ngang, dinh mep tren.
+- **Vien:** ve tren dung gridline bang phan tu rieng (`LineSet`, khu trung), khong de moi o tu ve border - neu khong 2 net canh nhau cong lai thanh duong day gap doi (dung loi "vien to de chu" 2026-07-30). Do day = **0.125mm = 1 dot** o 203dpi (dung "thin" cua Excel), doi o mot hang so `BORDER_MM`.
+- **Bo cuc lay lai dung ban goc:** o Mau va Ma hang **tach lam 2 khung, co duong ke giua, chu can TRAI**; **khong** con vien bao quanh ca tem; **co** khung chu nhat quanh 2 vung QR; dong B24 khong vien va cho chu tran sang phai; chu can duoi (Excel mac dinh bottom), rieng dong 1 can giua doc.
+- **Font:** Calibri dung co that (12/20/14/36/16pt sau khi nhan 54%), **chi in dam dung o Excel in dam** - go het `font-weight:700` toan cuc va cac lan tang co chu cho may in nhiet hoi 07-31.
+- **QR:** kich thuoc theo dung cong thuc VBA (`Min(rong,cao vung B16:D22) * 0.8` = ~15.2mm; QR che do = `cao G1:H1 * 0.95` = ~12.8mm), va dat **errorCorrectionLevel 'L'** cho trung so module voi QR cua api.qrserver.com ma VBA goi (van sinh noi bo, khong goi API ngoai - CLAUDE.md muc 5).
+- **Noi dung QR - 3 loi that:**
+  1. **qrFB thieu du lieu:** ban cu chi co `mau-ma hhmm`, trong khi VBA con noi tiep toan bo cap (ma dye + khoi luong) roi (ma chem + khoi luong). Backend `QrPayloadService` lam dung tu truoc -> tem in qua Local Agent va tem in qua trinh duyet **khac nhau** o mode FB.
+  2. **qrChem lay sai cot:** VBA ghi `Cells(r,"F")` = **rack/vi tri**, ban cu ghi ma hoa chat (cot G).
+  3. **dyesProcess quet sai cot:** VBA quet cot F tim "0574"/"0507", ban cu quet ma hoa chat.
+- **Go cac lech co chu y truoc day:** dong trong xen giua cac truong cua `qrChem`/`qrProcess` (2026-07-22) tra ve **1 CRLF** dung VBA.
+- **Routing D1/B24:** port dung phep **so sanh CHUOI** cua VBA (`f3Val >= "VD06" And f3Val <= "VD13"`), khong con so sanh so. An toan vi danh muc may da ve 2 chu so VD01..VD18 (commit fcbbf9b) - neu sau nay doi lai 3 chu so thi cho nay se lech, phai sua cung luc.
+- Tach `splitVbaTriples` rieng (giu phan tu rong, chi nhan bo ba day du, toi da 9) thay vi dung `utils/rackParser.ts` (co loc rong -> lech cot khi chuoi tho co dau "-" thua).
+
+**C. Kiem chung**
+
+- `vue-tsc --noEmit` exit 0.
+- Dung du lieu mau con luu trong chinh sheet DF028 (HS51457 / T6206 / VD06 / 4D / 50) chay ham dung tem roi render bang Edge headless: khu D1 ra **JIT2** va B24 ra **THUNG SAT THAP, MAY JIT, MAY DLG** - **trung y het gia tri con luu trong sheet**, tuc port routing dung. Print-to-PDF cho MediaBox 205.92 x 276 pt = dung 72.6 x 97.5mm; anh chup o ty le in that cho noi dung can giua ngang, cao 96.2mm, khong bi cat.
+- **Chua thu in tren may TSC that.** Rui ro can theo doi: chu trong bang gio la 12pt thuong (~2.29mm, khong dam) va duong ke chi 1 dot - dung nhu Excel, nhung neu driver dither lam mo/rang cua thi nang `BORDER_MM` len 0.25mm. Neu Chrome co trang (tem nho hon ~5%) thi ha `BROWSER_FIT` xuong 0.955.
+- **Chua dong bo backend:** `QrPayloadService::buildTsplLabel70x100` va `buildChemPayload` (tem TSPL do Local Agent in) **van giu bo cuc/payload cu** - hai duong in dang co y khac nhau, cho nguoi dung quyet co keo backend ve dung VBA khong.
+
