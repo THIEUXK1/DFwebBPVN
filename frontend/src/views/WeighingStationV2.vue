@@ -194,8 +194,15 @@
 
         <p class="queue-note">
           Các mẻ này <strong>đã cân xong và đã in phiếu</strong>, chỉ chưa lên được máy chủ. Máy tự
-          gửi lại khi có mạng — <strong>không bỏ mẻ nào được</strong>, đã in phiếu là bắt buộc phải
-          lên máy chủ. <strong>Đừng xoá dữ liệu trình duyệt</strong> khi danh sách còn mẻ.
+          gửi lại khi có mạng. Mẻ nào hỏng hẳn (quét nhầm, phiếu bỏ đi) thì bấm <strong>BỎ MẺ</strong>
+          — mẻ bị bỏ vẫn được giữ vết trong máy để đối chiếu với tờ phiếu đã in.
+          <strong>Đừng xoá dữ liệu trình duyệt</strong> khi danh sách còn mẻ.
+        </p>
+
+        <!-- Kết quả của lần bấm THỬ LẠI/BỎ MẺ gần nhất. Bắt buộc phải có: trước đây bấm THỬ LẠI
+             xong màn hình im lặng, thợ không biết mẻ đã lên server hay vẫn kẹt y như cũ. -->
+        <p v-if="queueMsg" class="queue-msg" :class="queueMsgOk ? 'ok' : 'bad'">
+          {{ queueMsgOk ? '✔' : '❌' }} {{ queueMsg }}
         </p>
 
         <table class="queue-table">
@@ -214,11 +221,16 @@
                 <span v-else-if="duongThong">đang chờ tới lượt gửi</span>
                 <span v-else>mất kết nối — đang dò lại mỗi 15 giây</span>
               </td>
-              <!-- KHÔNG có nút bỏ mẻ: đã bấm SAVE là phiếu đã in, bắt buộc phải lên được server.
-                   Mẻ bị từ chối thì sửa nguyên nhân (đăng nhập lại, đợi trạm kia nhả lô...) rồi
-                   THỬ LẠI, chứ không có đường vứt đi. -->
+              <!-- THỬ LẠI hiện cho MỌI mẻ (không chỉ mẻ bị server chê): mẻ đang chờ vì mất mạng
+                   cũng cần một đường bấm tay để biết ngay đường đã thông chưa. BỎ MẺ là đường
+                   thoát cuối cho mẻ hỏng hẳn — có hỏi xác nhận và có lưu vết (xem saveQueue). -->
               <td class="queue-act">
-                <button v-if="q.loi_nghiep_vu" class="vba-btn tiny" @click="onThuLai(q.idempotency_key)">THỬ LẠI</button>
+                <button class="vba-btn tiny" :disabled="flushing" @click="onThuLai(q.idempotency_key)">
+                  THỬ LẠI
+                </button>
+                <button class="vba-btn tiny danger" :disabled="flushing" @click="onBoMe(q)">
+                  BỎ MẺ
+                </button>
               </td>
             </tr>
           </tbody>
@@ -268,7 +280,7 @@ import { parseDyeQr, MAX_RACK_LINES, type ParsedDyeQr } from '../utils/qrDyePars
 import { processTone } from '../utils/processColor';
 import { buildSlipTspl, processStatus, nowSlipTimestamp, MANUAL_MATERIAL_CODE } from '../utils/weighSlip';
 import {
-  xepHang, danhDauDaGui, thuLai, danhDauKet, dayHangDoi, danhSachChoGui,
+  xepHang, danhDauDaGui, danhDauKet, dayHangDoi, danhSachChoGui, guiMotNgay, boMe,
   batTuDay, tatTuDay, queueCount, stuckCount, flushing, duongThong,
 } from '../services/saveQueue';
 
@@ -288,6 +300,10 @@ const activeBatch = ref<any | null>(null);
 const showChecker = ref(false);
 const showQueue = ref(false);
 const queueItems = ref<ReturnType<typeof danhSachChoGui>>([]);
+/** Kết quả lần bấm THỬ LẠI / BỎ MẺ / GỬI NGAY gần nhất — hiện ngay trong bảng hàng đợi. */
+const queueMsg = ref('');
+const queueMsgOk = ref(false);
+let queueMsgTimer: ReturnType<typeof setTimeout> | null = null;
 const saving = ref(false);
 const errorMsg = ref('');
 
@@ -1300,6 +1316,8 @@ const printSlip = async (preOpened?: Window | null) => {
 // localStorage mỗi lần render.
 watch([showQueue, queueCount, stuckCount, flushing, duongThong], () => {
   if (showQueue.value) queueItems.value = danhSachChoGui();
+  // Đóng bảng thì bỏ luôn thông báo cũ, tránh lần mở sau đọc phải kết quả của lần trước.
+  else queueMsg.value = '';
 });
 
 function formatQueueTime(iso: string): string {
@@ -1310,14 +1328,62 @@ function formatQueueTime(iso: string): string {
 }
 
 async function onGuiNgay() {
-  await dayHangDoi();
+  const truoc = queueCount.value;
+  const { da_gui } = await dayHangDoi();
   queueItems.value = danhSachChoGui();
+
+  if (da_gui > 0 && queueCount.value === 0) {
+    datQueueMsg(true, `Đã gửi hết ${da_gui}/${truoc} mẻ lên máy chủ.`);
+  } else if (da_gui > 0) {
+    datQueueMsg(false, `Gửi được ${da_gui}/${truoc} mẻ, còn ${queueCount.value} mẻ chưa lên được — xem lý do ở cột Trạng thái.`);
+  } else {
+    datQueueMsg(false, duongThong.value
+      ? 'Không gửi được mẻ nào — máy chủ có trả lời nhưng từ chối, xem lý do ở cột Trạng thái.'
+      : 'Không gửi được mẻ nào — không kết nối được máy chủ.');
+  }
 }
 
-function onThuLai(key: string) {
-  thuLai(key);
+/**
+ * Bấm THỬ LẠI trên một mẻ: gửi ĐÚNG mẻ đó rồi báo kết quả THẬT ngay tại bảng.
+ *
+ * Bản cũ chỉ xoá cờ lỗi rồi gọi `dayHangDoi()` mà không chờ (không await): mẻ hết đỏ trong chớp
+ * mắt nên nhìn cứ như đã gửi xong, trong khi thực tế có thể vẫn hỏng y hệt. Nay chờ kết quả và
+ * hiện nguyên văn lời từ chối của máy chủ.
+ */
+async function onThuLai(key: string) {
+  datQueueMsg(true, 'Đang gửi lại…');
+  const { ok, message } = await guiMotNgay(key);
   queueItems.value = danhSachChoGui();
-  dayHangDoi();
+  datQueueMsg(ok, message);
+}
+
+/**
+ * Bỏ một mẻ khỏi hàng đợi. Hỏi xác nhận vì đây là thao tác KHÔNG hoàn tác được từ màn hình cân:
+ * phiếu đã in ra giấy rồi mà mẻ thì sẽ không bao giờ lên máy chủ nữa.
+ */
+function onBoMe(q: { idempotency_key: string; nhan: string; queued_at: string }) {
+  const dong = [
+    `Bỏ hẳn mẻ "${q.nhan || '—'}" (xếp hàng lúc ${formatQueueTime(q.queued_at)}) khỏi hàng đợi?`,
+    '',
+    'Mẻ này sẽ KHÔNG BAO GIỜ được gửi lên máy chủ nữa, trong khi phiếu đã in ra giấy.',
+    'Chỉ bỏ khi phiếu đó cũng bị huỷ (quét nhầm, cân lại mẻ khác).',
+  ].join('\n');
+  if (!confirm(dong)) return;
+
+  const daBo = boMe(q.idempotency_key);
+  queueItems.value = danhSachChoGui();
+  datQueueMsg(daBo, daBo
+    ? `Đã bỏ mẻ "${q.nhan || '—'}" khỏi hàng đợi (vẫn lưu vết trong máy để đối chiếu).`
+    : 'Mẻ này không còn trong hàng đợi.');
+  if (queueCount.value === 0) showQueue.value = false;
+}
+
+/** Hiện kết quả thao tác hàng đợi; tự tắt sau 8 giây để không đọng lại từ lần bấm trước. */
+function datQueueMsg(ok: boolean, message: string) {
+  queueMsgOk.value = ok;
+  queueMsg.value = message;
+  if (queueMsgTimer) clearTimeout(queueMsgTimer);
+  queueMsgTimer = setTimeout(() => { queueMsg.value = ''; }, 8000);
 }
 
 function onClose() {
@@ -1353,6 +1419,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange);
+  if (queueMsgTimer) clearTimeout(queueMsgTimer);
   tatTuDay();
 });
 </script>
@@ -1878,6 +1945,17 @@ onUnmounted(() => {
 .queue-table .c-num { text-align: right; }
 .queue-table .strong { font-weight: 700; }
 .queue-err { color: #b32b21; font-weight: 700; }
+
+/* Kết quả lần bấm gần nhất — nằm ngay trên bảng, đủ tương phản để đọc từ xa nửa mét ở xưởng. */
+.queue-msg {
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 12px;
+  margin: 0 0 12px;
+}
+.queue-msg.ok { background: #e6f6ea; border: 1px solid #2e7d32; color: #1b5e20; }
+.queue-msg.bad { background: #fdecea; border: 1px solid #b32b21; color: #8c1d16; }
 
 .queue-act {
   display: flex;

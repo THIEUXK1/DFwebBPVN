@@ -19,10 +19,14 @@
  *      4xx với lý do "gửi lại bao nhiêu lần cũng thế" — sai, vì phần lớn 4xx thực tế ở đây tự
  *      khỏi khi người ta sửa nguyên nhân (401 hết phiên, 403 thiếu quyền trạm, khoá lô).
  *
- *   3. ĐÃ XẾP HÀNG THÌ KHÔNG BỎ ĐƯỢC (yêu cầu 2026-08-02). Không có hàm nào xoá một mẻ khỏi
- *      hàng đợi ngoài đường "server đã nhận" — vì lúc xếp hàng là phiếu đã in ra giấy rồi. Bỏ
- *      được nghĩa là có đường tạo ra một tờ phiếu trên hàng mà dưới DB không có gì đối chiếu,
- *      và đó đúng là thứ hàng đợi này sinh ra để chặn.
+ *   3. BỎ MẺ ĐƯỢC, NHƯNG PHẢI CÓ NGƯỜI CHỦ ĐỘNG BẤM VÀ PHẢI ĐỂ LẠI VẾT (đổi 2026-08-05).
+ *      Bản 2026-08-02 cấm hẳn: đã in phiếu thì bắt buộc phải lên được server, bỏ được nghĩa là
+ *      có tờ phiếu trên bàn mà dưới DB không có gì đối chiếu. Thực tế UAT cho thấy cấm tuyệt đối
+ *      còn tệ hơn: mẻ hỏng vĩnh viễn (quét nhầm, lô đã đóng, phiếu bỏ đi) nằm lại chặn màn hình
+ *      và bắt thợ nhìn chỉ báo đỏ mãi mãi. Nay:
+ *        - KHÔNG có đường tự động bỏ mẻ — chỉ `boMe()` do người bấm tay, sau xác nhận.
+ *        - Mẻ bị bỏ KHÔNG biến mất: chép nguyên payload + lỗi cuối sang nhật ký `df_ws2_da_bo_v1`
+ *          để còn đối chiếu với tờ phiếu đã in.
  *
  *   4. Dùng localStorage chứ KHÔNG dùng cookie: cookie bị đính vào mọi request (tốn băng thông
  *      cho thứ thuần tuý của máy trạm) và trần ~4KB — một mẻ 9 dòng kèm bì/gộp là chạm.
@@ -127,13 +131,19 @@ function capNhat(key: string, doi: Partial<QueuedSave>) {
   ghi(doc().map((i) => (i.idempotency_key === key ? { ...i, ...doi } : i)));
 }
 
+export type KetQuaGui = 'da_gui' | 'mang' | 'nghiep_vu';
+
 /**
- * Gửi MỘT mẻ. Trả về:
+ * Gửi MỘT mẻ. `kq` cho biết:
  *   'da_gui'  — server nhận (kể cả trường hợp trùng khoá, server trả reused=true)
  *   'mang'    — không tới được server, để lại hàng đợi thử sau
  *   'nghiep_vu' — server từ chối (4xx), ghi lại lời chê rồi đi tiếp mẻ sau; nhịp sau vẫn thử lại
+ *
+ * `message` là nguyên văn để hiện cho thợ. Trả kèm chứ không chỉ trả mã, vì nút THỬ LẠI bấm tay
+ * phải nói được HỎNG VÌ CÁI GÌ ngay tại chỗ — bấm xong mà màn hình im lặng thì thợ không phân
+ * biệt được "gửi xong rồi" với "vẫn hỏng y như cũ".
  */
-async function guiMot(item: QueuedSave): Promise<'da_gui' | 'mang' | 'nghiep_vu'> {
+async function guiMot(item: QueuedSave): Promise<{ kq: KetQuaGui; message: string }> {
   try {
     await axios.post('/api/scanner/weigh-from-qr', {
       ...item.payload,
@@ -145,7 +155,7 @@ async function guiMot(item: QueuedSave): Promise<'da_gui' | 'mang' | 'nghiep_vu'
     }, { timeout: 20000 });
     duongThong.value = true;
     xoaKhoiHang(item.idempotency_key);
-    return 'da_gui';
+    return { kq: 'da_gui', message: 'Máy chủ đã nhận mẻ.' };
   } catch (err: any) {
     const status = err?.response?.status;
     // Cùng quy tắc với pingThong: có mã HTTP trả về là đường thông, kể cả khi mã đó là lỗi.
@@ -157,11 +167,12 @@ async function guiMot(item: QueuedSave): Promise<'da_gui' | 'mang' | 'nghiep_vu'
     // dừng — nhịp sau vẫn thử lại mẻ này.
     // 408/429 tách riêng vì chúng chỉ là "chậm/quá tải", không có gì để thợ sửa cả.
     if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
+      const loi = err?.response?.data?.message || `Máy chủ từ chối (HTTP ${status}).`;
       capNhat(item.idempotency_key, {
         so_lan_thu: item.so_lan_thu + 1,
-        loi_nghiep_vu: err?.response?.data?.message || `Máy chủ từ chối (HTTP ${status}).`,
+        loi_nghiep_vu: loi,
       });
-      return 'nghiep_vu';
+      return { kq: 'nghiep_vu', message: loi };
     }
 
     // Không có phản hồi (mất mạng/server chết) hoặc 5xx: giữ lại, thử tiếp — KHÔNG BAO GIỜ bỏ
@@ -170,7 +181,14 @@ async function guiMot(item: QueuedSave): Promise<'da_gui' | 'mang' | 'nghiep_vu'
     // server là dính. Đếm mãi cũng không tốn gì: `dayHangDoi` dừng cả lượt ngay lần hỏng đầu,
     // nên tổng cộng vẫn chỉ một request mỗi 15s dù hàng đợi có bao nhiêu mẻ.
     capNhat(item.idempotency_key, { so_lan_thu: item.so_lan_thu + 1 });
-    return 'mang';
+    return {
+      kq: 'mang',
+      message: status
+        ? `Máy chủ đang lỗi (HTTP ${status}) — ${err?.response?.data?.message || 'thử lại sau.'}`
+        : err?.code === 'ECONNABORTED'
+          ? 'Máy chủ không trả lời trong 20 giây (mạng chậm hoặc máy chủ quá tải).'
+          : 'Không kết nối được máy chủ — kiểm tra dây mạng/Wi-Fi hoặc máy chủ đã tắt.',
+    };
   }
 }
 
@@ -202,7 +220,7 @@ export async function dayHangDoi(): Promise<{ da_gui: number; con_lai: number }>
     // Thử lại tất cả không tốn gì: đã có ping chặn ở trên nên chỉ chạy khi đường thông, và mẻ
     // hỏng thật thì `continue` chứ không `break` nên không chặn mẻ phía sau.
     for (const item of doc()) {
-      const kq = await guiMot(item);
+      const { kq } = await guiMot(item);
       if (kq === 'da_gui') {
         daGui++;
         continue;
@@ -241,6 +259,84 @@ export function danhDauKet(key: string, message: string) {
 /** Cho một mẻ đang kẹt được thử lại (sau khi người dùng đã sửa nguyên nhân). */
 export function thuLai(key: string) {
   capNhat(key, { loi_nghiep_vu: null, so_lan_thu: 0 });
+}
+
+/**
+ * THỬ LẠI MỘT MẺ, ngay lập tức, và trả lời thẳng là ĐƯỢC hay KHÔNG kèm lý do.
+ *
+ * Khác `dayHangDoi` ở đúng chỗ quan trọng: hàm kia đẩy cả hàng và không nói được mẻ NÀO hỏng vì
+ * sao — thợ bấm THỬ LẠI rồi nhìn màn hình im lặng, không biết là đã lên server hay vẫn kẹt.
+ *
+ * Vẫn dùng chung cờ `flushing` với nhịp tự động: hai đường cùng gửi một mẻ tuy không sinh dữ liệu
+ * trùng (đã có `idempotency_key`) nhưng làm server xử lý thừa và kết quả trả về khó hiểu.
+ */
+export async function guiMotNgay(key: string): Promise<{ ok: boolean; message: string }> {
+  if (flushing.value) {
+    return { ok: false, message: 'Đang có lượt gửi khác chạy — đợi vài giây rồi bấm lại.' };
+  }
+
+  const item = doc().find((i) => i.idempotency_key === key);
+  if (!item) return { ok: false, message: 'Mẻ này không còn trong hàng đợi.' };
+
+  flushing.value = true;
+  try {
+    // Xoá lời chê cũ trước khi gửi để chỉ báo đỏ không còn dính lại lỗi của lần trước khi lần
+    // này thành công; hỏng tiếp thì `guiMot` tự ghi lỗi mới.
+    capNhat(key, { loi_nghiep_vu: null });
+    const lai = doc().find((i) => i.idempotency_key === key)!;
+    const { kq, message } = await guiMot(lai);
+    return { ok: kq === 'da_gui', message };
+  } finally {
+    flushing.value = false;
+  }
+}
+
+/* ---------- Bỏ mẻ (chỉ do người bấm tay) ---------- */
+
+const BO_KEY = 'df_ws2_da_bo_v1';
+/** Giữ lại 100 mẻ bị bỏ gần nhất — đủ để đối chiếu vài ca, không phình localStorage. */
+const BO_TOI_DA = 100;
+
+export interface MeDaBo extends QueuedSave {
+  /** Thời điểm bấm bỏ (ISO). */
+  bo_luc: string;
+  /** Lời chê cuối cùng của server trước khi bị bỏ (nếu có) — để biết bỏ vì lý do gì. */
+  loi_cuoi?: string | null;
+}
+
+export function danhSachDaBo(): MeDaBo[] {
+  try {
+    const raw = localStorage.getItem(BO_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * BỎ một mẻ khỏi hàng đợi. CHỈ được gọi từ một nút do người bấm, sau khi đã xác nhận.
+ *
+ * Không xoá trắng: mẻ được chép nguyên (payload + số lần thử + lỗi cuối) sang nhật ký
+ * `df_ws2_da_bo_v1`. Vì lúc mẻ vào hàng đợi là phiếu đã in ra giấy — bỏ mà không để lại gì thì
+ * tờ phiếu đó thành vô chủ, không ai truy được nó từng tồn tại. Nhật ký này là thứ duy nhất còn
+ * đối chiếu được, nên đừng đổi nó thành xoá thẳng.
+ */
+export function boMe(key: string): boolean {
+  const item = doc().find((i) => i.idempotency_key === key);
+  if (!item) return false;
+
+  try {
+    const nhatKy = danhSachDaBo();
+    nhatKy.unshift({ ...item, bo_luc: new Date().toISOString(), loi_cuoi: item.loi_nghiep_vu ?? null });
+    localStorage.setItem(BO_KEY, JSON.stringify(nhatKy.slice(0, BO_TOI_DA)));
+  } catch {
+    // Hết dung lượng: vẫn cho bỏ mẻ (nếu không thì thợ kẹt màn hình vì một lý do không liên
+    // quan), chỉ mất phần lưu vết.
+  }
+
+  xoaKhoiHang(key);
+  return true;
 }
 
 let heartbeat: ReturnType<typeof setInterval> | null = null;

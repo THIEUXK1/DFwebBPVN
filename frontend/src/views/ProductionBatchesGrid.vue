@@ -79,8 +79,11 @@
     </div>
 
     <!-- ===================== SubForm ===================== -->
+    <!-- Mọi hộp thoại dưới đây đều đi qua `modalFit`: lớp ngoài mang kích thước SAU khi thu/phóng
+         (để canh giữa đúng), lớp trong giữ nguyên toạ độ pt gốc rồi scale(). Xem ghi chú ở script. -->
     <div v-if="subFormBatch" class="vba-modal-backdrop" @click.self="subFormBatch = null">
-      <div class="vba-form vba-modal" :style="{ width: '204pt', height: '204pt' }">
+      <div class="vba-modal-fit" :style="subFormFit.fit" @click.self="subFormBatch = null">
+      <div class="vba-form vba-modal" :style="subFormFit.form">
         <button class="vba-btn" :style="box(0, 0, 24, 24)" title="Hủy đơn (CANCELLED)" @click="deleteFromSubForm">D</button>
         <label class="vba-label" :style="box(48, 1.55, 30, 12)">MA DAI</label>
         <input :value="subFormBatch.product_code" readonly class="vba-text" :style="box(84, 0, 108, 25.5)" />
@@ -104,31 +107,37 @@
         >PHE DUYET</button>
         <button class="vba-btn" :style="box(12, 175.5, 72, 24)" @click="subFormBatch = null">CLOSE</button>
       </div>
+      </div>
     </div>
 
     <!-- ===================== formselect2 — chọn MÁY ===================== -->
     <div v-if="machinePickerOpen" class="vba-modal-backdrop" @click.self="machinePickerOpen = false">
-      <div class="vba-form vba-modal" :style="{ width: '90pt', height: '470pt' }">
+      <div class="vba-modal-fit" :style="machinePickerFit.fit" @click.self="machinePickerOpen = false">
+      <div class="vba-form vba-modal" :style="machinePickerFit.form">
         <select v-model="machinePickerValue" size="20" class="vba-listbox" :style="box(12, 6, 65.3, 400.55)">
           <option v-for="m in machines" :key="m.id" :value="m.code">{{ m.code }}</option>
         </select>
         <button class="vba-btn" :style="box(12, 414, 66, 48)" @click="confirmMachinePick">OK</button>
       </div>
+      </div>
     </div>
 
     <!-- ===================== formselect1 — chọn THÙNG ===================== -->
     <div v-if="tankPickerOpen" class="vba-modal-backdrop" @click.self="tankPickerOpen = false">
-      <div class="vba-form vba-modal" :style="{ width: '90pt', height: '182pt' }">
+      <div class="vba-modal-fit" :style="tankPickerFit.fit" @click.self="tankPickerOpen = false">
+      <div class="vba-form vba-modal" :style="tankPickerFit.form">
         <select v-model="tankPickerValue" size="8" class="vba-listbox" :style="box(12, 6, 64.5, 114.75)">
           <option v-for="code in tankPickerOptions" :key="code" :value="code">{{ code }}</option>
         </select>
         <button class="vba-btn" :style="box(12, 132, 66, 42)" @click="confirmTankPick">OK</button>
       </div>
+      </div>
     </div>
 
     <!-- ===================== checkform — kiểm tra trùng ===================== -->
     <div v-if="checkFormOpen" class="vba-modal-backdrop" @click.self="closeCheckForm">
-      <div class="vba-form vba-modal" :style="{ width: '170pt', height: '126pt' }">
+      <div class="vba-modal-fit" :style="checkFormFit.fit" @click.self="closeCheckForm">
+      <div class="vba-form vba-modal" :style="checkFormFit.form">
         <label class="vba-label" :style="box(36, 0, 36, 12)">MA MAU</label>
         <input
           v-model="checkColor"
@@ -142,6 +151,7 @@
         <button class="vba-btn" :style="box(0, 66, 72, 24)" @click="checkColor = ''; checkCode = ''; checkResult = ''">CLEAR</button>
         <button class="vba-btn" :style="box(90, 66, 72, 54)" @click="runCheck">KIEM TRA</button>
         <button class="vba-btn" :style="box(0, 96, 72, 24)" @click="closeCheckForm">CLOSE</button>
+      </div>
       </div>
     </div>
 
@@ -221,10 +231,46 @@ function fitStage() {
 
 function fitAll() {
   fitRoot();
+  fitModals();
   // Đo lại khung SAU khi chiều cao mới đã được áp — nếu không, `fitStage` vẫn dùng chiều cao cũ và
   // mặt form bị thu nhỏ hơn mức cần thiết đúng một nhịp.
   nextTick(fitStage);
 }
+
+/* ===== Thu/phóng các hộp thoại (MACHINE / TANK / SubForm / CHECK) ===== */
+
+/**
+ * Hộp thoại cũng dựng bằng toạ độ pt cố định như mặt form, nhưng trước đây KHÔNG được thu/phóng:
+ * khi phóng to trình duyệt (Ctrl +) hoặc trên màn hình thấp, vùng nhìn thấy tính theo px co lại
+ * trong khi hộp chọn MÁY vẫn cao 470pt (≈627px) nên nút OK bị cắt mất, không bấm được.
+ * Đo trực tiếp cửa sổ chứ không đo phần tử cha: hộp thoại nằm trên nền `position: fixed`, kích
+ * thước dùng được của nó là cả cửa sổ, không liên quan tới vùng cuộn của mặt form.
+ */
+const MODAL_MARGIN = 16;
+const viewport = reactive({ w: 0, h: 0 });
+
+function fitModals() {
+  viewport.w = window.innerWidth;
+  viewport.h = window.innerHeight;
+}
+
+function modalFit(wPt: number, hPt: number) {
+  const wPx = wPt * PT;
+  const hPx = hPt * PT;
+  const availW = Math.max(160, (viewport.w || wPx) - MODAL_MARGIN * 2);
+  const availH = Math.max(160, (viewport.h || hPx) - MODAL_MARGIN * 2);
+  // Cùng biên độ với mặt form (`fitStage`) để cả trang thu/phóng đồng bộ.
+  const s = Math.max(0.3, Math.min(availW / wPx, availH / hPx, 2));
+  return {
+    fit: { width: Math.round(wPx * s) + 'px', height: Math.round(hPx * s) + 'px' },
+    form: { width: wPt + 'pt', height: hPt + 'pt', transform: `scale(${s})` },
+  };
+}
+
+const machinePickerFit = computed(() => modalFit(90, 470));
+const tankPickerFit = computed(() => modalFit(90, 182));
+const subFormFit = computed(() => modalFit(204, 204));
+const checkFormFit = computed(() => modalFit(170, 126));
 
 // Bật/tắt Toàn màn hình: đợi trình duyệt vẽ lại xong khung mới rồi mới đo, không thì đo trúng
 // kích thước cũ.
@@ -799,10 +845,20 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Chốt chặn cuối: nếu cửa sổ bé hơn cả mức thu nhỏ tối thiểu (30%) thì còn cuộn tới được nút OK. */
+  overflow: auto;
+  padding: 16px;
   z-index: 1000;
 }
 
+/* Lớp đệm mang ĐÚNG kích thước sau khi scale() — thiếu nó thì hộp thoại vẫn chiếm ô layout theo
+   kích thước gốc và bị canh giữa lệch (thừa/hụt đúng phần đã thu/phóng). */
+.vba-modal-fit {
+  flex: none;
+}
+
 .vba-modal {
+  transform-origin: top left;
   box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.5);
 }
 

@@ -2130,3 +2130,54 @@ Trang can dang nhap nen khong chup truc tiep duoc -> dung `scratchpad/preview.mj
 - **Chua thu in tren may TSC that.** Rui ro can theo doi: chu trong bang gio la 12pt thuong (~2.29mm, khong dam) va duong ke chi 1 dot - dung nhu Excel, nhung neu driver dither lam mo/rang cua thi nang `BORDER_MM` len 0.25mm. Neu Chrome co trang (tem nho hon ~5%) thi ha `BROWSER_FIT` xuong 0.955.
 - **Chua dong bo backend:** `QrPayloadService::buildTsplLabel70x100` va `buildChemPayload` (tem TSPL do Local Agent in) **van giu bo cuc/payload cu** - hai duong in dang co y khac nhau, cho nguoi dung quyet co keo backend ve dung VBA khong.
 
+
+---
+
+### 114. Hang doi cua /weighing-station-v2: them nut BO ME, va nut THU LAI phai bao ket qua that (2026-08-05)
+
+**A. Yeu cau nguoi dung:** *"o phan neu k day duoc o hang cho toi muon co nut de bo ban day, va phai dam bao rang khi an thu lai phai day duoc, k thi phai bao loi ra"*.
+
+**B. Hai loi that trong ban cu**
+
+1. **Khong co duong bo me.** `saveQueue.ts` co y cam han (dieu kien 3, 2026-08-02): da in phieu thi bat buoc phai len server. Thuc te UAT cho thay me hong vinh vien (quet nham, lo da dong) nam lai chan man hinh va bat tho nhin chi bao do mai mai.
+2. **Nut THU LAI khong noi duoc no lam gi.** `onThuLai` chi `thuLai(key)` (xoa co loi) roi goi `dayHangDoi()` **khong await**. Co do tat ngay lap tuc nen nhin nhu da gui xong, trong khi: (a) neu dung luc nhip tu dong dang chay thi `flushing=true` -> `dayHangDoi` **return ngay, khong gui gi ca**; (b) neu gui that ma van hong thi cung khong hien gi.
+
+**C. Da sua**
+
+- `services/saveQueue.ts`:
+  - `guiMot` doi tu tra chuoi sang tra `{ kq, message }` - co nguyen van ly do hong (4xx lay `data.message`; 5xx/timeout/mat mang co cau chu rieng cho tung ca).
+  - Them `guiMotNgay(key)`: gui **dung mot me**, giu cung co `flushing` voi nhip tu dong, tra `{ ok, message }`.
+  - Them `boMe(key)` + nhat ky `df_ws2_da_bo_v1` (localStorage, giu 100 me gan nhat, kem payload + loi cuoi). **Khong xoa trang**: luc me vao hang doi la phieu da in ra giay, bo ma khong de lai gi thi to phieu do thanh vo chu. Khong co duong tu dong bo - chi ham nay, do nguoi bam.
+  - Cap nhat dieu kien 3 o dau file cho khop quyet dinh moi.
+- `views/WeighingStationV2.vue`:
+  - Nut **THU LAI** hien cho MOI me (khong chi me bi server che) va nay `await guiMotNgay`, hien ket qua that; nut **BO ME** (kieu `.danger`) co hop xac nhan neu ro hau qua.
+  - Bang bao ket qua `.queue-msg` (xanh/do) cho ca THU LAI / BO ME / GUI NGAY, tu tat sau 8s, xoa khi dong bang.
+
+**D. Kiem chung**
+
+- `vue-tsc --noEmit` exit 0; `vite build` thanh cong (chi con canh bao chunk size co san).
+- **Chua thu bang tay tren trinh duyet** voi mot me thuc su dang ket - can nguoi dung mo /weighing-station-v2 kiem tra 2 tinh huong: bam THU LAI luc mat mang (phai hien do "Khong ket noi duoc may chu") va luc co mang (phai hien xanh va me bien khoi bang).
+- `/weighing-station-large` dung chung `saveQueue.ts` nen huong loi thay doi o service, nhung **giao dien bang hang doi cua man do chua sua** (van chi co THU LAI kieu cu) - de nguyen theo dung pham vi yeu cau.
+
+
+---
+
+### 115. Hop chon MACHINE/TANK o /production-batches/grid bi cat khi phong to (2026-08-05)
+
+**A. Yeu cau nguoi dung:** *"phan chon machine va tank dam bao hien thi phai tu thich ung khi phong to thu nho de k bi khuat khi phong to"*.
+
+**B. Loi that**
+
+Mat form chinh da co co che thu/phong (`fitStage`, scale 0.3-2.0) nhung **4 hop thoai thi khong**: chung van dat cung kich thuoc pt goc. Hop chon MAY (`formselect2`) cao 470pt ~ 627px, nen khi phong to trinh duyet (Ctrl +) hay man hinh thap thi nut OK nam ngoai vung nhin thay va **khong bam duoc** - nen cung khong chon duoc may.
+
+**C. Da sua** (`views/ProductionBatchesGrid.vue`)
+
+- Them `modalFit(wPt, hPt)`: do `window.innerWidth/innerHeight` (hop thoai nam tren nen `position: fixed` nen khong gian dung duoc la ca cua so, khong phai vung cuon cua mat form), chua le 16px, tra ve style cho 2 lop - lop ngoai `.vba-modal-fit` mang kich thuoc SAU khi scale de canh giua khong lech, lop trong giu nguyen toa do pt goc roi `transform: scale()`. Cung cach lam va cung bien do 0.3-2.0 voi mat form.
+- `fitModals()` goi trong `fitAll()` nen an theo dung cac nhip do san co: resize, ResizeObserver khung ngoai, bat/tat toan man hinh.
+- Ap cho ca 4 hop thoai (MACHINE, TANK, SubForm, CHECK) de hanh vi dong nhat.
+- `.vba-modal-backdrop` them `overflow: auto` + padding lam chot chan cuoi neu cua so con be hon ca muc thu nho toi thieu 30%.
+
+**D. Kiem chung**
+
+- `vue-tsc --noEmit` exit 0.
+- **Chua xac minh bang mat tren trinh duyet** - can nguoi dung mo /production-batches/grid, bam MACHINE roi Ctrl+ vai nac de xac nhan nut OK van nam trong man hinh.
