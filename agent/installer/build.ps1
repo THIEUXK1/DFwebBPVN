@@ -1,10 +1,12 @@
 # Build bo cai DF Agent - vai tro DUY NHAT: nhan can (SCALE_ONLY).
 #
-# Tu 2026-08-03 sinh HAI file MSI DOC LAP tu cung mot ma nguon (yeu cau nguoi dung "tach ra
-# lam 2 agent, 2 bo cai khong lien quan den nhau"):
+# Tu 2026-08-03 sinh cac file MSI DOC LAP tu cung mot ma nguon (yeu cau nguoi dung "tach ra
+# lam 2 agent, 2 bo cai khong lien quan den nhau"); tu 2026-08-05 them bo IN/OUT rieng cho
+# tram can to (yeu cau "tach thanh 2 bo cai rieng biet cho can to"):
 #
-#   DFAgentSetup-CanNho.msi -> service DFAgentSmall | ProgramFiles\DFAgent-Small | ScaleKind SMALL
-#   DFAgentSetup-CanTo.msi  -> service DFAgentLarge | ProgramFiles\DFAgent-Large | ScaleKind LARGE
+#   DFAgentSetup-CanNho.msi      -> service DFAgentSmall | DFAgent-Small      | nhan can (SMALL)
+#   DFAgentSetup-CanTo.msi       -> service DFAgentLarge | DFAgent-Large      | nhan can (LARGE)
+#   DFAgentSetup-CanTo-InOut.msi -> khong service        | DFAgent-Large-InOut| chi IN/OUT
 #
 # Khac UpgradeCode nen cai/go/nang cap ban nay khong dung gi toi ban kia; cai CA HAI len cung
 # mot may van chay song song duoc. Chi tiet xem dau file DFAgentSetup.wxs.
@@ -33,6 +35,18 @@ $downloadsDir = Join-Path $repoRoot 'backend\public\downloads'
 # (1.4.x theo vai tro cu va 2.x service "DFAgent"). Ban CAN TO dung Guid rieng hoan toan —
 # day chinh la thu lam hai bo cai khong lien quan gi den nhau. TUYET DOI khong doi 2 Guid nay
 # sau khi da phat hanh: doi la may da cai khong nhan ra ban nang cap, sinh ra 2 ban song song.
+#
+# RunMode (tu 4.0.0.0) — CACH CHAY sau khi cai:
+#   service -> Windows Service LocalSystem, tu chay khi bat may, khong can ai dang nhap.
+#   session -> khong cai service; shortcut Startup + Start Menu, chay bang tai khoan dang
+#              dang nhap.
+#
+# Tram CAN TO can CA HAI, nen co 2 bo cai rieng cai chong len nhau tren cung mot may:
+#   DFAgentSetup-CanTo.msi        (service) -> chi NHAN CAN.
+#   DFAgentSetup-CanTo-InOut.msi  (session) -> chi lam IN/OUT (SEND OVER 6).
+# Khong gop lam mot duoc: IN/OUT mo phong chuot + clipboard, ma tien trinh cua Windows Service
+# nam o session 0, tach biet voi desktop nguoi dung nen khong bao gio cham toi ung dung pha
+# mau. Chi tiet day du xem ghi chu RunMode dau file DFAgentSetup.wxs.
 $builds = @(
     @{
         Label      = 'Can nho'
@@ -40,6 +54,7 @@ $builds = @(
         Folder     = 'DFAgent-Small'
         Settings   = 'appsettings.small.json'
         Upgrade    = 'CD108F1A-FCE9-46F2-B991-372D89E0E9D1'
+        RunMode    = 'service'
         Msi        = 'DFAgentSetup-CanNho.msi'
     },
     @{
@@ -48,7 +63,17 @@ $builds = @(
         Folder     = 'DFAgent-Large'
         Settings   = 'appsettings.large.json'
         Upgrade    = '2FDBACF6-D829-4539-9B40-FB257321E68C'
+        RunMode    = 'service'
         Msi        = 'DFAgentSetup-CanTo.msi'
+    },
+    @{
+        Label      = 'Can to - IN OUT'
+        Service    = 'DFAgentLargeInOut'
+        Folder     = 'DFAgent-Large-InOut'
+        Settings   = 'appsettings.large-inout.json'
+        Upgrade    = 'AC5DC759-9675-4596-AAC3-22CD03A053BD'
+        RunMode    = 'session'
+        Msi        = 'DFAgentSetup-CanTo-InOut.msi'
     }
 )
 
@@ -69,6 +94,7 @@ try {
             -d InstallFolderName="$($b.Folder)" `
             -d AppSettingsFile="$($b.Settings)" `
             -d UpgradeGuid="$($b.Upgrade)" `
+            -d RunMode="$($b.RunMode)" `
             -o (Join-Path $installerDir $b.Msi)
         if ($LASTEXITCODE -ne 0) { throw "wix build $($b.Msi) that bai (exit $LASTEXITCODE)" }
     }
@@ -85,7 +111,8 @@ Write-Host 'HOAN TAT:' -ForegroundColor Green
 foreach ($b in $builds) {
     $path = Join-Path $installerDir $b.Msi
     $size = [math]::Round((Get-Item $path).Length / 1MB, 1)
-    Write-Host ("  {0} ({1} MB) - service {2}" -f $b.Msi, $size, $b.Service)
+    $cach = if ($b.RunMode -eq 'service') { "service $($b.Service)" } else { 'chay trong phien nguoi dung (Startup + Start Menu)' }
+    Write-Host ("  {0} ({1} MB) - {2}" -f $b.Msi, $size, $cach)
     Write-Host ("    -> {0}" -f $path)
     Write-Host ("    -> {0}" -f (Join-Path $downloadsDir $b.Msi))
 }

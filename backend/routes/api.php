@@ -147,6 +147,8 @@ Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
 
     // SEND OVER 6 — trạm cân lớn xếp lệnh gửi mã rack sang hệ pha màu (Mod_sendRackauto).
     Route::post('/rack-dispatch', [RackDispatchController::class, 'store']);
+    // Màn hình hỏi lại kết quả THẬT (Agent đã thực hiện chưa) — xem RackDispatchController::show.
+    Route::get('/rack-dispatch/{id}', [RackDispatchController::class, 'show']);
     Route::post('/print-jobs/{id}/cancel', [PrintJobController::class, 'cancel']);
 
     // Chemical Calls (Wave 2)

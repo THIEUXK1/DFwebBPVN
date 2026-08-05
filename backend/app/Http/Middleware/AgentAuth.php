@@ -102,10 +102,20 @@ class AgentAuth
             if (! $defaults) {
                 $laCanTo = strtoupper(trim((string) $request->input('scale_kind'))) === 'LARGE';
 
+                $scaleDefaults = $laCanTo
+                    ? ['type' => 'DYE_WEIGHING', 'default_capability' => 'LARGE_SCALE', 'default_route' => '/weighing-station-large', 'caps' => ['LARGE_SCALE', 'WEIGH', 'PRINT']]
+                    : ['type' => 'DYE_WEIGHING', 'default_capability' => 'SMALL_SCALE', 'default_route' => '/weighing-station-v2', 'caps' => ['SMALL_SCALE', 'WEIGH', 'PRINT']];
+
                 $roleDefaults = [
-                    'SCALE_ONLY' => $laCanTo
-                        ? ['type' => 'DYE_WEIGHING', 'default_capability' => 'LARGE_SCALE', 'default_route' => '/weighing-station-large', 'caps' => ['LARGE_SCALE', 'WEIGH', 'PRINT']]
-                        : ['type' => 'DYE_WEIGHING', 'default_capability' => 'SMALL_SCALE', 'default_route' => '/weighing-station-v2', 'caps' => ['SMALL_SCALE', 'WEIGH', 'PRINT']],
+                    'SCALE_ONLY' => $scaleDefaults,
+                    // RACK_ONLY (2026-08-05) = bo cai IN/OUT rieng cua tram can to. No la Agent
+                    // THU HAI tren CUNG mot may, dung CHUNG ma tram voi bo nhan can — nen phai ra
+                    // dung mot bo mac dinh. Neu khong: may nao bo IN/OUT bao danh truoc thi tram
+                    // sinh ra voi type AUTO_REGISTERED, khong co capability LARGE_SCALE, va trinh
+                    // duyet khong vao noi /weighing-station-large (ROUTE_CAPABILITY_MAP doi dung
+                    // capability do). firstOrCreate chi gan capability luc TAO nen sua sau la phai
+                    // vao Quan ly Workstation bam tay.
+                    'RACK_ONLY' => $scaleDefaults,
                     'PRINT_ONLY' => ['type' => 'QR_LABEL_PRINTING', 'default_capability' => 'QR_LABEL_PRINTING', 'default_route' => '/print-station', 'caps' => ['QR_LABEL_PRINTING', 'PRINT']],
                 ];
                 $defaults = $roleDefaults[(string) $request->input('role')] ?? null;

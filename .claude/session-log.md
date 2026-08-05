@@ -2071,3 +2071,31 @@ Trang can dang nhap nen khong chup truc tiep duoc -> dung `scratchpad/preview.mj
 - **Sua 2 — an VD001 (`BpdbMachineMonitoringService::buildGanttTimeline`):** hang so `GANTT_HIDDEN_MACHINES = ['VD001']`, bo qua ngay trong vong lap dung group. Loc o **buildGanttTimeline** chu khong o `getMachineRegistry()`: danh muc may con dung chung cho man hinh trang thai may va cho phan dem "So lan danh mau theo may" — an o danh muc se mat luon ca nhung cho do, vuot pham vi yeu cau. Vi machine_id cua VD001 khong vao `$machineIdToTankGroup` nen task cua no cung khong duoc query, khong ton bang thong.
   - **CON TON DONG, can nguoi dung quyet:** phan "So lan danh mau / Theo may" trong bang chi tiet (`getLotRunTotal`) **VAN dem ca VD001** vi dung nguyen registry. Neu muon an luon o do thi noi de sua tiep.
 - **Kiem chung:** `php -l` sach, `vue-tsc --noEmit` exit 0, `npm run build` OK. Goi API that: groups tu **132 -> 126**, **khong con VD001**, may dau danh sach la VD002. Mo phong lai buoc dung `renderedGroups` tren du lieu that: **101 hang ve** (het hang cha), **25 o ten may** dung bang so may, **0 hang dau cum sai vi tri**, **0 may thieu ten**. **Chua xem bang mat tren trinh duyet** va **chua deploy**.
+
+### 112. Tram CAN TO: tach bo cai IN/OUT rieng — Agent chay trong phien nguoi dung (2026-08-05)
+
+**A. Van de phat hien khi ra soat "IN/OUT da dung duoc chua"**
+
+- Chuoi phan mem cua SEND OVER 6 da noi du tu truoc: man hinh gom lo rack -> `POST /api/rack-dispatch` -> bang `rack_dispatch_commands` -> Agent poll `/agents/{ws}/rack-commands` -> `RackSender` mo phong chuot -> ack. Nhung **khong chay duoc tren may that**, vi 3 diem:
+  1. **CHAN THAT SU — session 0 isolation.** MSI cai Agent lam Windows Service `Account="LocalSystem"`. Tien trinh service nam o **session 0**, tach biet voi phien dang nhap: `SetCursorPos`/`mouse_event`/`keybd_event` ban vao desktop cua session 0, va clipboard cung la clipboard rieng cua window station do — ung dung pha mau ben phien nguoi dung **khong bao gio nhan duoc gi**. Te hon: `SendOut()` van tra `true` (dat clipboard thanh cong) nen Agent ack DONE trong khi thuc te khong dan duoc ma nao = **bao thanh cong gia**. Excel VBA lam duoc chinh vi Excel chay trong phien nguoi dung.
+  2. `Rack.Enabled = false` mac dinh -> Agent khong he poll lenh rack sau khi cai.
+  3. Web bao "Da gui ... sang he pha mau" ngay khi `POST` tra 201 — tuc moi chi **xep hang**, chua doc trang thai DONE/FAILED ma Agent ack ve.
+
+**B. Da lam — nguoi dung chot "tach thanh 2 bo cai rieng biet cho can to"**
+
+- **Bo cai thu ba `DFAgentSetup-CanTo-InOut.msi`** (`appsettings.large-inout.json`, thu muc `DFAgent-Large-InOut`, UpgradeCode `AC5DC759-...`): **khong cai service**, thay bang shortcut o **Startup (All Users) + Start Menu**, chay bang chinh tai khoan dang dang nhap. Cai CHONG LEN bo `DFAgentSetup-CanTo.msi` tren cung may: bo cu lo **nhan can** (van la service), bo moi lo **IN/OUT**.
+  - Bien tien xu ly moi **`RunMode`** (`service` | `session`) trong `DFAgentSetup.wxs` bao quanh `ServiceInstall`/`ServiceControl` va 2 component shortcut. Da build thu ca hai che do va **kiem tra bang trong MSI**: ban `session` KHONG co bang `ServiceInstall`, CO bang `Shortcut` (2 dong); ban `service` nguoc lai — dung y do.
+  - **`Role = RACK_ONLY`** -> `_scaleEnabled`/`_printEnabled` deu false, chi con bao danh 60 giay + vong lay lenh rack. `Scale:Source = PUTTY_LOG` (khong mo cong COM, tranh gianh cong voi bo nhan can), `ReadIntervalMs` 10 -> 250ms.
+  - **Dung CHUNG ma tram voi bo nhan can**: `Workstation:Id` de trong + `ScaleKind = LARGE` -> ca hai deu ra `WS-LARGE-<TEN MAY>`. Bat buoc phai trung, vi man hinh gui lenh theo ma tram no dang dung (`whoami?kind=LARGE`); lech ma la lenh xep vao hang doi khong ai lay.
+- **`AgentAuth`: them `RACK_ONLY` vao `$roleDefaults`, tro cung mot bo mac dinh voi `SCALE_ONLY`.** Neu khong: may nao bo IN/OUT bao danh TRUOC thi tram sinh ra voi `type = AUTO_REGISTERED`, khong co capability `LARGE_SCALE`, va trinh duyet khong vao noi `/weighing-station-large` (`ROUTE_CAPABILITY_MAP` doi dung capability do) — `firstOrCreate` chi gan capability luc TAO nen sua sau phai vao Quan ly Workstation bam tay.
+- **`OfflineQueue`: `agent_cache.db` chuyen tu canh file .exe sang `%LOCALAPPDATA%\DF Local Agent\<thu muc cai>\`.** Bat buoc: bo IN/OUT chay bang tai khoan cua tho, ma tai khoan thuong **khong ghi duoc vao Program Files**. Lan chay dau tu chep kho cu sang cho moi neu co.
+- **Bao ket qua THAT thay vi bao thanh cong luc xep hang:** them `GET /api/rack-dispatch/{id}`; `services/rackDispatch.ts` hoi lai moi 700ms trong toi da 12 giay (Agent poll 2s + mot luot OUT ~2.5s thao tac chuot) roi bao 4 truong hop khac nhau: **DONE** = "He pha mau da nhan...", **FAILED** = "Agent KHONG thuc hien duoc...", **PENDING het gio** = "Agent tren may tram CHUA lay lenh — kiem tra Agent con chay khong", **SENT het gio** = "da nhan lenh nhung chua bao xong". Man hinh hien "Dang gui... cho Agent xac nhan" trong luc cho (nut xam 12 giay ma khong co chu thi tho tuong may treo va bam lai).
+- Them muc tai ve thu ba o sidebar + `routes/web.php` (`/downloads/agent-launcher/large-inout`).
+
+**C. CON TON DONG**
+
+- **Toa do RPA chua hieu chinh tren may that** — 6 o + 4 diem click trong `appsettings.large-inout.json` la toa do MAN HINH TUYET DOI cua may hieu chinh goc. Phai do lai tren chinh may can to truoc khi cho tho dung that.
+- **Chua kiem tra migration `rack_dispatch_commands` da chay tren CS-SERVER chua** (probe endpoint bi chan quyen trong phien nay). Neu chua chay thi `POST /api/rack-dispatch` loi 500 ngay tu buoc dau.
+- **Chua build lai 3 file MSI** va **chua deploy** (MSI phai copy sang `backend/public/downloads/` + server tai ve cong 8501).
+- **Chua chay unit test cua Agent**: may dev chi co .NET 10 runtime, project test nham net8.0 -> `dotnet test` abort ("missing Microsoft.NETCore.App 8.0.0"). Day la thieu runtime san co tu truoc, khong lien quan thay doi nay.
+- **Kiem chung da chay:** `dotnet build DFAgent.csproj -c Release` 0 loi; `wix build` thanh cong ca 2 che do + doi chieu bang trong MSI nhu tren; `vue-tsc --noEmit` exit 0; JSON ca 2 file appsettings parse sach; `build.ps1` parse sach. **Chua thu tay tren may that.**

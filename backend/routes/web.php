@@ -25,9 +25,14 @@ Route::get('/', function () {
 // Tham so {kind} khong bat buoc: URL cu /downloads/agent-launcher (khong tham so) van chay,
 // tra ve bo can nho — giu nguyen cho trinh duyet da bookmark hoac frontend chua deploy kip.
 Route::get('/downloads/agent-launcher/{kind?}', function (Request $request, string $kind = 'small') {
+    // 'large-inout' (2026-08-05): bo cai THU BA — chi lam viec IN/OUT (SEND OVER 6) cua tram
+    // can to, cai CHONG LEN bo 'large' tren cung mot may. Phai tach vi no khong cai service ma
+    // chay trong phien dang nhap cua tho: mo phong chuot tu Windows Service (session 0) khong
+    // cham duoc desktop nguoi dung. Xem ghi chu RunMode dau agent/installer/DFAgentSetup.wxs.
     $boCai = [
         'small' => ['nhan' => 'can-nho', 'msi' => 'DFAgentSetup-CanNho.msi'],
         'large' => ['nhan' => 'can-to', 'msi' => 'DFAgentSetup-CanTo.msi'],
+        'large-inout' => ['nhan' => 'can-to-IN-OUT', 'msi' => 'DFAgentSetup-CanTo-InOut.msi'],
     ];
     $chon = $boCai[strtolower($kind)] ?? $boCai['small'];
     $role = $chon['nhan'];

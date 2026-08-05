@@ -567,6 +567,10 @@ async function onOut() {
     return;
   }
   sendingRack.value = true;
+  // Chờ tới khi Agent ack (tối đa ~12 giây) nên phải nói rõ đang chờ — nút xám mà không có chữ
+  // thì thợ tưởng máy treo và bấm lại.
+  rackOk.value = true;
+  rackMsg.value = 'Đang gửi mã rack sang hệ pha màu — chờ Agent xác nhận…';
   const res = await guiRackSangAgent('OUT', rackBatch1.value, currentWorkstation.value?.code || 'ws');
   sendingRack.value = false;
   rackOk.value = res.ok;
@@ -580,6 +584,8 @@ async function onOut() {
  */
 async function onIn() {
   sendingRack.value = true;
+  rackOk.value = true;
+  rackMsg.value = 'Đang gửi lệnh NHẬN (IN) — chờ Agent xác nhận…';
   const res = await guiRackSangAgent('IN', rackBatch1.value, currentWorkstation.value?.code || 'ws');
   sendingRack.value = false;
   rackOk.value = res.ok;

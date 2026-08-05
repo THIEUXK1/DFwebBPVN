@@ -17,8 +17,16 @@
   TU 2026-08-03: MOT file .wxs, HAI SAN PHAM DOC LAP (yeu cau nguoi dung "tach ra lam 2
   agent, 2 bo cai khong lien quan den nhau"):
 
-      can nho  -> DFAgentSetup-CanNho.msi  | service DFAgentSmall | ProgramFiles\DFAgent-Small
-      can to   -> DFAgentSetup-CanTo.msi   | service DFAgentLarge | ProgramFiles\DFAgent-Large
+      can nho     -> DFAgentSetup-CanNho.msi      | service DFAgentSmall  | DFAgent-Small
+      can to      -> DFAgentSetup-CanTo.msi       | service DFAgentLarge  | DFAgent-Large
+      can to IN/OUT -> DFAgentSetup-CanTo-InOut.msi | chay trong phien user | DFAgent-Large-InOut
+
+  TU 2026-08-05: tram CAN TO co HAI bo cai, cai chong len nhau tren cung mot may (yeu cau
+  nguoi dung "tach thanh 2 bo cai rieng biet cho can to"). Mot bo lo NHAN CAN (service), mot
+  bo lo IN/OUT (chay trong phien nguoi dung) — bat buoc phai tach vi hai viec doi hai cach
+  chay khac han nhau, xem ghi chu RunMode ben duoi. Hai bo dung chung MOT ma tram
+  (WS-LARGE-<TEN MAY>, do deu de trong Workstation:Id va cung ScaleKind=LARGE) nen man hinh
+  khong phai biet may nay dang chay may Agent.
 
   Doc lap that su, khong chia se gi ngoai ma nguon:
     · UpgradeCode KHAC NHAU  -> cai/go/nang cap ban nay khong dung gi toi ban kia. Neu dung
@@ -57,6 +65,34 @@
 <?ifndef AppSettingsFile?>
 <?define AppSettingsFile = "appsettings.small.json"?>
 <?endif?>
+<!--
+  RunMode — CACH CHAY cua Agent sau khi cai. Day la khac biet lon nhat giua 2 ban:
+
+    service (CAN NHO, CAN TO) : Windows Service LocalSystem, tu chay khi bat may, khong can
+                                ai dang nhap. Dung cho viec doc can + day so len backend.
+
+    session (CAN TO IN/OUT)   : KHONG cai service, thay bang shortcut trong Startup + Start
+                                Menu, chay bang chinh tai khoan dang dang nhap.
+
+  Vi sao bo IN/OUT bat buoc phai la "session": khoi SEND OVER 6 (nut IN/OUT) day ma rack sang
+  ung dung pha mau bang MO PHONG CHUOT + CLIPBOARD (RackSender, ADR-012). Windows tu Vista
+  co "session 0 isolation": tien trinh chay duoi Service nam o session 0, RIENG BIET voi
+  phien dang nhap cua tho — SetCursorPos/mouse_event ban vao desktop cua session 0 va
+  clipboard cung la clipboard rieng cua window station do, nen ung dung pha mau ben phien
+  nguoi dung KHONG BAO GIO nhan duoc gi. Te hon: thao tac van "thanh cong" tren giay
+  (SetClipboardText tra ve true) nen Agent ack DONE trong khi thuc te khong dan duoc ma nao.
+  Ban VBA goc chay trong Excel — tuc trong phien nguoi dung — nen moi lam duoc viec nay.
+
+  Doi lai: che do session chi chay khi da co nguoi dang nhap, va tho co the lo dong cua so
+  console. Voi rieng viec IN/OUT thi khong sao — ung dung pha mau cung chi ton tai khi co
+  nguoi dang nhap, va man hinh /weighing-station-large bao ro "Agent tren may tram CHUA lay
+  lenh" khi khong ai xu ly lenh trong ~12 giay (xem services/rackDispatch.ts), nen tat nham
+  la biet ngay chu khong am tham. Viec DOC CAN thi van de service cho chac: no phai song ke
+  ca khi chua ai dang nhap.
+-->
+<?ifndef RunMode?>
+<?define RunMode = "service"?>
+<?endif?>
 <!-- Ban CAN NHO giu nguyen UpgradeCode lich su (CD108F1A-...) de tu go sach cac ban da cai
      ngoai xuong: 3 ban 1.4.x theo vai tro cu (print-station / weighing-printer /
      weighing-scale) va ban 2.x service "DFAgent". Ban CAN TO dung mot Guid HOAN TOAN MOI —
@@ -91,8 +127,15 @@
      vao viec doc duoc so can — cai xong la tram hien ra, thieu tin hieu can chi con la canh bao
      rieng tren man hinh; (2) ban CAN TO co Scale:LogFilePathFallback tro ve duong dan chuan cu
      D:\scale\putty_log.txt, dung cho may tram chi mo MOT PuTTY (file rieng putty_log_large.txt
-     van duoc uu tien tuyet doi). -->
-<?define PackageVersion = "3.3.0.0"?>
+     van duoc uu tien tuyet doi).
+
+     4.0.0.0 (2026-08-05): them bo cai THU BA — DFAgentSetup-CanTo-InOut.msi — chay trong
+     PHIEN NGUOI DUNG (RunMode=session) va chi lam viec IN/OUT (SEND OVER 6). Hai bo cu giu
+     nguyen la Windows Service. Ly do khong gop chung: xem ghi chu RunMode phia tren.
+     Kem theo: agent_cache.db chuyen tu thu muc cai sang LocalAppData — tai khoan thuong
+     KHONG ghi duoc vao Program Files, ma bo IN/OUT chay bang chinh tai khoan cua tho; lan
+     chay dau tu chuyen kho cu (neu co) sang cho moi. -->
+<?define PackageVersion = "4.0.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.ProductLabel))"
@@ -123,6 +166,7 @@
     <Component Id="MainExecutable" Directory="INSTALLFOLDER" Bitness="always64">
       <File Id="DFAgentExe" Source="..\publish_release\DFAgent.exe" KeyPath="yes" />
 
+<?if $(var.RunMode) = "service" ?>
       <ServiceInstall Id="DFAgentServiceInstall"
                       Name="$(var.ServiceName)"
                       DisplayName="DF Local Agent ($(var.ProductLabel))"
@@ -138,7 +182,60 @@
                        Stop="both"
                        Remove="uninstall"
                        Wait="yes" />
+<?endif?>
     </Component>
+
+<?if $(var.RunMode) = "session" ?>
+    <!-- Chay trong PHIEN NGUOI DUNG (xem ghi chu RunMode dau file).
+
+         Scope=perMachine nen StartupFolder/ProgramMenuFolder tro toi thu muc ALL USERS —
+         ai dang nhap may nay cung co Agent chay, khong phai cai lai theo tung tai khoan.
+
+         Show="minimized": DFAgent la ung dung console, de cua so hien binh thuong thi no che
+         mat man hinh can. Thu nho thi tho van thay no dang song tren thanh tac vu — va do
+         cung la cach de nhat de biet Agent con chay hay da bi tat.
+
+         KeyPath la mot khoa registry chu khong phai shortcut: shortcut khong quang cao
+         (non-advertised) khong lam KeyPath cho component perMachine duoc. -->
+    <StandardDirectory Id="StartupFolder">
+      <Component Id="StartupShortcut" Bitness="always64">
+        <Shortcut Id="DFAgentStartupShortcut"
+                  Name="DF Local Agent ($(var.ProductLabel))"
+                  Description="Doc can va thuc hien lenh IN/OUT gui ma rack sang he pha mau."
+                  Target="[#DFAgentExe]"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Show="minimized" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\DF Factory Systems\$(var.InstallFolderName)"
+                       Name="StartupShortcut"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <!-- Shortcut Start Menu: de bat lai NGAY sau khi cai (shortcut Startup chi chay o lan
+         dang nhap ke tiep) va de bat lai khi tho lo tat cua so. -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="DFProgramMenuDir" Name="DF Local Agent">
+        <Component Id="ProgramMenuShortcut" Bitness="always64">
+          <Shortcut Id="DFAgentMenuShortcut"
+                    Name="DF Local Agent ($(var.ProductLabel))"
+                    Description="Bat Agent doc can + IN/OUT cho tram nay."
+                    Target="[#DFAgentExe]"
+                    WorkingDirectory="INSTALLFOLDER"
+                    Show="minimized" />
+          <RemoveFolder Id="RemoveDFProgramMenuDir" Directory="DFProgramMenuDir" On="uninstall" />
+          <RegistryValue Root="HKLM"
+                         Key="Software\DF Factory Systems\$(var.InstallFolderName)"
+                         Name="MenuShortcut"
+                         Type="integer"
+                         Value="1"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+<?endif?>
 
     <!-- appsettings.json tinh, dong san dung loai can theo bien AppSettingsFile luc build —
          khong sinh dong luc cai (xem ghi chu dau file). -->
@@ -150,6 +247,10 @@
       <ComponentGroupRef Id="ProductComponents" />
       <ComponentRef Id="MainExecutable" />
       <ComponentRef Id="AppSettingsConfig" />
+<?if $(var.RunMode) = "session" ?>
+      <ComponentRef Id="StartupShortcut" />
+      <ComponentRef Id="ProgramMenuShortcut" />
+<?endif?>
     </Feature>
 
     <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />

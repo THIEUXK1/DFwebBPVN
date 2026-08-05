@@ -11,6 +11,11 @@
  * Nên ở đây web chỉ PHÁT LỆNH: đẩy đúng danh sách 6 mã rack xuống backend, agent phía máy trạm
  * nhận và tự lo phần đưa vào ứng dụng đích. `idempotency_key` bắt buộc (rules/database-safety
  * mục 4) — agent đồng bộ lại sau khi mất mạng không được bắn trùng lệnh.
+ *
+ * Agent thực hiện việc này là bộ cài RIÊNG `DFAgentSetup-CanTo-InOut.msi` — nó chạy trong phiên
+ * đăng nhập của thợ chứ không phải Windows Service, vì tiến trình service nằm ở session 0 không
+ * chạm được desktop người dùng (xem ghi chú RunMode trong agent/installer/DFAgentSetup.wxs).
+ * Bộ cài nhận cân là bộ khác, chạy song song, dùng chung mã trạm.
  */
 import axios from 'axios';
 
@@ -23,6 +28,47 @@ export interface RackDispatchResult {
   ok: boolean;
   /** Thông báo đã sẵn sàng để hiện thẳng cho thao tác viên (tiếng Việt, nói rõ phải làm gì). */
   message: string;
+}
+
+/**
+ * Chờ bao lâu để Agent nhận và thực hiện xong lệnh trước khi coi là "chưa tới nơi".
+ *
+ * Agent poll mỗi 2 giây (`Rack:PollIntervalMs`), một lượt OUT mất ~2.5 giây thao tác chuột
+ * (150 + 220 + 6×200 + 200). 12 giây là dư cho cả hai, mà vẫn đủ ngắn để thợ không đứng chờ
+ * mãi trước khi biết là hỏng.
+ */
+const CHO_KET_QUA_MS = 12_000;
+const NHIP_HOI_MS = 700;
+
+const nghi = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+type TrangThaiLenh = 'PENDING' | 'SENT' | 'DONE' | 'FAILED';
+
+/**
+ * Hỏi lại trạng thái lệnh tới khi Agent ack xong hoặc hết thời gian chờ.
+ *
+ * Lỗi mạng giữa chừng KHÔNG dừng vòng hỏi: mất mạng chốc lát không có nghĩa là lệnh hỏng, và
+ * lệnh vẫn nằm nguyên dưới server. Hết giờ thì trả về trạng thái cuối cùng đọc được.
+ */
+async function choAgentThucHien(id: string): Promise<TrangThaiLenh> {
+  const hetHan = Date.now() + CHO_KET_QUA_MS;
+  let cuoiCung: TrangThaiLenh = 'PENDING';
+
+  while (Date.now() < hetHan) {
+    await nghi(NHIP_HOI_MS);
+    try {
+      const res = await axios.get(`/api/rack-dispatch/${id}`);
+      const st = res.data?.data?.command_status as TrangThaiLenh | undefined;
+      if (st) {
+        cuoiCung = st;
+        if (st === 'DONE' || st === 'FAILED') return st;
+      }
+    } catch {
+      // bỏ qua, hỏi lại nhịp sau
+    }
+  }
+
+  return cuoiCung;
 }
 
 function newIdempotencyKey(wsCode: string, action: RackAction): string {
@@ -40,17 +86,45 @@ export async function guiRackSangAgent(
   workstationCode: string
 ): Promise<RackDispatchResult> {
   try {
-    await axios.post('/api/rack-dispatch', {
+    const res = await axios.post('/api/rack-dispatch', {
       workstation_code: workstationCode,
       action,
       racks,
       idempotency_key: newIdempotencyKey(workstationCode, action),
     });
+
+    const id: string | undefined = res.data?.data?.id;
+    const viecDaLam = action === 'OUT'
+      ? `${racks.filter(Boolean).length} mã rack`
+      : 'lệnh NHẬN (IN)';
+
+    // Xếp được lệnh CHƯA phải là hệ pha màu đã nhận. Hỏi lại tới khi Agent ack — Agent tắt,
+    // sai toạ độ hay thao tác hỏng đều phải hiện ra chữ khác nhau, nếu không thợ tưởng đã cấp
+    // rack rồi mà thực tế chưa có gì.
+    if (!id) {
+      return { ok: true, message: `Đã xếp ${viecDaLam} vào hàng đợi gửi sang hệ pha màu.` };
+    }
+
+    const ketQua = await choAgentThucHien(id);
+
+    if (ketQua === 'DONE') {
+      return { ok: true, message: `Hệ pha màu đã nhận ${viecDaLam}.` };
+    }
+    if (ketQua === 'FAILED') {
+      return {
+        ok: false,
+        message: `Agent KHÔNG thực hiện được ${viecDaLam} (xem log Agent trên máy trạm). `
+          + 'Dùng nút COPY để dán tay sang hệ pha màu.',
+      };
+    }
+    // PENDING/SENT quá thời gian chờ: lệnh còn nằm đó, Agent sẽ vẫn chạy nếu bật lại — không
+    // nói là hỏng hẳn, nhưng cũng tuyệt đối không được nói là đã gửi xong.
     return {
-      ok: true,
-      message: action === 'OUT'
-        ? `Đã gửi ${racks.filter(Boolean).length} mã rack sang hệ pha màu.`
-        : 'Đã gửi lệnh NHẬN (IN) sang hệ pha màu.',
+      ok: false,
+      message: ketQua === 'PENDING'
+        ? 'Agent trên máy trạm CHƯA lấy lệnh — kiểm tra Agent còn chạy không (Start Menu > DF Local Agent). '
+          + 'Trong lúc đó dùng nút COPY để dán tay.'
+        : 'Agent đã nhận lệnh nhưng chưa báo xong — kiểm tra lại bên hệ pha màu xem đã vào chưa.',
     };
   } catch (err: any) {
     const status = err?.response?.status;

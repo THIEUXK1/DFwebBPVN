@@ -67,6 +67,34 @@ class RackDispatchController extends Controller
     }
 
     /**
+     * Trạm cân hỏi lại kết quả THẬT của lệnh vừa xếp.
+     *
+     * Có endpoint này vì `store()` chỉ chứng minh lệnh đã vào hàng đợi, KHÔNG chứng minh hệ
+     * pha màu đã nhận: Agent có thể đang tắt, sai toạ độ, hoặc ack FAILED. Báo "đã gửi" ngay
+     * lúc xếp hàng là báo thành công giả — thợ tưởng đã cấp rack rồi mà thực tế chưa.
+     */
+    public function show(string $id)
+    {
+        $command = RackDispatchCommand::find($id);
+
+        if (!$command) {
+            return response()->json(['status' => 'ERROR', 'message' => 'COMMAND_NOT_FOUND'], 404);
+        }
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'data' => [
+                'id' => $command->id,
+                'action' => $command->action,
+                'command_status' => $command->status,
+                'error_message' => $command->error_message,
+                'picked_up_at' => $command->picked_up_at,
+                'completed_at' => $command->completed_at,
+            ],
+        ]);
+    }
+
+    /**
      * Agent poll lệnh đang chờ của đúng máy trạm mình.
      *
      * Khoá dòng khi đổi sang SENT để hai tiến trình Agent (hoặc một Agent bị khởi động

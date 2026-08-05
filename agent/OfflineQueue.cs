@@ -13,8 +13,54 @@ public class OfflineQueue
     public OfflineQueue(ILogger<OfflineQueue> logger)
     {
         _logger = logger;
-        _dbPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "agent_cache.db");
+        _dbPath = ResolveDbPath(logger);
         InitializeDatabase();
+    }
+
+    /// <summary>
+    /// Chọn chỗ đặt agent_cache.db.
+    ///
+    /// KHÔNG còn đặt cạnh file .exe: từ bản 4.0 Agent CÂN TO chạy trong phiên đăng nhập của
+    /// thợ (để mô phỏng chuột được — xem RackSender/ADR-012), mà tài khoản thường KHÔNG ghi
+    /// được vào Program Files. Đặt trong LocalAppData của chính tài khoản đang chạy: chạy
+    /// dưới service (LocalSystem) hay dưới tài khoản thợ đều ghi được, và hai chế độ không
+    /// bao giờ chạy cùng lúc trên một bản cài nên không có chuyện hai kho lệch nhau.
+    ///
+    /// Vẫn lùi về cạnh .exe nếu vì lý do nào đó không tạo được thư mục — thà dùng chỗ cũ còn
+    /// hơn mất hàng đợi offline.
+    /// </summary>
+    private static string ResolveDbPath(ILogger<OfflineQueue> logger)
+    {
+        string exeDir = AppDomain.CurrentDomain.BaseDirectory;
+        string legacyPath = Path.Combine(exeDir, "agent_cache.db");
+
+        try
+        {
+            string root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrWhiteSpace(root)) return legacyPath;
+
+            // Tên thư mục cài (DFAgent-Small / DFAgent-Large) — hai bản trên cùng một máy phải
+            // có hai kho riêng, đúng như hồi mỗi bản một thư mục cài.
+            string productDir = new DirectoryInfo(exeDir.TrimEnd(Path.DirectorySeparatorChar)).Name;
+            string dir = Path.Combine(root, "DF Local Agent", productDir);
+            Directory.CreateDirectory(dir);
+            string path = Path.Combine(dir, "agent_cache.db");
+
+            // Nâng cấp từ bản cũ: chuyển kho đang nằm cạnh .exe sang chỗ mới, không để lại
+            // mẻ cân/lệnh in chưa đồng bộ ở file mà từ nay không ai đọc nữa.
+            if (!File.Exists(path) && File.Exists(legacyPath))
+            {
+                File.Copy(legacyPath, path);
+                logger.LogInformation("Đã chuyển agent_cache.db từ {Old} sang {New}.", legacyPath, path);
+            }
+
+            return path;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("Không dùng được LocalAppData cho agent_cache.db ({Msg}) — dùng lại thư mục cài.", ex.Message);
+            return legacyPath;
+        }
     }
 
     private void InitializeDatabase()

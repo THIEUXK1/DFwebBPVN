@@ -311,6 +311,12 @@ const agentInstallers = [
     label: 'DF Agent — Cân to',
     title: 'Cài trên máy trạm gắn CÂN TO. Service DFAgentLarge, mã trạm WS-LARGE-<tên máy>. Độc lập hoàn toàn với bộ cân nhỏ — cài chung một máy vẫn chạy song song.',
   },
+  // Cài THÊM lên chính máy cân to đã cài bộ trên — hai bộ làm hai việc, dùng chung mã trạm.
+  {
+    kind: 'large-inout',
+    label: 'DF Agent — Cân to (IN/OUT)',
+    title: 'Cài THÊM trên máy trạm CÂN TO để hai nút IN/OUT gửi được mã rack sang hệ pha màu (khối SEND OVER 6). Bộ này KHÔNG cài service mà chạy trong phiên đăng nhập của thợ — bắt buộc phải vậy thì mới điều khiển được chuột như Excel VBA cũ. Sau khi cài phải hiệu chỉnh lại toạ độ trong appsettings.json của máy đó.',
+  },
 ].map(bo => ({ ...bo, url: `http://${window.location.hostname}:8500/downloads/agent-launcher/${bo.kind}` }));
 
 // CHỈ phiên kiosk (mở bằng link riêng của máy, KHÔNG đăng nhập) mới bị khóa cứng trạm —
