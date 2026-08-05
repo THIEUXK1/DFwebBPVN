@@ -38,7 +38,11 @@ public class Worker : BackgroundService
     // Nhịp đẩy là 200ms, nên một backend chết mà cứ mỗi lần hỏng lại ghi một dòng cảnh báo là
     // 5 dòng/giây đổ vào Event Log — trôi mất mọi thứ khác và làm log vô dụng đúng lúc cần đọc
     // nhất. Chỉ ghi khi trạng thái ĐỔI: lúc hỏng lần đầu, và lúc sống lại.
-    private readonly System.Collections.Generic.Dictionary<string, bool> _backendOk = new();
+    //
+    // ConcurrentDictionary từ 05/08/2026: mỗi backend nay có nhịp đẩy riêng nên hai lượt đẩy tới
+    // hai backend khác nhau có thể kết thúc CÙNG LÚC trên hai luồng thread-pool và cùng ghi vào
+    // đây. (Bản cũ dùng Task.WhenAll cũng đã chạy song song — race này có sẵn, chỉ hiếm gặp hơn.)
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _backendOk = new();
 
     // Trạng thái lần BÁO DANH gần nhất — tách riêng khỏi _backendOk vì hai việc hỏng độc lập
     // nhau: cân chết thì không còn số để đẩy nhưng báo danh vẫn phải chạy, và trộn chung sẽ ghi
@@ -239,7 +243,17 @@ public class Worker : BackgroundService
         // — tức Agent NGỪNG ĐỌC CÂN 5 giây, làm nhịp 10ms thành vô nghĩa đúng lúc cần nhất.
         // Giữ tối đa 1 việc mỗi loại đang bay: nếu lần trước chưa xong thì bỏ qua lượt này thay
         // vì xếp hàng chồng chất (số cân cũ không đáng để gửi bù, luôn có số mới hơn ngay sau).
-        Task? pushInFlight = null;
+        //
+        // RIÊNG số cân: một handle cho MỖI backend, không phải một handle chung (sửa 2026-08-05).
+        // Bản cũ giữ đúng một `pushInFlight` là Task.WhenAll của tất cả backend, nên lượt đẩy kế
+        // tiếp phải chờ backend CHẬM NHẤT. Cấu hình mặc định có 2 backend (10.0.60.209 và
+        // 127.0.0.1); máy trạm không chạy backend cục bộ, hoặc bị firewall chặn im lặng một
+        // trong hai, thì mỗi lượt đẩy treo tới 5 giây (timeout của HttpClient) — số cân vẫn lên
+        // được backend còn sống nhưng chỉ 1 lần mỗi 5 giây thay vì mỗi 200ms. Màn hình cân đọc
+        // tuổi số đọc để báo "mất tín hiệu" nên nó nhấp nháy liên tục DÙ VẪN ĐANG NHẬN SỐ.
+        // Đây đúng là thứ ghi chú ở PushWeightToOneAsync nói phải tránh, nhưng cổng nhịp lại
+        // buộc chúng dính vào nhau lần nữa.
+        var pushInFlight = new Dictionary<string, Task>();
         Task? printPollInFlight = null;
         Task? rackPollInFlight = null;
         Task? helloInFlight = null;
@@ -283,10 +297,11 @@ public class Worker : BackgroundService
                             lastLoggedWeight = currentWeight.Value;
                         }
 
-                        if (DateTime.UtcNow >= nextPushAt && Idle(pushInFlight))
+                        // Không await — xem ghi chú pushInFlight ở trên. Chỉ dời mốc nhịp khi
+                        // THẬT SỰ có ít nhất một backend nhận lượt này; mọi backend đều đang bận
+                        // thì thử lại ở vòng lặp kế (10ms sau) chứ không bỏ trắng cả nhịp.
+                        if (DateTime.UtcNow >= nextPushAt && DaySoCanToiCacBackend(pushInFlight, currentWeight.Value, isStable))
                         {
-                            // Không await — xem ghi chú Task? pushInFlight ở trên.
-                            pushInFlight = PushWeightToBackendAsync(currentWeight.Value, isStable);
                             nextPushAt = DateTime.UtcNow.AddMilliseconds(_pushIntervalMs);
                         }
                     }
@@ -398,23 +413,42 @@ public class Worker : BackgroundService
     }
 
     /// <summary>
-    /// Đẩy số cân lên MỌI backend trong danh sách, SONG SONG.
+    /// Đẩy số cân lên MỌI backend trong danh sách, mỗi backend một nhịp ĐỘC LẬP.
     ///
-    /// Song song chứ không tuần tự: một backend chết sẽ giữ cả lượt đẩy đúng bằng thời gian
-    /// chờ timeout (5 giây), làm số cân trên backend còn sống trễ theo — trong khi cả hai vốn
-    /// độc lập nhau hoàn toàn.
+    /// Độc lập là điểm cốt tử: hai backend không liên quan gì tới nhau, nên một cái chết/chậm
+    /// KHÔNG được phép làm thưa nhịp đẩy tới cái còn sống. Trước 05/08/2026 cả lượt đẩy là một
+    /// Task.WhenAll chung nên nhịp thật = nhịp của backend chậm nhất (xem ghi chú ở ExecuteAsync).
     ///
-    /// Chỉ ghi vào hàng đợi offline khi KHÔNG backend nào nhận được. Còn một nơi nhận là số
-    /// cân đã có chỗ lưu, xếp hàng thêm chỉ tạo bản ghi trùng lúc đồng bộ lại.
+    /// Trả về true nếu có ít nhất một backend nhận lượt này (tức đáng dời mốc nhịp đi tiếp).
     /// </summary>
-    private async Task PushWeightToBackendAsync(double weight, bool isStable)
+    private bool DaySoCanToiCacBackend(Dictionary<string, Task> dangBay, double weight, bool isStable)
     {
-        bool[] ketQua = await Task.WhenAll(_backendUrls.Select(url => PushWeightToOneAsync(url, weight, isStable)));
+        bool coGui = false;
 
-        if (!ketQua.Any(ok => ok))
+        foreach (string url in _backendUrls)
         {
-            _offlineQueue.SaveScaleReading(_workstationId, $"Simulated raw {weight} kg", weight);
+            // Backend này còn đang chờ phản hồi của lượt trước: bỏ qua nó, KHÔNG xếp chồng.
+            // Số cân cũ không đáng gửi bù — luôn có số mới hơn ngay sau.
+            if (dangBay.TryGetValue(url, out Task? truoc) && !truoc.IsCompleted)
+            {
+                continue;
+            }
+
+            dangBay[url] = PushWeightToOneAsync(url, weight, isStable);
+            coGui = true;
         }
+
+        return coGui;
+    }
+
+    /// <summary>
+    /// Còn một backend nhận được là số cân đã có chỗ lưu — xếp hàng offline thêm chỉ tạo bản ghi
+    /// trùng lúc đồng bộ lại. Backend chưa từng báo kết quả lần nào (chưa có trong từ điển) được
+    /// coi là CHƯA BIẾT, không tính là hỏng.
+    /// </summary>
+    private bool MoiBackendDeuHong()
+    {
+        return _backendUrls.All(url => _backendOk.TryGetValue(url, out bool ok) && !ok);
     }
 
     /// <summary>true nếu backend này đã nhận được số cân.</summary>
@@ -451,12 +485,28 @@ public class Worker : BackgroundService
             }
 
             GhiNhanTrangThaiBackend(backendUrl, false, $"tra ve {(int)response.StatusCode}");
+            XepHangOfflineNeuMatHet(weight);
             return false;
         }
         catch (Exception ex)
         {
             GhiNhanTrangThaiBackend(backendUrl, false, ex.Message);
+            XepHangOfflineNeuMatHet(weight);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Ghi số cân xuống hàng đợi offline khi KHÔNG còn backend nào nhận được.
+    ///
+    /// Trước đây việc này nằm ở chỗ gom kết quả của Task.WhenAll; nay mỗi backend chạy rời nên
+    /// phải tự hỏi lại trạng thái chung tại thời điểm một lượt đẩy hỏng.
+    /// </summary>
+    private void XepHangOfflineNeuMatHet(double weight)
+    {
+        if (MoiBackendDeuHong())
+        {
+            _offlineQueue.SaveScaleReading(_workstationId, $"Simulated raw {weight} kg", weight);
         }
     }
 

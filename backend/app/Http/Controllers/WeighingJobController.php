@@ -745,66 +745,94 @@ class WeighingJobController extends Controller
      */
     public static function buildSlipTspl(array $header, $items): string
     {
-        $color = $header['color'] ?? '';
-        $productCode = $header['product_code'] ?? '';
-        $machineCode = $header['machine_code'] ?? 'N/A';
-        $levelCode = $header['level_code'] ?? '';
+        // Bỏ dấu " ở MỌI trường đưa vào lệnh TSPL — chính nó là ký tự đóng/mở chuỗi của lệnh.
+        $sach = fn ($v) => str_replace('"', '', (string) ($v ?? ''));
+
+        $color = $sach($header['color'] ?? '');
+        $productCode = $sach($header['product_code'] ?? '');
+        $machineCode = $sach($header['machine_code'] ?? 'N/A');
+        $levelCode = $sach($header['level_code'] ?? '');
+        // `printed_at` cho phép script đối chiếu ghim cứng một mốc giờ; bỏ trống thì lấy giờ hiện tại.
+        $printedAt = $sach($header['printed_at'] ?? Carbon::now()->format('d/m/Y H:i:s'));
+
+        // Cân tay không quét đơn nên không có màu/mã hàng — ghi thẳng "CAN TAY" vào chỗ đó thay
+        // vì để dòng to nhất của tem trống trơn.
+        $tieuDe = trim("{$color} {$productCode}") ?: 'CAN TAY';
+
+        /*
+         * BỐ CỤC 55x35mm = 440 x 280 dot (203dpi, 8 dot/mm) — bản port y hệt nằm ở
+         * `frontend/src/utils/weighSlip.ts`, xem ghi chú dài về ngân sách chỗ ở đó. Tóm tắt lý do
+         * đổi (05/08/2026): bản trước dùng font "1" (ô chữ 8x12 dot) cho cả bảng, in ra cao chưa
+         * tới 1mm và máy in nhiệt dither ra lấm tấm nên không đọc được. Nay bảng dùng font "2"
+         * (12x20 dot ≈ 2.5mm); chỗ để nhét cỡ chữ đó lấy từ việc gộp 4 dòng đầu còn 2, rút
+         * ACCEPTED/REJECTED thành DAT/LECH, và bỏ dấu phẩy hàng nghìn + chữ "g" ở từng dòng.
+         */
+        $colRack = 8;
+        $colDye = 48;
+        $colMt = 186;
+        $colTt = 280;
+        $colKq = 374;
+        $rowY0 = 84;
+        $rowStep = 21;
 
         $tspl = "SIZE 55 mm, 35 mm\r\n".
                 "GAP 2 mm, 0 mm\r\n".
                 "DIRECTION 1,0\r\n".
                 "REFERENCE 0,0\r\n".
                 "CLS\r\n".
-                "TEXT 8,6,\"2\",0,1,1,\"DF_WEIGHING_SLIP\"\r\n".
-                "TEXT 8,30,\"1\",0,1,1,\"MAU: {$color}\"\r\n".
-                "TEXT 8,44,\"1\",0,1,1,\"HANG: {$productCode}\"\r\n".
-                "TEXT 8,58,\"1\",0,1,1,\"MAY: {$machineCode}\"\r\n".
-                'TEXT 8,72,"1",0,1,1,"MUC: '.($levelCode ?? '')."\"\r\n";
+                "TEXT 8,2,\"1\",0,1,1,\"DF_WEIGHING_SLIP\"\r\n".
+                "TEXT 240,2,\"1\",0,1,1,\"{$printedAt}\"\r\n".
+                "TEXT 8,16,\"3\",0,1,1,\"{$tieuDe}\"\r\n".
+                "TEXT 8,44,\"2\",0,1,1,\"MAY: {$machineCode}  MUC: {$levelCode}\"\r\n";
 
-        // Bảng RACK/DYE CODE/MT/TT/STATUS — cột thẳng hàng theo tọa độ x cố định thay vì gộp
-        // hết vào 1 dòng chữ chạy dài (phản hồi 2026-07-30: "tôi muốn nó là 1 table"), đúng
-        // tinh thần bảng gốc VBA (Label11-14: RACK/DYE CODE/WEIGHT/PROCESS trên scaleform).
-        $colRack = 8;
-        $colDye = 48;
-        $colMt = 152;
-        $colTt = 232;
-        $colStatus = 312;
+        // Bảng RACK/DYE CODE/MT/TT/KQ — cột thẳng hàng theo tọa độ x cố định thay vì gộp hết vào
+        // 1 dòng chữ chạy dài (phản hồi 2026-07-30: "tôi muốn nó là 1 table"), đúng tinh thần
+        // bảng gốc VBA (Label11-14: RACK/DYE CODE/WEIGHT/PROCESS trên scaleform).
+        $tspl .= "TEXT {$colRack},68,\"1\",0,1,1,\"RACK\"\r\n".
+                 "TEXT {$colDye},68,\"1\",0,1,1,\"DYE CODE\"\r\n".
+                 "TEXT {$colMt},68,\"1\",0,1,1,\"MT(g)\"\r\n".
+                 "TEXT {$colTt},68,\"1\",0,1,1,\"TT(g)\"\r\n".
+                 "TEXT {$colKq},68,\"1\",0,1,1,\"KQ\"\r\n";
 
-        $tspl .= "TEXT {$colRack},88,\"1\",0,1,1,\"RACK\"\r\n".
-                 "TEXT {$colDye},88,\"1\",0,1,1,\"DYE CODE\"\r\n".
-                 "TEXT {$colMt},88,\"1\",0,1,1,\"MT\"\r\n".
-                 "TEXT {$colTt},88,\"1\",0,1,1,\"TT\"\r\n".
-                 "TEXT {$colStatus},88,\"1\",0,1,1,\"STATUS\"\r\n";
-
-        $y = 102;
+        $y = $rowY0;
         foreach ($items as $idx => $item) {
             // ACCEPTED / REJECTED / PENDING — đúng cột processColor của VBA btnSave_Click,
             // suy từ chính dung sai đã snapshot trên item (xem WeighingJobItem::process_status).
-            $statusText = $item->process_status;
+            // Rút gọn khi in vì bề ngang tem không đủ cho chữ dài ở cỡ chữ đọc được.
+            $statusText = self::slipKetQua((string) $item->process_status);
             // In cả số cân MỤC TIÊU (MT, planned_weight) lẫn số cân THỰC TẾ (TT, actual_weight)
             // — trước đây chỉ in actual, không đối chiếu được ngay trên tem là cân đủ/thiếu/dư
             // bao nhiêu so với định mức (phản hồi 2026-07-30).
-            $plannedText = number_format((float) $item->planned_weight, 2).'g';
-            $weightText = $item->actual_weight !== null ? number_format((float) $item->actual_weight, 2).'g' : '---';
+            $plannedText = number_format((float) $item->planned_weight, 2, '.', '');
+            $weightText = $item->actual_weight !== null ? number_format((float) $item->actual_weight, 2, '.', '') : '---';
             $seq = $item->sequence_no ?? ($idx + 1);
             $rackText = $item->rack_code !== null && $item->rack_code !== '' ? $item->rack_code : (string) $seq;
-            $dyeText = str_replace('"', '', $item->material_code);
 
-            $tspl .= "TEXT {$colRack},{$y},\"1\",0,1,1,\"".str_replace('"', '', $rackText)."\"\r\n".
-                     "TEXT {$colDye},{$y},\"1\",0,1,1,\"{$dyeText}\"\r\n".
-                     "TEXT {$colMt},{$y},\"1\",0,1,1,\"{$plannedText}\"\r\n".
-                     "TEXT {$colTt},{$y},\"1\",0,1,1,\"{$weightText}\"\r\n".
-                     "TEXT {$colStatus},{$y},\"1\",0,1,1,\"{$statusText}\"\r\n";
-            $y += 14;
+            $tspl .= "TEXT {$colRack},{$y},\"2\",0,1,1,\"".$sach($rackText)."\"\r\n".
+                     "TEXT {$colDye},{$y},\"2\",0,1,1,\"".$sach($item->material_code)."\"\r\n".
+                     "TEXT {$colMt},{$y},\"2\",0,1,1,\"{$plannedText}\"\r\n".
+                     "TEXT {$colTt},{$y},\"2\",0,1,1,\"{$weightText}\"\r\n".
+                     "TEXT {$colKq},{$y},\"2\",0,1,1,\"{$statusText}\"\r\n";
+            $y += $rowStep;
         }
 
-        // `printed_at` cho phép script đối chiếu ghim cứng một mốc giờ; bỏ trống thì lấy giờ hiện
-        // tại như cũ.
-        $printedAt = $header['printed_at'] ?? Carbon::now()->format('d/m/Y H:i:s');
-        $tspl .= "TEXT {$colRack},{$y},\"1\",0,1,1,\"In luc: {$printedAt}\"\r\n";
         $tspl .= "PRINT 1,1\r\n";
 
         return $tspl;
+    }
+
+    /**
+     * Nhãn ngắn cho cột kết quả trên tem. Bản port: `ketQua()` trong `frontend/src/utils/weighSlip.ts`.
+     */
+    private static function slipKetQua(string $status): string
+    {
+        return match ($status) {
+            'ACCEPTED' => 'DAT',
+            'REJECTED' => 'LECH',
+            'MANUAL' => 'TAY',
+            'PENDING' => 'CHO',
+            default => mb_substr($status, 0, 4),
+        };
     }
 
     /**

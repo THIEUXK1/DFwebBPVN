@@ -276,9 +276,12 @@ class ScaleCheckerAndPrintSlipTest extends TestCase
         $this->assertStringContainsString('DF_WEIGHING_SLIP', $printJob->label_payload);
         $this->assertStringContainsString('SLIP-COLOR', $printJob->label_payload);
         $this->assertStringContainsString('DYE-DONE', $printJob->label_payload);
-        $this->assertStringContainsString('ACCEPTED', $printJob->label_payload);
         $this->assertStringContainsString('DYE-PENDING', $printJob->label_payload);
-        $this->assertStringContainsString('PENDING', $printJob->label_payload);
+        // Cột kết quả in nhãn RÚT GỌN (DAT/LECH/CHO/TAY) từ 05/08/2026 — chữ ACCEPTED/REJECTED
+        // dài 8-9 ký tự không còn chỗ khi bảng dùng cỡ chữ đọc được. So cả dấu nháy để không
+        // vô tình khớp phải mã vật tư ('DYE-PENDING' từng làm assert 'PENDING' luôn đúng).
+        $this->assertStringContainsString('"DAT"', $printJob->label_payload);
+        $this->assertStringContainsString('"CHO"', $printJob->label_payload);
 
         $printJob->delete();
     }

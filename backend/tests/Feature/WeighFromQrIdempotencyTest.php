@@ -121,7 +121,9 @@ class WeighFromQrIdempotencyTest extends TestCase
         $payload = $lan2->json('data.slip.label_payload');
         $this->assertNotEmpty($payload, 'Lần gửi lại phải kèm nội dung phiếu');
         $this->assertStringContainsString('DF_WEIGHING_SLIP', $payload);
-        $this->assertStringContainsString('MAU: IDEM', $payload);
+        // Từ 05/08/2026 màu và mã hàng nằm chung MỘT dòng tiêu đề cỡ lớn (bỏ nhãn "MAU:"/"HANG:"
+        // để lấy chỗ cho cỡ chữ đọc được) — xem buildSlipTspl.
+        $this->assertStringContainsString('"IDEM TC001"', $payload);
     }
 
     /**
@@ -139,7 +141,9 @@ class WeighFromQrIdempotencyTest extends TestCase
         );
 
         $res->assertStatus(200);
-        $this->assertStringContainsString("In luc: {$moc}", $res->json('data.slip.label_payload'));
+        // Mốc giờ nay in ở góc trên bên phải, không còn dòng "In luc:" ở chân phiếu (bố cục
+        // 05/08/2026) — vẫn phải là ĐÚNG mốc trình duyệt gửi lên.
+        $this->assertStringContainsString("\"{$moc}\"", $res->json('data.slip.label_payload'));
     }
 
     /** Không gửi mốc giờ thì server tự lấy giờ của mình, không được vỡ. */
@@ -149,7 +153,7 @@ class WeighFromQrIdempotencyTest extends TestCase
 
         $res->assertStatus(200);
         $this->assertMatchesRegularExpression(
-            '#In luc: \d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}#',
+            '#TEXT 240,2,"1",0,1,1,"\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}"#',
             $res->json('data.slip.label_payload')
         );
     }
@@ -249,9 +253,10 @@ class WeighFromQrIdempotencyTest extends TestCase
 
         $payload = $res->json('data.slip.label_payload');
         $this->assertStringContainsString('DF_WEIGHING_SLIP', $payload);
-        $this->assertStringContainsString('"MAU: "', $payload);
-        $this->assertStringContainsString('"HANG: "', $payload);
-        $this->assertStringContainsString('MANUAL', $payload);
+        // Không quét đơn thì không có màu/mã hàng: dòng tiêu đề ghi thẳng "CAN TAY" thay vì để
+        // trống (bố cục 05/08/2026). Cột kết quả in nhãn rút gọn "TAY" của trạng thái MANUAL.
+        $this->assertStringContainsString('"CAN TAY"', $payload);
+        $this->assertStringContainsString('"TAY"', $payload);
     }
 
     /** Hàng đợi gửi lại mẻ cân tay: mỗi lần gửi lại KHÔNG được đẻ thêm một lô mới. */

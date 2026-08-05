@@ -99,7 +99,11 @@ const canvasPx = computed(() => ({
   height: Math.round(sizeMm.value.height * SCREEN_PX_PER_MM),
 }));
 
-const FONT_DOT_HEIGHT: Record<string, number> = { '1': 8, '2': 12, '3': 16, '4': 24, '5': 32, '6': 48 };
+// CHIỀU CAO ô chữ font dựng sẵn của máy in TSC (dot) — phải trùng bảng trong `utils/tsplPrint.ts`,
+// nếu không thì bản xem trước trên màn hình khác bản in ra giấy. Bản trước ghi nhầm chiều RỘNG.
+const FONT_DOT_HEIGHT: Record<string, number> = {
+  '1': 12, '2': 20, '3': 24, '4': 32, '5': 48, '6': 19, '7': 27, '8': 25,
+};
 
 function dotsToPx(dots: number): number {
   return (dots / DOTS_PER_MM) * SCREEN_PX_PER_MM;

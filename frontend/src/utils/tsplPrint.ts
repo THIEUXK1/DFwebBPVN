@@ -6,7 +6,17 @@ import QRCode from 'qrcode';
 // Cùng quy ước quy đổi với LabelPreview.vue: máy in tem TSC 203dpi = 8 dot/mm, tọa độ
 // TEXT/QRCODE tính bằng dot còn SIZE tính bằng mm.
 const DOTS_PER_MM = 8;
-const FONT_DOT_HEIGHT: Record<string, number> = { '1': 8, '2': 12, '3': 16, '4': 24, '5': 32, '6': 48 };
+/**
+ * CHIỀU CAO ô chữ của các font dựng sẵn trong máy in TSC (dot).
+ *
+ * Bản trước ghi 8/12/16/24/32 — đó là chiều RỘNG của các font đó (font 1 = 8x12, 2 = 12x20,
+ * 3 = 16x24, 4 = 24x32, 5 = 32x48), nên mọi chữ in qua trình duyệt ra nhỏ hơn ý định của lệnh
+ * TSPL khoảng 1.5 lần. Đây là một nửa nguyên nhân tem cân "chữ nhỏ, vỡ chữ, không đọc được"
+ * (05/08/2026) — nửa còn lại là bản thân bố cục tem dùng font 1 cho cả bảng, xem `weighSlip.ts`.
+ */
+const FONT_DOT_HEIGHT: Record<string, number> = {
+  '1': 12, '2': 20, '3': 24, '4': 32, '5': 48, '6': 19, '7': 27, '8': 25,
+};
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));

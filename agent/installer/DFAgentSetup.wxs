@@ -134,8 +134,18 @@
      nguyen la Windows Service. Ly do khong gop chung: xem ghi chu RunMode phia tren.
      Kem theo: agent_cache.db chuyen tu thu muc cai sang LocalAppData — tai khoan thuong
      KHONG ghi duoc vao Program Files, ma bo IN/OUT chay bang chinh tai khoan cua tho; lan
-     chay dau tu chuyen kho cu (neu co) sang cho moi. -->
-<?define PackageVersion = "4.0.0.0"?>
+     chay dau tu chuyen kho cu (neu co) sang cho moi.
+
+     4.1.0.0 (2026-08-05, chieu): sua loi man hinh can bao "MAT TIN HIEU" nhap nhay du Agent
+     van day so deu. Hai thay doi:
+       (1) Worker.cs: moi backend trong Backend:Urls co MOT nhip day rieng. Truoc day ca luot
+           day la mot Task.WhenAll chung nen nhip that = nhip cua backend CHAM NHAT.
+       (2) Cau hinh: bo 'http://127.0.0.1:8500/api' khoi ca 3 bo cai (may tram khong chay
+           backend cuc bo), va ban CAN TO doi sang 192.168.250.151 - dung dia chi may tram do
+           dung de vao giao dien, di thang trong mang noi bo thay vi vong qua router.
+     Nhay minor chu khong phai major: khong doi ten service, thu muc cai hay UpgradeCode, nen
+     may dang chay 4.0.0.0 chi can cai de len la xong. -->
+<?define PackageVersion = "4.1.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.ProductLabel))"

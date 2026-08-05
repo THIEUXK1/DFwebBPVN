@@ -220,7 +220,7 @@ onUnmounted(() => {
 .classic-container {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
   gap: 12px;
   padding: 12px;
   background-color: #f0f0f0;
@@ -237,7 +237,8 @@ onUnmounted(() => {
   gap: clamp(6px, 1.4vh, 22px);
   width: 100%;
   max-width: clamp(220px, 24vw, 420px);
-  margin: 0 auto;
+  /* Dạt sát lề phải theo yêu cầu vận hành (thay vì căn giữa như bản đầu). */
+  margin: 0 0 0 auto;
   flex: 1;
   min-height: 0;
 }

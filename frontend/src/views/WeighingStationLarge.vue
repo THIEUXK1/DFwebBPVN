@@ -114,11 +114,14 @@
          Để ngoài khung thì phần form vẫn giống hệt bản gốc. -->
     <div class="webbar" :class="{ alarm: statusMsg?.bad }">
       <span class="wb-ws">
-        <span class="wb-dot" :class="scaleOnline && signalLive ? 'on' : 'off'"></span>
+        <!-- `signalLost` (3s) chứ không phải `signalLive` (1.5s): ngưỡng chặt là CỔNG AN TOÀN
+             cho việc chốt bì/lưu số, dùng nó để bật đèn báo thì đèn nhấp nháy mỗi lần số về trễ
+             một nhịp — xem ghi chú LOST_SIGNAL_MS trong useScaleFeed. -->
+        <span class="wb-dot" :class="scaleOnline && !signalLost ? 'on' : 'off'"></span>
         {{ currentWorkstation?.code || 'chưa gán trạm' }}
       </span>
       <span class="wb-pill" :class="isStable ? 'ok' : 'wait'">
-        {{ !signalLive && !useSimValue ? '✕ MẤT TÍN HIỆU' : (isStable ? '● ỔN ĐỊNH' : '○ CHỜ ỔN ĐỊNH') }}
+        {{ signalLost && !useSimValue ? '✕ MẤT TÍN HIỆU' : (isStable ? '● ỔN ĐỊNH' : '○ CHỜ ỔN ĐỊNH') }}
       </span>
       <span v-if="tareBaseline !== null" class="wb-tare">Bì {{ tareBaseline.toFixed(2) }}</span>
       <button v-if="currentIndex >= 0 && tareBaseline !== null" class="wb-btn" @click="retare">BÌ LẠI</button>
@@ -403,7 +406,7 @@ const refit = () => requestAnimationFrame(fitAll);
 const router = useRouter();
 
 const {
-  liveWeight, grossWeight, isStable, scaleOnline, signalLive, tareBaseline, armed,
+  liveWeight, grossWeight, isStable, scaleOnline, signalLive, signalLost, readingAgeMs, tareBaseline, armed,
   useSimValue, simulatedWeight,
   retare, resetTareForNewSlot, fetchLiveWeight, startPolling, stopPolling,
   // 'LARGE' = chỉ nhận số từ bộ cài Agent "Cân to" (service DFAgentLarge, mã trạm WS-LARGE-*).
@@ -485,7 +488,9 @@ function rowCls(i: number): Record<string, boolean> {
  */
 const deltaTone = computed(() => {
   if (tareBaseline.value === null) return 'none';
-  if (!signalLive.value && !useSimValue.value) return 'none';
+  // Ngưỡng BÁO (3s), không phải ngưỡng an toàn (1.5s) — mất màu nhấp nháy giữa lúc đang đổ vật
+  // tư còn khó chịu hơn cả dòng cảnh báo. Cổng an toàn thật vẫn nằm ở `signalLive`.
+  if (signalLost.value && !useSimValue.value) return 'none';
   return processTone(liveWeight.value, currentTarget.value);
 });
 
@@ -516,8 +521,14 @@ const rackBatchText = computed(() => rackBatch1.value.filter(Boolean).join(' · 
 const statusMsg = computed<{ text: string; bad: boolean } | null>(() => {
   if (errorMsg.value) return { text: errorMsg.value, bad: true };
   if (rackMsg.value) return { text: rackMsg.value, bad: !rackOk.value };
-  if (!signalLive.value && !useSimValue.value && scaleOnline.value)
-    return { text: '⚠ MẤT TÍN HIỆU CÂN — kiểm tra Agent / dây cân', bad: true };
+  if (signalLost.value && !useSimValue.value && scaleOnline.value)
+    return {
+      // Kèm tuổi số đọc để phân biệt "Agent chết hẳn" (số tăng vô hạn) với "Agent sống nhưng số
+      // về chậm" (dừng quanh vài giây) — hai thứ này sửa ở hai chỗ khác nhau.
+      text: '⚠ MẤT TÍN HIỆU CÂN — kiểm tra Agent / dây cân'
+        + (readingAgeMs.value !== null ? ` (số cân cũ ${(readingAgeMs.value / 1000).toFixed(1)}s)` : ''),
+      bad: true,
+    };
   if (!useSimValue.value && !scaleOnline.value)
     return { text: '⚠ MẤT KẾT NỐI MÁY CHỦ — số cân không cập nhật. Số đã cân KHÔNG mất.', bad: true };
   return null;

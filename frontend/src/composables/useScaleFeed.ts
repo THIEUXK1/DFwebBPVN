@@ -26,6 +26,24 @@ import { currentWorkstation } from '../services/workstation';
 const STALE_READING_MS = 1500;
 
 /**
+ * Ngưỡng để BÁO CHO NGƯỜI NHÌN là mất tín hiệu — cố ý rộng gấp đôi `STALE_READING_MS`.
+ *
+ * Hai việc khác hẳn nhau, trước 05/08/2026 bị gộp làm một và đó là lỗi:
+ *
+ *   · CỔNG AN TOÀN (1500ms): số cũ thì không được làm bì, không được tính delta, không được lưu.
+ *     Ngưỡng này phải CHẶT, vì sai một lần là ghi xuống DB một trọng lượng không có thật.
+ *   · ĐÈN BÁO (3000ms): nói với thợ "cân chết rồi, đi kiểm tra Agent/dây cân". Ngưỡng này phải
+ *     RỘNG, vì một khoảng trễ thoáng qua (backend một tiến trình đang bận, Agent chờ một backend
+ *     chết trong danh sách) làm số cân trễ hơn 1.5 giây LÀ CHUYỆN THƯỜNG — mà dùng chung ngưỡng
+ *     chặt thì cảnh báo đỏ nhấp nháy liên tục ngay giữa lúc số vẫn đang về đều (người dùng báo
+ *     05/08/2026: "liên tục báo mất tín hiệu Agent, kiểu nhấp nháy, mặc dù đang nhận").
+ *
+ * Cảnh báo nhấp nháy tệ hơn hẳn cảnh báo chậm 3 giây: thợ quen mắt với nó rồi thì lúc cân CHẾT
+ * THẬT cũng không ai còn nhìn nữa.
+ */
+const LOST_SIGNAL_MS = 3000;
+
+/**
  * Loại cân mà màn hình đang dùng — cũng chính là loại BỘ CÀI Agent phục vụ nó:
  *   SMALL → Agent "Cân nhỏ" (service DFAgentSmall, mã trạm WS-SCALE-*), màn /weighing-station-v2
  *   LARGE → Agent "Cân to"  (service DFAgentLarge, mã trạm WS-LARGE-*), màn /weighing-station-large
@@ -46,9 +64,27 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
   // đã chết hoặc cân bị rút dây mà backend vẫn trả 200 kèm số cũ trong cache.
   const scaleOnline = ref<boolean>(false);
 
-  // signalLive = Agent thực sự vừa đẩy số lên trong vòng STALE_READING_MS. Đây mới là đèn báo
-  // "cân sống" đúng nghĩa, dùng cho UI và làm điều kiện chốt bì.
+  // signalLive = Agent thực sự vừa đẩy số lên trong vòng STALE_READING_MS. Đây là CỔNG AN TOÀN:
+  // điều kiện chốt bì, tính delta và cho phép lưu. KHÔNG dùng nó để bật đèn cảnh báo — xem
+  // `signalLost` ngay dưới.
   const signalLive = ref<boolean>(false);
+
+  /**
+   * signalLost = đã QUÁ LÂU (LOST_SIGNAL_MS) không có số nào mới. Đây mới là thứ dùng cho MÀN
+   * HÌNH: đèn đỏ, chữ "MẤT TÍN HIỆU", bỏ màu ô delta. Tắt ngay lập tức khi có số mới.
+   */
+  const signalLost = ref<boolean>(false);
+
+  /** Tuổi của số đọc gần nhất theo đồng hồ máy chủ (ms) — hiện ra để còn đoán được nguyên nhân. */
+  const readingAgeMs = ref<number | null>(null);
+
+  // Mốc lần cuối nhận được số TƯƠI. Khởi đầu là lúc mở màn hình để không loé cảnh báo đỏ ngay
+  // giây đầu tiên, trước cả khi nhịp poll kịp chạy lần nào.
+  let mocTuoiCuoi = Date.now();
+
+  function danhGiaMatTinHieu() {
+    signalLost.value = Date.now() - mocTuoiCuoi > LOST_SIGNAL_MS;
+  }
 
   // Bì sống trong phiên làm việc (không lưu DB) — đúng bản chất VBA (biến module trong form
   // đang mở, mất khi đóng form/chuyển sang ô khác).
@@ -118,8 +154,12 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
     signalLive.value = fresh;
     if (!fresh) {
       isStable.value = false; // không cho phép thao tác nào coi số cũ là "đã ổn định"
+      danhGiaMatTinHieu();
       return;
     }
+
+    mocTuoiCuoi = Date.now();
+    signalLost.value = false;
 
     grossWeight.value = raw;
     isStable.value = stable;
@@ -207,6 +247,7 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
         // has_reading/age_ms là trường mới; backend cũ chưa có thì `age_ms === undefined` —
         // coi như còn tươi để không làm hỏng màn hình khi frontend deploy trước backend.
         const ageMs = res.data.age_ms;
+        readingAgeMs.value = typeof ageMs === 'number' ? ageMs : null;
         const fresh = res.data.has_reading !== false && (ageMs == null || ageMs <= STALE_READING_MS);
 
         ingestRawWeight(parseFloat(res.data.weight ?? 0), Boolean(res.data.is_stable), fresh);
@@ -217,6 +258,9 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
       // `fresh = false` ở trên — chỗ đó backend CÓ trả lời, chỉ là số đã cũ.
       scaleOnline.value = false;
       signalLive.value = false;
+      // Không gọi được backend cũng là "không có số mới" — nhưng vẫn phải qua cùng một ngưỡng
+      // thời gian, nếu không thì một cú rớt mạng thoáng qua lại bật đèn đỏ tức thì.
+      danhGiaMatTinHieu();
       // BẮT BUỘC hạ cờ ổn định: `ingestRawWeight` không hề chạy trong nhánh này nên `isStable`
       // sẽ GIỮ NGUYÊN giá trị cũ. Mất mạng đúng lúc cân đang đứng yên là màn hình treo lại ở
       // "ỔN ĐỊNH" với một con số đông cứng — thợ tưởng cân vẫn sống, mà server lại dùng chính
@@ -256,6 +300,8 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
     isStable,
     scaleOnline,
     signalLive,
+    signalLost,
+    readingAgeMs,
     tareBaseline,
     armed,
     useSimValue,

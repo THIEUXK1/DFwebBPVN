@@ -41,7 +41,9 @@ const CASES = [
     ],
   },
   {
-    ten: 'số lớn (phải có dấu phẩy hàng nghìn)',
+    // Từ 05/08/2026 số cân in KHÔNG còn dấu phẩy hàng nghìn (chỗ đó nhường cho cỡ chữ to hơn) —
+    // ca này giữ lại để chốt hai bản cùng bỏ dấu phẩy, không phải bên bỏ bên giữ.
+    ten: 'số lớn (không dấu phẩy hàng nghìn)',
     header: { color: 'BIG', product_code: 'P2', machine_code: 'M2', level_code: '9' },
     items: [
       { sequence_no: 1, rack_code: 'R1', material_code: 'D1', planned_weight: 1234567.891, tolerance_minus: 1, tolerance_plus: 1, actual_weight: 1234567.891 },

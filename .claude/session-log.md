@@ -2181,3 +2181,76 @@ Mat form chinh da co co che thu/phong (`fitStage`, scale 0.3-2.0) nhung **4 hop 
 
 - `vue-tsc --noEmit` exit 0.
 - **Chua xac minh bang mat tren trinh duyet** - can nguoi dung mo /production-batches/grid, bam MACHINE roi Ctrl+ vai nac de xac nhan nut OK van nam trong man hinh.
+
+### 115. Tem can 55x35mm in ra "chu nho qua, vo chu, khong nhin thay gi" - HAI loi cong lai (2026-08-05)
+
+**A. Trieu chung:** nguoi dung in tem tu `/weighing-station-v2`, chu qua nho va vo net, khong doc duoc. Xay ra ngay sau commit e03c0c8 sang cung ngay (doi tem tu 76x130mm sang 55x35mm va "giam co chu").
+
+**B. Do that thay vi doan.** Dung `buildSlipTspl` that sinh TSPL mau 9 dong, dung lai DUNG chuoi HTML ma `tsplPrint.ts` sinh ra, roi chup bang Edge headless o `--force-device-scale-factor=2.1167` + `--window-size=209,133` -> anh 440x280 px = **dung so dot that cua may in 203dpi**. Anh cho thay chu cao chua toi 6 dot.
+
+**C. Hai nguyen nhan, deu la loi that**
+
+1. **`FONT_DOT_HEIGHT` trong `utils/tsplPrint.ts` ghi nham chieu RONG thanh chieu CAO.** Bang cu `{1:8, 2:12, 3:16, 4:24, 5:32}` chinh la CHIEU RONG cua cac font TSC (font 1 = 8x12, 2 = 12x20, 3 = 16x24, 4 = 24x32, 5 = 32x48). Moi chu in qua trinh duyet vi the nho hon y dinh cua lenh TSPL ~1.5 lan, tu 2026-07-30 den nay. Da sua ca `tsplPrint.ts` lan `components/LabelPreview.vue` (hai noi phai trung nhau, neu khong ban xem truoc khac ban in).
+2. **Bo cuc tem dung font "1" (o chu 8x12 dot = 1mm) cho CA BANG.** Sua duoc loi 1 thi chu cao 1.5mm - van be. Da dung lai bo cuc cho font "2" (12x20 dot ~ 2.5mm, cao gap doi ban cu):
+   - 4 dong dau MAU/HANG/MAY/MUC gop con 2: mau + ma hang thanh MOT dong font "3" (3mm), duoi la "MAY: .. MUC: ..".
+   - Cot STATUS: ACCEPTED/REJECTED/PENDING/MANUAL -> **DAT/LECH/CHO/TAY** (8-9 ky tu chiem gan 1/3 be ngang tem 55mm).
+   - So can: bo dau phay hang nghin va chu "g" lap o tung dong; don vi ghi mot lan o tieu de cot "MT(g)"/"TT(g)".
+   - Dong "In luc:" o chan phieu chuyen len goc tren ben phai (dong nay truoc chiem tron mot hang).
+   - Can tay (khong quet don) nay ghi thang "CAN TAY" o dong tieu de thay vi de trong.
+   - Ngan sach: 2 dong dau + tieu de bang = 80 dot, 9 dong x 21 = 189 -> 272/280 dot. Cot DYE CODE 138 dot ~ 9-10 ky tu (da noi them sau khi anh render cho thay "YELLOW4GL" cham cot MT).
+
+**D. Kiem chung**
+
+- `node frontend/scripts/check-weigh-slip.mjs`: **8/8 PASS** - ban PHP (`WeighingJobController::buildSlipTspl`) va ban trinh duyet (`utils/weighSlip.ts`) ra chuoi y het nhau sau khi sua ca hai.
+- Anh render lai o dung 203dpi: 9 dong + phan dau nam gon trong 55x35mm, khong cot nao de len cot nao.
+- `vue-tsc --noEmit` exit 0; `vite build` thanh cong; `php -l` sach ca 3 file PHP da sua.
+- **CHUA in tren may TSC that** - can nguoi dung in thu 1 tem de xac nhan.
+- Da sua cac assert bam vao bo cuc cu (`ACCEPTED`/`PENDING`/`MAU: `/`In luc:`) trong `WeighFromQrIdempotencyTest` va `ScaleCheckerAndPrintSlipTest`. **Khong chay duoc test suite o may dev** (.env tro DB production, `RefreshDatabase` se xoa schema) - da doi chieu bang tay tung assert voi chuoi TSPL that do script o tren sinh ra.
+- `/weighing-station-large` dung CHUNG `buildSlipTspl` nen tem cua man do cung to len y het - khong phai sua rieng.
+
+### 116. "Lien tuc bao mat tin hieu Agent, nhap nhay du dang nhan" tren may tram khac (2026-08-05)
+
+**A. Nguyen nhan GOC (agent/Worker.cs) - mot backend cham giu luon nhip day cua backend con lai**
+
+- Cau hinh mac dinh cua CA 3 bo cai (`appsettings.small/large/large-inout.json`) deu co **2 backend**: `http://10.0.60.209:8500/api` va `http://127.0.0.1:8500/api`. May tram khong chay backend cuc bo -> URL thu hai luon hong.
+- `PushWeightToBackendAsync` goi `Task.WhenAll(...)` cho ca 2 URL, va vong lap chinh giu **MOT** handle `pushInFlight` chung. Nghia la luot day ke tiep phai cho backend **CHAM NHAT**: neu mot URL bi firewall DROP (khong tra RST) thi moi luot treo den 5 giay (timeout HttpClient) -> so can chi len backend con song **1 lan moi 5 giay** thay vi moi 200ms. Man hinh doc `age_ms` de bao mat tin hieu (nguong 1500ms) nen no **nhap nhay dung nhu nguoi dung mo ta, du so van ve**.
+- Trớ trêu: ghi chu ngay tren ham do noi ro "song song chu khong tuan tu vi mot backend chet se giu ca luot day" - nhung cai **cong nhip** o vong lap lai buoc chung dinh vao nhau lan nua.
+- **Da sua:** moi backend mot handle rieng (`Dictionary<string, Task> pushInFlight` + `DaySoCanToiCacBackend`), backend nao ranh thi day backend do, khong cho nhau. `nextPushAt` chi doi khi thuc su co it nhat 1 backend nhan luot. Hang doi offline chuyen sang `XepHangOfflineNeuMatHet` (chi ghi khi MOI backend deu dang hong). `_backendOk` doi sang `ConcurrentDictionary` vi cac luot day nay hoan tat tren nhieu luong.
+
+**B. Nguyen nhan PHU (frontend) - dung MOT nguong cho hai viec khac han nhau**
+
+- `STALE_READING_MS = 1500` vua la **cong an toan** (khong cho chot bi/tinh delta/luu bang so cu) vua la **den bao** cho nguoi nhin. Nhung mot khoang tre thoang qua > 1.5s la chuyen thuong (backend `php artisan serve` MOT tien trinh, 2 may tram x 5 poll/giay + 5 push/giay la du xep hang) -> canh bao do nhay lien tuc.
+- **Da sua:** them `LOST_SIGNAL_MS = 3000` va co rieng `signalLost` (bat khi qua 3s khong co so moi, tat NGAY khi co so moi). Man hinh dung `signalLost` cho: den do, chu "MAT TIN HIEU", bo mau o DELTA. Con `signalLive` (1.5s) **giu nguyen y het** cho cong an toan: chot bi, cho phep SAVE, ghi phien.
+- Them `readingAgeMs` va hien "(so can cu X.Xs)" ngay trong dong canh bao - de phan biet "Agent chet han" (so tang vo han) voi "Agent song nhung so ve cham" (dung quanh vai giay), hai thu nay sua o hai cho khac nhau.
+- Ap cho ca `/weighing-station-v2` lan `/weighing-station-large` vi hai man dung chung `useScaleFeed`.
+
+**C. Kiem chung**
+
+- `dotnet build` agent: 0 warning, 0 error. `dotnet test`: **44/44 pass** (phai dat `DOTNET_ROLL_FORWARD=LatestMajor` vi may dev chi co .NET 9/10, khong co runtime 8).
+- `vue-tsc --noEmit` exit 0; `vite build` thanh cong.
+- **Chua thu tren may tram that.** Phan A chi co tac dung sau khi **cai lai MSI** (hoac sua tay `C:\Program Files\DFAgent*\appsettings.json` + restart service) - `appsettings.json` tren may da cai ghi de mac dinh trong code.
+- Neu sau khi cap nhat van nhap nhay: doc con so "(so can cu X.Xs)" tren man hinh. Tang deu -> Agent/PuTTY/day can chet that. Dung quanh 2-4s -> backend dang xep hang (nut that `php artisan serve` mot tien trinh, xem muc 64), hoac may do van con mot backend URL hong.
+
+### 117. Build lai bo cai Agent 4.1.0.0 + tach dia chi backend theo tung may tram (2026-08-05, chieu)
+
+**A. Dinh chinh muc 116.** O muc 116 toi viet nhu the URL chet `127.0.0.1:8500` la thu phong gay treo 5 giay moi luot day. **Noi qua**: ket noi toi cong DONG tren loopback bi tu choi NGAY LAP TUC (RST), khong het gio. Cai treo 5 giay chi xay ra khi goi tin bi DROP im lang (firewall), khong phai truong hop nay. Loi ghep chung `Task.WhenAll` van la loi that va van dang sua - nhung tren may tram that, **nguyen nhan chinh nhieu kha nang la do tre cua chinh backend con song**, do duoc o muc 100: 1 request 550ms, 6 request cung luc 1482ms (`php artisan serve` co xu ly chong lan nhung van xep hang mot phan).
+
+**B. Phat hien moi tu nguoi dung: HAI may tram vao giao dien bang HAI dia chi khac nhau.**
+- May CAN NHO -> `http://10.0.60.209:3001`
+- May CAN TO  -> `http://192.168.250.151:3001`
+- Xac nhan voi nguoi dung: hai dia chi la **CUNG mot may chu** (CS-SERVER, 2 card mang) -> cung mot Laravel, cung mot kho cache. Khong phai hai backend.
+- Do tu may dev (10.0.17.38): `10.0.60.209:8500` mo TCP duoc; `192.168.250.151:8500` **khong co duong toi** tu day (dai mang rieng duoi xuong).
+- Vi sao van quan trong du cung mot server: (1) may can to nam CHUNG dai 192.168.250.x voi server, day so qua 10.0.60.209 la di vong qua router - duong dai hon, de sinh tre dot bien, ma tre dot bien chinh la thu lam nhay canh bao; (2) ban IN/OUT lay lenh rack tu **Urls[0]**, dat sai la man hinh bao "Agent CHUA lay lenh" du Agent van chay.
+
+**C. Da lam**
+- `appsettings.small.json`: Urls = chi `10.0.60.209:8500` (bo 127.0.0.1).
+- `appsettings.large.json` + `appsettings.large-inout.json`: Urls = chi `192.168.250.151:8500` (bo 127.0.0.1, doi sang dia chi cung dai voi may tram).
+- Ghi ro trong comment cua tung file: vi sao bo 127.0.0.1, khi nao phai them lai (cai Agent len may CO chay backend), va y nghia dac biet cua Urls[0].
+- `DFAgentSetup.wxs`: PackageVersion 4.0.0.0 -> **4.1.0.0** kem ghi chu ly do (khong doi ten service/thu muc/UpgradeCode nen cai de len la xong).
+- Build lai ca 3 MSI (`build.ps1`, WiX 5.0.2), da copy sang `backend/public/downloads/`.
+
+**D. Kiem chung**
+- 3 file MSI moi: LastWriteTime 16:09 (sau ban sua Worker.cs luc 15:34), doc nguoc ProductVersion tu bang Property cua tung file: **4.1.0.0** ca 3.
+- 3 file appsettings: ConvertFrom-Json chay sach (khong hong cu phap sau khi sua tay), Urls dung nhu tren.
+- `dotnet build` + 44/44 unit test da chay o muc 116.
+- **VAN CHUA thu tren may tram that** - can cai 4.1.0.0 len may can nho va may can to roi cho nguoi dung xac nhan. Neu con nhay: doc con so "(so can cu X.Xs)" tren man hinh (them o muc 116).

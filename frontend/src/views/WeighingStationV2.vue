@@ -51,13 +51,15 @@
             </span>
           </div>
           <div class="delta-body">
-            <div class="delta-value" :class="{ dead: !signalLive && !useSimValue }">
+            <div class="delta-value" :class="{ dead: signalLost && !useSimValue }">
               {{ liveWeight.toFixed(2) }}
             </div>
             <div class="delta-sub">
               <!-- Mất tín hiệu là một trạng thái RIÊNG, không được gộp vào "chờ ổn định": số
-                   đang hiện là số CŨ đông cứng, không phải số đang dao động. -->
-              <span v-if="!signalLive && !useSimValue" class="pill dead">✕ MẤT TÍN HIỆU</span>
+                   đang hiện là số CŨ đông cứng, không phải số đang dao động.
+                   Dùng `signalLost` (ngưỡng 3s) chứ KHÔNG dùng `signalLive` (ngưỡng 1.5s dành
+                   cho cổng an toàn) — xem ghi chú LOST_SIGNAL_MS trong useScaleFeed. -->
+              <span v-if="signalLost && !useSimValue" class="pill dead">✕ MẤT TÍN HIỆU</span>
               <span v-else class="pill" :class="isStable ? 'ok' : 'wait'">
                 {{ isStable ? '● ỔN ĐỊNH' : '○ CHỜ ỔN ĐỊNH' }}
               </span>
@@ -95,7 +97,7 @@
         <span class="raw-label">RAW</span>
         <span class="raw-value">{{ grossWeight.toFixed(2) }}</span>
         <span class="raw-ws">
-          <span class="raw-dot" :class="scaleOnline && signalLive ? 'on' : 'off'"></span>
+          <span class="raw-dot" :class="scaleOnline && !signalLost ? 'on' : 'off'"></span>
           {{ currentWorkstation?.code || 'chưa gán trạm' }}
         </span>
 
@@ -104,8 +106,11 @@
              · KHÔNG gọi được backend           -> mạng hoặc máy chủ
              Trước 2026-08-02 chỉ có vế đầu, mà vế đầu lại đòi `scaleOnline === true` — nên đúng
              lúc mất mạng thì màn hình IM LẶNG hoàn toàn, chỉ còn một chấm đỏ 9px. -->
-        <span v-if="!useSimValue && scaleOnline && !signalLive" class="raw-warn">
+        <span v-if="!useSimValue && scaleOnline && signalLost" class="raw-warn">
           ⚠ MẤT TÍN HIỆU CÂN — kiểm tra Agent / PuTTY / dây cân
+          <!-- Tuổi số đọc: phân biệt "Agent chết hẳn" (số nhảy lên vô hạn) với "Agent còn sống
+               nhưng số về chậm" (số dừng quanh vài giây) — hai thứ này sửa ở hai chỗ khác nhau. -->
+          <em v-if="readingAgeMs !== null"> (số cân cũ {{ (readingAgeMs / 1000).toFixed(1) }}s)</em>
         </span>
         <span v-else-if="!useSimValue && !scaleOnline" class="raw-warn">
           ⚠ MẤT KẾT NỐI MÁY CHỦ — số cân không cập nhật. Số đã cân KHÔNG mất, cân lại được ngay
@@ -287,7 +292,7 @@ import {
 const router = useRouter();
 
 const {
-  liveWeight, grossWeight, isStable, scaleOnline, signalLive, tareBaseline, armed,
+  liveWeight, grossWeight, isStable, scaleOnline, signalLive, signalLost, readingAgeMs, tareBaseline, armed,
   useSimValue, simulatedWeight,
   retare, resetTareForNewSlot, fetchLiveWeight, startPolling, stopPolling,
   // 'SMALL' = chỉ nhận số từ bộ cài Agent "Cân nhỏ" (service DFAgentSmall, mã trạm WS-SCALE-*).
@@ -361,7 +366,11 @@ const deltaTone = computed(() => {
   if (tareBaseline.value === null) return 'none';
   // Mất tín hiệu -> bỏ màu. Số đang hiện là số CŨ đông cứng; tô xanh "ĐẠT" cho một con số không
   // còn phản ánh cái đĩa cân là kiểu nói dối nguy hiểm nhất trên màn hình này.
-  if (!signalLive.value && !useSimValue.value) return 'none';
+  //
+  // Dùng ngưỡng BÁO (3s) chứ không phải ngưỡng an toàn (1.5s): màu ô delta là thứ thợ nhìn liên
+  // tục trong lúc đổ vật tư, nhấp nháy mất màu mỗi lần số về trễ một nhịp còn khó chịu hơn cả
+  // dòng cảnh báo. Cổng an toàn thật (không cho chốt bì/lưu số cũ) vẫn nguyên ở `signalLive`.
+  if (signalLost.value && !useSimValue.value) return 'none';
   return processTone(liveWeight.value, currentTarget.value);
 });
 

@@ -68,16 +68,43 @@ export function processStatus(
 }
 
 /**
- * Bản sao của `number_format($x, 2)` bên PHP — 2 số lẻ, dấu phẩy ngăn cách hàng nghìn.
+ * Bản sao của `number_format($x, 2, '.', '')` bên PHP — 2 số lẻ, KHÔNG dấu phẩy hàng nghìn.
+ *
+ * Bỏ dấu phẩy (2026-08-05) vì tem chỉ rộng 55mm: dấu phẩy và chữ "g" ăn thêm 2 ký tự mỗi ô số,
+ * mà đúng 2 ký tự đó là thứ phải cắt để nhét vừa cỡ chữ to gấp đôi. Đơn vị nay ghi một lần ở
+ * tiêu đề cột ("MT(g)"/"TT(g)") thay vì lặp lại ở từng dòng.
+ *
  * Không dùng `toLocaleString` vì kết quả đổi theo ngôn ngữ máy trạm; phiếu in phải giống nhau ở
  * mọi máy và giống hệt bản server dựng.
  */
 function numberFormat2(value: number): string {
   const n = Number.isFinite(value) ? value : 0;
-  const fixed = Math.abs(n).toFixed(2);
-  const [nguyen, le] = fixed.split('.');
-  const coDauPhay = nguyen.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return (n < 0 ? '-' : '') + coDauPhay + '.' + le;
+  return n.toFixed(2);
+}
+
+/**
+ * Nhãn ngắn cho cột kết quả. ACCEPTED/REJECTED dài 8-9 ký tự — ở cỡ chữ đọc được thì riêng nó
+ * chiếm gần một phần ba bề ngang tem 55mm, nên rút về 3-4 ký tự tiếng Việt không dấu cho đồng bộ
+ * với MAU/HANG/MAY/MUC ở phần đầu.
+ */
+function ketQua(status: string): string {
+  switch (status) {
+    case 'ACCEPTED':
+      return 'DAT';
+    case 'REJECTED':
+      return 'LECH';
+    case 'MANUAL':
+      return 'TAY';
+    case 'PENDING':
+      return 'CHO';
+    default:
+      return String(status ?? '').slice(0, 4);
+  }
+}
+
+/** Bỏ dấu " — chính nó là ký tự đóng/mở chuỗi của lệnh TSPL, lọt vào là hỏng cả lệnh. */
+function sachTspl(s: unknown): string {
+  return String(s ?? '').replace(/"/g, '');
 }
 
 function haiChuSo(n: number): string {
@@ -92,11 +119,42 @@ export function nowSlipTimestamp(d = new Date()): string {
   );
 }
 
+/*
+ * BỐ CỤC TEM 55x35mm — 440 x 280 dot ở 203dpi (8 dot/mm). Toạ độ dưới đây tính sát mép nên
+ * ĐỔI MỘT SỐ LÀ PHẢI TÍNH LẠI CẢ CỘT/HÀNG, và phải đổi y hệt bên PHP.
+ *
+ * Bản 05/08/2026 sáng dùng font "1" (ô chữ 8x12 dot) cho toàn bộ bảng: in ra chữ cao chưa tới
+ * 1mm, máy in nhiệt dither ra lấm tấm nên **không đọc được** (người dùng báo "chữ nhỏ quá, bị vỡ
+ * chữ"). Nay bảng dùng font "2" (12x20 dot ≈ 2.5mm) — cao gấp đôi. Chỗ để nhét cỡ chữ đó lấy từ
+ * ba khoản đang phí:
+ *   1. Bốn dòng đầu MAU/HANG/MAY/MUC gộp còn hai (màu + mã hàng là một dòng lớn).
+ *   2. Cột STATUS bỏ chữ ACCEPTED/REJECTED dài ngoằng, còn DAT/LECH.
+ *   3. Số cân bỏ dấu phẩy hàng nghìn và chữ "g" lặp ở từng dòng (đơn vị ghi ở tiêu đề cột).
+ *
+ * Ngân sách chiều dọc: 2 dòng đầu + tiêu đề bảng hết 80 dot, 9 dòng x 21 dot = 189, tổng 272/280.
+ * Ngân sách chiều ngang cột DYE CODE là 122 dot ≈ 10 ký tự font "2" — mã dài hơn sẽ lấn sang cột
+ * MT (mã thực tế đang dùng dài 6-9 ký tự). Tương tự, màu + mã hàng quá dài sẽ chạy quá mép phải
+ * của dòng tiêu đề; nó nằm riêng một hàng nên chỉ bị cắt cụt chứ không đè lên thứ khác.
+ */
+const SLIP_COL_RACK = 8;
+const SLIP_COL_DYE = 48;
+const SLIP_COL_MT = 186;
+const SLIP_COL_TT = 280;
+const SLIP_COL_KQ = 374;
+/** Dòng đầu tiên của bảng và bước nhảy giữa các dòng (dot). */
+const SLIP_ROW_Y0 = 84;
+const SLIP_ROW_STEP = 21;
+
 export function buildSlipTspl(header: SlipHeader, items: SlipItem[]): string {
-  const color = header.color ?? '';
-  const productCode = header.product_code ?? '';
-  const machineCode = header.machine_code ?? 'N/A';
-  const levelCode = header.level_code ?? '';
+  const color = sachTspl(header.color ?? '');
+  const productCode = sachTspl(header.product_code ?? '');
+  const machineCode = sachTspl(header.machine_code ?? 'N/A');
+  const levelCode = sachTspl(header.level_code ?? '');
+  const printedAt = sachTspl(header.printed_at ?? nowSlipTimestamp());
+
+  // Cân tay không quét đơn nên không có màu/mã hàng — ghi thẳng "CAN TAY" vào chỗ đó thay vì để
+  // dòng to nhất của tem trống trơn.
+  const tieuDe = `${color} ${productCode}`.trim() || 'CAN TAY';
 
   let tspl =
     'SIZE 55 mm, 35 mm\r\n' +
@@ -104,51 +162,40 @@ export function buildSlipTspl(header: SlipHeader, items: SlipItem[]): string {
     'DIRECTION 1,0\r\n' +
     'REFERENCE 0,0\r\n' +
     'CLS\r\n' +
-    'TEXT 8,6,"2",0,1,1,"DF_WEIGHING_SLIP"\r\n' +
-    `TEXT 8,30,"1",0,1,1,"MAU: ${color}"\r\n` +
-    `TEXT 8,44,"1",0,1,1,"HANG: ${productCode}"\r\n` +
-    `TEXT 8,58,"1",0,1,1,"MAY: ${machineCode}"\r\n` +
-    `TEXT 8,72,"1",0,1,1,"MUC: ${levelCode}"\r\n`;
-
-  // Toạ độ x cố định để 5 cột thẳng hàng — giữ y hệt bản PHP.
-  const colRack = 8;
-  const colDye = 48;
-  const colMt = 152;
-  const colTt = 232;
-  const colStatus = 312;
+    'TEXT 8,2,"1",0,1,1,"DF_WEIGHING_SLIP"\r\n' +
+    `TEXT 240,2,"1",0,1,1,"${printedAt}"\r\n` +
+    `TEXT 8,16,"3",0,1,1,"${tieuDe}"\r\n` +
+    `TEXT 8,44,"2",0,1,1,"MAY: ${machineCode}  MUC: ${levelCode}"\r\n`;
 
   tspl +=
-    `TEXT ${colRack},88,"1",0,1,1,"RACK"\r\n` +
-    `TEXT ${colDye},88,"1",0,1,1,"DYE CODE"\r\n` +
-    `TEXT ${colMt},88,"1",0,1,1,"MT"\r\n` +
-    `TEXT ${colTt},88,"1",0,1,1,"TT"\r\n` +
-    `TEXT ${colStatus},88,"1",0,1,1,"STATUS"\r\n`;
+    `TEXT ${SLIP_COL_RACK},68,"1",0,1,1,"RACK"\r\n` +
+    `TEXT ${SLIP_COL_DYE},68,"1",0,1,1,"DYE CODE"\r\n` +
+    `TEXT ${SLIP_COL_MT},68,"1",0,1,1,"MT(g)"\r\n` +
+    `TEXT ${SLIP_COL_TT},68,"1",0,1,1,"TT(g)"\r\n` +
+    `TEXT ${SLIP_COL_KQ},68,"1",0,1,1,"KQ"\r\n`;
 
-  let y = 102;
+  let y = SLIP_ROW_Y0;
   items.forEach((item, idx) => {
-    const plannedText = numberFormat2(Number(item.planned_weight)) + 'g';
+    const plannedText = numberFormat2(Number(item.planned_weight));
     const weightText =
       item.actual_weight !== null && item.actual_weight !== undefined
-        ? numberFormat2(Number(item.actual_weight)) + 'g'
+        ? numberFormat2(Number(item.actual_weight))
         : '---';
     const seq = item.sequence_no ?? idx + 1;
     const rackText =
       item.rack_code !== null && item.rack_code !== undefined && item.rack_code !== ''
         ? item.rack_code
         : String(seq);
-    // Bỏ dấu " vì chính nó là ký tự đóng/mở chuỗi trong lệnh TSPL — lọt vào là hỏng cả lệnh.
-    const dyeText = String(item.material_code ?? '').replace(/"/g, '');
 
     tspl +=
-      `TEXT ${colRack},${y},"1",0,1,1,"${String(rackText).replace(/"/g, '')}"\r\n` +
-      `TEXT ${colDye},${y},"1",0,1,1,"${dyeText}"\r\n` +
-      `TEXT ${colMt},${y},"1",0,1,1,"${plannedText}"\r\n` +
-      `TEXT ${colTt},${y},"1",0,1,1,"${weightText}"\r\n` +
-      `TEXT ${colStatus},${y},"1",0,1,1,"${item.process_status}"\r\n`;
-    y += 14;
+      `TEXT ${SLIP_COL_RACK},${y},"2",0,1,1,"${sachTspl(rackText)}"\r\n` +
+      `TEXT ${SLIP_COL_DYE},${y},"2",0,1,1,"${sachTspl(item.material_code)}"\r\n` +
+      `TEXT ${SLIP_COL_MT},${y},"2",0,1,1,"${plannedText}"\r\n` +
+      `TEXT ${SLIP_COL_TT},${y},"2",0,1,1,"${weightText}"\r\n` +
+      `TEXT ${SLIP_COL_KQ},${y},"2",0,1,1,"${ketQua(item.process_status)}"\r\n`;
+    y += SLIP_ROW_STEP;
   });
 
-  tspl += `TEXT ${colRack},${y},"1",0,1,1,"In luc: ${header.printed_at ?? nowSlipTimestamp()}"\r\n`;
   tspl += 'PRINT 1,1\r\n';
 
   return tspl;
