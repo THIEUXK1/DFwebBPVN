@@ -42,6 +42,19 @@ class BpdbMachineMonitoringService
     // con số này gần như đứng yên (chỉ +1 khi có mẻ mới cùng mã chạy) -> cache dài 5 phút.
     private const LOT_TOTAL_CACHE_TTL = 300;
 
+    // Gantt là response NẶNG NHẤT hệ thống (đo 2026-08-04: 375KB, 492ms) và mỗi màn hình
+    // treo tường tự gọi lại mỗi 30 giây, nên N màn hình = N lần nện BPDB cho cùng một dữ
+    // liệu. Cache ngắn để các màn hình dùng chung 1 lần query; 15s vẫn thấp hơn nhiều
+    // ngưỡng "stale" mặc định 60s của envelope nên không làm dữ liệu bị coi là cũ.
+    private const GANTT_CACHE_TTL = 15;
+
+    // Máy KHÔNG vẽ trên biểu đồ Gantt (yêu cầu 2026-08-05: ẩn VD001). Lọc ở ĐÂY chứ không
+    // lọc ở getMachineRegistry(): danh mục máy còn dùng chung cho màn hình trạng thái máy và
+    // cho phần đếm "Số lần đánh mẫu theo máy" — ẩn ở danh mục sẽ làm mất luôn cả những chỗ
+    // đó, vượt quá phạm vi yêu cầu. Ẩn tại đây thì cả hàng máy lẫn mọi mẻ của nó đều không
+    // được trả về, không tốn băng thông vô ích như lọc ở trình duyệt.
+    private const GANTT_HIDDEN_MACHINES = ['VD001'];
+
     public function __construct(
         private readonly BpdbReadOnlyClient $client,
         private readonly ColorCodePalette $palette,
@@ -182,6 +195,25 @@ class BpdbMachineMonitoringService
      */
     public function getGanttTimeline(?string $from, ?string $to): array
     {
+        $cacheKey = 'bpdb_gantt_timeline:' . md5(($from ?? '') . '|' . ($to ?? ''));
+
+        if (($cached = Cache::get($cacheKey)) !== null) {
+            return $cached;
+        }
+
+        $result = $this->buildGanttTimeline($from, $to);
+
+        // KHÔNG cache lúc BPDB lỗi: nếu không, một cú rớt mạng thoáng qua sẽ khiến mọi màn
+        // hình báo mất kết nối thêm 15 giây nữa dù BPDB đã trở lại.
+        if ($result['bpdb_connected']) {
+            Cache::put($cacheKey, $result, self::GANTT_CACHE_TTL);
+        }
+
+        return $result;
+    }
+
+    private function buildGanttTimeline(?string $from, ?string $to): array
+    {
         $registry = $this->getMachineRegistry();
 
         // Mỗi Máy VD là 1 group cha (nestedGroups), mỗi Tank thật của máy đó là 1 group
@@ -192,6 +224,10 @@ class BpdbMachineMonitoringService
         $order = 0;
 
         foreach ($registry as $code => $variant) {
+            if (in_array($code, self::GANTT_HIDDEN_MACHINES, true)) {
+                continue;
+            }
+
             $tankGroupIds = [];
             $seenTankGroups = [];
 

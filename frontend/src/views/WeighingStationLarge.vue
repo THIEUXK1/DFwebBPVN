@@ -132,16 +132,19 @@
         {{ stuckCount > 0 ? '✕' : '⏳' }} {{ queueCount }} mẻ chờ gửi
       </button>
 
+      <!-- Đứng TRƯỚC ô thông báo chứ không phải sau: `.wb-msg` là phần tử duy nhất co giãn, nên
+           để sau nó thì mỗi lần có thông báo dài là cụm giả lập bị đẩy ra sát rìa phải, có màn
+           hình hẹp còn đẩy khuất hẳn. Trước nó thì vị trí đứng yên bất kể thông báo dài ngắn. -->
+      <label class="wb-sim">
+        <input type="checkbox" v-model="useSimValue" /> giả lập
+      </label>
+      <input v-if="useSimValue" type="number" step="0.1" class="wb-siminput" v-model.number="simulatedWeight" />
+
       <!-- Ô thông báo: là phần tử DUY NHẤT được co giãn trong dải, nên khi chật thì nó bị cắt
            bớt chứ không đẩy mất mấy nút bấm bên cạnh. Chữ đầy đủ xem ở tooltip. -->
       <span class="wb-msg" :class="{ bad: statusMsg?.bad }" :title="statusMsg?.text || ''">
         {{ statusMsg ? (statusMsg.bad ? '❌ ' : '') + statusMsg.text : '' }}
       </span>
-
-      <label class="wb-sim">
-        <input type="checkbox" v-model="useSimValue" /> giả lập
-      </label>
-      <input v-if="useSimValue" type="number" step="0.1" class="wb-siminput" v-model.number="simulatedWeight" />
     </div>
 
     <!-- Bảng hàng đợi — chỉ mở khi thợ chủ động bấm -->
@@ -1713,7 +1716,10 @@ input.vv-text:focus {
 
 .wb-queue.stuck { border-color: #e2564a; background: #4d1f1a; color: #ffc9c3; }
 
-.wb-sim { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+/* KHÔNG `margin-left: auto`: margin auto hút hết khoảng trống còn lại TRƯỚC khi flex-grow được
+   chia, nên nó sẽ đẩy cụm giả lập sang phải và bóp `.wb-msg` về đúng bề rộng chữ. Từ khi cụm này
+   đứng trước ô thông báo, chỗ trống phải để dành cho `.wb-msg` co giãn. */
+.wb-sim { display: flex; align-items: center; gap: 5px; }
 
 .wb-siminput {
   width: 90px;

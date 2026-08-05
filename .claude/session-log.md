@@ -2014,3 +2014,60 @@ Trang can dang nhap nen khong chup truc tiep duoc -> dung `scratchpad/preview.mj
   - Header (`currentTank`) giu nguyen: van quy theo may + ma, vi SAVE cua ban web bat buoc co may (rang buoc rieng cua ban web do `tank_id` la khoa ngoai theo tung may — khac VBA von luu thung la chuoi tu do; **chua doi**, neu muon giong het VBA thi phai cho `machine_id` null trong DB, la mot quyet dinh khac).
 - **Kiem chung:** `vue-tsc --noEmit` exit 0. API production `GET /api/public/tanks` tra dung 18 may x 5 ma (`1A/2B/3C/4D/FB`) va `/machines` tra 18 may — **du lieu khong thieu, loi thuan tuy o tang lo giao dien**. **Chua xem bang mat tren trinh duyet** va **chua deploy**.
 - **Cong cu moi (scratchpad, khong commit):** trinh giai nen VBA tu viet (`vbadump`) doc thang `vbaProject.bin` -> tung module `.bas`, khong can Excel/python/oletools va khong bi chan boi VBA project bi khoa mat khau. Hai cho de sai da vap phai: `BitCount = Max(4, CeilingLog2(so byte da giai nen TRONG CHUNK))` (sai la van "giai nen" duoc nhung ra rac lap lai), va cham diem ung vien offset phai theo **so dong PHAN BIET** chu khong phai tong so dong (rac lap lai se thang).
+
+### 109. "Trang nao cung cham" tren may dev — DbHostResolver probe 127.0.0.1 het gio 2 GIAY moi 20 giay (2026-08-05)
+
+- **Bao loi:** "du lieu day tu DB ra Web load cham qua". Hoi ro va nguoi dung xac nhan: cham o **MOI trang** (Gantt/BPDB, hang cho san xuat, goi hoa chat), va cham tren **may dev** (localhost:3001/8500).
+- **Do that truoc khi doan** (`Invoke-WebRequest`, moi endpoint nhieu lan):
+
+| Duong | min | tb | max |
+|---|---|---|---|
+| `/api/khong-ton-tai` (404, **khong cham DB**) | 318 | 1019 | 2988 |
+| `/api/public/chemical-channels` (3 truy van) | 553 | 686 | 861 |
+| `/api/production-batches` (401, chan truoc DB) | 273 | 332 | 450 |
+
+  So dat gia nhat la **404 khong cham DB ma van 318-2988ms** -> chi phi KHONG nam o truy van, nam o duong boot cua moi request.
+- **Boc tach boot** (script rieng trong scratchpad): `vendor/autoload` 10ms, `bootstrap/app.php` 3ms, `make(HttpKernel)` 47ms, **`DbHostResolver::resolve()` khi cache het han = 2,044ms**.
+- **Nguyen nhan goc:** `config/database.php:90` goi `DbHostResolver::resolve()`. `config/` duoc nap lai tren MOI request (khong `config:cache`), nen ke ca route 404 cung tra phi nay. Cache file cua resolver TTL 20 giay -> cu moi 20 giay lai co 1 request phai probe lai. Ung vien dau danh sach la `127.0.0.1` (`DB_HOST_CANDIDATES=127.0.0.1,10.0.60.209,192.168.250.151`).
+- **Gia dinh cu SAI, da do lai de bac bo:** ghi chu 2026-08-02 trong chinh file do viet "probe truot van tra ve ngay". Do lai bang script probe rieng: `fsockopen('127.0.0.1', 5433, ..., 2.0)` tra **errno 10060 = HET GIO**, khong phai 10061 = bi tu choi. Goi tin bi firewall **nuot** chu khong bi da ve, nen moi lan probe truot **dot tron 2.0 giay**. Do 3/3 lan giong nhau; `localhost` va `192.168.250.151` cung vay.
+- **Sua (`app/Services/DbHostResolver.php`):** `array_unshift` host trong `DB_HOST` len dau danh sach ung vien (+ `array_unique`). DB_HOST luon la host chu dich cua chinh moi truong dang chay, nen phat probe dau tien gan nhu luon trung — khong con phai di qua ung vien chet. Danh sach ung vien giu nguyen vai tro du phong. Khong doi TTL, khong doi timeout, khong dong vao `.env`.
+- **Ket qua do lai sau khi sua:**
+
+| Duong | min truoc -> sau | tb truoc -> sau |
+|---|---|---|
+| `DbHostResolver` (cache het han) | 2044 -> **51 ms** | — |
+| `/api/khong-ton-tai` (404) | 318 -> **21 ms** | 1019 -> **164 ms** |
+| `/api/public/chemical-channels` | 553 -> **251 ms** | 686 -> **414 ms** |
+| `/api/production-batches` | 273 -> **45 ms** | 332 -> **181 ms** |
+
+  Chay 40 request lien tiep sau khi sua: khong con dot gai 2 giay dinh ky nao (chi request dau tien 2178ms do opcache nap lai file vua sua).
+- **Phan CON LAI khong phai loi, la ban chat may dev** (do bang script PDO rieng): mo ket noi PDO toi Postgres **~100-112ms MOI request** — da loai tru SSL (`sslmode=prefer` 96.8ms ~ `disable` 104.4ms, khong khac); moi truy van **~25-30ms** di-ve (ICMP ping chi 9ms nhung vong di-ve giao thuc PG la 25-30ms). Vay san cua 1 endpoint don gian tren may dev = boot ~70ms + ket noi ~100ms + N x 27ms. **Tren CS-SERVER DB nam cung may nen phan nay gan nhu bang 0** — day la ly do may dev luon cham hon server that.
+- **Do them ve dong thoi:** 1 request `/api/public/chemical-channels` = 550ms; 6 request cung luc = 1482ms (khong phai 3300ms neu don luong hoan toan, cung khong phai 550ms neu song song hoan toan) -> `php artisan serve` co xu ly chong lan nhung **van xep hang mot phan**.
+- **Kiem chung:** `php -l` sach. **Chua chay `php artisan test`** (test suite se xoa schema tren DB that — cam chay o may nay). **Chua deploy len CS-SERVER.**
+- **Can luu y khi deploy:** neu `.env` cua CS-SERVER dat `DB_HOST=10.0.60.209` thi sau thay doi nay server se probe LAN IP truoc thay vi loopback (van chay dung, chi khac duong di). Muon giu uu tien loopback tren server thi dat `DB_HOST=127.0.0.1` trong `.env` cua CS-SERVER — `.env` bi gitignore nen phai sua tay tren server.
+- **Chua lam, de nguoi dung quyet:** (1) ket noi PDO persistent — bo duoc ~100ms/request nhung co rui ro ro ri trang thai giua cac request; (2) thay `php artisan serve` bang web server that (IIS/nginx + php-fpm) — da ghi nhan tu muc 38 la viec nen lam truoc Cutover; (3) dung ban sao Postgres cuc bo tren may dev de bo han 25-30ms/truy van.
+
+### 110. Gantt BPDB: me chua ket thuc luon nam SAU vach gio hien tai + dong nhat chieu cao dong (2026-08-05)
+
+- **Yeu cau:** (1) me moi/chua co gio ket thuc **luon nam ben phai vach thoi gian**, duoc phep day cac me cung hang lui ve trai; don da hoan thanh thi don ve phia truoc; (2) dinh dang lai khoang cach cac dong cho dong bo kich thuoc.
+- **Sua 1 — thuat toan xep me (`fetchGantt`, `BpdbMachinesGantt.vue`):** goc toa do doi tu "me som nhat cua Tank" sang **kim do** (`syncSnapshot`, dung mot moc voi `calculateNeedle`). Tach me theo **trang thai** (khong theo thu tu trong mang — du lieu BPDB co truong hop me dang chay bat dau som hon mot me da xong cung Tank):
+  - Luot 1: me DA XONG xep **nguoc** tu kim do lui ve qua khu, giu do dai va khoang cach toi thieu `MIN_VISUAL_DURATION_MS`; me khong du cho bi day sang **trai** (truoc day day sang phai).
+  - Luot 2: me DANG CHAY xep **xuoi** tu kim do ve tuong lai; be rong = thoi gian da chay duoc (me vua mo = 2.5h toi thieu).
+  - Luot 3: lap khoang trong trong tung nhom; me da xong cuoi cung chi keo **toi dung kim do** va **chi khi Tank do that su co me dang chay** (Tank da nghi thi giu do dai that, khong ve keo dai toi hien tai gay hieu nham la con ban).
+  - Bang chi tiet (bam vao thanh) van lay gio THAT tu `itemDetails` — chi vi tri VE bi dich.
+- **Sua 2 — chieu cao dong dong deu:** truoc day vis-timeline tinh chieu cao hang theo **me dang lot khung nhin** nen Tank khong co me nao trong khung gio hien tai co lai bang chieu cao nhan, con **tu doi moi khi cuon ngang**. Chot cung ca 3 yeu to: `ITEM_HEIGHT=24` ep bang CSS (`box-sizing: border-box` de vien 1px cua me thuong va vien 2px cua me dang chay ra cung chieu cao), `margin: {axis:5, item:{horizontal:0, vertical:10}}` khai bao tuong minh, va **`groupHeightMode: 'fixed'`** (tinh theo TOAN BO me cua nhom). `ROW_HEIGHT = 5+24+5 = 34px` khop dung cong thuc `Group._calculateHeight` cua thu vien.
+  - Hang **May VD** va hang **Tank rong** khong chua me nao nen chieu cao cua chung = `clientHeight` cua chinh `.vis-inner` -> phai ep `height: 34px` len `.vis-inner`. Vi `.vis-inner` cua hang Tank **dang la** vien thuoc (pill), phai tach doi: `.vis-inner` = o chua trong suot cao co dinh, ten tank boc trong the con `.gantt-tank-pill` (them vao `applyMachineFilter`, the `span` da co san trong `whiteList` xss). Bo `position:absolute + translateY(-50%)` cu.
+- **Kiem chung:** `vue-tsc --noEmit` exit 0, `npm run build` OK. **Chay lai dung thuat toan tren du lieu API that** (`/api/public/bpdb-machines-gantt`, 7 ngay, 1078 ban ghi -> 610 thanh sau gop, 4 me dang chay): 0 me dang chay nam truoc kim do, 0 me da xong vuot kim do, 0 cap de len nhau, 0 thanh be rong am. **Chua xem bang mat tren trinh duyet** va **chua deploy**.
+
+### 111. Gantt BPDB: bo han hang rieng cua May VD, an may VD001 (2026-08-05)
+
+- **Yeu cau:** bo "dong dang ngan cach voi cac may" (da hoi lai va nguoi dung chon: **hang ten May VD** — hang khong chua thanh me nao, chi tao mot dai trong ngan giua cac cum) va **an may VD001**.
+- **Sua 1 — bo group cha (`applyMachineFilter`, `BpdbMachinesGantt.vue`):** chi nap **hang Tank** vao vis; group cha (`nestedGroups`) van duoc backend tra ve va van giu trong `allGroups` (can de biet TEN may va de o tim kiem khop theo ten may) nhung khong con duoc ve. O ten may gop nay nam de len chinh **hang Tank dau tien** cua may, keo dai xuong het cum.
+  - `className: 'gantt-machine-head'` gan cho hang do -> CSS `z-index: 6` chuyen tu `.vis-nesting-group` sang `.vis-label.gantt-machine-head`. **Bat buoc giu** — day la fix bug ve sai cua Chromium (ten may bien mat khi cuon toi may chua tung vao khung nhin, 2026-07-29), khong phai hieu ung UI.
+  - `capNhatOGopMay()`: moc phan cum doi tu class `.vis-nested-group` sang **su co mat cua o gop** (`.gantt-machine-merged`) o hang ke tiep.
+  - Ghim may: tru 100000 vao order cua **toan bo hang Tank** cua may (truoc kia chi tru vao 1 hang cha) -> ca cum cung nhay len dau.
+  - CSS: `.vis-nested-group .vis-inner` -> `.vis-label .vis-inner` (khong con class nao mang `.vis-nested-group`); `font-weight: 700` chuyen sang `.gantt-machine-name`; the may lay lai 11px be ngang (`left: 15px` -> `4px`) vi khong con mui ten dong/mo cua vis o dau hang.
+  - **DANH DOI da chap nhan:** mat mui ten dong/mo gon tung may (tinh nang do gan lien voi `nestedGroups`). Ghim may + tim may van nguyen ven.
+- **Sua 2 — an VD001 (`BpdbMachineMonitoringService::buildGanttTimeline`):** hang so `GANTT_HIDDEN_MACHINES = ['VD001']`, bo qua ngay trong vong lap dung group. Loc o **buildGanttTimeline** chu khong o `getMachineRegistry()`: danh muc may con dung chung cho man hinh trang thai may va cho phan dem "So lan danh mau theo may" — an o danh muc se mat luon ca nhung cho do, vuot pham vi yeu cau. Vi machine_id cua VD001 khong vao `$machineIdToTankGroup` nen task cua no cung khong duoc query, khong ton bang thong.
+  - **CON TON DONG, can nguoi dung quyet:** phan "So lan danh mau / Theo may" trong bang chi tiet (`getLotRunTotal`) **VAN dem ca VD001** vi dung nguyen registry. Neu muon an luon o do thi noi de sua tiep.
+- **Kiem chung:** `php -l` sach, `vue-tsc --noEmit` exit 0, `npm run build` OK. Goi API that: groups tu **132 -> 126**, **khong con VD001**, may dau danh sach la VD002. Mo phong lai buoc dung `renderedGroups` tren du lieu that: **101 hang ve** (het hang cha), **25 o ten may** dung bang so may, **0 hang dau cum sai vi tri**, **0 may thieu ten**. **Chua xem bang mat tren trinh duyet** va **chua deploy**.

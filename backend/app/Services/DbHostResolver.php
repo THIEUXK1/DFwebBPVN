@@ -31,6 +31,26 @@ class DbHostResolver
             explode(',', (string) env('DB_HOST_CANDIDATES', $configuredHost))
         )));
 
+        // Probe host trong DB_HOST TRƯỚC, rồi mới tới các ứng viên còn lại.
+        //
+        // Ghi chú 2026-08-02 ở trên giả định probe TRƯỢT thì trả lời ngay ("connection
+        // refused"). Đo lại 2026-08-05 trên máy dev: KHÔNG đúng — `fsockopen` tới
+        // 127.0.0.1:5433 (không có Postgres cục bộ) trả errno **10060 = hết giờ**, không
+        // phải 10061 = bị từ chối, tức gói tin bị firewall NUỐT chứ không bị đá về. Mỗi lần
+        // probe trượt vì vậy đốt trọn 2 giây. Với thứ tự cũ (127.0.0.1 đứng đầu danh sách),
+        // cứ mỗi 20 giây (TTL cache) lại có 1 request đứng hình 2 giây — và vì backend chạy
+        // `php artisan serve` ĐƠN LUỒNG, mọi request khác của mọi tab đang mở xếp hàng chờ
+        // theo. Đây là nguyên nhân "trang nào cũng chậm" trên máy dev.
+        //
+        // Đảo thứ tự sửa được cho CẢ HAI nơi mà không cần biết máy đang chạy là máy nào:
+        // DB_HOST luôn là host chủ đích của chính môi trường đó, nên phát đầu tiên gần như
+        // luôn trúng (~50ms). Danh sách ứng viên giữ nguyên vai trò dự phòng khi host chủ
+        // đích thật sự chết.
+        if ($configuredHost !== '') {
+            array_unshift($candidates, $configuredHost);
+            $candidates = array_values(array_unique($candidates));
+        }
+
         if (count($candidates) <= 1) {
             return $candidates[0] ?? $configuredHost;
         }

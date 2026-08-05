@@ -99,32 +99,32 @@ export function buildSlipTspl(header: SlipHeader, items: SlipItem[]): string {
   const levelCode = header.level_code ?? '';
 
   let tspl =
-    'SIZE 76 mm, 130 mm\r\n' +
+    'SIZE 55 mm, 35 mm\r\n' +
     'GAP 2 mm, 0 mm\r\n' +
     'DIRECTION 1,0\r\n' +
     'REFERENCE 0,0\r\n' +
     'CLS\r\n' +
-    'TEXT 15,15,"3",0,1,1,"DF_WEIGHING_SLIP"\r\n' +
-    `TEXT 15,50,"2",0,1,1,"MAU: ${color}"\r\n` +
-    `TEXT 15,75,"2",0,1,1,"HANG: ${productCode}"\r\n` +
-    `TEXT 15,100,"2",0,1,1,"MAY: ${machineCode}"\r\n` +
-    `TEXT 15,125,"2",0,1,1,"MUC: ${levelCode}"\r\n`;
+    'TEXT 8,6,"2",0,1,1,"DF_WEIGHING_SLIP"\r\n' +
+    `TEXT 8,30,"1",0,1,1,"MAU: ${color}"\r\n` +
+    `TEXT 8,44,"1",0,1,1,"HANG: ${productCode}"\r\n` +
+    `TEXT 8,58,"1",0,1,1,"MAY: ${machineCode}"\r\n` +
+    `TEXT 8,72,"1",0,1,1,"MUC: ${levelCode}"\r\n`;
 
   // Toạ độ x cố định để 5 cột thẳng hàng — giữ y hệt bản PHP.
-  const colRack = 15;
-  const colDye = 90;
-  const colMt = 260;
-  const colTt = 380;
-  const colStatus = 500;
+  const colRack = 8;
+  const colDye = 48;
+  const colMt = 152;
+  const colTt = 232;
+  const colStatus = 312;
 
   tspl +=
-    `TEXT ${colRack},155,"1",0,1,1,"RACK"\r\n` +
-    `TEXT ${colDye},155,"1",0,1,1,"DYE CODE"\r\n` +
-    `TEXT ${colMt},155,"1",0,1,1,"MT"\r\n` +
-    `TEXT ${colTt},155,"1",0,1,1,"TT"\r\n` +
-    `TEXT ${colStatus},155,"1",0,1,1,"STATUS"\r\n`;
+    `TEXT ${colRack},88,"1",0,1,1,"RACK"\r\n` +
+    `TEXT ${colDye},88,"1",0,1,1,"DYE CODE"\r\n` +
+    `TEXT ${colMt},88,"1",0,1,1,"MT"\r\n` +
+    `TEXT ${colTt},88,"1",0,1,1,"TT"\r\n` +
+    `TEXT ${colStatus},88,"1",0,1,1,"STATUS"\r\n`;
 
-  let y = 178;
+  let y = 102;
   items.forEach((item, idx) => {
     const plannedText = numberFormat2(Number(item.planned_weight)) + 'g';
     const weightText =
@@ -145,10 +145,10 @@ export function buildSlipTspl(header: SlipHeader, items: SlipItem[]): string {
       `TEXT ${colMt},${y},"1",0,1,1,"${plannedText}"\r\n` +
       `TEXT ${colTt},${y},"1",0,1,1,"${weightText}"\r\n` +
       `TEXT ${colStatus},${y},"1",0,1,1,"${item.process_status}"\r\n`;
-    y += 22;
+    y += 14;
   });
 
-  tspl += `TEXT 15,${y},"1",0,1,1,"In luc: ${header.printed_at ?? nowSlipTimestamp()}"\r\n`;
+  tspl += `TEXT ${colRack},${y},"1",0,1,1,"In luc: ${header.printed_at ?? nowSlipTimestamp()}"\r\n`;
   tspl += 'PRINT 1,1\r\n';
 
   return tspl;

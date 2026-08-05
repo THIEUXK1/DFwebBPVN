@@ -80,7 +80,7 @@
       <div ref="timelineEl" class="gantt-canvas"></div>
       <p v-if="!loading && totalRecords === 0" class="gantt-empty">Không có task nào khớp trong khoảng ngày/tên máy đã chọn.</p>
     </div>
-    <p class="footnote">Tổng số thanh hiển thị: <strong>{{ totalRecords }}</strong> · viền đỏ nhấp nháy = mẻ đang chạy, chưa kết thúc · các mẻ đã xong liên tiếp trùng mã màu - mã hàng được gộp thành 1 thanh</p>
+    <p class="footnote">Tổng số thanh hiển thị: <strong>{{ totalRecords }}</strong> · viền đỏ nhấp nháy = mẻ đang chạy, chưa kết thúc · mẻ đang chạy luôn vẽ bên PHẢI vạch giờ hiện tại, mẻ đã xong dồn về bên TRÁI · các mẻ đã xong liên tiếp trùng mã màu - mã hàng được gộp thành 1 thanh</p>
 
     <!-- Đồng hồ nổi góc trên trái — chỉ hiện khi toàn màn hình (che mất đồng hồ hệ điều hành). -->
     <div v-show="isBrowserFullscreen" class="fs-clock">
@@ -308,8 +308,8 @@ const MIN_VISUAL_DURATION_MS = 2.5 * 60 * 60 * 1000;
 // cho mã máy + icon ghim) — KHÔNG liên quan tới lỗi "tên máy biến mất khi cuộn xuống các máy
 // chưa từng vào khung nhìn" (báo cáo 2026-07-29): từng nghi ngờ do width quá hẹp nhưng đã
 // kiểm chứng lại là SAI (bug tái diễn y hệt kể cả ở 250px) — nguyên nhân thật là thiếu
-// z-index trên hàng .vis-nesting-group, xem rule z-index bắt buộc trong <style> (tìm
-// ":deep(.vis-nesting-group) { z-index: 6; }"). Đổi số này thoải mái theo nhu cầu hiển thị,
+// z-index trên hàng mang ô tên máy, xem rule z-index bắt buộc trong <style> (tìm
+// ":deep(.vis-label.gantt-machine-head) { z-index: 6; }"). Đổi số này thoải mái theo nhu cầu,
 // không ảnh hưởng tới bug đó.
 const LABEL_COLUMN_WIDTH = 164;
 const labelColumnWidthCss = `${LABEL_COLUMN_WIDTH}px`;
@@ -322,6 +322,26 @@ const labelColumnWidthCss = `${LABEL_COLUMN_WIDTH}px`;
 // mũi tên đóng/mở và ~10px padding, hẹp hơn nữa là tên máy bị cắt thành "VD…".
 const MACHINE_COL_WIDTH = 110;
 const machineColWidthCss = `${MACHINE_COL_WIDTH}px`;
+
+// Chiều cao CỐ ĐỊNH của thanh mẻ và của MỌI hàng (cả hàng Máy VD lẫn hàng Tank) — yêu cầu
+// 2026-08-05 "định dạng lại khoảng cách các dòng cho đồng bộ kích thước". Trước đây chiều cao
+// mỗi hàng do vis-timeline tự tính theo các mẻ ĐANG NHÌN THẤY trong khung giờ hiện tại: Tank
+// đang có mẻ thì cao, Tank không có mẻ nào lọt khung nhìn thì co lại chỉ bằng chiều cao nhãn
+// -> danh sách so le, tệ hơn là chiều cao còn tự đổi mỗi khi cuộn ngang trục thời gian.
+// Nay chốt cứng cả 3 yếu tố quyết định chiều cao hàng:
+//   1. Chiều cao thanh mẻ ép bằng CSS (xem .vis-item trong <style>).
+//   2. margin khai báo tường minh trong option của Timeline (không dùng mặc định 20/10/10).
+//   3. groupHeightMode: 'fixed' — vis tính chiều cao theo TOÀN BỘ mẻ của Tank thay vì chỉ mẻ
+//      đang lọt khung nhìn, nên cuộn ngang không còn làm hàng co giãn.
+// ROW_HEIGHT phải khớp ĐÚNG công thức của thư viện (Group._calculateHeight):
+// ceil(top + itemHeight + margin.item.vertical / 2), trong đó top bị kéo về đúng margin.axis
+// khi margin.item.vertical > margin.axis (đúng trường hợp ở đây: 10 > 5).
+const ITEM_HEIGHT = 24;
+const ROW_MARGIN_AXIS = 5;
+const ROW_MARGIN_ITEM_VERTICAL = 10;
+const ROW_HEIGHT = ROW_MARGIN_AXIS + ITEM_HEIGHT + ROW_MARGIN_ITEM_VERTICAL / 2;
+const itemHeightCss = `${ITEM_HEIGHT}px`;
+const rowHeightCss = `${ROW_HEIGHT}px`;
 
 const toDateInput = (d: Date) => d.toISOString().slice(0, 10);
 const fromDate = ref(toDateInput(new Date(Date.now() - 7 * 24 * 3600 * 1000)));
@@ -623,10 +643,12 @@ const fetchGantt = async () => {
   });
 
   // Xếp các mẻ trên CÙNG 1 Tank thành chuỗi liền mạch, TUYỆT ĐỐI không đè lên nhau (yêu cầu
-  // 2026-08-03) — chấp nhận vẽ SAI giờ: mẻ nào không đủ chỗ thì bị ĐẨY SANG PHẢI (muộn hơn
-  // giờ thật), lan truyền tiếp sang các mẻ sau nó. Kết hợp với yêu cầu 2026-07-29 trước đó
+  // 2026-08-03) — chấp nhận vẽ SAI giờ: mẻ nào không đủ chỗ thì bị ĐẨY về phía trước (sớm hơn
+  // giờ thật), lan truyền tiếp sang các mẻ trước nó. Kết hợp với yêu cầu 2026-07-29 trước đó
   // ("nếu có khoảng trống giữa các mẻ thì kéo dài chạm tới mẻ bên phải gần nhất"): khoảng
   // trống vẫn được lấp, chỉ khác là giờ BẮT ĐẦU nay cũng được phép dịch, không chỉ giờ kết thúc.
+  // Từ 2026-08-05, gốc toạ độ để xếp là KIM ĐỎ (giờ hiện tại) chứ không còn là mẻ sớm nhất:
+  // mẻ đã xong dồn về bên trái kim, mẻ đang chạy đẩy sang bên phải kim (xem 3 lượt bên dưới).
   //
   // Vì sao bản trước vẫn đè dù đã ép end = start của mẻ kế tiếp: hai mẻ bắt đầu cách nhau vài
   // phút (hoặc trùng giờ) tạo ra thanh gần như rộng 0, nhưng CSS còn ép min-width theo px và
@@ -675,25 +697,61 @@ const fetchGantt = async () => {
   }
   items = Array.from(itemsByTank.values()).flat();
 
+  // Mốc "hiện tại" của biểu đồ = đúng vị trí kim đỏ đang vẽ (xem calculateNeedle, cùng dùng
+  // syncSnapshot chứ không dùng đồng hồ trình duyệt). Yêu cầu 2026-08-05: mẻ CHƯA có giờ kết
+  // thúc (đang chạy) LUÔN nằm hẳn bên PHẢI kim đỏ, mẻ đã xong LUÔN nằm hẳn bên TRÁI — được
+  // phép đẩy các mẻ khác trên cùng hàng lùi về trái để lấy chỗ. Nhờ vậy nhìn vào biểu đồ là
+  // biết ngay Tank nào đang chạy (thanh nằm sau vạch giờ) mà không phải dò từng thanh.
+  const nowMs = syncSnapshot.value.getTime();
+
   for (const tankItems of itemsByTank.values()) {
-    // Lượt 1 — dịch giờ bắt đầu sang phải sao cho 2 mẻ liên tiếp luôn cách nhau ít nhất
-    // MIN_VISUAL_DURATION_MS. cursor = mốc sớm nhất mà mẻ kế tiếp được phép bắt đầu.
-    let cursor = -Infinity;
-    for (const item of tankItems) {
+    // Tách theo TRẠNG THÁI chứ không theo thứ tự thời gian: dữ liệu BPDB thỉnh thoảng có mẻ
+    // đang chạy bắt đầu SỚM hơn một mẻ đã xong trên cùng Tank (mẻ chạy dài, mẻ ngắn xen vào),
+    // nếu cắt theo vị trí trong mảng thì mẻ đã xong đó sẽ bị đẩy nhầm sang phải kim đỏ.
+    const doneItems = tankItems.filter(it => !it.uncompleted);
+    const runningItems = tankItems.filter(it => it.uncompleted);
+
+    // Lượt 1 — mẻ ĐÃ XONG: xếp NGƯỢC từ kim đỏ lùi về quá khứ. Mẻ cuối cùng kết thúc muộn
+    // nhất là tại kim đỏ; mẻ nào không đủ chỗ thì bị ĐẨY SANG TRÁI (sớm hơn giờ thật), lan
+    // truyền tiếp sang các mẻ trước nó — vẫn giữ nguyên độ dài và khoảng cách tối thiểu
+    // MIN_VISUAL_DURATION_MS nên không mẻ nào bị bóp hẹp hay đè lên nhau.
+    let limit = nowMs;
+    for (let i = doneItems.length - 1; i >= 0; i--) {
+      const item = doneItems[i];
       const duration = item.end.getTime() - item.start.getTime();
-      if (item.start.getTime() < cursor) {
-        item.start = new Date(cursor);
-        item.end = new Date(cursor + duration);
+      const latestStart = limit - Math.max(duration, MIN_VISUAL_DURATION_MS);
+      if (item.start.getTime() > latestStart) {
+        item.start = new Date(latestStart);
+        item.end = new Date(latestStart + duration);
       }
-      cursor = item.start.getTime() + MIN_VISUAL_DURATION_MS;
+      limit = item.start.getTime();
     }
 
-    // Lượt 2 — lấp khoảng trống: mỗi mẻ kéo dài chạm đúng giờ bắt đầu (đã dịch) của mẻ kế
-    // tiếp. Nhờ lượt 1, khoảng cách đó luôn >= MIN_VISUAL_DURATION_MS nên không mẻ nào bị
-    // bóp hẹp lại. Mẻ CUỐI của mỗi Tank không có mẻ nào bên phải nên giữ nguyên độ dài
-    // (thật, hoặc tối thiểu MIN_VISUAL_DURATION_MS).
-    for (let i = 0; i < tankItems.length - 1; i++) {
-      tankItems[i].end = tankItems[i + 1].start;
+    // Lượt 2 — mẻ ĐANG CHẠY: xếp XUÔI từ kim đỏ về phía tương lai, thanh nằm TRỌN bên phải
+    // vạch giờ. Bề rộng giữ nguyên = thời gian đã chạy được tính tới lúc đồng bộ (mẻ vừa mở
+    // thì đúng bằng MIN_VISUAL_DURATION_MS), nên thanh dài vẫn nói lên mẻ đã chạy lâu — chỉ
+    // khác là phần vẽ đó nay đổ về phía tương lai thay vì về quá khứ.
+    let cursor = nowMs;
+    for (const item of runningItems) {
+      const duration = item.end.getTime() - item.start.getTime();
+      const startMs = Math.max(item.start.getTime(), cursor);
+      item.start = new Date(startMs);
+      item.end = new Date(startMs + duration);
+      cursor = startMs + MIN_VISUAL_DURATION_MS;
+    }
+
+    // Lượt 3 — lấp khoảng trống: mỗi mẻ kéo dài chạm đúng giờ bắt đầu (đã dịch) của mẻ kế
+    // tiếp CÙNG NHÓM. Nhờ 2 lượt trên, khoảng cách đó luôn >= MIN_VISUAL_DURATION_MS nên
+    // không mẻ nào bị bóp hẹp lại. Mẻ đã xong cuối cùng chỉ kéo tới kim đỏ (không lấn sang
+    // mẻ đang chạy) và chỉ khi Tank đó thật sự đang có mẻ chạy — Tank đã nghỉ thì giữ nguyên
+    // độ dài thật, không vẽ kéo dài tới hiện tại làm tưởng nhầm là còn đang bận.
+    for (let i = 0; i < doneItems.length - 1; i++) {
+      doneItems[i].end = doneItems[i + 1].start;
+    }
+    const lastDone = doneItems[doneItems.length - 1];
+    if (lastDone && runningItems.length) lastDone.end = new Date(nowMs);
+    for (let i = 0; i < runningItems.length - 1; i++) {
+      runningItems[i].end = runningItems[i + 1].start;
     }
   }
 
@@ -752,25 +810,49 @@ const applyMachineFilter = () => {
   const visibleGroupIds = new Set(visibleGroups.map(g => g.id));
   const visibleItems = allItems.filter(it => visibleGroupIds.has(it.group));
 
-  // Chỉ group CHA (nestedGroups) mới có nút ghim — Tank con giữ content gốc, không đổi.
-  // Máy đã ghim trừ hẳn 100000 vào order (danh sách gốc chỉ vài chục máy, order gốc luôn
-  // nhỏ hơn nhiều) để luôn đứng trước máy chưa ghim, vẫn giữ đúng thứ tự tương đối trong
-  // từng nhóm ghim/chưa ghim.
-  const renderedGroups = visibleGroups.map(g => {
-    if (!g.nestedGroups) return g;
-    const isPinned = pinnedMachineIds.value.has(g.id);
-    // Icon ghim đặt bên PHẢI tên máy (không sát mũi tên đóng/mở ở đầu dòng nữa) — dễ ấn
-    // hơn, tránh đứng chen giữa 2 mục tiêu bấm nhỏ sát nhau (yêu cầu 2026-07-29).
+  // CHỈ vẽ hàng Tank — hàng riêng của Máy VD (group cha có nestedGroups) đã bị bỏ hẳn khỏi
+  // biểu đồ (yêu cầu 2026-08-05): nó không chứa thanh mẻ nào, chỉ tạo một dải trống ngăn giữa
+  // các cụm máy. Tên máy nay nằm trong ô gộp vẽ đè lên chính hàng Tank ĐẦU TIÊN của máy đó và
+  // kéo dài xuống hết cụm (chiều cao do capNhatOGopMay() đo).
+  // ĐÁNH ĐỔI đã chấp nhận: không còn group cha nên mất luôn mũi tên đóng/mở gọn từng máy của
+  // vis-timeline (tính năng đó gắn liền với nestedGroups). Ghim máy và tìm máy vẫn nguyên vẹn.
+  // allGroups VẪN giữ đủ cả group cha — cần chúng để biết TÊN máy và để ô tìm kiếm khớp theo
+  // tên máy; chỉ khác là chúng không được nạp vào vis nữa.
+  const machineGroupById = new Map<string, any>(
+    allGroups.filter(g => g.nestedGroups).map(g => [String(g.id), g])
+  );
+  // Hàng Tank đầu tiên của mỗi máy = hàng mang ô tên máy. Dựa vào thứ tự duyệt của
+  // visibleGroups (giữ nguyên thứ tự backend trả về: 4 Tank rồi tới group cha, máy này nối
+  // tiếp máy kia) nên hàng bắt gặp đầu tiên luôn là hàng trên cùng của cụm.
+  const seenMachines = new Set<string>();
+  const renderedGroups = visibleGroups.filter(g => !g.nestedGroups).map(g => {
+    const machineId = String(g.id).split('::')[0];
+    const machineGroup = machineGroupById.get(machineId);
+    const machineName = machineGroup ? String(machineGroup.content) : machineId;
+    const isPinned = pinnedMachineIds.value.has(machineId);
+    const isMachineHead = !seenMachines.has(machineId);
+    if (isMachineHead) seenMachines.add(machineId);
+
+    // Ô tên máy GỘP theo chiều dọc, phủ luôn các hàng Tank còn lại của máy đó (yêu cầu
+    // 2026-08-02) — box absolute, chiều cao do capNhatOGopMay() đo lại sau mỗi lần vis vẽ
+    // xong. Icon ghim đặt bên PHẢI tên máy cho dễ ấn (yêu cầu 2026-07-29).
+    const machineCard = isMachineHead
+      ? `<span class="gantt-machine-merged"><span class="gantt-machine-row"><span class="gantt-machine-name" title="${machineName}">${machineName}</span><span class="gantt-pin-btn${isPinned ? ' is-pinned' : ''}" data-machine-id="${machineId}" title="${isPinned ? 'Bỏ ghim' : 'Ghim lên đầu'}">📌</span></span></span>`
+      : '';
+
     return {
       ...g,
+      // Máy đã ghim trừ hẳn 100000 vào order cho TOÀN BỘ hàng Tank của máy đó (danh sách gốc
+      // chỉ vài chục máy, order gốc luôn nhỏ hơn nhiều) — cả cụm cùng nhảy lên đầu và giữ
+      // nguyên thứ tự tương đối bên trong cụm lẫn giữa các máy cùng nhóm ghim/chưa ghim.
       order: isPinned ? g.order - 100000 : g.order,
-      // Ô tên máy được GỘP theo chiều dọc, phủ luôn các hàng Tank con của máy đó (yêu cầu
-      // 2026-08-02) — box absolute nằm trong chính hàng máy, chiều cao do capNhatOGopMay()
-      // đo lại sau mỗi lần vis vẽ xong. Vì thế KHÔNG còn ghim sticky tên máy như trước
-      // (2026-07-29): hàng máy mà sticky thì cả box gộp trượt theo, che hết tên Tank bên
-      // dưới. Ô gộp đã bao trọn cụm 4 Tank nên tên máy vẫn thấy được khi cuộn trong cụm.
-      className: '',
-      content: `<span class="gantt-machine-merged"><span class="gantt-machine-row"><span class="gantt-machine-name" title="${g.content}">${g.content}</span><span class="gantt-pin-btn${isPinned ? ' is-pinned' : ''}" data-machine-id="${g.id}" title="${isPinned ? 'Bỏ ghim' : 'Ghim lên đầu'}">📌</span></span></span>`,
+      // Hàng mang ô tên máy phải có z-index (xem rule .gantt-machine-head trong <style>).
+      className: isMachineHead ? 'gantt-machine-head' : '',
+      // Tên tank bọc trong thẻ riêng (.gantt-tank-pill) thay vì tô thẳng lên .vis-inner: vis
+      // lấy .vis-inner.clientHeight làm chiều cao TỐI THIỂU của hàng, nên .vis-inner phải là
+      // ô cao cố định ROW_HEIGHT trong suốt (kể cả Tank rỗng cũng cao bằng hàng khác), còn
+      // hình viên thuốc thì nằm ở thẻ con — xem <style>.
+      content: `${machineCard}<span class="gantt-tank-pill">${g.content}</span>`,
     };
   });
 
@@ -877,6 +959,11 @@ const initTimeline = () => {
     // đè lên màu họ màu của mẻ) — trang tự vẽ bảng chi tiết khi bấm, xem sự kiện 'click' bên
     // dưới. Sự kiện 'click' vẫn bắn bình thường khi selectable: false.
     selectable: false,
+    // Chiều cao mọi hàng bằng nhau — xem ghi chú tại ITEM_HEIGHT/ROW_HEIGHT phía trên.
+    // 'fixed' = tính chiều cao nhóm theo TOÀN BỘ mẻ của nhóm, không phải chỉ mẻ đang lọt
+    // khung nhìn (mặc định 'auto'), nên cuộn ngang trục thời gian không còn làm hàng co giãn.
+    groupHeightMode: 'fixed',
+    margin: { axis: ROW_MARGIN_AXIS, item: { horizontal: 0, vertical: ROW_MARGIN_ITEM_VERTICAL } },
     groupOrder: 'order',
     orientation: 'top',
     zoomKey: 'ctrlKey',
@@ -971,10 +1058,10 @@ const capNhatOGopMay = () => {
     const box = labels[i].querySelector<HTMLElement>('.gantt-machine-merged');
     if (!box) continue;
     let tong = labels[i].offsetHeight;
-    // Các hàng ngay sau hàng máy đều là Tank của nó cho tới khi gặp hàng máy kế tiếp
-    // (hàng máy không có class .vis-nested-group). Máy đang thu gọn thì không có hàng Tank
-    // nào ở đây, vòng lặp dừng ngay -> ô gộp co lại đúng bằng 1 hàng.
-    for (let j = i + 1; j < labels.length && labels[j].classList.contains('vis-nested-group'); j++) {
+    // Mọi hàng sau đó đều là Tank CÙNG MÁY cho tới khi gặp hàng mang ô tên máy kế tiếp. Từ
+    // 2026-08-05 không còn hàng riêng của Máy VD nên không thể nhận biết bằng class
+    // .vis-nested-group như trước — mốc phân cụm nay chính là sự có mặt của ô gộp.
+    for (let j = i + 1; j < labels.length && !labels[j].querySelector('.gantt-machine-merged'); j++) {
       tong += labels[j].offsetHeight;
     }
     // Trừ 4px (kèm top:2px trong CSS) để 2 thẻ máy liền nhau có khe hở, không dính thành
@@ -1058,7 +1145,7 @@ onUnmounted(() => {
 
 /* Nút thoát toàn màn hình — position: fixed để bám góc màn hình chứ không trôi theo trang.
    z-index phải cao hơn mọi lớp của vis-timeline (cao nhất trong file này là 6 ở
-   .vis-nesting-group) và hơn cả tooltip, nếu không sẽ bị thanh Gantt đè mất. */
+   .gantt-machine-head) và hơn cả tooltip, nếu không sẽ bị thanh Gantt đè mất. */
 /* Đồng hồ toàn màn hình. Cùng z-index với nút thoát để luôn nổi trên vis-timeline.
    font-variant-numeric: tabular-nums giữ bề rộng chữ số cố định — thiếu nó thì đồng hồ
    giật ngang mỗi giây khi chữ số đổi (1 hẹp hơn 8 ở font Inter). */
@@ -1254,9 +1341,9 @@ onUnmounted(() => {
    được (đúng lỗi báo cáo 2026-07-29 "không nhìn thấy tên của các tank"). */
 /* Ép độ rộng cột nhãn qua .vis-panel.vis-left (khung cuộn dọc thật) thay vì trực tiếp lên
    .vis-labelset/.vis-label — chỉ để tránh xung đột với width tường minh mà vis-timeline tự
-   gán cho .vis-label (xem rule .vis-nesting-group .vis-inner phía dưới), không liên quan gì
+   gán cho .vis-label (xem rule .vis-label .vis-inner phía dưới), không liên quan gì
    tới lỗi "tên máy biến mất khi cuộn" — lỗi đó do thiếu z-index, xem rule bắt buộc
-   ":deep(.vis-nesting-group) { z-index: 6; }" bên dưới. */
+   ":deep(.vis-label.gantt-machine-head) { z-index: 6; }" bên dưới. */
 :deep(.vis-panel.vis-left) { width: v-bind(labelColumnWidthCss) !important; }
 :deep(.vis-panel) { background-color: var(--bg-card) !important; }
 /* Cột tên Máy VD/Tank có nền riêng (--gantt-label-bg), không cùng màu với vùng biểu đồ — cùng
@@ -1271,47 +1358,41 @@ onUnmounted(() => {
   background-color: var(--gantt-label-bg) !important;
   color: var(--text-title) !important;
 }
-:deep(.vis-nesting-group) { font-weight: 700; }
-/* z-index (KHÔNG kèm position:sticky) trên MỌI hàng tên Máy VD — bắt buộc phải có, không
+/* z-index (KHÔNG kèm position:sticky) trên hàng mang ô tên máy — bắt buộc phải có, không
    phải để ghim/hiệu ứng thị giác. Đã kiểm chứng bằng thực nghiệm (Chromium headless, cuộn
    chuột thật, lặp lại nhiều lần): thiếu z-index này, vis-timeline vẽ SAI hoàn toàn các hàng
-   Máy VD (không riêng máy nào) CHƯA từng lọt vào khung nhìn ban đầu — tên máy biến mất khỏi
+   tên máy (không riêng máy nào) CHƯA từng lọt vào khung nhìn ban đầu — tên máy biến mất khỏi
    pixel vẽ ra dù DOM/computed style vẫn báo bình thường (đúng lỗi báo cáo 2026-07-29 "từ
    VD006 => VD013 không thấy tên máy", tái diễn ở BẤT KỲ máy nào ngoài khung nhìn lúc mở
    trang, không cố định ở VD006-013 — vị trí cụ thể phụ thuộc kích thước màn hình/vị trí
    cuộn). Chỉ z-index đơn thuần (Chromium tự thăng cấp compositing layer) là đủ để buộc
    trình duyệt vẽ lại đúng — KHÔNG cần position:sticky cho việc này (đã thử width nhỏ hơn,
    translateZ, will-change trên container: đều không ăn thua; chỉ z-index trên chính hàng
-   mới hết). Xem thêm ghi chú tại LABEL_COLUMN_WIDTH phía trên <script>. */
-:deep(.vis-nesting-group) { z-index: 6; }
+   mới hết). Xem thêm ghi chú tại LABEL_COLUMN_WIDTH phía trên <script>.
+   Trước 2026-08-05 rule này bám vào .vis-nesting-group (hàng riêng của Máy VD); nay hàng đó
+   đã bị bỏ nên chuyển sang class .gantt-machine-head do applyMachineFilter gán cho hàng Tank
+   đầu tiên của mỗi máy — đúng hàng đang mang ô tên máy, tức đúng chỗ bug xảy ra. */
+:deep(.vis-label.gantt-machine-head) { z-index: 6; }
 /* GHI CHÚ LỊCH SỬ: trước 2026-08-02 hàng tên máy được ghim sticky (class .gantt-machine-sticky,
    chỉ cho máy > 2 Tank — máy 1-2 Tank mà ghim thì Tank đầu bị header dính đè khuất, lỗi báo cáo
    "A1 tank đang bị khuất" 2026-07-29). Đã BỎ hẳn khi chuyển sang ô gộp cột 1: box gộp là con
-   absolute của chính hàng máy, hàng máy sticky thì box trượt theo và che hết tên Tank bên dưới.
-   Nếu sau này muốn ghim lại, phải tách box gộp ra một lớp overlay riêng trong .vis-labelset,
-   không để nó nằm trong hàng máy nữa. Rule z-index-cho-tất-cả phía trên KHÔNG liên quan tới ghim
-   và phải giữ nguyên — đó là fix bug vẽ sai, không phải hiệu ứng UI. */
-/* .vis-inner mặc định inline-block, co theo nội dung — ép width cố định (đúng bằng cột
-   nhãn) để .gantt-machine-row bên trong dùng justify-content:space-between đẩy được icon
-   ghim ra sát mép phải cột, cách xa mũi tên đóng/mở ở đầu dòng (yêu cầu 2026-07-29: "để
-   icon ghim ra chỗ dễ ấn, bên phải tên máy"). Giữ nguyên display mặc định (inline-block vẫn
-   tôn trọng width tường minh, KHÔNG cần/KHÔNG được đổi sang display:block — đã thử, đổi
-   sang block là nguyên nhân gốc của lỗi "tên máy biến mất khi cuộn tới các máy chưa từng vào
-   khung nhìn", xem rule z-index bắt buộc ở trên để hiểu lỗi thật, còn width ở đây chỉ đơn
-   thuần đồng bộ với cột nhãn 130px, không phải phần fix bug). */
-:deep(.vis-nesting-group .vis-inner) { width: v-bind(machineColWidthCss); box-sizing: border-box; }
+   absolute của chính hàng đó, hàng sticky thì box trượt theo và che hết tên Tank bên dưới.
+   Nếu sau này muốn ghim lại, phải tách box gộp ra một lớp overlay riêng trong .vis-labelset.
+   Rule z-index phía trên KHÔNG liên quan tới ghim và phải giữ nguyên — đó là fix bug vẽ sai,
+   không phải hiệu ứng UI. */
 
 /* Ô GỘP cột 1: một khối duy nhất cho cả máy, cao bằng hàng máy + toàn bộ hàng Tank của nó
    (chiều cao do capNhatOGopMay() đo và gán inline). Nhờ hàng máy đã có z-index:6, khối này
    nằm trên các hàng Tank phía dưới nên che luôn đường kẻ ngang giữa chúng -> nhìn đúng như
    ô đã merge trong bảng.
-   - left: 15px để chừa chỗ cho mũi tên đóng/mở ▼ mà vis vẽ ở đầu hàng máy.
-   - Chừa 1px bên phải để không đè lên vạch ngăn 2 cột. */
+   - left: 4px — trước 2026-08-05 phải để 15px chừa chỗ cho mũi tên đóng/mở ▼ mà vis vẽ ở đầu
+     hàng Máy VD; bỏ hàng đó thì cũng hết mũi tên, thẻ máy lấy lại được 11px bề ngang.
+   - Chừa 5px bên phải để không đè lên vạch ngăn 2 cột. */
 :deep(.gantt-machine-merged) {
   position: absolute;
   top: 2px;
-  left: 15px;
-  width: calc(v-bind(machineColWidthCss) - 20px);
+  left: 4px;
+  width: calc(v-bind(machineColWidthCss) - 9px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1329,9 +1410,10 @@ onUnmounted(() => {
    theo CSS gốc vis-timeline) nên nối lại thành một đường dọc liền mạch, và luôn nằm TRÊN nền
    của hàng — khác với cách vẽ gradient nền lên .vis-labelset (bị chính background của từng
    .vis-label che mất). */
-/* Bắt buộc dùng ::after, KHÔNG dùng ::before: vis-timeline đã dùng
-   `.vis-label.vis-nesting-group:before` để vẽ mũi tên ▼/▶ đóng-mở nhóm (xem
-   vis-timeline-graph2d.css) — đè ::before lên là mất luôn mũi tên đó. */
+/* Dùng ::after, KHÔNG dùng ::before: vis-timeline dùng `.vis-label.vis-nesting-group:before`
+   để vẽ mũi tên ▼/▶ đóng-mở nhóm (xem vis-timeline-graph2d.css). Từ 2026-08-05 biểu đồ không
+   còn nhóm lồng nên cũng hết mũi tên, nhưng vẫn giữ ::after — không có lý do gì để đổi, và
+   nếu sau này khôi phục nhóm lồng thì khỏi vấp lại đúng cái bẫy đó. */
 :deep(.vis-label)::after {
   content: '';
   position: absolute;
@@ -1341,8 +1423,7 @@ onUnmounted(() => {
   width: 1px;
   background: var(--border-card-hover);
   pointer-events: none;
-  /* .vis-inner của hàng Tank là absolute và đứng SAU trong DOM nên mặc định vẽ đè lên vạch
-     này (nó bắt đầu đúng tại mép vạch, lại có background riêng) — z-index giữ vạch nổi lên. */
+  /* Giữ vạch nổi trên nội dung của hàng (viên thuốc tank bắt đầu ngay sát mép vạch). */
   z-index: 1;
 }
 :deep(.gantt-machine-row) {
@@ -1363,6 +1444,9 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Trước 2026-08-05 chữ đậm là do rule .vis-nesting-group (hàng riêng của Máy VD) — bỏ hàng
+     đó thì phải đặt lại ngay trên chính tên máy. */
+  font-weight: 700;
 }
 :deep(.gantt-pin-btn) {
   flex: 0 0 auto;
@@ -1375,28 +1459,38 @@ onUnmounted(() => {
 }
 :deep(.gantt-pin-btn:hover) { opacity: 0.75; }
 :deep(.gantt-pin-btn.is-pinned) { opacity: 1; }
-:deep(.vis-label .vis-inner) { padding: 0 10px !important; font-size: 0.82rem; }
-/* Tên Tank (1A, 2B...) căn xuống MÉP DƯỚI của hàng thay vì mặc định nằm sát mép trên
-   (yêu cầu 2026-07-29) — hàng Tank co giãn chiều cao theo số mẻ chồng lên nhau trong cùng
-   khung giờ (stack:false vẫn tính chiều cao theo mẻ dài nhất còn hiển thị lúc đó), nên khi
-   hàng cao hơn 20px mặc định, tên Tank cần dính xuống dưới để luôn ngang hàng với thanh
-   Gantt mới nhất/gần trục thời gian nhất thay vì trôi lên đầu hàng trống phía trên. Parent
-   .vis-label đã sẵn position:relative (CSS gốc vis-timeline), chỉ cần định vị tuyệt đối
-   .vis-inner theo mép dưới. CHỈ áp dụng cho Tank con (.vis-nested-group) — tên Máy VD giữ
-   nguyên canh giữa dọc như cũ, không đổi. */
-/* Tank nằm hẳn ở CỘT 2 dưới dạng viên (pill): dịch mép trái .vis-inner sang đúng bề rộng cột
-   tên máy, thay vì padding-left — .vis-inner có background riêng, nếu chỉ đệm trái thì phần
-   nền của nó vẫn phủ qua vạch ngăn 2 cột ở trên.
-   Căn GIỮA chiều cao hàng (yêu cầu 2026-08-02, đổi từ căn mép dưới của 2026-07-29): hàng nào
-   cao (nhiều mẻ chồng nhau) thì viên tank sẽ không còn ngang hàng với thanh Gantt mới nhất
-   nữa — đây là đánh đổi đã được chấp nhận để 2 cột nhìn cân đối. */
-:deep(.vis-nested-group .vis-inner) {
-  position: absolute;
-  left: calc(v-bind(machineColWidthCss) + 7px);
-  top: 50%;
-  transform: translateY(-50%);
-  padding: 1px 9px !important;
-  background: var(--gantt-card-bg) !important;
+/* GHI CHÚ LỊCH SỬ: trước 2026-08-05, .vis-inner của hàng Tank CHÍNH LÀ viên thuốc (pill), được
+   định vị tuyệt đối và canh giữa hàng bằng top:50% + translateY(-50%) — vì hồi đó chiều cao
+   hàng còn co giãn theo số mẻ đang hiển thị, phải canh động mới không bị trôi. Nay chiều cao
+   hàng đã cố định (ROW_HEIGHT) nên không cần trò định vị tuyệt đối đó nữa, và cũng KHÔNG dùng
+   được: chiều cao hàng lấy theo clientHeight của .vis-inner, mà .vis-inner thì đang phải mang
+   hình viên thuốc.
+   Tank nằm hẳn ở CỘT 2: trước đây phải dịch mép trái .vis-inner (không dùng padding-left) vì
+   .vis-inner tự tô nền, đệm trái thì nền vẫn phủ qua vạch ngăn 2 cột. Nay nền đã chuyển sang
+   thẻ con nên padding-left là đủ và đơn giản hơn. */
+/* .vis-inner của hàng Tank nay chỉ là Ô CHỨA trong suốt, cao đúng ROW_HEIGHT (bắt buộc: vis
+   lấy clientHeight của chính phần tử này làm chiều cao tối thiểu của hàng — xem ghi chú tại
+   ROW_HEIGHT phía trên <script>, và ghi chú tại chỗ bọc .gantt-tank-pill trong
+   applyMachineFilter). Hình viên thuốc chuyển hẳn sang thẻ con .gantt-tank-pill.
+   Đệm trái đúng bằng bề rộng cột tên máy để viên thuốc nằm gọn trong CỘT 2; nền trong suốt
+   nên không còn nguy cơ phủ qua vạch ngăn 2 cột như hồi .vis-inner còn tự tô nền.
+   Selector là .vis-label (không còn .vis-nested-group): bỏ group cha thì vis không gán class
+   .vis-nested-group cho hàng nào nữa, mà nay MỌI hàng đều là hàng Tank nên rule dùng chung. */
+:deep(.vis-label .vis-inner) {
+  font-size: 0.82rem;
+  position: static;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: v-bind(rowHeightCss);
+  padding: 0 0 0 calc(v-bind(machineColWidthCss) + 7px) !important;
+  background: transparent !important;
+  border: none;
+}
+:deep(.gantt-tank-pill) {
+  padding: 1px 9px;
+  background: var(--gantt-card-bg);
   border: 1px solid var(--border-card-hover);
   border-radius: 999px;
   font-weight: 600;
@@ -1428,6 +1522,11 @@ onUnmounted(() => {
   border-radius: 4px !important;
   font-size: 12px !important;
   font-weight: 600 !important;
+  /* Chiều cao CỐ ĐỊNH (border-box, để viền 1px của mẻ thường và viền 2px của mẻ đang chạy cho
+     ra cùng một chiều cao ngoài) — vis đo offsetHeight của chính thẻ này rồi mới suy ra chiều
+     cao hàng, nên đây là gốc của việc mọi hàng bằng nhau. Xem ITEM_HEIGHT/ROW_HEIGHT. */
+  height: v-bind(itemHeightCss) !important;
+  box-sizing: border-box !important;
   /* Viền thanh mẻ đảo màu theo theme (xem --gantt-item-border): nền sáng mà viền trắng thì
      các thanh màu nhạt (vàng/be) chảy nhoè vào nền trắng, không thấy mép thanh. */
   border: 1px solid var(--gantt-item-border) !important;
@@ -1435,12 +1534,22 @@ onUnmounted(() => {
   min-width: 2px !important;
   box-shadow: 0 1px 3px rgba(0,0,0,0.18);
 }
-:deep(.vis-item-overflow) { overflow: hidden !important; }
+:deep(.vis-item-overflow) { overflow: hidden !important; height: 100%; }
+/* Nhãn lấp đầy chiều cao thanh và tự canh giữa (flex trên .vis-item-content) thay vì dựa vào
+   padding — padding cố định sẽ cho ra 2 chiều cao khác nhau giữa mẻ thường (viền 1px) và mẻ
+   đang chạy (viền 2px). KHÔNG đụng tới transform/left của .vis-item-content: thư viện dùng
+   translateX để giữ nhãn trong tầm nhìn khi thanh trôi một phần ra ngoài khung. */
+:deep(.vis-item .vis-item-content) {
+  height: 100%;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+}
 :deep(.gantt-item-label) {
   display: block;
   width: 100%;
   border-radius: 4px;
-  padding: 3px 7px;
+  padding: 0 7px;
   /* color + text-shadow đặt inline theo độ sáng của màu mẻ (labelColorOn) — thanh Gantt nay
      mang màu thật của họ màu, trải từ pastel rất nhạt tới gần đen, nên không thể cố định
      chữ trắng + đổ bóng tối như trước. */

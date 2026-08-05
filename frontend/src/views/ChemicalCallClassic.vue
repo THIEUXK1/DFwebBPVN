@@ -63,7 +63,8 @@ import { isFullscreen } from '../services/layout';
 import { useAuthStore } from '../stores/auth';
 
 // Trang công khai (requiresAuth:false) — App.vue không bọc AppLayout, trang tự bọc lấy khi
-// người xem đã đăng nhập để vẫn có menu điều hướng (mở bằng nút 3 gạch, xem NavToggleButton).
+// người xem đã đăng nhập để vẫn có menu điều hướng (hiện sẵn, ẩn/hiện bằng nút 3 gạch — xem
+// NavToggleButton).
 const isLoggedIn = useAuthStore().isAuthenticated;
 const pageWrapper = isLoggedIn ? AppLayout : 'div';
 const previousIsFullscreen = isFullscreen.value;
@@ -197,8 +198,10 @@ async function markDone(channel: ChemicalChannel) {
 }
 
 onMounted(async () => {
-  // Ẩn sẵn sidebar+topbar khi vào trang — người đã đăng nhập bấm nút 3 gạch mới lộ menu.
-  if (isLoggedIn) isFullscreen.value = true;
+  // Người đã đăng nhập: hiện sẵn menu điều hướng (yêu cầu 2026-08-05) — trước đây trang tự
+  // ẩn sidebar+topbar nên phải bấm nút 3 gạch mới thấy menu. Đặt lại false tường minh vì cờ
+  // này dùng chung toàn app, có thể còn đang bật do trang trước đó để lại.
+  if (isLoggedIn) isFullscreen.value = false;
   await fetchChannels();
 
   echo.channel('chemical-channels').listen('.updated', fetchChannels);
