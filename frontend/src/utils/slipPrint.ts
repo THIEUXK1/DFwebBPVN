@@ -88,30 +88,58 @@ window.onload = function () {
     var caoMm = parseFloat(page.getAttribute('data-h')) || 0;
     var rongPx = (rongMm - 2 * lem) * MM_TO_PX;
     var caoPx = (caoMm - 2 * lem) * MM_TO_PX;
+    var o = document.querySelectorAll('.df-slip td'), i;
+
+    // (1) BỎ CHIỀU CAO DÒNG CỐ ĐỊNH. Payload đặt 5.3mm/dòng (chiều cao dòng mặc định của Excel),
+    // 19 dòng thành 106mm — mà bề rộng tem chỉ 49.3mm, nên chính CHIỀU CAO bảng mới là thứ ép hệ
+    // số co xuống, không phải bề rộng. Cho dòng co về đúng hộp chữ thì bảng thấp lại, hệ số co
+    // tăng, tức CHỮ IN RA TO HƠN dù cỡ chữ khai báo không đổi.
+    for (i = 0; i < o.length; i++) { o[i].style.height = 'auto'; o[i].style.lineHeight = '1.08'; }
+
     // Đã xoay 90 độ nên BỀ RỘNG tem chặn CHIỀU CAO bảng và ngược lại — đảo hai vế so với bản
     // không xoay, quên đảo là phiếu vẫn tràn ra ngoài tem.
-    var w0 = table.offsetWidth, h0 = table.offsetHeight;
-    var k = Math.min(1, rongPx / h0, caoPx / w0);
+    var k = Math.min(1, rongPx / table.offsetHeight, caoPx / table.offsetWidth);
     if (isFinite(k) && k > 0) {
+      // (2) THU NHỎ BẰNG zoom, KHÔNG PHẢI transform: scale(). Chrome rasterize lớp có transform
+      // ở độ phân giải MÀN HÌNH rồi mới phóng lên độ phân giải máy in -> chữ nhỏ ra rỗ/vỡ đúng
+      // như đang thấy. zoom thì bố cục được tính lại và chữ vẽ thẳng ở cỡ đã co, nên nét sạch.
+      // transform CHỈ còn lo phần xoay.
+      //
+      // Nhưng zoom BỐ TRÍ LẠI chứ không co ảnh: chữ ở cỡ đã thu nhỏ có bề rộng không tỉ lệ tuyệt
+      // đối với cỡ gốc (làm tròn theo pixel/hinting), nên kích thước thật SAU zoom lệch vài phần
+      // trăm so với "kích thước gốc nhân k". Đo một lần rồi tin là bảng tràn ra ngoài tem (đã gặp:
+      // 51.33mm trên tem rộng 49.30mm). Phải zoom -> ĐO LẠI -> chỉnh, tới khi khít.
+      var r = null;
+      for (var lan = 0; lan < 6; lan++) {
+        table.style.zoom = k;
+        r = table.getBoundingClientRect();
+        if (!r.width || !r.height) break;
+        // Sau khi xoay: chiều cao bảng thành bề rộng in, bề rộng bảng thành chiều cao in.
+        var heSo = Math.min(rongPx / r.height, caoPx / r.width);
+        // heSo >= 1 nghĩa là ĐÃ NẰM GỌN trong tem; chỉ được dừng ở trạng thái đó, không bao giờ
+        // dừng khi còn thừa ra (dù chỉ 0.1%) — thừa là bị xén mất một cột.
+        if (heSo >= 1 && (heSo < 1.01 || k >= 1)) break;
+        k = Math.min(1, k * heSo * 0.999);   // 0.999: chừa vụn làm tròn, tránh dao động qua lại
+      }
+
       table.style.transformOrigin = 'top left';
-      // Thứ tự đọc từ PHẢI sang TRÁI: co k -> xoay 90 độ theo chiều kim đồng hồ -> kéo lại vào
-      // trong khung. Xoay quanh góc trên-trái đẩy toàn bộ bảng sang bên trái trục (x' = -y), nên
-      // phải dịch phải đúng bằng chiều cao bảng sau khi co.
-      table.style.transform = 'translateX(' + (h0 * k) + 'px) rotate(90deg) scale(' + k + ')';
-      // Hộp bố cục của bảng KHÔNG co/xoay theo transform, nên phải ép lại kích thước của khung
-      // trang — nếu không, phần thừa vẫn tính là nội dung và trình duyệt đẩy sang trang 2.
-      page.style.width = h0 * k + 'px';
-      page.style.height = w0 * k + 'px';
+      // Toạ độ trong transform tính theo hệ CỦA CHÍNH phần tử, mà hệ đó đã bị zoom co lại — nên
+      // muốn dịch đúng r.height khi vẽ ra thì phải ghi r.height chia k. Xoay quanh góc trên-trái
+      // đẩy bảng sang trái trục (x' = -y) nên phải dịch phải đúng bằng chiều cao bảng.
+      table.style.transform = 'translateX(' + (r.height / k) + 'px) rotate(90deg)';
+      // Hộp bố cục của bảng KHÔNG xoay theo transform, nên phải ép lại kích thước của khung trang
+      // — nếu không, phần thừa vẫn tính là nội dung và trình duyệt đẩy sang trang 2.
+      page.style.width = r.height + 'px';
+      page.style.height = r.width + 'px';
       page.style.overflow = 'hidden';
 
-      // Nét viền 0.2mm sau khi co k=0.46 chỉ còn 0.74 dot ở 203dpi -> máy in nhiệt rasterize ra
-      // nét ĐỨT QUÃNG (lỗi thật đã gặp 31/07/2026 ở /print-station). Excel không bị vậy vì GDI
-      // không bao giờ vẽ nét mảnh hơn 1 pixel. Bù lại đúng bằng cách đó: ép viền trước khi co sao
-      // cho sau khi co vẫn >= 1 dot (0.125mm).
+      // (3) Nét viền 0.2mm sau khi co chỉ còn ~0.7 dot ở 203dpi -> máy in nhiệt rasterize ra nét
+      // ĐỨT QUÃNG (lỗi thật đã gặp 31/07/2026 ở /print-station). Excel không bị vậy vì GDI không
+      // bao giờ vẽ nét mảnh hơn 1 pixel. Bù lại đúng bằng cách đó: ép viền trước khi co sao cho
+      // sau khi co vẫn >= 1 dot (0.125mm).
       var toiThieu = 0.125 / k;
       if (toiThieu > 0.2) {
-        var o = document.querySelectorAll('.df-slip td');
-        for (var i = 0; i < o.length; i++) o[i].style.borderWidth = toiThieu + 'mm';
+        for (i = 0; i < o.length; i++) o[i].style.borderWidth = toiThieu + 'mm';
       }
     }
   }

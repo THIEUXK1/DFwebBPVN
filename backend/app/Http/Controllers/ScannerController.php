@@ -258,8 +258,11 @@ class ScannerController extends Controller
             // 'present|nullable' chứ không 'required': đúng VBA btnSave_Click, ô chưa cân vẫn
             // được ghi và bị gắn KHÔNG ĐẠT.
             'rows.*.weight' => 'present|nullable|numeric',
-            'rows.*.tare_weight' => 'sometimes|nullable|numeric|min:0',
-            'rows.*.gross_weight' => 'sometimes|nullable|numeric|min:0',
+            // Không 'min:0': bì/gộp là SỐ ĐỌC THÔ của mặt cân, mà mặt cân âm là chuyện bình
+            // thường (nhấc vật ra khỏi đĩa là tụt dưới mốc 0). Xem ghi chú dài ở
+            // WeighingJobController::weighItem — chặn ở đây từng làm hỏng cả mẻ (06/08/2026).
+            'rows.*.tare_weight' => 'sometimes|nullable|numeric',
+            'rows.*.gross_weight' => 'sometimes|nullable|numeric',
             // Chỉ cân tay mới gửi lên: dòng của mẻ QR lấy rack từ chính tem, không nhận từ client.
             'rows.*.rack_code' => 'sometimes|nullable|string|max:50',
         ]);

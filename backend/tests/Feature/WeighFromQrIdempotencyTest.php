@@ -304,6 +304,42 @@ class WeighFromQrIdempotencyTest extends TestCase
         $this->assertSame('MANUAL', $items[0]->process_status);
     }
 
+    /**
+     * BÌ ÂM phải lưu được — lỗi thật ngoài trạm cân 06/08/2026:
+     * "The rows.0.tare_weight field must be at least 0", cả mẻ 9 ô không đẩy lên được.
+     *
+     * `tare_weight`/`gross_weight` là SỐ ĐỌC THÔ của mặt cân, mà mặt cân âm là bình thường: nhấc
+     * vật ra khỏi đĩa là nó tụt dưới mốc 0, và bì được chốt TỰ ĐỘNG ở lần đọc ổn định đầu tiên
+     * sau NEXT nên rơi đúng vào lúc đó.
+     *
+     * Bì âm còn là thứ làm cho NET ĐÚNG chứ không phải số rác: đĩa rỗng trôi về -0.5, đổ 10.0 vào
+     * thì mặt cân hiện 9.5, net = 9.5 - (-0.5) = 10.0. Chặn bì âm là chặn đúng cơ chế bù trôi.
+     */
+    public function test_weighing_accepts_negative_tare_from_a_drifted_scale()
+    {
+        $res = $this->actingAs($this->user)->postJson('/api/scanner/weigh-from-qr', [
+            'manual' => true,
+            'workstation_code' => $this->workstation->code,
+            'scale_device_id' => 'MOCK_SCALE',
+            'stable' => true,
+            'idempotency_key' => 'ws2-BIAM-'.uniqid(),
+            'rows' => [
+                ['sequence_no' => 1, 'weight' => 10.0, 'rack_code' => null, 'tare_weight' => -0.5, 'gross_weight' => 9.5],
+            ],
+        ]);
+
+        $res->assertStatus(200);
+
+        $items = WeighingJobItem::where('weighing_job_id', $res->json('data.job_id'))->get();
+        $this->assertCount(1, $items);
+        $this->assertEqualsWithDelta(10.0, (float) $items[0]->actual_weight, 0.000001);
+
+        // Lưu ĐÚNG số âm đã đọc được, không kẹp về 0 — bản ghi audit phải khớp thứ cân đã hiện.
+        $do = ScaleMeasurement::where('weighing_job_item_id', $items[0]->id)->firstOrFail();
+        $this->assertEqualsWithDelta(-0.5, (float) $do->tare_weight, 0.000001);
+        $this->assertEqualsWithDelta(9.5, (float) $do->gross_weight, 0.000001);
+    }
+
     /** Cân tay mà chưa cân ô nào thì phải chối tử tế, không tạo lô rỗng. */
     public function test_manual_weighing_rejects_when_nothing_was_weighed()
     {

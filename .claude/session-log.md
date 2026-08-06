@@ -2343,6 +2343,48 @@ Ban dau phan in dung **uoc luong** hinh hoc (chieu cao dong tinh bang cong thuc,
    - Chu thich cu dan `mdQRCodegen.CleanString` -> ham do **chi co o workbook A** (`vba/mdQRCodegen.bas` dong 12), workbook B dua thang qrData vao `URLEncode_UTF8`. Da ghi ro va giai thich vi sao `trimSpaces` con lai vo hai (chuoi luon bat dau `#`, ket thuc bang `-CHEM` hoac khoi luong da Trim).
    - Kiem chung: `vue-tsc --noEmit` **exit 0**, `npm run build` **exit 0** 18.00s.
 
+**F9. LOI CHAN CA ME: "The rows.0.tare_weight field must be at least 0" (06/08)**
+
+Nguoi dung: can xong o tram khong day duoc, server tra loi tren.
+
+**Nguyen nhan:** `tare_weight`/`gross_weight` bi rang `numeric|min:0` o **6 cho / 2 controller**:
+- `WeighingJobController::weighItem` (2), `::weighBatch` (2) — `/weighing-station`, `/weighing-station-v2`
+- `ScannerController` nhanh rows (2) — `/api/scanner/weigh-from-qr`
+
+Nhung hai truong nay la **SO DOC THO cua mat can**, ma mat can AM la chuyen binh thuong: nhac vat ra khoi dia la tut duoi moc 0, va bi duoc chot **TU DONG** o lan doc on dinh dau tien sau NEXT (`useScaleFeed.ingestRawWeight`) nen roi dung vao luc do. Chan lai lam **hong CA ME** — mat het 9 o da can — chi de bao ve mot truong thuan audit.
+
+Chinh file do da ghi ly do bo `min:0` cho `weight` ("can cong don tren cung 1 dia, net co the lech am") nhung 2 truong bi/gop thi quen — cung mot lop loi, sua thieu cho.
+
+**Bi am con la thu lam NET DUNG, khong phai so rac:** dia rong troi ve -0.5, do 10.0 vao thi mat can hien 9.5, net = 9.5 - (-0.5) = 10.0. Chan bi am la chan dung co che bu troi. => sua validation, **frontend khong doi gi**.
+
+- Da bo `min:0` o ca 6 cho, ghi chu thich dai o `weighItem` va tro toi tu 2 cho con lai.
+- Cot DB `decimal(18,6)` co dau, luu so am duoc — khong can migration.
+- Them test `test_weighing_accepts_negative_tare_from_a_drifted_scale` (bi -0.5 / gop 9.5 / net 10.0, kiem ca `scale_measurements` luu dung so am chu khong kep ve 0).
+- `php -l` sach ca 3 file. **CHUA CHAY TEST** — `.env` may dev tro thang vao DB production 10.0.60.209, chay test la `RefreshDatabase` xoa schema `app` that (xem memory `never_run_tests_on_dev_machine`). Test nay phai chay tren server.
+
+**F8. Tem can: chu qua nho + bi VO + chua sat mep (06/08, vong 2 sau F7)**
+
+Nguoi dung: "da quay ngang nhung van chua sat mep tem => noi dung qua nho, bi vo". Ba nguyen nhan doc lap, sua ca ba trong `SCRIPT_TU_IN` (`utils/slipPrint.ts`), VAN khong dung payload -> khong sua PHP:
+
+1. **BI VO: dung `transform: scale()` de thu nho.** Chrome rasterize lop co transform o do phan giai MAN HINH roi moi phong len do phan giai may in -> chu nho ra ro/vo. Doi sang **`zoom: k`** (bo tri lai, chu ve thang o co da co -> net sach); `transform` chi con lo phan XOAY.
+2. **QUA NHO: chieu cao dong 5.3mm ep he so co.** Payload dat 5.3mm/dong (chieu cao dong mac dinh Excel), 19 dong = 106mm — ma be rong tem chi 49.3mm, nen chinh CHIEU CAO bang moi la thu chan he so, khong phai be rong. Cho dong co ve hop chu (`height:auto; line-height:1.08`) -> bang thap lai -> he so co tang -> **chu in ra to hon** du co chu khai bao khong doi.
+3. **LOI THAT bat duoc khi do:** `zoom` BO TRI LAI chu khong co anh, be rong chu o co nho khong ti le tuyet doi voi co goc (lam tron pixel/hinting) -> kich thuoc that sau zoom lech vai % so voi "kich thuoc goc nhan k". Do MOT LAN roi tin la tran ra ngoai tem: do duoc **51.33mm tren tem rong 49.30mm** (xen mat 1 cot). Sua thanh vong lap **zoom -> DO LAI -> chinh**, toi 6 lan, va **chi duoc dung khi da nam gon** (`heSo >= 1`), khong dung khi con thua du chi 0.1%.
+
+**Ket qua do bang chinh code da build** (`scratchpad/rot_check.html`):
+
+| | Truoc F8 | Sau F8 |
+|---|---|---|
+| He so co k | 0.465 | **0.601** |
+| Co chu tren giay | 5.58 pt | **7.21 pt** (+29%) |
+| Dung be rong tem | 100% | 99.96% (khong tran) |
+| Dung chieu dai tem | 60.7% | **79.15%** |
+| Net vien | 0.62 dot | **2.12 dot** |
+| Chieu cao 1 dong tren giay | — | 4.07 mm |
+
+- **Backtick trong chu thich BEN TRONG template literal — lan thu 3** (`kich thuoc goc x k`, `r.height / k`). esbuild bat duoc; `vue-tsc` khong. Da bo backtick. Quy tac: trong `SCRIPT_TU_IN`/`buildSlipHtml`/mo ta trang in, chu thich TUYET DOI khong dung backtick.
+- `node scripts/check-weigh-slip.mjs` **8 pass / 0 fail** (payload khong doi), `vue-tsc` exit 0, `npm run build` exit 0 28.55s.
+- **Con lai 20.85% chieu dai tem bo trong** — het cach neu khong keo dan chu (scale khong deu) hoac bo 3 dong TRONG cua VBA (dong 2/7/18). Bo 3 dong trong -> 16 dong -> k ~0.714, chu ~8.6pt, dung ~94% chieu dai; nhung dong trong nam trong PAYLOAD nen phai sua CA `weighSlip.ts` LAN `WeighingJobController.php`. Da bao nguoi dung, cho quyet dinh.
+
 **F7. Tem /weighing-station-v2 (+ -large, WeighingStation, WeighingHistory): XOAY 90 do sang phai (06/08)**
 
 Nguoi dung bao "tem in ra khong quay dung chieu", chon: **xoay noi dung 90 do sang PHAI**, co chu "thich nghi".

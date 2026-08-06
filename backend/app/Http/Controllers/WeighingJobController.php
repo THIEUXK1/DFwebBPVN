@@ -178,8 +178,16 @@ class WeighingJobController extends Controller
             // Mod_delta_raw.Delta_Begin/AutoFlow_OnWeight). Frontend đã tự trừ và gửi 'weight'
             // = NET (giá trị đã trừ bì, dùng để so dung sai — KHÔNG đổi hành vi so sánh hiện
             // có). tare_weight/gross_weight chỉ optional, phục vụ audit minh bạch.
-            'tare_weight' => 'sometimes|nullable|numeric|min:0',
-            'gross_weight' => 'sometimes|nullable|numeric|min:0',
+            //
+            // KHÔNG 'min:0' — cùng lý do với 'weight' ở trên, và đã thành lỗi thật ngoài trạm
+            // (06/08/2026): "The rows.0.tare_weight field must be at least 0". Hai trường này là
+            // SỐ ĐỌC THÔ của mặt cân, mà mặt cân âm là chuyện bình thường — nhấc vật ra khỏi đĩa
+            // là nó tụt xuống dưới mốc 0, và bì được chốt tự động ở lần đọc ổn định đầu tiên sau
+            // NEXT nên rơi đúng vào lúc đó. Chặn ở đây làm hỏng CẢ MẺ (mất hết 9 ô đã cân) chỉ
+            // để bảo vệ một trường thuần audit — đắt hơn nhiều so với việc lưu một số âm đúng
+            // như cân đã hiển thị.
+            'tare_weight' => 'sometimes|nullable|numeric',
+            'gross_weight' => 'sometimes|nullable|numeric',
             // RACK (rebuild bảng 9 dòng RACK/DYE CODE/WEIGHT/PROCESS đúng scaleform.frm VBA
             // gốc) — có thể đã được tự điền từ QR (ScannerController::handleOrderScan) hoặc
             // do thao tác viên tự gõ/sửa tay trên từng dòng trước khi xác nhận cân. Thuần
@@ -270,8 +278,10 @@ class WeighingJobController extends Controller
             // net có thể lệch âm so với bì đã chốt.
             'rows.*.weight' => 'present|nullable|numeric',
             'rows.*.rack_code' => 'sometimes|nullable|string|max:20',
-            'rows.*.tare_weight' => 'sometimes|nullable|numeric|min:0',
-            'rows.*.gross_weight' => 'sometimes|nullable|numeric|min:0',
+            // Xem ghi chú dài ở weighItem(): bì/gộp là SỐ ĐỌC THÔ của mặt cân, âm được, và chặn
+            // min:0 ở đây từng làm cả mẻ 9 ô không lưu được (lỗi thật 06/08/2026).
+            'rows.*.tare_weight' => 'sometimes|nullable|numeric',
+            'rows.*.gross_weight' => 'sometimes|nullable|numeric',
             'scale_device_id' => 'required|string',
             'stable' => 'required|boolean',
             // Có gửi thì dựng luôn phiếu cân trả kèm response (bỏ được request /print-slip
