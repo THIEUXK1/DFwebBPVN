@@ -2343,6 +2343,37 @@ Ban dau phan in dung **uoc luong** hinh hoc (chieu cao dong tinh bang cong thuc,
    - Chu thich cu dan `mdQRCodegen.CleanString` -> ham do **chi co o workbook A** (`vba/mdQRCodegen.bas` dong 12), workbook B dua thang qrData vao `URLEncode_UTF8`. Da ghi ro va giai thich vi sao `trimSpaces` con lai vo hai (chuoi luon bat dau `#`, ket thuc bang `-CHEM` hoac khoi luong da Trim).
    - Kiem chung: `vue-tsc --noEmit` **exit 0**, `npm run build` **exit 0** 18.00s.
 
+**F7. Tem /weighing-station-v2 (+ -large, WeighingStation, WeighingHistory): XOAY 90 do sang phai (06/08)**
+
+Nguoi dung bao "tem in ra khong quay dung chieu", chon: **xoay noi dung 90 do sang PHAI**, co chu "thich nghi".
+
+**Chan doan bang so do** (`scratchpad/slip_fit_check.html`, dung `buildSlipHtml` that):
+- Bang phieu 5 cot tu nhien **127.53 x 106.10 mm** — NAM NGANG. Con tem 53.3 x 101.6mm — DOC.
+- Ep thang: k = **0.39** -> chu 12pt con **4.64pt**, vien 0.2mm con **0.62 dot** (203dpi, duoi 1 dot -> may in nhiet ra net dut quang).
+- Xoay roi moi co: k = **0.46** -> chu **5.58pt**, dung het 101.6mm cho be rong bang.
+- DEVMODE trong workbook (`scratchpad/devmode.ps1`): printerSettings1 = TSC TTP-244 Pro, paperSize 257, 53.3x101.6mm, **dmOrientation = 1 (PORTRAIT)**; sheet1.xml cung `orientation="portrait"`. Tuc ban VBA cung in doc — noi dung bi co nho y het. Xoay la CHU DINH cua nguoi dung, khong phai sua cho khop VBA.
+
+**Cach sua — xoay o DUONG IN, KHONG dung payload** (`utils/slipPrint.ts`, `SCRIPT_TU_IN`):
+- `print_jobs.label_payload` phai khop TUNG KY TU giua `weighSlip.ts` va `WeighingJobController::buildSlipHtml`. Dung vao payload la phai sua ca PHP roi giu dong bo mai mai; xoay o duong in thi chi 1 cho. **Khong sua PHP dong nao.**
+- `transform: translateX(h0*k) rotate(90deg) scale(k)` — doc PHAI sang TRAI: co -> xoay thuan kim dong ho -> keo lai vao khung (xoay quanh goc tren-trai day bang sang ben trai truc, x' = -y).
+- **Dao hai ve khi tinh k**: da xoay nen BE RONG tem chan CHIEU CAO bang: `k = min(1, rongPx/h0, caoPx/w0)`. Quen dao la phieu van tran ra ngoai.
+- `page.style.width/height` cung phai dao, vi hop bo cuc khong xoay theo transform.
+- **Bu net vien:** sau khi co k=0.46, vien 0.2mm chi con 0.62 dot. Excel khong bi vay vi GDI khong bao gio ve net mong hon 1 pixel — nen ep vien truoc khi co len `0.125/k` mm de sau khi co van >= 1 dot. Day la BAT CHUOC Excel chu khong phai lech khoi VBA.
+
+**Kiem chung bang chinh code da build** (`scratchpad/rot_check.html`, esbuild bundle `slipPrint.ts` + `weighSlip.ts`, chan `print()` roi do trong iframe):
+
+```
+Vung in cua tem            : 49.30 x 97.60 mm
+Khung phieu sau khi xu ly  : 49.30 x 59.25 mm
+DA XOAY chua?              : ROI
+transform                  : translateX(186.331px) rotate(90deg) scale(0.464665)
+Co tran ra ngoai tem?      : khong        Dung 100% be rong / 60.71% chieu cao
+vien sau khi co            : 0.98 dot     (truoc khi sua: 0.62 dot)
+```
+- **Bay khi do:** ban xem tren man hinh co `zoom: 2.4` (trong `@media screen`), zoom lam Chrome lam tron be rong vien theo pixel thiet bi -> do ra 0.34 dot, SAI. Phai `classList.remove('ready')` truoc khi do. Luc in khong co zoom nay.
+- `node scripts/check-weigh-slip.mjs` **8 pass / 0 fail** (payload khong doi, dung nhu thiet ke), `vue-tsc` exit 0, `npm run build` exit 0 29.29s.
+- **CHUA in tem that** — can nguoi dung in 1 tem doi chieu.
+
 **F6. CHAY THAT VBA de doi soat NOI DUNG QR — 13/13 khop tung ky tu (06/08)**
 
 Nguoi dung chi can NOI DUNG QR giong VBA (chap nhan anh khac). F5 moi doc code doi chieu bang mat — nay lam that:
