@@ -57,6 +57,7 @@
         Bản gốc đọc <code>tbl_sentlog WHERE TIME3 &gt;= DateAdd('h',-48,Now()) ORDER BY TIME3 ASC</code>
         (hàm tên <code>LoadSent_Last24h</code> nhưng SQL thật là 48 giờ). Cột TIME3 ở đây lấy mốc
         print job đầu tiên của đơn — web không ghi cột thời điểm xác nhận riêng.
+        Bảng này sắp xếp <strong>mới nhất lên đầu</strong> (ngược bản gốc) cho tiện tra cứu.
       </p>
     </div>
 
@@ -82,7 +83,11 @@ const confirmTimeOf = (d: any): string =>
 
 const fmt = (d: string) => (d ? new Date(d).toLocaleString('vi-VN', { hour12: false }) : '');
 
-// ORDER BY TIME3 ASC — cũ nhất trước, đúng bản gốc.
+// MỚI NHẤT LÊN ĐẦU (yêu cầu 2026-08-06) — LỆCH CÓ CHỦ Ý so với bản gốc, vốn là
+// "ORDER BY TIME3 ASC" (cũ nhất trước). Đây là màn tra cứu chứ không phải hàng đợi thao tác:
+// thứ người ta cần xem gần như luôn là mấy lô vừa gửi xong, để cũ nhất trước thì mỗi lần mở
+// phải cuộn xuống tận đáy — mà danh sách còn tự nạp lại mỗi 15 giây nên vị trí cuộn cũng
+// không giữ được.
 const sentLog = computed(() => {
   const cutoff = Date.now() - windowHours.value * 3_600_000;
   const q = search.value.trim().toLowerCase();
@@ -94,7 +99,7 @@ const sentLog = computed(() => {
       return [b.color, b.product_code, b.machine?.code, b.tank?.code]
         .some((v: any) => String(v ?? '').toLowerCase().includes(q));
     })
-    .sort((a, b) => new Date(confirmTimeOf(a)).getTime() - new Date(confirmTimeOf(b)).getTime());
+    .sort((a, b) => new Date(confirmTimeOf(b)).getTime() - new Date(confirmTimeOf(a)).getTime());
 });
 
 const fetchSentLog = async () => {

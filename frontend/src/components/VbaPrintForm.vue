@@ -62,7 +62,7 @@ import { parseRackLines } from '../utils/rackParser';
 import { writeDispatchSlipToWindow } from '../utils/dispatchSlipPrint';
 
 const props = defineProps<{ data: VbaPrintFormData }>();
-defineEmits<{ (e: 'close'): void }>();
+const emit = defineEmits<{ (e: 'close'): void }>();
 
 const box = (l: number, t: number, w: number, h: number) => ({
   left: l + 'pt', top: t + 'pt', width: w + 'pt', height: h + 'pt',
@@ -87,18 +87,24 @@ const doPrint = async () => {
     alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
     return;
   }
+  // Chụp dữ liệu ra biến cục bộ TRƯỚC khi đóng phiếu: `emit('close')` làm component unmount
+  // ngay, `props` sau đó không còn đáng tin, trong khi việc dựng tem vẫn đang chạy dở.
+  const payload = {
+    color: props.data.color,
+    productCode: props.data.code,
+    machineCode: props.data.machine,
+    tankCode: props.data.tank,
+    levelCode: props.data.level,
+    rawQrDye: props.data.rawQrDye,
+    rawQrChem: props.data.rawQrChem,
+    batchId: props.data.batchId,
+  };
   printing.value = true;
+  // Đóng phiếu xem trước ngay khi bấm PRINT (yêu cầu 2026-08-06) — cửa sổ in đã mở riêng nên
+  // không cần giữ phiếu lại, đỡ một nhịp bấm CLOSE.
+  emit('close');
   try {
-    await writeDispatchSlipToWindow(win, {
-      color: props.data.color,
-      productCode: props.data.code,
-      machineCode: props.data.machine,
-      tankCode: props.data.tank,
-      levelCode: props.data.level,
-      rawQrDye: props.data.rawQrDye,
-      rawQrChem: props.data.rawQrChem,
-      batchId: props.data.batchId,
-    });
+    await writeDispatchSlipToWindow(win, payload);
   } finally {
     printing.value = false;
   }
