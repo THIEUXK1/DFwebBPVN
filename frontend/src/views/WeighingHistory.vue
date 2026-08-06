@@ -150,7 +150,7 @@
 
 import { ref, reactive, computed, watch, onMounted } from 'vue';
 import axios from 'axios';
-import { printTsplViaBrowser } from '../utils/tsplPrint';
+import { printSlipHtml } from '../utils/slipPrint';
 
 /**
  * Tải MỘT cửa sổ dữ liệu rồi tìm kiếm/phân trang hoàn toàn tại trình duyệt (2026-08-02).
@@ -315,7 +315,7 @@ async function reprint(job: any) {
     // KHÔNG gửi workstation_code: phiếu in lại phải mang mã trạm ĐÃ CÂN ra nó, không phải máy
     // văn phòng đang mở màn hình này. Server tự lấy từ chính vòng cân (xem printSlip).
     const res = await axios.post(`/api/weighing-jobs/${job.id}/print-slip`, {});
-    await printTsplViaBrowser(res.data?.data?.label_payload || '', win);
+    await printSlipHtml(res.data?.data?.label_payload || '', win);
   } catch (err: any) {
     win.close();
     alert(err.response?.data?.message || 'Không in lại được phiếu cân.');

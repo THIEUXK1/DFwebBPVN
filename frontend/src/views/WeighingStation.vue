@@ -188,6 +188,7 @@ import LabelPrintPanel from '../components/weighing/LabelPrintPanel.vue';
 import WeighingCheckerModal from '../components/weighing/WeighingCheckerModal.vue';
 import RestartJobModal from '../components/weighing/RestartJobModal.vue';
 import { printTsplViaBrowser } from '../utils/tsplPrint';
+import { printSlipHtml } from '../utils/slipPrint';
 
 const route = useRoute();
 const authStore = useAuthStore();
@@ -781,7 +782,8 @@ const printSlip = async () => {
       workstation_code: currentWorkstation.value.code
     }, getRequestConfig());
     scannerService.playBeep(1800, 150);
-    await printTsplViaBrowser(res.data?.data?.label_payload || '', win);
+    // Phiếu cân đi đường HTML (bố cục 1:1 theo sheet của VBA), khác tem vật tư ở trên vẫn là TSPL.
+    await printSlipHtml(res.data?.data?.label_payload || '', win);
   } catch (err: any) {
     win.close();
     alert(err.response?.data?.message || 'Không thể in phiếu cân.');

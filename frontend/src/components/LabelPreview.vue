@@ -19,6 +19,20 @@
       </div>
     </div>
 
+    <!-- Phiếu cân (từ 06/08/2026) là mảnh HTML dựng 1:1 theo sheet Excel mà VBA in ra, không phải
+         TSPL — xem `utils/weighSlip.ts`. Nhúng trong iframe chứ không dán thẳng vào trang: mảnh đó
+         mang theo CSS của riêng nó (`.df-slip`, `@page`), dán thẳng là rò ra toàn ứng dụng. -->
+    <div v-else-if="mode === 'html'" class="html-preview">
+      <p class="text-muted font-xs mb-2">
+        Phiếu cân dựng theo đúng bố cục sheet của form VBA
+        (<strong>{{ sizeMm.width }}mm × {{ sizeMm.height }}mm</strong>, Calibri 12, kẻ ô A1:E19).
+        Bản in thật được co lại cho vừa 1 trang giống <em>FitToPages</em> của Excel.
+      </p>
+      <div class="canvas-wrap">
+        <iframe class="html-frame" :srcdoc="htmlDoc" title="Xem trước phiếu cân"></iframe>
+      </div>
+    </div>
+
     <div v-else-if="mode === 'tspl'" class="tspl-preview">
       <p class="text-muted font-xs mb-2">
         Xem trước gần đúng từ lệnh TSPL thật sẽ gửi xuống máy in — kích thước theo đúng tỉ lệ khai báo
@@ -37,6 +51,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import QRCode from 'qrcode';
+import { wrapSlipDocument } from '../utils/slipPrint';
 
 const props = defineProps<{ labelPayload: string | null | undefined }>();
 
@@ -47,13 +62,17 @@ const SCREEN_PX_PER_MM = 4; // độ phân giải hiển thị trên màn hình,
 
 type QrItem = { type: string; payload: string };
 
-const mode = computed<'no-layout' | 'tspl' | 'empty'>(() => {
+const mode = computed<'no-layout' | 'html' | 'tspl' | 'empty'>(() => {
   const raw = (props.labelPayload || '').trim();
   if (!raw) return 'empty';
   if (raw.startsWith('[')) return 'no-layout'; // JSON QR_LABEL_PRINTING — chưa có layout
+  if (raw.startsWith('<div class="df-slip-page"')) return 'html'; // phiếu cân 1:1 theo sheet VBA
   if (/^SIZE\s/im.test(raw)) return 'tspl';
   return 'empty';
 });
+
+/** Trang hoàn chỉnh cho iframe xem trước. `false` = KHÔNG nhúng script tự in. */
+const htmlDoc = computed(() => (mode.value === 'html' ? wrapSlipDocument(props.labelPayload || '', false) : ''));
 
 const qrPayloads = computed<QrItem[]>(() => {
   if (mode.value !== 'no-layout') return [];
@@ -90,6 +109,12 @@ async function renderQrList() {
 // ---- TSPL parsing (chỉ đủ cho các lệnh do chính hệ thống sinh ra — SIZE/GAP/TEXT/QRCODE) ----
 const sizeMm = computed(() => {
   const raw = props.labelPayload || '';
+  if (mode.value === 'html') {
+    // Khổ giấy của phiếu cân nằm ở data-w/data-h ngay trên thẻ bọc (xem `utils/weighSlip.ts`).
+    const w = raw.match(/data-w="([\d.]+)"/);
+    const h = raw.match(/data-h="([\d.]+)"/);
+    return { width: w ? parseFloat(w[1]) : 0, height: h ? parseFloat(h[1]) : 0 };
+  }
   const m = raw.match(/SIZE\s+([\d.]+)\s*mm\s*,\s*([\d.]+)\s*mm/i);
   return { width: m ? parseFloat(m[1]) : 40, height: m ? parseFloat(m[2]) : 30 };
 });
@@ -192,4 +217,5 @@ watch(() => props.labelPayload, () => {
 .qr-payload-text { display: flex; flex-direction: column; gap: 4px; word-break: break-all; }
 .canvas-wrap { display: flex; justify-content: center; padding: 12px; background: #333; border-radius: var(--radius-md); }
 .label-canvas { background: #fff; box-shadow: 0 0 8px rgba(0,0,0,0.3); }
+.html-frame { width: 100%; height: 420px; border: 0; background: #fff; border-radius: 4px; }
 </style>

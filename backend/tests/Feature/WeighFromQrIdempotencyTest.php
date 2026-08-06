@@ -121,9 +121,10 @@ class WeighFromQrIdempotencyTest extends TestCase
         $payload = $lan2->json('data.slip.label_payload');
         $this->assertNotEmpty($payload, 'Lần gửi lại phải kèm nội dung phiếu');
         $this->assertStringContainsString('DF_WEIGHING_SLIP', $payload);
-        // Từ 05/08/2026 màu và mã hàng nằm chung MỘT dòng tiêu đề cỡ lớn (bỏ nhãn "MAU:"/"HANG:"
-        // để lấy chỗ cho cỡ chữ đọc được) — xem buildSlipTspl.
-        $this->assertStringContainsString('"IDEM TC001"', $payload);
+        // Từ 06/08/2026 phiếu dựng 1:1 theo sheet của `scaleform.btnPrint_Click`: màu và mã hàng
+        // nằm ở HAI hàng riêng có nhãn "COLOR:"/"CODE:" ở cột A — xem buildSlipHtml.
+        $this->assertStringContainsString('<td>COLOR:</td><td>IDEM</td>', $payload);
+        $this->assertStringContainsString('<td>CODE:</td><td>TC001</td>', $payload);
     }
 
     /**
@@ -141,9 +142,12 @@ class WeighFromQrIdempotencyTest extends TestCase
         );
 
         $res->assertStatus(200);
-        // Mốc giờ nay in ở góc trên bên phải, không còn dòng "In luc:" ở chân phiếu (bố cục
-        // 05/08/2026) — vẫn phải là ĐÚNG mốc trình duyệt gửi lên.
-        $this->assertStringContainsString("\"{$moc}\"", $res->json('data.slip.label_payload'));
+        // Mốc giờ nằm ở hàng CUỐI phiếu sau nhãn "Print time:" (đúng chỗ VBA đặt) — vẫn phải là
+        // ĐÚNG mốc trình duyệt gửi lên.
+        $this->assertStringContainsString(
+            "<td>Print time:</td><td>{$moc}</td>",
+            $res->json('data.slip.label_payload')
+        );
     }
 
     /** Không gửi mốc giờ thì server tự lấy giờ của mình, không được vỡ. */
@@ -153,7 +157,7 @@ class WeighFromQrIdempotencyTest extends TestCase
 
         $res->assertStatus(200);
         $this->assertMatchesRegularExpression(
-            '#TEXT 240,2,"1",0,1,1,"\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}"#',
+            '#<td>Print time:</td><td>\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}</td>#',
             $res->json('data.slip.label_payload')
         );
     }

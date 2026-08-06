@@ -123,6 +123,19 @@ const routes = [
     component: () => import('../views/PrintOrderEntry.vue'),
     meta: { requiresAuth: false }
   },
+  // Dựng lại UserForm `scaleform` của workbook "QR PRINTER-send to access- NEW 9ROWS BIG QR.xlsm"
+  // (bản ở gốc repo): quét tem -> 9 dòng DYE + 9 dòng CHEM -> in phiếu / SEND xuống hàng chờ
+  // gửi máy. requiresAuth:false giống các màn hình xưởng mở thẳng bằng link (dùng /api/public).
+  //
+  // Giữ lại `/copower-print` làm alias vì đó là đường dẫn người vận hành đang mở sẵn trên máy
+  // xưởng — bỏ đi là họ mở ra trang trắng.
+  {
+    path: '/qr-printer',
+    alias: '/copower-print',
+    name: 'QrPrinterForm',
+    component: () => import('../views/QrPrinterForm.vue'),
+    meta: { requiresAuth: false }
+  },
   {
     path: '/print-sent-log',
     name: 'PrintSentLog',

@@ -99,6 +99,11 @@ Route::get('/public/machine-dispatches', [MachineDispatchController::class, 'ind
 Route::get('/public/machine-dispatches/history', [MachineDispatchController::class, 'history']);
 Route::post('/public/machine-dispatches/{id}/confirm', [MachineDispatchController::class, 'confirm']);
 Route::patch('/public/machine-dispatches/{id}/scale-checked', [MachineDispatchController::class, 'updateScaleChecked']);
+// Tra cứu lô đã cân theo COLOR + CODE (+ số ngày) — `checkform.btnCheck_Click` của workbook
+// "QR PRINTER-send to access- NEW 9ROWS BIG QR.xlsm", dùng bởi /qr-printer (màn xưởng mở bằng
+// link, không đăng nhập). CHỈ ĐỌC, không ghi gì; bản có `auth:sanctum` ở nhóm dưới vẫn giữ
+// nguyên cho các màn hình cần đăng nhập.
+Route::get('/public/scale-measurements/checker', [ScaleMeasurementController::class, 'checker']);
 
 // Protected Auth Routes
 Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {

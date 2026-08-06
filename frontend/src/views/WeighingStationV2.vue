@@ -86,7 +86,9 @@
           <!-- KHÔNG khoá theo "đã có đơn chưa": bấm NEXT trên form trắng là dùng màn hình như một
                cái cân thường (yêu cầu 2026-08-02). Không lưu gì cả, xem cảnh báo dưới lưới. -->
           <button class="vba-btn big accent" @click="onNext" :disabled="saving || !canPressNext">NEXT</button>
-          <button class="vba-btn sm" @click="printSlip">PRINT</button>
+          <!-- PHẢI có ngoặc: `@click="printSlip"` khiến Vue truyền PointerEvent vào tham số
+               `preOpened`, và nút PRINT chết câm — xem ghi chú ở printSlip(). -->
+          <button class="vba-btn sm" @click="printSlip()">PRINT</button>
           <button class="vba-btn sm" @click="showChecker = true">CHECK</button>
           <button class="vba-btn wide" @click="onClose">CLOSE</button>
         </div>
@@ -280,10 +282,10 @@ import { currentWorkstation, adoptLocalWorkstation } from '../services/workstati
 import { scannerService } from '../services/scanner';
 import { isFullscreen } from '../services/layout';
 import { useScaleFeed } from '../composables/useScaleFeed';
-import { printTsplViaBrowser } from '../utils/tsplPrint';
+import { printSlipHtml, cuaSoThat } from '../utils/slipPrint';
 import { parseDyeQr, MAX_RACK_LINES, type ParsedDyeQr } from '../utils/qrDyeParser';
 import { processTone } from '../utils/processColor';
-import { buildSlipTspl, processStatus, nowSlipTimestamp, MANUAL_MATERIAL_CODE } from '../utils/weighSlip';
+import { buildSlipHtml, processStatus, nowSlipTimestamp, MANUAL_MATERIAL_CODE } from '../utils/weighSlip';
 import {
   xepHang, danhDauDaGui, danhDauKet, dayHangDoi, danhSachChoGui, guiMotNgay, boMe,
   batTuDay, tatTuDay, queueCount, stuckCount, flushing, duongThong,
@@ -1118,7 +1120,7 @@ async function onSave() {
     // An toàn vì bản dựng của trình duyệt đã được đối chiếu TỪNG KÝ TỰ với bản server
     // (frontend/scripts/check-weigh-slip.mjs). window.print() chặn trong cửa sổ CON, không chặn
     // trang này, nên request bên dưới vẫn bay đi bình thường trong lúc hộp thoại in đang mở.
-    if (printWin) await printTsplViaBrowser(phieuCucBo, printWin);
+    if (printWin) await printSlipHtml(phieuCucBo, printWin);
 
     let daLenServer = false;
     let loiNghiepVu: string | null = null;
@@ -1187,7 +1189,7 @@ async function onSave() {
     // — in phiếu xong là form trắng, sẵn sàng quét đơn kế.
     const slipPayload = saveRes.data?.data?.slip?.label_payload;
     if (slipPayload) {
-      await printTsplViaBrowser(slipPayload, printWin);
+      await printSlipHtml(slipPayload, printWin);
     } else {
       await printSlip(printWin);
     }
@@ -1213,10 +1215,10 @@ async function onSave() {
  * Phần đầu phiếu phải ra ĐÚNG chuỗi mà server dựng, nếu không tờ giấy và bản ghi `print_jobs`
  * nói hai chuyện khác nhau. Server lấy từ lô cân tay: `color`/`product_code`/`level_code` đều
  * NULL và `machine` không có -> `buildAndStoreSlip` đưa xuống `null, null, 'N/A', null`, mà
- * `buildSlipTspl` quy null thành chuỗi rỗng. Nên ở đây truyền '' và 'N/A' là trùng khít.
+ * `buildSlipHtml` quy null thành chuỗi rỗng. Nên ở đây truyền '' và 'N/A' là trùng khít.
  */
 function dungPhieuCanTay(rows: any[], mocGioIn?: string): string {
-  return buildSlipTspl(
+  return buildSlipHtml(
     { color: '', product_code: '', machine_code: 'N/A', level_code: '', printed_at: mocGioIn },
     rows.map((r: any) => ({
       sequence_no: r.sequence_no,
@@ -1253,7 +1255,7 @@ function dungPhieuCucBo(mocGioIn?: string): string {
     })
     .filter(Boolean) as any[];
 
-  return buildSlipTspl(
+  return buildSlipHtml(
     {
       color: activeBatch.value?.color ?? '',
       product_code: activeBatch.value?.product_code ?? '',
@@ -1266,6 +1268,66 @@ function dungPhieuCucBo(mocGioIn?: string): string {
 }
 
 /**
+ * 9 dòng phiếu dựng ĐÚNG NHƯ ĐANG HIỆN trên lưới — bản dựng lại `For i = 1 To 9` của
+ * `btnPrint_Click`, vốn đổ thẳng `txt_rack/dye/weight/process` của cả 9 ô ra sheet bất kể ô đó có
+ * gì hay không.
+ *
+ * Khác `dungPhieuCucBo()` (dùng cho luồng SAVE) ở chỗ KHÔNG lọc bỏ dòng: V2 cho bấm NEXT xuống
+ * dòng trống để dùng màn hình như một cái cân thường, nên có thể có số cân ở dòng mà QR không
+ * mang vật tư tới. `dungPhieuCucBo` bỏ những dòng đó (đúng, vì SAVE cũng không ghi chúng) — còn
+ * nút PRINT thì phải in ra, y như VBA in cả ô trống lẫn ô thợ vừa gõ tay vào.
+ *
+ * Dòng trống hoàn toàn trả về mọi trường rỗng: `buildSlipHtml` in ra ô trống + STATUS REJECTED,
+ * trùng khít cái mà nó tự sinh cho vị trí không có dữ liệu.
+ */
+function dongPhieuTheoLuoi() {
+  return Array.from({ length: MAX_RACK_LINES }, (_, idx) => {
+    const item: any = jobItems.value[idx];
+    const actual = capturedWeights.value[idx] ?? null;
+
+    if (!item) {
+      return {
+        sequence_no: idx + 1,
+        rack_code: manualRacks.value[idx] || '',
+        // Dòng không có vật tư mà đã cân = dòng CÂN TAY; mang đúng mã mồi mà SAVE sẽ ghi, để tờ
+        // in thử và tờ in lúc lưu không nói hai chuyện khác nhau.
+        material_code: actual !== null ? MANUAL_MATERIAL_CODE : '',
+        planned_weight: null,
+        actual_weight: actual,
+        process_status: actual !== null ? 'MANUAL' : '',
+      };
+    }
+
+    return {
+      sequence_no: item.sequence_no ?? idx + 1,
+      rack_code: item.rack_code || '',
+      material_code: item.material_code,
+      planned_weight: item.planned_weight ?? null,
+      actual_weight: actual,
+      process_status: processStatus({
+        planned_weight: item.planned_weight,
+        tolerance_minus: item.tolerance_minus,
+        tolerance_plus: item.tolerance_plus,
+        actual_weight: actual,
+      }),
+    };
+  });
+}
+
+/** Phiếu của nút PRINT: cả 9 dòng đang hiện + phần đầu lấy từ đơn đang mở (rỗng nếu cân tay). */
+function dungPhieuTuLuoi(): string {
+  return buildSlipHtml(
+    {
+      color: activeBatch.value?.color ?? '',
+      product_code: activeBatch.value?.product_code ?? '',
+      machine_code: activeBatch.value?.machine?.code ?? 'N/A',
+      level_code: activeBatch.value?.level_code ?? '',
+    },
+    dongPhieuTheoLuoi()
+  );
+}
+
+/**
  * `preOpened` = cửa sổ đã được mở sẵn bởi chỗ gọi. BẮT BUỘC dùng khi in nằm sau một `await`
  * (luồng SAVE): Chrome/Edge chỉ cho `window.open` trong lúc còn "user activation" — tức ngay
  * trong handler của cú click, chưa qua await nào. Gọi sau `await axios.post(...)` là bị chặn
@@ -1273,38 +1335,32 @@ function dungPhieuCucBo(mocGioIn?: string): string {
  * được, form vẫn bị onClear() xoá sạch, nên bấm SAVE lại chỉ còn báo lỗi — thao tác viên tưởng
  * là chưa lưu được gì.
  *
- * Nút PRINT gọi thẳng từ cú click nên không cần truyền gì, tự mở như cũ.
+ * Nút PRINT gọi thẳng từ cú click nên không cần truyền gì, tự mở như cũ — nhưng trong template
+ * phải viết `@click="printSlip()"` CÓ NGOẶC, xem `cuaSoThat()` trong `utils/slipPrint.ts`.
+ *
+ * Ngoài ra hàm này in VÔ ĐIỀU KIỆN, đúng `btnPrint_Click` của VBA: không hỏi đã gắn trạm chưa,
+ * không đòi phải có sẵn số cân. Mọi cửa chặn thêm đều biến nút PRINT thành nút im lặng.
  */
 const printSlip = async (preOpened?: Window | null) => {
-  if (!currentWorkstation.value) {
-    preOpened?.close();
-    return;
-  }
-  const win = preOpened ?? window.open('', '_blank', 'width=780,height=980');
+  const win = cuaSoThat(preOpened) ?? window.open('', '_blank', 'width=780,height=980');
   if (!win) {
     alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
     return;
   }
   win.document.write('<p style="font-family:sans-serif;padding:20px;">Đang xử lý...</p>');
 
-  // CÂN TAY: chưa có vòng cân nào dưới DB để mà hỏi server — dựng phiếu từ đúng số đang hiện.
-  // Dùng chung `dongCanTayDeLuu()` với SAVE nên tờ in thử và tờ in lúc lưu không thể khác nhau.
-  if (!activeJob.value) {
-    const rows = dongCanTayDeLuu();
-    if (rows.length === 0) {
-      win.close();
-      alert('Chưa có số cân nào để in — đặt vật tư lên cân và chờ số đứng yên.');
-      return;
-    }
-    await printTsplViaBrowser(dungPhieuCanTay(rows), win);
-    return;
-  }
-
-  // Mẻ đọc từ QR chưa có id nào dưới DB (đường thường của V2) — dựng phiếu ngay tại trình duyệt.
-  // Trước đây nhánh này gọi `/api/weighing-jobs/null/print-slip` và luôn 404, tức nút PRINT hỏng
-  // với chính luồng chạy chính; nay có sẵn bản dựng cục bộ nên dùng luôn.
-  if (!activeJob.value.id) {
-    await printTsplViaBrowser(dungPhieuCucBo(), win);
+  // Cân tay, mẻ đọc từ QR (chưa có id nào dưới DB — đường thường của V2), và cả form trắng: đều
+  // dựng phiếu ngay tại trình duyệt từ 9 dòng đang hiện. Form TRẮNG vẫn ra một tờ 9 dòng trống,
+  // KHÔNG chặn lại — `btnPrint_Click` của VBA in bất kể ô có gì hay không. Bản trước chặn bằng
+  // alert "Chưa có số cân nào để in": tiện cho web nhưng lệch bản gốc.
+  //
+  // Chưa gắn trạm cũng rơi vào đây thay vì thoát im lặng: server cần `workstation_code` để ghi
+  // PrintJob, nhưng tờ giấy thì không — dữ liệu để in đã nằm sẵn trên màn hình.
+  //
+  // (Trước đây nhánh mẻ QR gọi `/api/weighing-jobs/null/print-slip` và luôn 404, tức nút PRINT
+  // hỏng với chính luồng chạy chính.)
+  if (!activeJob.value?.id || !currentWorkstation.value) {
+    await printSlipHtml(dungPhieuTuLuoi(), win);
     return;
   }
 
@@ -1312,7 +1368,7 @@ const printSlip = async (preOpened?: Window | null) => {
     const res = await axios.post(`/api/weighing-jobs/${activeJob.value.id}/print-slip`, {
       workstation_code: currentWorkstation.value.code,
     });
-    await printTsplViaBrowser(res.data?.data?.label_payload || '', win);
+    await printSlipHtml(res.data?.data?.label_payload || '', win);
   } catch (err: any) {
     win.close();
     alert(err.response?.data?.message || 'Không thể in phiếu cân.');

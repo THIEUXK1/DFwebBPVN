@@ -711,7 +711,7 @@ class WeighingJobController extends Controller
             : ProductionBatch::with('machine')->where('id', $job->production_batch_id)->firstOrFail();
         $workstation = OperationClient::where('code', $workstationCode)->firstOrFail();
 
-        $tspl = self::buildSlipTspl([
+        $noiDung = self::buildSlipHtml([
             'color' => $batch->color,
             'product_code' => $batch->product_code,
             'machine_code' => $batch->machine ? $batch->machine->code : 'N/A',
@@ -722,7 +722,7 @@ class WeighingJobController extends Controller
         // In qua trình duyệt (yêu cầu 2026-07-30) — xem ghi chú ở printLabel().
         return PrintJob::create([
             'workstation_id' => $workstation->code,
-            'label_payload' => $tspl,
+            'label_payload' => $noiDung,
             'printer_connection_type' => 'BROWSER',
             'printer_address' => 'BROWSER',
             'status' => 'PRINTED',
@@ -731,7 +731,26 @@ class WeighingJobController extends Controller
     }
 
     /**
-     * Dựng NỘI DUNG phiếu cân (chuỗi TSPL) — hàm THUẦN: không chạm DB, không phụ thuộc request.
+     * Khổ giấy phiếu (mm) và lề, lấy từ chính DEVMODE lưu trong workbook
+     * `4.semiauto-small scale - delta-stable-final_DF026-027.xlsm`
+     * (`xl/printerSettings/printerSettings1.bin`: TSC TTP-244 Pro, dmPaperWidth 533,
+     * dmPaperLength 1016 → 53.3 x 101.6mm, dọc). Lề 0.2cm = đúng PageSetup của btnPrint_Click.
+     *
+     * Để dạng chuỗi chứ không phải float: chuỗi phiếu phải khớp TỪNG KÝ TỰ với bản
+     * `frontend/src/utils/weighSlip.ts`, mà PHP và JS in số thực ra chuỗi không phải lúc nào cũng
+     * giống nhau. Đổi cuộn tem thì sửa cả hai nơi.
+     */
+    private const SLIP_PAGE_W_MM = '53.3';
+
+    private const SLIP_PAGE_H_MM = '101.6';
+
+    private const SLIP_PAGE_MARGIN_MM = '2';
+
+    /** Số dòng dữ liệu luôn in ra — `For i = 1 To 9` của VBA. */
+    private const SLIP_DATA_ROWS = 9;
+
+    /**
+     * Dựng NỘI DUNG phiếu cân (mảnh HTML) — hàm THUẦN: không chạm DB, không phụ thuộc request.
      *
      * Tách khỏi buildAndStoreSlip() vì hai lý do:
      *   1. Trình duyệt có một bản port của đúng hàm này (`frontend/src/utils/weighSlip.ts`) để in
@@ -742,97 +761,129 @@ class WeighingJobController extends Controller
      *
      * `$header` là mảng phẳng (color/product_code/machine_code/level_code) chứ không phải model,
      * để script đối chiếu dựng đầu vào mà không cần bản ghi thật.
+     *
+     * ===================== NGUỒN BỐ CỤC (06/08/2026) =====================
+     * Yêu cầu người dùng: "tem in ra giống form VBA 100%". Đây là bản dựng lại nguyên văn
+     * `scaleform.btnPrint_Click` của workbook đang chạy ngoài xưởng — VBA KHÔNG in TSPL mà
+     * `Sheets.Add` một sheet mới, đổ dữ liệu vào ô, kẻ viền toàn vùng A1:E19, đặt Calibri 12,
+     * AutoFit cột, fit 1 trang, rồi `PrintOut ActivePrinter:="TSC TTP-224 Pro"`.
+     *
+     * Ghi chú đầy đủ (kể cả 3 chi tiết trông như lỗi nhưng chính là bản gốc — dòng in đậm là dòng
+     * 1 và dòng 7 TRỐNG chứ không phải dòng tiêu đề bảng; cột WEIGHT là MỤC TIÊU còn PROCESS mới
+     * là số cân THỰC TẾ; luôn in đủ 9 dòng) nằm ở đầu `frontend/src/utils/weighSlip.ts`. Sửa bố
+     * cục thì đọc ghi chú đó trước.
      */
-    public static function buildSlipTspl(array $header, $items): string
+    public static function buildSlipHtml(array $header, $items): string
     {
-        // Bỏ dấu " ở MỌI trường đưa vào lệnh TSPL — chính nó là ký tự đóng/mở chuỗi của lệnh.
-        $sach = fn ($v) => str_replace('"', '', (string) ($v ?? ''));
-
-        $color = $sach($header['color'] ?? '');
-        $productCode = $sach($header['product_code'] ?? '');
-        $machineCode = $sach($header['machine_code'] ?? 'N/A');
-        $levelCode = $sach($header['level_code'] ?? '');
+        $color = (string) ($header['color'] ?? '');
+        $productCode = (string) ($header['product_code'] ?? '');
+        $machineCode = (string) ($header['machine_code'] ?? 'N/A');
+        $levelCode = (string) ($header['level_code'] ?? '');
         // `printed_at` cho phép script đối chiếu ghim cứng một mốc giờ; bỏ trống thì lấy giờ hiện tại.
-        $printedAt = $sach($header['printed_at'] ?? Carbon::now()->format('d/m/Y H:i:s'));
+        $printedAt = (string) ($header['printed_at'] ?? Carbon::now()->format('d/m/Y H:i:s'));
 
-        // Cân tay không quét đơn nên không có màu/mã hàng — ghi thẳng "CAN TAY" vào chỗ đó thay
-        // vì để dòng to nhất của tem trống trơn.
-        $tieuDe = trim("{$color} {$productCode}") ?: 'CAN TAY';
+        $rows = [];
 
-        /*
-         * BỐ CỤC 55x35mm = 440 x 280 dot (203dpi, 8 dot/mm) — bản port y hệt nằm ở
-         * `frontend/src/utils/weighSlip.ts`, xem ghi chú dài về ngân sách chỗ ở đó. Tóm tắt lý do
-         * đổi (05/08/2026): bản trước dùng font "1" (ô chữ 8x12 dot) cho cả bảng, in ra cao chưa
-         * tới 1mm và máy in nhiệt dither ra lấm tấm nên không đọc được. Nay bảng dùng font "2"
-         * (12x20 dot ≈ 2.5mm); chỗ để nhét cỡ chữ đó lấy từ việc gộp 4 dòng đầu còn 2, rút
-         * ACCEPTED/REJECTED thành DAT/LECH, và bỏ dấu phẩy hàng nghìn + chữ "g" ở từng dòng.
-         */
-        $colRack = 8;
-        $colDye = 48;
-        $colMt = 186;
-        $colTt = 280;
-        $colKq = 374;
-        $rowY0 = 84;
-        $rowStep = 21;
+        // r1..r8 — phần đầu phiếu, đúng thứ tự điền ô của btnPrint_Click.
+        $rows[] = self::slipRow(['DF_WEIGHING_SLIP', '', '', '', ''], true);
+        $rows[] = self::slipRow(['', '', '', '', '']);
+        $rows[] = self::slipRow(['COLOR:', $color, '', '', '']);
+        $rows[] = self::slipRow(['CODE:', $productCode, '', '', '']);
+        $rows[] = self::slipRow(['MACHINE:', $machineCode, '', '', '']);
+        $rows[] = self::slipRow(['LEVEL:', $levelCode, '', '', '']);
+        // Dòng 7 trống nhưng IN ĐẬM — đúng `ws.Range("A7:E7").Font.Bold = True`; chính vì dòng
+        // này mà dòng tiêu đề bảng bên dưới lại KHÔNG đậm.
+        $rows[] = self::slipRow(['', '', '', '', ''], true);
+        $rows[] = self::slipRow(['RACK', 'DYE CODE', 'WEIGHT', 'PROCESS', 'STATUS']);
 
-        $tspl = "SIZE 55 mm, 35 mm\r\n".
-                "GAP 2 mm, 0 mm\r\n".
-                "DIRECTION 1,0\r\n".
-                "REFERENCE 0,0\r\n".
-                "CLS\r\n".
-                "TEXT 8,2,\"1\",0,1,1,\"DF_WEIGHING_SLIP\"\r\n".
-                "TEXT 240,2,\"1\",0,1,1,\"{$printedAt}\"\r\n".
-                "TEXT 8,16,\"3\",0,1,1,\"{$tieuDe}\"\r\n".
-                "TEXT 8,44,\"2\",0,1,1,\"MAY: {$machineCode}  MUC: {$levelCode}\"\r\n";
+        // r9..r17 — luôn đủ 9 dòng. `values()` để đánh chỉ số lại từ 0: collection lấy từ quan hệ
+        // Eloquent không đảm bảo khoá liên tục, mà ở đây phải duyệt theo VỊ TRÍ dòng trên phiếu.
+        $danhSach = collect($items)->values();
+        $soDong = max(self::SLIP_DATA_ROWS, $danhSach->count());
+        for ($i = 0; $i < $soDong; $i++) {
+            $item = $danhSach->get($i);
+            if (! $item) {
+                // Dòng trống VẪN có STATUS = REJECTED: ô txt_process của nó nền trắng, mà
+                // GetProcessStatus trả REJECTED cho mọi nền không phải xanh — xem slipStatus().
+                $rows[] = self::slipRow(['', '', '', '', 'REJECTED']);
 
-        // Bảng RACK/DYE CODE/MT/TT/KQ — cột thẳng hàng theo tọa độ x cố định thay vì gộp hết vào
-        // 1 dòng chữ chạy dài (phản hồi 2026-07-30: "tôi muốn nó là 1 table"), đúng tinh thần
-        // bảng gốc VBA (Label11-14: RACK/DYE CODE/WEIGHT/PROCESS trên scaleform).
-        $tspl .= "TEXT {$colRack},68,\"1\",0,1,1,\"RACK\"\r\n".
-                 "TEXT {$colDye},68,\"1\",0,1,1,\"DYE CODE\"\r\n".
-                 "TEXT {$colMt},68,\"1\",0,1,1,\"MT(g)\"\r\n".
-                 "TEXT {$colTt},68,\"1\",0,1,1,\"TT(g)\"\r\n".
-                 "TEXT {$colKq},68,\"1\",0,1,1,\"KQ\"\r\n";
+                continue;
+            }
 
-        $y = $rowY0;
-        foreach ($items as $idx => $item) {
-            // ACCEPTED / REJECTED / PENDING — đúng cột processColor của VBA btnSave_Click,
-            // suy từ chính dung sai đã snapshot trên item (xem WeighingJobItem::process_status).
-            // Rút gọn khi in vì bề ngang tem không đủ cho chữ dài ở cỡ chữ đọc được.
-            $statusText = self::slipKetQua((string) $item->process_status);
-            // In cả số cân MỤC TIÊU (MT, planned_weight) lẫn số cân THỰC TẾ (TT, actual_weight)
-            // — trước đây chỉ in actual, không đối chiếu được ngay trên tem là cân đủ/thiếu/dư
-            // bao nhiêu so với định mức (phản hồi 2026-07-30).
-            $plannedText = number_format((float) $item->planned_weight, 2, '.', '');
-            $weightText = $item->actual_weight !== null ? number_format((float) $item->actual_weight, 2, '.', '') : '---';
-            $seq = $item->sequence_no ?? ($idx + 1);
-            $rackText = $item->rack_code !== null && $item->rack_code !== '' ? $item->rack_code : (string) $seq;
+            $planned = $item->planned_weight;
+            $actual = $item->actual_weight;
 
-            $tspl .= "TEXT {$colRack},{$y},\"2\",0,1,1,\"".$sach($rackText)."\"\r\n".
-                     "TEXT {$colDye},{$y},\"2\",0,1,1,\"".$sach($item->material_code)."\"\r\n".
-                     "TEXT {$colMt},{$y},\"2\",0,1,1,\"{$plannedText}\"\r\n".
-                     "TEXT {$colTt},{$y},\"2\",0,1,1,\"{$weightText}\"\r\n".
-                     "TEXT {$colKq},{$y},\"2\",0,1,1,\"{$statusText}\"\r\n";
-            $y += $rowStep;
+            $rows[] = self::slipRow([
+                (string) ($item->rack_code ?? ''),
+                (string) ($item->material_code ?? ''),
+                $planned === null || $planned === '' ? '' : number_format((float) $planned, 2, '.', ''),
+                $actual === null || $actual === '' ? '' : number_format((float) $actual, 2, '.', ''),
+                self::slipStatus((string) ($item->process_status ?? '')),
+            ]);
         }
 
-        $tspl .= "PRINT 1,1\r\n";
+        // r18 trống, r19 mốc giờ in — VBA để "Print time:" ở CUỐI phiếu.
+        $rows[] = self::slipRow(['', '', '', '', '']);
+        $rows[] = self::slipRow(['Print time:', $printedAt, '', '', '']);
 
-        return $tspl;
+        return '<div class="df-slip-page" data-w="'.self::SLIP_PAGE_W_MM.'" data-h="'.self::SLIP_PAGE_H_MM.'"'.
+               ' data-m="'.self::SLIP_PAGE_MARGIN_MM."\">\n".
+               "<style>\n".self::slipCss()."</style>\n".
+               "<table class=\"df-slip\">\n".
+               implode("\n", $rows).
+               "\n</table>\n</div>";
     }
 
     /**
-     * Nhãn ngắn cho cột kết quả trên tem. Bản port: `ketQua()` trong `frontend/src/utils/weighSlip.ts`.
+     * CSS của phiếu — bản dựng lại định dạng mà btnPrint_Click áp cho vùng A1:E19 (Calibri 12,
+     * viền mọi ô, AutoFit cột). Phải trùng TỪNG KÝ TỰ với `SLIP_CSS` trong
+     * `frontend/src/utils/weighSlip.ts`.
      */
-    private static function slipKetQua(string $status): string
+    private static function slipCss(): string
     {
-        return match ($status) {
-            'ACCEPTED' => 'DAT',
-            'REJECTED' => 'LECH',
-            'MANUAL' => 'TAY',
-            'PENDING' => 'CHO',
-            default => mb_substr($status, 0, 4),
-        };
+        return '@page { size: '.self::SLIP_PAGE_W_MM.'mm '.self::SLIP_PAGE_H_MM.'mm; margin: '.self::SLIP_PAGE_MARGIN_MM."mm; }\n".
+               "html, body { margin: 0; padding: 0; background: #fff; }\n".
+               ".df-slip-page { font-family: Calibri, Carlito, \"Segoe UI\", sans-serif; color: #000; }\n".
+               ".df-slip { border-collapse: collapse; font-size: 12pt; }\n".
+               '.df-slip td { border: 0.2mm solid #000; padding: 0 0.8mm; white-space: nowrap;'.
+               " height: 5.3mm; line-height: 5.3mm; }\n".
+               ".df-slip tr.b td { font-weight: 700; }\n";
+    }
+
+    /**
+     * Port của `Mod_print_tsc224.GetProcessStatus` — hàm dựng cột STATUS trên phiếu:
+     *
+     *     Select Case tb.BackColor
+     *         Case RGB(120, 250, 20): "ACCEPTED"
+     *         Case Else:              "REJECTED"
+     *
+     * Chỉ ô nền XANH mới ACCEPTED; vàng (thiếu), đỏ (vượt) và cả ô TRẮNG của dòng chưa đụng tới
+     * đều ra REJECTED. Bản port đầy đủ kèm lý do nằm ở `frontend/src/utils/weighSlip.ts`
+     * (`statusInRaPhieu`) — hai bản phải ra chuỗi y hệt nhau.
+     */
+    private static function slipStatus(string $status): string
+    {
+        // MANUAL (cân tay) là luồng chỉ có ở web, VBA không có — giữ nguyên nhãn riêng.
+        if ($status === 'MANUAL') {
+            return 'MANUAL';
+        }
+
+        return $status === 'ACCEPTED' ? 'ACCEPTED' : 'REJECTED';
+    }
+
+    /**
+     * Một hàng 5 ô của sheet. `$bold` = VBA có `.Font.Bold = True` cho cả hàng đó.
+     *
+     * `htmlspecialchars` với ENT_QUOTES để khớp đúng bản escape bên JS (`&`, `<`, `>`, `"`, `'`).
+     */
+    private static function slipRow(array $cells, bool $bold = false): string
+    {
+        $tds = '';
+        foreach ($cells as $cell) {
+            $tds .= '<td>'.htmlspecialchars((string) ($cell ?? ''), ENT_QUOTES, 'UTF-8').'</td>';
+        }
+
+        return '<tr'.($bold ? ' class="b"' : '').'>'.$tds.'</tr>';
     }
 
     /**

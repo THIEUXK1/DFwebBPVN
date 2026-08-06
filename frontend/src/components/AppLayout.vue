@@ -436,6 +436,8 @@ const menuGroupsRaw = [
       { path: '/production-batches/grid', label: 'Nhập đơn (MainForm)', icon: 'batch' },
       // Dựng lại UserForm TO_SEND của workbook DF002 (PRINTER LANDSCAPE / jit qr sending).
       { path: '/print-order-entry', label: 'In tem nhập đơn', icon: 'recipe' },
+      // Dựng lại UserForm `scaleform` của workbook "QR PRINTER-send to access- NEW 9ROWS BIG QR".
+      { path: '/qr-printer', label: 'QR PRINTER (9 dòng)', icon: 'recipe' },
       // Bản web của sheet "sent" (Mod_load_sentlog_sheet) — đơn đã tích & đã bấm OK.
       { path: '/print-sent-log', label: 'Sent log (đã OK)', icon: 'recipe' },
       // Dựng lại UserForm "mainform" của workbook MACHINE_ID_LOCKED — bảng treo xưởng,
@@ -520,6 +522,8 @@ const currentRouteName = computed(() => {
     '/production-batches/list': 'Danh sách Lô sản xuất',
     '/production-batches/grid': 'Nhập đơn sản xuất — MainForm (C3)',
     '/print-order-entry': 'In tem nhập đơn — TO_SEND (DF002)',
+    '/qr-printer': 'QR PRINTER — scaleform (NEW 9ROWS BIG QR)',
+    '/copower-print': 'QR PRINTER — scaleform (NEW 9ROWS BIG QR)',
     '/print-sent-log': 'Sent log — đơn đã xác nhận (DF002)',
     '/machine-id-board': 'DF PRODUCTION ORDER INFORMATION (MACHINE_ID)',
     '/machine-queue': 'Hàng chờ Điều phối',

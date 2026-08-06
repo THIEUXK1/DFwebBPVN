@@ -274,14 +274,21 @@ class ScaleCheckerAndPrintSlipTest extends TestCase
         $this->assertEquals('PRINTED', $printJob->status);
         $this->assertEquals('BROWSER', $printJob->printer_connection_type);
         $this->assertStringContainsString('DF_WEIGHING_SLIP', $printJob->label_payload);
-        $this->assertStringContainsString('SLIP-COLOR', $printJob->label_payload);
-        $this->assertStringContainsString('DYE-DONE', $printJob->label_payload);
-        $this->assertStringContainsString('DYE-PENDING', $printJob->label_payload);
-        // Cột kết quả in nhãn RÚT GỌN (DAT/LECH/CHO/TAY) từ 05/08/2026 — chữ ACCEPTED/REJECTED
-        // dài 8-9 ký tự không còn chỗ khi bảng dùng cỡ chữ đọc được. So cả dấu nháy để không
-        // vô tình khớp phải mã vật tư ('DYE-PENDING' từng làm assert 'PENDING' luôn đúng).
-        $this->assertStringContainsString('"DAT"', $printJob->label_payload);
-        $this->assertStringContainsString('"CHO"', $printJob->label_payload);
+        $this->assertStringContainsString('<td>COLOR:</td><td>SLIP-COLOR</td>', $printJob->label_payload);
+
+        // Từ 06/08/2026 phiếu dựng 1:1 theo sheet của VBA: cột STATUS in NGUYÊN chữ
+        // ACCEPTED/REJECTED đúng `Mod_print_tsc224.GetProcessStatus`, không còn nhãn rút gọn
+        // DAT/LECH. So CẢ HÀNG chứ không chỉ ô STATUS: từ nay dòng trống nào cũng mang chữ
+        // REJECTED (đúng bản gốc), nên assert một mình '<td>REJECTED</td>' sẽ luôn đúng bất kể
+        // dòng dữ liệu ra sao — tức không chứng minh được gì.
+        $this->assertStringContainsString(
+            '<td></td><td>DYE-DONE</td><td>50.00</td><td>50.10</td><td>ACCEPTED</td>',
+            $printJob->label_payload
+        );
+        $this->assertStringContainsString(
+            '<td></td><td>DYE-PENDING</td><td>30.00</td><td></td><td>REJECTED</td>',
+            $printJob->label_payload
+        );
 
         $printJob->delete();
     }
