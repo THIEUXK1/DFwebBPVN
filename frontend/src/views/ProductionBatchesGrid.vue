@@ -23,7 +23,7 @@
           <!-- ===================== Dải header (T = 0..48pt) ===================== -->
           <label class="vba-label" :style="box(0, 6, 72, 18)">SCAN QR</label>
 
-          <button class="vba-btn" :style="box(132, 0, 42, 24)" @click="machinePickerOpen = true">MACHINE</button>
+          <button class="vba-btn" :style="box(132, 0, 42, 24)" @click="openMachinePicker">MACHINE</button>
           <button class="vba-btn" :style="box(174, 0, 36, 24)" @click="openTankPicker">TANK</button>
           <!-- CommandButton4_Click: Me.Box7.Text = "OK" — bật cờ confirm2 để Save xong duyệt luôn. -->
           <button class="vba-btn" :style="box(210, 0, 48.05, 24)" @click="form.box7 = 'OK'">OK</button>
@@ -114,10 +114,17 @@
     <div v-if="machinePickerOpen" class="vba-modal-backdrop" @click.self="machinePickerOpen = false">
       <div class="vba-modal-fit" :style="machinePickerFit.fit" @click.self="machinePickerOpen = false">
       <div class="vba-form vba-modal" :style="machinePickerFit.form">
-        <select v-model="machinePickerValue" size="20" class="vba-listbox" :style="box(12, 6, 65.3, 400.55)">
-          <option v-for="m in machines" :key="m.id" :value="m.code">{{ m.code }}</option>
-        </select>
-        <button class="vba-btn" :style="box(12, 414, 66, 48)" @click="confirmMachinePick">OK</button>
+        <div class="vba-listbox vba-listbox-full" :style="box(12, MACHINE_LIST_TOP, 132, machineListHeight)">
+          <div
+            v-for="m in machines"
+            :key="m.id"
+            class="vba-listitem"
+            :class="{ 'is-selected': machinePickerValue === m.code }"
+            @click="machinePickerValue = m.code"
+            @dblclick="machinePickerValue = m.code; confirmMachinePick()"
+          >{{ m.code }}</div>
+        </div>
+        <button class="vba-btn vba-btn-big" :style="box(12, machineOkTop, 132, MACHINE_OK_H)" @click="confirmMachinePick">OK</button>
       </div>
       </div>
     </div>
@@ -126,10 +133,17 @@
     <div v-if="tankPickerOpen" class="vba-modal-backdrop" @click.self="tankPickerOpen = false">
       <div class="vba-modal-fit" :style="tankPickerFit.fit" @click.self="tankPickerOpen = false">
       <div class="vba-form vba-modal" :style="tankPickerFit.form">
-        <select v-model="tankPickerValue" size="8" class="vba-listbox" :style="box(12, 6, 64.5, 114.75)">
-          <option v-for="code in tankPickerOptions" :key="code" :value="code">{{ code }}</option>
-        </select>
-        <button class="vba-btn" :style="box(12, 132, 66, 42)" @click="confirmTankPick">OK</button>
+        <div class="vba-listbox vba-listbox-lg" :style="box(12, 6, 132, 152)">
+          <div
+            v-for="code in tankPickerOptions"
+            :key="code"
+            class="vba-listitem"
+            :class="{ 'is-selected': tankPickerValue === code }"
+            @click="tankPickerValue = code"
+            @dblclick="tankPickerValue = code; confirmTankPick()"
+          >{{ code }}</div>
+        </div>
+        <button class="vba-btn vba-btn-big" :style="box(12, 166, 132, 44)" @click="confirmTankPick">OK</button>
       </div>
       </div>
     </div>
@@ -267,8 +281,21 @@ function modalFit(wPt: number, hPt: number) {
   };
 }
 
-const machinePickerFit = computed(() => modalFit(90, 470));
-const tankPickerFit = computed(() => modalFit(90, 182));
+// Hai hộp chọn MÁY/THÙNG rộng hơn bản gốc (90pt) theo yêu cầu vận hành: chữ to, mỗi lựa chọn một
+// dòng có vạch ngăn — bấm bằng ngón tay trên tablet nhà xưởng thay vì chuột.
+//
+// Hộp MÁY cao theo ĐÚNG số máy đang có (thực tế ≤ 20) để không phải cuộn: `modalFit` đã tự thu
+// nhỏ cả hộp khi cửa sổ không đủ chỗ, nên cho cao tự do vẫn không bị cắt mất nút OK.
+const MACHINE_ROW_PT = 26;
+const MACHINE_LIST_TOP = 6;
+const MACHINE_OK_H = 48;
+// +1.5pt bù 2 viền 1px của khung (box-sizing: border-box) để dòng cuối không bị hụt.
+const machineListHeight = computed(() => Math.max(1, machines.value.length) * MACHINE_ROW_PT + 1.5);
+const machineOkTop = computed(() => MACHINE_LIST_TOP + machineListHeight.value + 8);
+const machinePickerFit = computed(() =>
+  modalFit(156, machineOkTop.value + MACHINE_OK_H + 12)
+);
+const tankPickerFit = computed(() => modalFit(156, 222));
 const subFormFit = computed(() => modalFit(204, 204));
 const checkFormFit = computed(() => modalFit(170, 126));
 
@@ -557,6 +584,11 @@ const tankPickerValue = ref('');
 // Picker thùng dùng chung cho header (Box5) và SubForm — cờ này quyết định trả kết quả về đâu.
 const tankPickerTarget = ref<'header' | 'subform'>('header');
 
+const openMachinePicker = () => {
+  machinePickerValue.value = form.machineCode;
+  machinePickerOpen.value = true;
+};
+
 const confirmMachinePick = () => {
   form.machineCode = machinePickerValue.value;
   form.tankCode = '';
@@ -836,6 +868,51 @@ onUnmounted(() => {
   border-color: #808080 #ffffff #ffffff #808080;
   font: inherit;
   outline: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Mỗi lựa chọn là một dòng riêng có vạch ngăn: `<option>` của select gốc không nhận được
+   border/chiều cao trên Chromium nên phải tự dựng danh sách bằng div. */
+.vba-listitem {
+  height: 26pt;
+  display: flex;
+  align-items: center;
+  padding: 0 6pt;
+  font-size: 13pt;
+  font-weight: bold;
+  border-bottom: 1px solid #b0b0b0;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.vba-listitem:last-child {
+  border-bottom: none;
+}
+
+.vba-listitem:hover {
+  background-color: #d8e6f8;
+}
+
+.vba-listitem.is-selected {
+  background-color: #316ac5;
+  color: #ffffff;
+}
+
+/* Hộp chọn MÁY cao đúng bằng số máy nên không bao giờ cần cuộn. */
+.vba-listbox-full {
+  overflow-y: hidden;
+}
+
+.vba-listbox-lg .vba-listitem {
+  height: 30pt;
+  font-size: 15pt;
+}
+
+.vba-btn-big {
+  font-size: 12pt;
+  font-weight: bold;
 }
 
 .vba-modal-backdrop {

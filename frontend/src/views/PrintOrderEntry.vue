@@ -38,7 +38,7 @@
                    :style="{ ...box(sendLeft(i) + 294, sendTop(i), 36, 25.5), backgroundColor: rowBg(slot) }" />
 
             <button class="vba-btn" :style="box(sendLeft(i) + 330, sendTop(i), 48, 24)"
-                    :disabled="!slot" title="Mở phiếu xem trước để in (TO_SEND.HandleSendPrint)"
+                    :disabled="!slot" title="Xem trước + mở hộp thoại in ngay (TO_SEND.HandleSendPrint)"
                     @click="onSendPrint(slot)">print</button>
 
             <input type="checkbox" class="vba-check" :style="box(sendLeft(i) + 384, sendTop(i) + 6, 11.25, 18)"
@@ -68,7 +68,7 @@
               <input :value="b?.level_code || ''" readonly class="vba-text vba-cell"
                      :style="box(p.left + 90, p.rowTop + r * 18, 24, 18)" />
               <button class="vba-btn vba-btn-tiny" :style="box(p.left + 114, p.rowTop + r * 18, 24, 18)"
-                      :disabled="!b" title="Mở phiếu xem trước để in (TO_SEND.HandlewaitPrint)"
+                      :disabled="!b" title="Xem trước + mở hộp thoại in ngay (TO_SEND.HandlewaitPrint)"
                       @click="onWaitPrint(b)">print</button>
               <input type="checkbox" class="vba-check" :style="box(p.left + 138, p.rowTop + r * 18, 11.5, 18.75)"
                      disabled title="Bảng production_batches chưa có cột scale_check tương ứng — xem ghi chú" />
@@ -100,6 +100,7 @@ import echo from '../services/echo';
 import { currentWorkstation } from '../services/workstation';
 import { applyVbaRowLock, vbaAgeColor } from '../utils/vbaRowLock';
 import VbaPrintForm, { type VbaPrintFormData } from '../components/VbaPrintForm.vue';
+import { writeDispatchSlipToWindow } from '../utils/dispatchSlipPrint';
 import AppLayout from '../components/AppLayout.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
 import NavToggleButton from '../components/NavToggleButton.vue';
@@ -247,13 +248,43 @@ const onToggleScaleCheck = async (slot: any, checked: boolean) => {
   }
 };
 
-// HandleSendPrint / HandlewaitPrint — bản gốc CHỈ mở form xem trước, không in ngay.
-// Nút PRINT nằm trong hộp thoại đó mới thực sự in.
+// HandleSendPrint / HandlewaitPrint — bản gốc CHỈ mở form xem trước; phải bấm tiếp nút PRINT
+// trong hộp thoại đó mới in. Từ 2026-08-06 theo yêu cầu vận hành: bấm `print` một lần là VỪA
+// hiện phiếu xem trước VỪA bung luôn hộp thoại in của trình duyệt — bớt một nhịp bấm cho thao
+// tác lặp lại cả trăm lần mỗi ca. Nút PRINT trong hộp thoại vẫn giữ nguyên để in lại.
 const previewData = ref<VbaPrintFormData | null>(null);
+
+/**
+ * Cửa sổ in phải `window.open()` ĐỒNG BỘ ngay trong handler click, TRƯỚC mọi `await` dựng QR —
+ * gọi sau tác vụ bất đồng bộ là mất "user gesture" và Chrome/Edge chặn popup (cùng lý do đã ghi
+ * trong VbaPrintForm.doPrint). Popup bị chặn thì phiếu xem trước vẫn mở, người dùng bấm PRINT
+ * trong đó như trước.
+ */
+const openPreviewAndPrint = (data: VbaPrintFormData) => {
+  previewData.value = data;
+  const win = window.open('', '_blank', 'width=780,height=980');
+  if (!win) {
+    say('Trình duyệt đã chặn cửa sổ in — cho phép popup cho trang này, hoặc bấm nút PRINT trong phiếu xem trước.', true);
+    return;
+  }
+  writeDispatchSlipToWindow(win, {
+    color: data.color,
+    productCode: data.code,
+    machineCode: data.machine,
+    tankCode: data.tank,
+    levelCode: data.level,
+    rawQrDye: data.rawQrDye,
+    rawQrChem: data.rawQrChem,
+    batchId: data.batchId,
+  }).catch((e: any) => {
+    console.error('Không dựng được tem để in:', e);
+    say('Không dựng được tem để in — thử lại bằng nút PRINT trong phiếu xem trước.', true);
+  });
+};
 
 const onSendPrint = (slot: any) => {
   if (!slot) return;
-  previewData.value = {
+  openPreviewAndPrint({
     color: slot.batch?.color || '',
     code: slot.batch?.product_code || '',
     machine: slot.batch?.machine?.code || '',
@@ -262,12 +293,12 @@ const onSendPrint = (slot: any) => {
     rawQrDye: slot.raw_qr_dye || slot.batch?.raw_qr_dye || '',
     rawQrChem: slot.raw_qr_chemical || slot.batch?.raw_qr_chemical || '',
     batchId: slot.batch?.legacy_batch_id || '',
-  };
+  });
 };
 
 const onWaitPrint = (b: any) => {
   if (!b) return;
-  previewData.value = {
+  openPreviewAndPrint({
     color: b.color || '',
     code: b.product_code || '',
     machine: b.machine?.code || '',
@@ -276,7 +307,7 @@ const onWaitPrint = (b: any) => {
     rawQrDye: b.raw_qr_dye || '',
     rawQrChem: b.raw_qr_chemical || '',
     batchId: b.legacy_batch_id || '',
-  };
+  });
 };
 
 // TO_SEND.ConfirmRow — bản gốc chép dòng sang tbl_sentlog (TIME3=Now) rồi xóa khỏi
