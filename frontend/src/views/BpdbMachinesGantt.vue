@@ -132,14 +132,15 @@
              con số phía trên: không giới hạn theo khoảng ngày đang lọc, cũng không giới
              hạn trong 1 Tank/1 máy. Gọi API riêng khi mở bảng, xem loadLotTotal().
              Nhãn "Số lần đánh mẫu" theo cách gọi của xưởng (yêu cầu 2026-08-04) — mỗi mẻ
-             chạy của cùng mã màu - mã hàng là một lần đánh mẫu. -->
+             chạy của cùng mã màu - mã hàng là một lần đánh mẫu, nên đơn vị hiển thị là
+             "lần" chứ không phải "mẻ" (yêu cầu 2026-08-06). -->
         <template v-if="detailPopup.color && detailPopup.productCode">
           <dt>Số lần đánh mẫu</dt>
           <dd>
             <template v-if="lotTotal?.loading">Đang đếm…</template>
             <template v-else-if="lotTotal?.failed">Không đếm được (BPDB mất kết nối)</template>
             <template v-else-if="lotTotal">
-              <strong>{{ lotTotal.total }}</strong> mẻ
+              <strong>{{ lotTotal.total }}</strong> lần
               <span class="gantt-detail-note">
                 trên toàn bộ máy VD<template v-if="lotTotal.firstRunAt">, từ {{ formatDay(lotTotal.firstRunAt) }} tới nay</template>
               </span>
@@ -147,7 +148,7 @@
             <template v-else>—</template>
           </dd>
           <!-- Chia theo từng máy VD (yêu cầu 2026-08-03) — cùng 1 lần đếm ở trên, không gọi
-               thêm API. Máy chạy nhiều mẻ nhất đứng trước. -->
+               thêm API. Máy đánh mẫu nhiều lần nhất đứng trước. -->
           <template v-if="lotTotal && !lotTotal.loading && !lotTotal.failed && lotTotal.byMachine.length">
             <dt>Theo máy</dt>
             <dd>
@@ -742,14 +743,15 @@ const fetchGantt = async () => {
 
     // Lượt 3 — lấp khoảng trống: mỗi mẻ kéo dài chạm đúng giờ bắt đầu (đã dịch) của mẻ kế
     // tiếp CÙNG NHÓM. Nhờ 2 lượt trên, khoảng cách đó luôn >= MIN_VISUAL_DURATION_MS nên
-    // không mẻ nào bị bóp hẹp lại. Mẻ đã xong cuối cùng chỉ kéo tới kim đỏ (không lấn sang
-    // mẻ đang chạy) và chỉ khi Tank đó thật sự đang có mẻ chạy — Tank đã nghỉ thì giữ nguyên
-    // độ dài thật, không vẽ kéo dài tới hiện tại làm tưởng nhầm là còn đang bận.
+    // không mẻ nào bị bóp hẹp lại. Mẻ đã xong CUỐI CÙNG của mỗi Tank LUÔN kéo tới chạm kim
+    // đỏ (yêu cầu 2026-08-06), kể cả khi Tank đó không có mẻ nào đang chạy — trước đây chỉ
+    // kéo khi Tank đang chạy nên hàng nào nghỉ sẽ hở một khoảng trống tới vạch giờ. Không
+    // lấn sang mẻ đang chạy vì lượt 2 đã đẩy mọi mẻ đang chạy sang hẳn bên phải kim.
     for (let i = 0; i < doneItems.length - 1; i++) {
       doneItems[i].end = doneItems[i + 1].start;
     }
     const lastDone = doneItems[doneItems.length - 1];
-    if (lastDone && runningItems.length) lastDone.end = new Date(nowMs);
+    if (lastDone) lastDone.end = new Date(nowMs);
     for (let i = 0; i < runningItems.length - 1; i++) {
       runningItems[i].end = runningItems[i + 1].start;
     }
