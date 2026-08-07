@@ -145,7 +145,19 @@
            dung de vao giao dien, di thang trong mang noi bo thay vi vong qua router.
      Nhay minor chu khong phai major: khong doi ten service, thu muc cai hay UpgradeCode, nen
      may dang chay 4.0.0.0 chi can cai de len la xong. -->
-<?define PackageVersion = "4.1.0.0"?>
+
+<!-- 4.2.0.0 (07/08/2026) — DUONG CAN CUC BO, ADR-013.
+     Agent mo mot endpoint HTTP CHI NGHE tren 127.0.0.1 (SMALL 8770 / LARGE 8771); trinh duyet
+     tren CHINH may tram doc so can thang o do thay vi vong qua backend. Do duoc: 1 lan goi ~2ms
+     va so can khong bao gio cu qua 15ms, thay cho 400-900ms cua duong cu (hai lan cho nhip 200ms
+     + hai chang mang qua mot backend xu ly tuan tu).
+     Duong cu GIU NGUYEN lam du phong: Agent van day so len backend y nhu truoc, man hinh tu roi
+     ve do khi khong goi duoc cong cuc bo.
+     Ban RACK_ONLY (CanTo-InOut) khong mo cong nao - no khong doc can, va mo ra la co the giành
+     mat cong cua ban CanTo cai cung may.
+     Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode, nen may dang chay 4.0/4.1
+     chi can cai de len la xong. -->
+<?define PackageVersion = "4.2.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.ProductLabel))"

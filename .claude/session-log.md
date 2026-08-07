@@ -2667,3 +2667,246 @@ Van giu `logAction('SEND')`: la ban ghi audit that (co IP may tram + anh chup fo
 **Diem yeu con lai:** backup nam cung o dia voi `C:\pgdata` — hong o dia la mat ca hai. Tham so `-MirrorDir` da co san nhung de trong, vi task chay bang SYSTEM khong truy cap duoc share mang; muon mirror phai doi sang tai khoan mien co quyen ghi len share.
 
 **Kiem chung:** 3 file .ps1 parse sach bang `[Parser]::ParseFile` (0 loi cu phap); logic giu/xoa theo ten file test rieng bang bo ten gia — dung ngay 01 giu, ngay thuong qua 14 ngay xoa, file khong dung dinh dang bi bo qua. **Chua chay that lan nao** — chua biet `pg_dump` tren server that mat bao lau, file to bao nhieu.
+
+### 124. Tem cua /weighing-station-v2 "in ra bi mo" — to phieu thanh anh 1-bit thay vi de trinh duyet ve chu (2026-08-07)
+
+**A. Trieu chung:** ngay sau khi doi sang cuon tem 60x40mm (muc truoc, commit 344c306), nguoi dung
+bao *"tem in ra bi mo toi can sieu net"*.
+
+**B. Nguyen nhan.** KHONG phai co chu, ma la cach chu duoc rasterize.
+- Duong in cu de nguyen bang HTML roi `zoom` cho vua tem -> chu do **trinh duyet** ve, ma trinh
+  duyet luon khu rang cua: moi net chu co vien XAM hai ben.
+- May in tem la may in nhiet **1 bit** — khong in duoc xam, driver phai dither sac xam thanh luoi
+  cham thua. O co chu ~12-15 dot thi phan vien xam chiem gan nua net -> ra giay la cham lam tam
+  quanh moi chu = dung cam giac "mo".
+- Khong co thuoc tinh CSS nao tat duoc khu rang cua tren Chrome/Windows. `-webkit-font-smoothing:
+  none` nam trong `wrapSlipDocument` tu 30/07 that ra **khong lam gi ca** — no chi co tac dung tren
+  macOS. Da giu lai (vo hai) nhung dung tin no.
+
+**C. Da sua — `frontend/src/utils/slipPrint.ts` (SCRIPT_TU_IN viet lai hoan toan)**
+
+Tu quyet dinh tung dot thay vi nho trinh duyet:
+1. Doc bang HTML cua payload ra mang 2 chieu.
+2. Chon co chu LON NHAT ma bang con nam gon trong vung in, tinh bang **dot that** (8 dot/mm, quy
+   uoc TSPL nhu `tsplPrint.ts`). Van xoay 90 do neu xoay cho co chu lon hon (tem doc cuon cu thi
+   xoay co loi, tem ngang 60x40 thi khong).
+3. Ve luoi o + chu vao canvas o **dung do phan giai do**, moi toa do la so nguyen dot. Vien o ve
+   bang `fillRect` day dung 1 dot (khong `strokeRect` — stroke ve giua duong nen roi vao nua dot
+   hai ben va ra xam).
+4. **Nhi phan hoa**: quet tung pixel, toi hon nguong 176 -> den dac, con lai -> trang dac. Sau buoc
+   nay trong anh khong con mot sac xam nao de ma dither.
+5. In canvas o dung kich thuoc vat ly cua no (so dot / 8 mm) voi `image-rendering: pixelated`, tuc
+   1 pixel anh = 1 dot may in, khong noi suy.
+
+Hai diem co y lech ban VBA, da ghi ro trong code:
+- **In dam toan bo** (VBA chi dam dong 1 va 7): o co duoi 16 dot, net chu thuong manh hon 1.5 dot
+  nen sau khi nhi phan hoa bi dut quang. `tsplPrint.ts` cung de font-weight 700 cho moi tem.
+- Chieu cao dong lay tron phan cao con lai chia deu cho so dong, khong buoc theo ti le co dinh voi
+  co chu. Buoc theo ti le thi chieu cao dong nhay nac va bo phi phan du — ban dau tui viet 1.3 va
+  no chot o 14 dot/dong, bo khong 21 dot (gan mot dong ruoi, du de chu nho hon mot co).
+
+**Payload KHONG doi** — van la bang HTML, van khop tung ky tu voi ban PHP. Canvas chi la cach VE
+no ra giay, nen khong phai sua `WeighingJobController::buildSlipHtml` va ban xem truoc o Lich su in
+van doc duoc.
+
+**D. Kiem chung — do that, khong doan**
+
+Dung `esbuild` bundle `weighSlip.ts` + `slipPrint.ts`, dung trang in that, chan `window.print`, roi
+mo bang **Edge headless** va lay thang `canvas.toDataURL()` — tuc **dung anh bitmap ma may in se
+nhan**, khong phai anh chup man hinh.
+
+| | Truoc | Sau |
+|---|---|---|
+| Cach ve chu | trinh duyet ve, co khu rang cua | canvas 1-bit, nguong 176 |
+| Sac xam trong anh | co (moi canh net) | **khong con** |
+| Co chu | 12pt x zoom 0.41 ~ 4.9pt (~13.8 dot em), net manh | **12 dot em, in dam** |
+| Chieu cao dong | ~15 dot | 15 dot |
+| Kich thuoc bang | (khong do duoc trong so dot) | 390 x 286 dot / vung in 448 x 288 |
+
+- `node frontend/scripts/check-weigh-slip.mjs`: **8/8 PASS** (payload khong doi nen phai the).
+- `vue-tsc --noEmit` exit 0.
+- **CHUA in tren may TSC that** — can nguoi dung in thu 1 to.
+
+**E. Con lai: chu KHONG to len, chi net len.** Ngan sach dot la co dinh: vung in 448 x 288 dot,
+**chieu cao la thu chan**, 19 dong chia 288 dot chi duoc 15 dot/dong. Muon chu to hon thi bat buoc
+phai bot dong, ma bot dong la lech ban VBA (yeu cau "giong form VBA 100%" ngay 06/08):
+
+| Bo cuc | So dong | dot/dong | Co chu |
+|---|---|---|---|
+| Nguyen ban VBA (hien tai) | 19 | 15 | 12 dot |
+| Bo 3 dong TRONG (dong 2, 7, 18) | 16 | 17 | ~13-14 dot |
+| Bo dong trong + gop COLOR/CODE va MACHINE/LEVEL | 14 | 20 | ~13 dot (**be RONG chan lai**) |
+
+Luu y bay thu ba: qua 16 dong thi **be rong** thanh thu chan, vi cot 1 phai rong bang chuoi
+`DF_WEIGHING_SLIP` (16 ky tu) do Excel AutoFit cot theo o rong nhat. Muon an tiep phai cho dong
+tieu de trai het 5 cot (colspan) thay vi nam gon trong cot 1 — luc do moi len duoc ~16-17 dot.
+
+Script dung de do nam o scratchpad cua phien (`render-slip.mjs`), **chua dua vao repo** vi nguoi
+dung chua yeu cau; dang lam mot cong cu thuong truc neu con phai chinh tem tiep.
+
+### 125. /weighing-station-v2: bam CLEAR bi van khoi F11, va phong to man hinh theo nac (2026-08-07)
+
+**A. Trieu chung:** *"khi an clean k bi vang khoi che do f11, va toi muon to hon de de nhin hon"*.
+
+**B. Nguyen nhan cua phan F11 — KHONG phai loi cua nut CLEAR.**
+Chrome/Edge **thoat toan man hinh** ngay khi mot hop thoai GOC (`alert`/`confirm`/`prompt`) bat len
+— quy tac chong gia mao giao dien cua trinh duyet, khong co cach nao tat. `onClear()` goi
+`window.confirm` de hoi truoc khi xoa, nen moi lan bam CLEAR (khi tren man hinh dang co don hoac co
+so chua luu) la tho bi day ve che do cua so binh thuong, phai bam F11 lai.
+
+Man nay con **7 cho khac** dinh y het: `alert` luc quet QR hong, luc server tu choi don, luc popup
+in bi chan, luc in phieu loi; `confirm` luc SAVE con dong chua can va luc BO ME trong bang hang doi.
+Da doi **tat ca** sang hop thoai ve trong trang, khong con `alert`/`confirm`/`prompt` nao o man nay.
+
+**C. Hai cai bay khi thay confirm bang hop thoai bat dong bo**
+
+1. **Chan popup in o luong SAVE.** `onSave` mo cua so in bang `window.open` va chi lam duoc trong
+   luc con "user activation" — tuc truoc moi `await`. Ban cu dat `window.open` SAU `window.confirm`
+   van chay duoc vi confirm la ham DONG BO. Hop thoai moi bat buoc `await`, nen da **chuyen
+   `window.open` len TRUOC** hop xac nhan; tho bam "KHONG" thi `printWin?.close()`. Khong doi thu
+   tu nay thi bam SAVE khi con dong chua can se luu duoc nhung **khong in ra phieu**.
+2. **Tranh chap tieu diem voi o quet.** O COLOR tu gianh lai tieu diem de don may quet. Neu hop
+   thoai khong keo tieu diem ve thi phim Enter (va ca mot cu quet nham) roi thang vao o quet trong
+   luc hop thoai dang chan man hinh. Da them `watch` dua tieu diem vao nut AN TOAN cua hop thoai
+   (nut "KHONG" dung truoc nut "DONG Y"), va giu dung **ngu nghia CHAN** cua `alert` cu: moi cho
+   truoc day goi `alert()` gio `await baoTin()`, nen phan viec phia sau (tra con tro ve o quet,
+   khoi `finally`) van chi chay SAU khi tho bam OK.
+
+`onClear` va `onBoMe` doi sang `async`; 2 cho goi `onClear(true, true)` trong `onSave` da them
+`await` (deu la `skipConfirm` nen than ham van chay dong bo, `await` chi de giu thu tu ro rang).
+
+**D. Phong to man hinh (`zoom` theo nac, nho lua chon)**
+
+- 4 nac 100/125/150/175%, nut `A−` / `A+` nam o dong RAW canh den tin hieu can, luu
+  `localStorage['ws2.co-hien-thi']`. **Mac dinh 125%** — nguoi dung da noi thang ban 100% kho nhin.
+- De tho tu chinh chu khong chot cung mot con so: moi tram mot co man hinh, dung gan xa khac nhau,
+  doan sai thi hoac chu van be hoac bang 9 dong tran khoi man.
+- Dung `zoom` chu khong phai `transform: scale()` — zoom tinh lai bo cuc that nen chu van net.
+  **Bay:** zoom nhan ca don vi `vw`/`vh` ben trong. Da chia nguoc lai cho bien `--ws2-zoom` o 3 cho
+  dung vw/vh (`.ws2-root` min-height, `.queue-modal`, `.thoai-box`); quen chia la nen cao hon man
+  hinh dung bang he so phong va trang luon co thanh cuon doc thua.
+
+**E. Kiem chung**
+
+- `vue-tsc --noEmit` exit 0; `vite build` thanh cong.
+- **CHUA xem bang mat tren trinh duyet.** Can nguoi dung: bam F11, quet mot don, bam CLEAR — phai
+  hien hop thoai trong trang va **van o toan man hinh**; roi thu SAVE khi con dong chua can de xac
+  nhan phieu VAN in ra (day la cho de vo nhat, xem muc C1).
+
+### 126. Duong can CUC BO: Agent phuc vu so can ngay tai may tram (ADR-013) — 2026-08-07
+
+**A. Yeu cau:** *"RAW / Agent co cach nao de no co the nhanh nhu o 4.semiauto-small scale ... .xlsm khong"* -> sau khi trinh bay 3 phuong an, nguoi dung chon **cach A**.
+
+**B. Do TRUOC khi sua, khong doan**
+
+| Chang | Do duoc |
+|---|---|
+| Agent doc `putty_log.txt` | moi **10ms** (`Scale:ReadIntervalMs`) — da ngang `StartFastLoop` cua VBA |
+| Agent -> backend | doi toi **200ms** (`Scale:PushIntervalMs`) roi moi POST |
+| Backend | `php artisan serve` MOT tien trinh: 1 request 18-23ms nhung **6 request dong thoi mat 110ms** = dung 6 lan, tuc xep hang noi duoi (do tren may dev, endpoint `/api/devices/readings`) |
+| Trinh duyet -> backend | hoi moi **200ms** (`POLL_MS_WEIGHING`) |
+
+Tong ~**400-900ms**. VBA doc cung file do, cung may, ghi thang vao form — khong co chang nao.
+**Ket luan: Agent von da nhanh bang VBA; cham nam o hai chang di-ve may chu.**
+
+**C. Da lam**
+
+- **ADR-013** trong `architecture-decisions.md` — ghi ca 2 phuong an bi loai (giam nhip / Reverb) va ly do.
+- `agent/ScaleSnapshot.cs` (moi): ban chup so can dung chung. **KHONG** de duong cuc bo tu goi
+  `ScaleReader.ReadCurrentWeightWithStability()` — ham do khong thuan, no nap tung lan doc vao
+  StableFilter ma "on dinh" = hai lan doc LIEN TIEP giong nhau; goi tu luong thu hai la chen lan
+  doc la vao giua chuoi do va lam hong chinh co on dinh (co ma luong chot bi va dieu kien cho
+  phep luu deu dua vao). Dung MOT noi doc can, moi noi khac doc lai ban chup.
+- `agent/LocalWeightServer.cs` (moi): `HttpListener` **chi nghe 127.0.0.1**, `GET /weight`, tra
+  **dung hinh dang JSON cua `DeviceController::getReading`** de frontend dung mot doan xu ly cho
+  ca hai nguon.
+- `Worker.cs`: ghi ban chup ngay tai nhip doc 10ms, **truoc va doc lap voi moi viec mang** (dat
+  sau cong nhip day 200ms la vut bo dung cai duong cuc bo sinh ra de co).
+- `useScaleFeed.ts`: thu duong cuc bo TRUOC, hong thi roi thang xuong backend **ngay trong nhip
+  do** (khong bo trang mot nhip), va nghi 30 giay moi thu lai. Xuat them `nguonCucBo`.
+- 2 man cân: nhip poll **60ms** khi duong cuc bo song (`POLL_MS_CUC_BO`) thay vi 200ms — khong
+  ton gi cua ai vi cuoc goi khong roi khoi may. Them chi bao "⚡ Agent tai cho" / "☁ qua may chu".
+- 3 file `appsettings*.json`: them khoi `Local`. **Ban `large-inout` = RACK_ONLY -> tat**, va code
+  cung tu chan (`Worker.ScaleEnabled`): no khong doc can, ma no cai chung may voi `DFAgentLarge`
+  (khac service name nen chay song song duoc) thi co the **GIANH MAT cong 8771** cua ban that.
+- MSI **4.2.0.0**, build lai ca 3, da copy sang `backend/public/downloads/`.
+
+**D. Ba diem de lam sai, da ghi ro trong code**
+
+1. **Private Network Access.** Mo man bang `http://10.0.60.209:3001` (IP rieng) roi goi xuong
+   loopback la request "xuyen vung mang" theo luat PNA cua Chrome — phai tra
+   `Access-Control-Allow-Private-Network: true` cho preflight, thieu la Chrome chan, duong cuc bo
+   **chet cam** va man hinh lang le tut ve duong cham ma khong ai hieu vi sao. Co test rieng.
+2. **`AbortSignal.timeout()` khong dung duoc** — build con ha muc tieu xuong chrome >= 49 va
+   `@vitejs/plugin-legacy` khong polyfill no. Dung `AbortController` + `setTimeout`.
+3. **`fetch` chu khong phai `axios`** — axios da bi dat `baseURL` tro backend va co interceptor
+   gan token dang nhap; Agent la tien trinh khac, gui token sang la ro mot thu no khong can biet.
+
+**E. Kiem chung — do that**
+
+- `dotnet test`: **51/51 pass** (them 7 test moi cho duong cuc bo: hinh dang JSON, preflight PNA,
+  chua doc duoc lan nao -> `has_reading=false`, 404, tat bang cau hinh, chan RACK_ONLY).
+  Test chay khong can quyen admin -> `HttpListener` tren 127.0.0.1 khong doi urlacl.
+- **Chay Agent that** (`Backend:Urls` tro `127.0.0.1:1` de KHONG cham backend production):
+  1 lan goi cuc bo **min 0.95ms / trung vi 2.11ms / max 2.84ms**; `age_ms` lon nhat **15ms** —
+  so can khong bao gio cu qua 15ms, tuc ban chup that su duoc ghi lai moi nhip 10ms.
+- **CORS bang trinh duyet that**: trang o `http://127.0.0.1:3999` goi `http://127.0.0.1:8770`
+  (khac origin), Edge headless -> `OK {...,"source":"AGENT_LOCAL","age_ms":5}`.
+- `vue-tsc --noEmit` exit 0; `vite build` thanh cong. 3 MSI doc nguoc ProductVersion = **4.2.0.0**.
+- **CHUA thu tren may tram that** — can cai `DFAgentSetup-CanNho.msi` 4.2.0.0 len may can nho roi
+  mo `/weighing-station-v2`: chi bao phai hien **"⚡ Agent tai cho"**. Neu van "☁ qua may chu" thi
+  doc Event Log cua service `DFAgentSmall` tim dong "Duong can cuc bo:" — thieu dong do la cong
+  bi chiem hoac `Local:Enabled=false`.
+
+### 127. /weighing-station-large: cung bo hop thoai trong trang (khong con van khoi F11) — 2026-08-07
+
+**A. Yeu cau:** *"http://localhost:3001/weighing-station-large ben nay toi cung muon tuong tu clean k bi mat f11,...."*
+
+**B. Da lam — TACH RA DUNG CHUNG thay vi chep doi**
+
+Muc 125 viet bo hop thoai nam GON trong `WeighingStationV2.vue`. Nay man cân to can y het, tuc da
+du 2 noi dung (`coding-standards.md` muc 4: khong them truu tuong khi chua co tu 2 nghiep vu tro
+len). Da tach:
+
+- `composables/useHopThoai.ts` — trang thai + `hoiXacNhan()` / `baoTin()` / `dongThoai()`.
+- `components/HopThoaiVba.vue` — phan nhin thay + keo tieu diem vao nut AN TOAN khi mo.
+
+`WeighingStationV2.vue` chuyen sang dung 2 file nay (bo ~60 dong logic + CSS trung lap).
+Bien CSS doi ten `--ws2-zoom` -> `--df-zoom` cho trung tinh vi component dung chung phai doc no.
+
+Man cân to: doi **5 `alert`** -> `await baoTin`, **2 `confirm`** -> `await hoiXacNhan`, `onClear`
+thanh `async`, 2 cho goi `onClear(true, true)` them `await`. Da grep xac nhan **khong con
+`alert`/`confirm` goc nao** o ca hai man (chi con trong dong ghi chu).
+
+**C. Bay quan trong — lap lai y het muc 125, va o day cung phai sua**
+
+`onSave` cua man cân to cung mo cua so in bang `window.open` NGAY SAU hop xac nhan. `window.confirm`
+cu dong bo nen con "user activation"; hop thoai moi bat buoc `await`, ma mo cua so sau mot `await`
+la dung truong hop Chrome/Edge chan. Da **chuyen `window.open` len TRUOC** hop xac nhan, bam
+"KHONG" thi `printWin?.close()`. Khong sua thi bam SAVE khi con dong chua can se luu duoc nhung
+**khong in ra phieu**.
+
+**D. Phan "to hon" thi KHONG lam gi — va day la ket luan tu do dac, khong phai bo sot**
+
+Man cân to **da tu phong to san**: no dung mot "stage" kich thuoc co dinh (979 x 728px, quy tu
+734.26 x 546.01pt cua form VBA goc) roi `fitStage()` co gian cho lap day cua so, chan tren 2.0.
+Tinh thu he so that:
+
+| Man hinh | He so tu dong |
+|---|---|
+| 1920x1080 F11 | 1.46 |
+| 1920x1080 con sidebar/topbar | 1.27 |
+| 1366x768 F11 | 1.03 |
+
+Deu **duoi tran 2.0**, tuc dang bi chinh kich thuoc cua so chan lai — khong con cho trong nao de
+mot nut A−/A+ them vao. Them nut phong to o day la dat mot nut vo tac dung, hoac te hon la de tho
+phong qua co roi form tran ra ngoai khung. Man V2 khong tu co gian (bo cuc thuong, kich thuoc px
+co dinh) nen o do nut A−/A+ moi co viec de lam.
+
+**E. Kiem chung**
+
+- `vue-tsc --noEmit` exit 0; `vite build` thanh cong.
+- `grep` xac nhan sach `alert`/`confirm` o ca hai man.
+- **CHUA xem bang mat tren trinh duyet** o ca hai man. Can nguoi dung: bam F11, quet mot don, bam
+  CLEAR -> phai hien hop thoai trong trang va VAN o toan man hinh; roi bam SAVE khi con dong chua
+  can -> phai hien hop thoai VA sau khi bam DONG Y phai IN RA PHIEU (day la cho de vo nhat, muc C).

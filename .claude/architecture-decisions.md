@@ -129,3 +129,27 @@ Tài liệu này ghi nhận các Quyết định Kiến trúc (ADR - Architectur
   - Bắt buộc `idempotency_key` UNIQUE (`database-safety` mục 4): Agent đồng bộ lại sau khi mất mạng mà bắn trùng nghĩa là **cấp thừa vật tư**.
   - Lệnh xử lý **tuần tự**, không song song — cả máy chỉ có một con chuột.
 - **Chưa làm:** chưa hiệu chỉnh toạ độ trên máy trạm thật, chưa chạy thử đầu-cuối với hệ pha màu. `Rack:Enabled=false` cho tới khi hiệu chỉnh xong.
+
+---
+## ADR-013: Agent phục vụ số cân ngay tại máy trạm (đường cục bộ 127.0.0.1), backend làm đường dự phòng
+- **Ngày:** 2026-08-07. **Yêu cầu gốc:** *"RAW / Agent có cách nào để nó có thể nhanh như ở 4.semiauto-small scale - delta-stable-final_DF026-027.xlsm không"*.
+- **Bối cảnh — đo thật, không đoán:**
+  - Agent đọc `putty_log.txt` mỗi **10ms** (`Scale:ReadIntervalMs`), tức đã ngang nhịp `StartFastLoop` của VBA. Số cân có mặt trong tiến trình Agent gần như tức thì.
+  - Nhưng để tới được màn hình, con số phải đi **hai chặng mạng và hai lần chờ nhịp**: Agent đợi tới `Scale:PushIntervalMs` = **200ms** rồi POST lên CS-SERVER; trình duyệt lại hỏi backend mỗi **200ms** (`POLL_MS_WEIGHING`). Trung bình mất 100ms + 100ms chỉ để chờ nhịp.
+  - Backend chạy `php artisan serve` — **một tiến trình, xử lý tuần tự**. Đo trên máy dev, endpoint `/api/devices/readings`: 1 request 18-23ms, nhưng **6 request đồng thời mất 110ms** ≈ đúng 6 lần một request, tức xếp hàng nối đuôi. Trên CS-SERVER, `session-log.md` mục 100 đo được 550ms/request và 1482ms khi 6 request chồng nhau.
+  - Cộng lại: mỗi số RAW mất khoảng **400-900ms** mới lên tới mắt thợ. VBA thì đọc cùng file đó, cùng máy, ghi thẳng vào form — không có chặng nào cả.
+- **Quyết định:** Agent mở một endpoint HTTP **chỉ nghe trên `127.0.0.1`** (`GET /weight`), trình duyệt trên CHÍNH máy trạm đọc thẳng ở đó với nhịp nhanh (60ms). Đường cũ (Agent → backend → trình duyệt) **giữ nguyên không đổi**, làm đường dự phòng tự động.
+  - Cổng theo loại cân, cố định bằng quy ước hai bên đều biết (frontend không đọc được `appsettings.json` của Agent): **SMALL = 8770, LARGE = 8771**.
+  - Agent **vẫn đẩy số lên backend y như cũ** — audit, các màn hình khác, hàng đợi offline, cặp máy→trạm đều không đổi.
+  - Frontend thử cục bộ trước; hỏng thì rơi về backend và **thử lại đường cục bộ mỗi 30 giây** (Agent khởi động lại là tự dùng lại đường nhanh).
+- **Lý do vẫn tôn trọng ADR-002:** trình duyệt vẫn **chỉ nói chuyện với Local Agent**, không bao giờ chạm cân/cổng COM. Ranh giới phân lớp không đổi; cái đổi là *hướng* đi của số cân giữa Agent và trình duyệt (kéo từ Agent thay vì vòng qua backend).
+- **Phương án đã cân nhắc và loại:**
+  - *Giảm nhịp đẩy/hỏi xuống 80ms:* rẻ nhưng nhân 2.5 lần số request đổ vào chính cái backend đang xếp hàng — làm chậm mọi màn khác để cứu một màn.
+  - *Đẩy qua Reverb (WebSocket):* bỏ được lần chờ nhịp phía trình duyệt nhưng vẫn còn chặng Agent → backend, và mỗi số cân thành một broadcast qua backend một tiến trình.
+  - *Bỏ `php artisan serve`, chạy web server thật:* **vẫn nên làm** (xem `session-log.md` mục 38) nhưng là việc hạ tầng riêng — nó không xoá được hai lần chờ nhịp nên một mình không đạt tốc độ VBA.
+- **Hệ quả / rủi ro phải chấp nhận:**
+  - **Bắt buộc cài lại MSI** trên máy trạm — không có cách nào cập nhật Agent mà không đụng vào máy.
+  - **Mixed content nếu sau này chạy HTTPS:** trang `https://` gọi `http://127.0.0.1` bị Chrome chặn. Hiện web chạy HTTP nên chưa vướng; chuyển HTTPS thì phải cấp chứng thư cho Agent hoặc quay về đường backend.
+  - **Private Network Access:** mở màn bằng `http://10.0.60.209:3001` (IP riêng) mà gọi xuống loopback là request "xuyên vùng mạng" — Chrome gửi preflight. Agent phải trả `Access-Control-Allow-Private-Network: true`, thiếu là đường cục bộ chết câm và tụt về backend mà không ai biết vì sao.
+  - Endpoint không có xác thực. Chấp nhận được vì chỉ nghe loopback (không có ai ngoài mạng tới được) và chỉ trả đúng một con số cân đọc-được. **Không** được mở ra `0.0.0.0` với lý do gì.
+  - Hai bộ cài trên cùng một máy phải khác cổng — đã tách sẵn theo `ScaleKind`.

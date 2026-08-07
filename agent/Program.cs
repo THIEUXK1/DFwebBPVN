@@ -46,7 +46,14 @@ public class Program
                     return opts;
                 });
                 services.AddSingleton<RackSender>();
+                // Bản chụp số cân dùng chung giữa vòng đọc và đường cục bộ (ADR-013). Singleton
+                // là bắt buộc: hai hosted service dưới đây phải nhìn vào ĐÚNG một ô nhớ.
+                services.AddSingleton<ScaleSnapshot>();
                 services.AddHostedService<Worker>();
+                // Đường nhanh cho trình duyệt trên chính máy trạm. Chạy song song với Worker và
+                // không phụ thuộc nó: cân chết thì endpoint vẫn trả has_reading=false, để màn
+                // hình phân biệt được "cân im" với "không gọi được Agent".
+                services.AddHostedService<LocalWeightServer>();
             });
 
     /// <summary>

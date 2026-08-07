@@ -54,15 +54,63 @@ const LOST_SIGNAL_MS = 3000;
  */
 export type ScaleKind = 'SMALL' | 'LARGE';
 
+/**
+ * ĐƯỜNG CÂN CỤC BỘ (ADR-013) — cổng mà Agent trên CHÍNH máy trạm này đang nghe.
+ *
+ * Vì sao có: Agent đọc cân mỗi 10ms, nhưng đi qua backend thì con số phải chờ hai lần nhịp
+ * (Agent đẩy 200ms + màn hình hỏi 200ms) cộng hai chặng mạng qua một backend xử lý tuần tự —
+ * tổng 400-900ms. Đọc thẳng Agent trên loopback còn ~50ms, tức ngang bản VBA đang chạy ngoài
+ * xưởng (nó đọc cùng file log, cùng máy, không qua server nào).
+ *
+ * Con số cổng là QUY ƯỚC hai bên tự biết: trang web không có cách nào đọc `appsettings.json` của
+ * Agent. Đổi ở đây thì phải đổi `LocalWeightServer.CongMacDinh*` bên `agent/LocalWeightServer.cs`.
+ * Hai loại cân hai cổng vì hai bộ cài chạy song song được trên cùng một máy.
+ */
+const CONG_AGENT_CUC_BO: Record<ScaleKind, number> = { SMALL: 8770, LARGE: 8771 };
+
+/**
+ * Cắt cuộc gọi cục bộ sau ngần này. Trên loopback, trả lời mất chưa tới 1ms và cổng đóng thì bị
+ * từ chối ngay — ngưỡng này chỉ để phòng trường hợp bệnh hoạn (Agent treo giữa lúc ghi), không
+ * phải để chờ đợi gì.
+ */
+const TIMEOUT_CUC_BO_MS = 300;
+
+/**
+ * Hỏng đường cục bộ thì nghỉ ngần này rồi thử lại — Agent khởi động lại (cập nhật, restart
+ * service) là tự dùng lại đường nhanh mà thợ không phải F5.
+ *
+ * Đừng hạ xuống quá thấp: máy văn phòng mở màn hình này KHÔNG có Agent, nên với chúng mọi lần
+ * thử đều hỏng và chỉ tổ đốt thêm một cuộc gọi mỗi nhịp.
+ */
+const THU_LAI_CUC_BO_MS = 30_000;
+
 export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
   // liveWeight = NET (đã trừ bì) — giá trị dùng để hiển thị/so dung sai/gửi khi lưu.
   const liveWeight = ref<number>(0);
   const grossWeight = ref<number>(0);
   const isStable = ref<boolean>(false);
 
-  // scaleOnline = gọi được API backend. KHÔNG đồng nghĩa với "cân đang hoạt động": Agent có thể
-  // đã chết hoặc cân bị rút dây mà backend vẫn trả 200 kèm số cũ trong cache.
+  // scaleOnline = CÓ NGUỒN số cân đang trả lời — Agent cục bộ hoặc backend, tuỳ đường nào đang
+  // dùng (ADR-013). KHÔNG đồng nghĩa với "cân đang hoạt động": Agent có thể đã chết hoặc cân bị
+  // rút dây mà nguồn vẫn trả 200 kèm số cũ (xem `signalLost`).
+  //
+  // Từ ADR-013 nó cũng KHÔNG còn đồng nghĩa với "backend sống": đang chạy đường cục bộ thì màn
+  // hình không hề gọi backend trong nhịp này. Chỗ theo dõi backend là `duongThong` của hàng đợi
+  // gửi mẻ (services/saveQueue) — đúng chỗ, vì hậu quả của backend chết là KHÔNG LƯU ĐƯỢC chứ
+  // không phải mất số cân.
   const scaleOnline = ref<boolean>(false);
+
+  /**
+   * Đang lấy số từ Agent cục bộ (true) hay vòng qua backend (false).
+   *
+   * Xuất ra ngoài để màn hình vừa dày được nhịp poll khi đường nhanh còn sống, vừa nói cho người
+   * đứng máy biết đang chạy đường nào — không nhìn thấy thì lúc đường nhanh chết âm thầm sẽ
+   * không ai hiểu vì sao số cân bỗng ì ra.
+   */
+  const nguonCucBo = ref<boolean>(false);
+
+  // 0 = cứ thử đường cục bộ. Khác 0 = mốc thời gian được phép thử lại (xem THU_LAI_CUC_BO_MS).
+  let mocThuLaiCucBo = 0;
 
   // signalLive = Agent thực sự vừa đẩy số lên trong vòng STALE_READING_MS. Đây là CỔNG AN TOÀN:
   // điều kiện chốt bì, tính delta và cho phép lưu. KHÔNG dùng nó để bật đèn cảnh báo — xem
@@ -208,6 +256,54 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
     liveWeight.value = 0;
   }
 
+  /**
+   * Áp một bộ số đọc lên màn hình. Dùng CHUNG cho cả hai nguồn — Agent cục bộ cố ý trả về đúng
+   * hình dạng JSON của `DeviceController::getReading` (xem `agent/LocalWeightServer.cs`), nên ở
+   * đây không có nhánh nào rẽ theo nguồn. Lệch một tên trường là sinh ra hai đoạn xử lý phải giữ
+   * đồng bộ với nhau mãi mãi.
+   */
+  function apDungSoDoc(d: any) {
+    // has_reading/age_ms là trường mới; backend cũ chưa có thì `age_ms === undefined` — coi như
+    // còn tươi để không làm hỏng màn hình khi frontend deploy trước backend.
+    const ageMs = d?.age_ms;
+    readingAgeMs.value = typeof ageMs === 'number' ? ageMs : null;
+    const fresh = d?.has_reading !== false && (ageMs == null || ageMs <= STALE_READING_MS);
+
+    ingestRawWeight(parseFloat(d?.weight ?? 0), Boolean(d?.is_stable), fresh);
+    scaleOnline.value = true;
+  }
+
+  /**
+   * Hỏi Agent trên chính máy này. Trả `null` nghĩa là không có đường đó — người gọi phải tự rơi
+   * về backend.
+   *
+   * Dùng `fetch` chứ không phải `axios`: axios đã bị đặt `baseURL` trỏ backend và có interceptor
+   * gắn token đăng nhập. Agent là một tiến trình khác, không liên quan gì tới phiên đăng nhập —
+   * gửi token sang đó là rò một thứ nó không cần biết.
+   */
+  async function docTuAgentCucBo(): Promise<any | null> {
+    // AbortController + setTimeout chứ không phải `AbortSignal.timeout()`: bản build còn hạ mục
+    // tiêu xuống chrome >= 49 (vite.config), mà `AbortSignal.timeout` không có polyfill trong
+    // @vitejs/plugin-legacy — dùng thẳng là máy trạm đời cũ ném TypeError mỗi nhịp.
+    const huy = new AbortController();
+    const hetGio = setTimeout(() => huy.abort(), TIMEOUT_CUC_BO_MS);
+    try {
+      const res = await fetch(`http://127.0.0.1:${CONG_AGENT_CUC_BO[scaleKind]}/weight`, {
+        cache: 'no-store',
+        credentials: 'omit',
+        signal: huy.signal,
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      // Agent không chạy / cổng đóng / Chrome chặn (xem ghi chú Private Network Access trong
+      // agent/LocalWeightServer.cs) — mọi trường hợp đều xử lý y nhau: về đường backend.
+      return null;
+    } finally {
+      clearTimeout(hetGio);
+    }
+  }
+
   const fetchLiveWeight = async () => {
     // GIẢ LẬP: nạp lại số đang gõ mỗi nhịp, đúng như cái cân thật bắn số liên tục.
     //
@@ -219,6 +315,21 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
       return; // vẫn không hỏi Agent: đang giả lập thì số thật phải bị bỏ qua hoàn toàn
     }
     if (!currentWorkstation.value) return;
+
+    // ĐƯỜNG NHANH TRƯỚC (ADR-013). Hỏng thì rơi thẳng xuống đường backend NGAY TRONG NHỊP NÀY,
+    // không bỏ trắng một nhịp — thợ không được phép thấy số cân khựng lại chỉ vì Agent vừa restart.
+    if (Date.now() >= mocThuLaiCucBo) {
+      const cucBo = await docTuAgentCucBo();
+      if (cucBo) {
+        nguonCucBo.value = true;
+        mocThuLaiCucBo = 0; // còn dùng được thì lần sau vẫn thử trước, không nghỉ
+        apDungSoDoc(cucBo);
+        return;
+      }
+      nguonCucBo.value = false;
+      mocThuLaiCucBo = Date.now() + THU_LAI_CUC_BO_MS;
+    }
+
     try {
       // Response API là object PHẲNG ({status, workstation_id, weight, is_stable}) — không
       // lồng thêm lớp "data" (bug đã sửa ở V1 ngày 2026-07-17).
@@ -243,20 +354,12 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
       const res = await axios.get(
         `/api/devices/readings/${encodeURIComponent(String(khoaCan))}?local=1&kind=${scaleKind}`
       );
-      if (res.data?.status === 'SUCCESS') {
-        // has_reading/age_ms là trường mới; backend cũ chưa có thì `age_ms === undefined` —
-        // coi như còn tươi để không làm hỏng màn hình khi frontend deploy trước backend.
-        const ageMs = res.data.age_ms;
-        readingAgeMs.value = typeof ageMs === 'number' ? ageMs : null;
-        const fresh = res.data.has_reading !== false && (ageMs == null || ageMs <= STALE_READING_MS);
-
-        ingestRawWeight(parseFloat(res.data.weight ?? 0), Boolean(res.data.is_stable), fresh);
-        scaleOnline.value = true;
-      }
+      if (res.data?.status === 'SUCCESS') apDungSoDoc(res.data);
     } catch {
       // Không gọi tới được backend (mất mạng, server chết, DNS hỏng...). Khác với nhánh
       // `fresh = false` ở trên — chỗ đó backend CÓ trả lời, chỉ là số đã cũ.
       scaleOnline.value = false;
+      nguonCucBo.value = false;
       signalLive.value = false;
       // Không gọi được backend cũng là "không có số mới" — nhưng vẫn phải qua cùng một ngưỡng
       // thời gian, nếu không thì một cú rớt mạng thoáng qua lại bật đèn đỏ tức thì.
@@ -299,6 +402,7 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
     grossWeight,
     isStable,
     scaleOnline,
+    nguonCucBo,
     signalLive,
     signalLost,
     readingAgeMs,

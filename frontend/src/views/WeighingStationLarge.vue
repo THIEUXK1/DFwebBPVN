@@ -194,6 +194,10 @@
     <WeighingCheckerModal :show="showChecker" @close="showChecker = false" />
 
     <!-- z-index 40: dưới lớp phủ bảng hàng đợi (.queue-overlay = 60) -->
+    <!-- Hộp thoại thay alert/confirm — xem composables/useHopThoai.ts. Không dùng hộp thoại gốc
+         vì Chrome đá màn hình khỏi F11 mỗi lần nó bật lên. -->
+    <HopThoaiVba :thoai="thoai" @dong="dongThoai" />
+
     <FullscreenButton variant="vba" :z-index="40" @change="refit" />
   </div>
 </template>
@@ -229,6 +233,8 @@ import { useRouter } from 'vue-router';
 import axios from 'axios';
 import WeighingCheckerModal from '../components/weighing/WeighingCheckerModal.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
+import HopThoaiVba from '../components/HopThoaiVba.vue';
+import { useHopThoai } from '../composables/useHopThoai';
 import { currentWorkstation, adoptLocalWorkstation } from '../services/workstation';
 import { scannerService } from '../services/scanner';
 import { isFullscreen } from '../services/layout';
@@ -350,6 +356,10 @@ const procBoxAt = (i: number): Box => ({ l: 396, t: rowTop(i) + ROW_OFFSET, w: 1
 const rowNoBox = (i: number): Box => ({ l: 6.01, t: rowTop(i) + 12, w: 6.01, h: 12, f: 7.8 });
 
 /* ===== Thu/phóng khung cho vừa MỘT màn hình, không phải cuộn ===== */
+// Hộp thoại hỏi/báo vẽ TRONG TRANG. Dùng chung với /weighing-station-v2 — hai màn đều chạy F11
+// cả ca, mà hộp thoại gốc của trình duyệt đá màn hình ra khỏi toàn màn hình. Xem useHopThoai.ts.
+const { thoai, hoiXacNhan, baoTin, dongThoai } = useHopThoai();
+
 const rootRef = ref<HTMLElement | null>(null);
 const wrapRef = ref<HTMLElement | null>(null);
 const scale = ref(1);
@@ -406,7 +416,7 @@ const refit = () => requestAnimationFrame(fitAll);
 const router = useRouter();
 
 const {
-  liveWeight, grossWeight, isStable, scaleOnline, signalLive, signalLost, readingAgeMs, tareBaseline, armed,
+  liveWeight, grossWeight, isStable, scaleOnline, nguonCucBo, signalLive, signalLost, readingAgeMs, tareBaseline, armed,
   useSimValue, simulatedWeight,
   retare, resetTareForNewSlot, fetchLiveWeight, startPolling, stopPolling,
   // 'LARGE' = chỉ nhận số từ bộ cài Agent "Cân to" (service DFAgentLarge, mã trạm WS-LARGE-*).
@@ -659,6 +669,12 @@ function numDel() {
 const POLL_MS_WEIGHING = 200;
 const POLL_MS_IDLE = 1000;
 
+/**
+ * Nhịp khi đọc thẳng Agent "Cân to" trên máy này (ADR-013) — cuộc gọi không rời khỏi máy nên
+ * dày gấp 3 lần mà không tốn gì của máy chủ. Xem ghi chú đầy đủ ở WeighingStationV2.vue.
+ */
+const POLL_MS_CUC_BO = 60;
+
 const dangCan = computed(() => activeJob.value !== null || currentIndex.value >= 0);
 
 function capNhatNhipPoll() {
@@ -666,10 +682,15 @@ function capNhatNhipPoll() {
     stopPolling();
     return;
   }
-  startPolling(dangCan.value ? POLL_MS_WEIGHING : POLL_MS_IDLE);
+  if (!dangCan.value) {
+    startPolling(POLL_MS_IDLE);
+    return;
+  }
+  startPolling(nguonCucBo.value ? POLL_MS_CUC_BO : POLL_MS_WEIGHING);
 }
 
 watch(dangCan, capNhatNhipPoll);
+watch(nguonCucBo, capNhatNhipPoll);
 
 function onVisibilityChange() {
   if (!document.hidden) fetchLiveWeight();
@@ -854,7 +875,7 @@ const handleBarcodeScan = async (token: string) => {
     if (parsed.color === '' || parsed.code === '' || parsed.rack_lines.length === 0) {
       scannerService.playBeep(600, 400);
       scanning.value = false;
-      alert('Không đọc được mã QR này — kiểm tra lại đầu đọc hoặc mã tem.');
+      await baoTin('Không đọc được mã QR này — kiểm tra lại đầu đọc hoặc mã tem.');
       nextTick(() => scanInputRef.value?.focus());
       return;
     }
@@ -874,7 +895,7 @@ const handleBarcodeScan = async (token: string) => {
       const data = res.data.data;
       if (data.empty) {
         scannerService.playBeep(800, 300);
-        alert(res.data.message);
+        await baoTin(res.data.message);
         return;
       }
       if (activeJob.value?.id && activeJob.value.id !== data.job.id) {
@@ -892,7 +913,7 @@ const handleBarcodeScan = async (token: string) => {
     }
   } catch (err: any) {
     scannerService.playBeep(600, 400);
-    alert(err.response?.data?.message || 'Không thể mở lệnh sản xuất này.');
+    await baoTin(err.response?.data?.message || 'Không thể mở lệnh sản xuất này.');
   } finally {
     scanning.value = false;
     nextTick(() => scanInputRef.value?.focus());
@@ -1012,11 +1033,11 @@ function onUpdateRack(idx: number, value: string) {
 }
 
 /** btnClear_Click — xoá SẠCH form, đúng `For Each c In Me.Controls ... c.text = ""` của VBA. */
-function onClear(skipConfirm = false, alreadySaved = false) {
+async function onClear(skipConfirm = false, alreadySaved = false) {
   const hasUnsaved = Object.keys(capturedWeights.value).length > 0;
   const hasSomething = hasUnsaved || activeJob.value !== null;
   if (hasSomething && !skipConfirm) {
-    const ok = window.confirm(
+    const ok = await hoiXacNhan(
       hasUnsaved
         ? 'CLEAR sẽ xoá sạch màn hình, kể cả số đã cân nhưng CHƯA bấm SAVE.\n\nVẫn xoá?'
         : 'CLEAR sẽ xoá đơn đang mở khỏi màn hình. Quét lại mã QR để cân từ đầu.\n\nVẫn xoá?'
@@ -1114,19 +1135,26 @@ async function onSave() {
     return;
   }
 
+  // Mở cửa sổ in NGAY TẠI ĐÂY, trước mọi `await` — còn trong "user activation" của cú click SAVE
+  // nên trình duyệt không chặn. Mở sau khi lưu xong là bị chặn.
+  //
+  // PHẢI mở TRƯỚC hộp xác nhận, không phải sau như trước đây. `window.confirm` cũ là hàm ĐỒNG BỘ
+  // nên mở sau nó vẫn còn user activation; hộp thoại vẽ trong trang thì bắt buộc `await`, mà mở
+  // cửa sổ sau một `await` là đúng trường hợp Chrome/Edge chặn. Thợ bấm "KHÔNG" thì đóng lại.
+  const printWin = window.open('', '_blank', 'width=780,height=980');
+
   const unweighed = rows.filter((r: any) => r.weight === null).length;
   if (unweighed > 0) {
-    const ok = window.confirm(
+    const ok = await hoiXacNhan(
       `Còn ${unweighed} dòng CHƯA CÂN. Lưu bây giờ sẽ chốt các dòng đó là KHÔNG ĐẠT và không cân lại được nữa.\n\nVẫn lưu?`
     );
-    if (!ok) return;
+    if (!ok) {
+      printWin?.close();
+      return;
+    }
   }
 
   saving.value = true;
-
-  // Mở cửa sổ in NGAY TẠI ĐÂY, trước mọi `await` — còn trong "user activation" của cú click SAVE
-  // nên trình duyệt không chặn. Mở sau khi lưu xong là bị chặn.
-  const printWin = window.open('', '_blank', 'width=780,height=980');
 
   if (localQr || canTay) {
     const mocGioIn = nowSlipTimestamp();
@@ -1176,7 +1204,7 @@ async function onSave() {
     saving.value = false;
     scannerService.playBeep(1800, 150);
     clearSession();
-    onClear(true, true);
+    await onClear(true, true);
 
     if (!printWin) {
       errorMsg.value = 'Trình duyệt đã chặn cửa sổ in nên CHƯA IN được phiếu. Cho phép popup cho trang này để lần sau in được.';
@@ -1211,7 +1239,7 @@ async function onSave() {
     } else {
       await printSlip(printWin);
     }
-    onClear(true, true);
+    await onClear(true, true);
   } catch (err: any) {
     printWin?.close();
     // KHÔNG xoá capturedWeights khi lỗi — số vừa cân phải còn nguyên để bấm SAVE lại.
@@ -1329,7 +1357,7 @@ function dungPhieuTuLuoi(): string {
 const printSlip = async (preOpened?: Window | null) => {
   const win = cuaSoThat(preOpened) ?? window.open('', '_blank', 'width=780,height=980');
   if (!win) {
-    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    await baoTin('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
     return;
   }
   win.document.write('<p style="font-family:sans-serif;padding:20px;">Đang xử lý...</p>');
@@ -1349,7 +1377,7 @@ const printSlip = async (preOpened?: Window | null) => {
     await printSlipHtml(res.data?.data?.label_payload || '', win);
   } catch (err: any) {
     win.close();
-    alert(err.response?.data?.message || 'Không thể in phiếu cân.');
+    await baoTin(err.response?.data?.message || 'Không thể in phiếu cân.');
   }
 };
 

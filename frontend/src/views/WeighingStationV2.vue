@@ -1,5 +1,8 @@
 <template>
-  <div class="ws2-root">
+  <!-- `zoom` phóng to CẢ màn hình cân theo nấc thợ chọn (xem doiCoManHinh). `--df-zoom` để các
+       chỗ dùng vw/vh chia ngược lại — zoom nhân cả đơn vị theo màn hình, quên chia là hộp thoại
+       rộng hơn màn hình thật. -->
+  <div class="ws2-root" :style="{ zoom: mucPhongTo, '--df-zoom': mucPhongTo }">
     <!-- Form LUÔN hiện sẵn ngay khi vào màn, kể cả chưa có mẻ nào — đúng app VBA gốc: form
          mở là đứng đó với các ô trống, thao tác viên quét thẳng vào ô COLOR để nạp đơn
          (txt_color_AfterUpdate). Không còn màn quét riêng chắn phía trước. -->
@@ -103,6 +106,16 @@
           {{ currentWorkstation?.code || 'chưa gán trạm' }}
         </span>
 
+        <!-- Đang chạy đường nào (ADR-013). Phải nhìn thấy được: đường cục bộ chết là số cân chậm
+             lại 5-10 lần mà KHÔNG có lỗi nào hiện ra, không có chỉ báo này thì không ai đoán nổi
+             vì sao mặt số bỗng ì đi. -->
+        <span class="raw-nguon" :class="nguonCucBo ? 'nhanh' : 'cham'"
+              :title="nguonCucBo
+                ? 'Đọc thẳng Agent trên máy này (~70ms) — nhanh như bản Excel VBA'
+                : 'Đang vòng qua máy chủ (~400-900ms). Kiểm tra service DFAgent trên máy này nếu muốn nhanh hơn.'">
+          {{ nguonCucBo ? '⚡ Agent tại chỗ' : '☁ qua máy chủ' }}
+        </span>
+
         <!-- HAI sự cố khác hẳn nhau, cách xử lý cũng khác, nên phải nói rõ là cái nào:
              · gọi được backend nhưng số đã cũ  -> Agent/PuTTY/dây cân
              · KHÔNG gọi được backend           -> mạng hoặc máy chủ
@@ -143,6 +156,14 @@
           <span v-if="flushing" class="queue-spin">đang gửi…</span>
           <span v-else-if="!duongThong" class="queue-spin">mất kết nối</span>
         </button>
+
+        <!-- Cỡ hiển thị — để ở đây thay vì trong một trang cài đặt: thợ đứng cân, đeo găng, cần
+             chỉnh được ngay tại chỗ khi đổi ca hoặc đổi người. -->
+        <span class="zoom-ctl" title="Phóng to/thu nhỏ toàn màn hình cân (máy này nhớ lựa chọn)">
+          <button class="vba-btn tiny" :disabled="mucPhongTo <= MUC_PHONG[0]" @click="doiCoManHinh(-1)">A−</button>
+          <b>{{ Math.round(mucPhongTo * 100) }}%</b>
+          <button class="vba-btn tiny" :disabled="mucPhongTo >= MUC_PHONG[MUC_PHONG.length - 1]" @click="doiCoManHinh(1)">A+</button>
+        </span>
 
         <label class="sim-toggle">
           <input type="checkbox" v-model="useSimValue" /> giả lập
@@ -251,6 +272,9 @@
       </div>
     </div>
 
+    <!-- Hộp thoại thay alert/confirm — xem composables/useHopThoai.ts. -->
+    <HopThoaiVba :thoai="thoai" @dong="dongThoai" />
+
     <WeighingCheckerModal :show="showChecker" @close="showChecker = false" />
 
     <!-- z-index 40: dưới lớp phủ bảng hàng đợi (.queue-overlay = 50) -->
@@ -278,6 +302,8 @@ import axios from 'axios';
 import WeighingCheckerModal from '../components/weighing/WeighingCheckerModal.vue';
 import VbaRackGrid from '../components/weighing/VbaRackGrid.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
+import HopThoaiVba from '../components/HopThoaiVba.vue';
+import { useHopThoai } from '../composables/useHopThoai';
 import { currentWorkstation, adoptLocalWorkstation } from '../services/workstation';
 import { scannerService } from '../services/scanner';
 import { isFullscreen } from '../services/layout';
@@ -294,7 +320,7 @@ import {
 const router = useRouter();
 
 const {
-  liveWeight, grossWeight, isStable, scaleOnline, signalLive, signalLost, readingAgeMs, tareBaseline, armed,
+  liveWeight, grossWeight, isStable, scaleOnline, nguonCucBo, signalLive, signalLost, readingAgeMs, tareBaseline, armed,
   useSimValue, simulatedWeight,
   retare, resetTareForNewSlot, fetchLiveWeight, startPolling, stopPolling,
   // 'SMALL' = chỉ nhận số từ bộ cài Agent "Cân nhỏ" (service DFAgentSmall, mã trạm WS-SCALE-*).
@@ -410,10 +436,20 @@ function cancelAbandonedJob(jobId: string) {
 const POLL_MS_WEIGHING = 200;
 const POLL_MS_IDLE = 1000;
 
+/**
+ * Nhịp khi đang đọc thẳng Agent trên máy này (ADR-013).
+ *
+ * Dày gấp hơn 3 lần nhịp qua backend mà KHÔNG tốn gì của ai: cuộc gọi không rời khỏi máy, không
+ * chạm mạng, không tốn một vòng bootstrap Laravel nào. 60ms cộng với 10ms nhịp đọc của Agent cho
+ * độ trễ tổng ~70ms — đủ để mặt số chạy mượt như bản VBA.
+ */
+const POLL_MS_CUC_BO = 60;
+
 const dangCan = computed(() => activeJob.value !== null || currentIndex.value >= 0);
 
 function pollIntervalForState() {
-  return dangCan.value ? POLL_MS_WEIGHING : POLL_MS_IDLE;
+  if (!dangCan.value) return POLL_MS_IDLE;
+  return nguonCucBo.value ? POLL_MS_CUC_BO : POLL_MS_WEIGHING;
 }
 
 /**
@@ -440,6 +476,10 @@ function capNhatNhipPoll() {
 // Đổi nhịp ngay khi bắt đầu/kết thúc cân. `dangCan` là boolean nên chỉ khởi động lại bộ đếm khi
 // thực sự đổi trạng thái, không phải mỗi lần object job được gán lại hay mỗi lần sang ô kế.
 watch(dangCan, capNhatNhipPoll);
+
+// Đường cục bộ sống lại (Agent vừa được cài/restart) hoặc chết đi -> đổi nhịp ngay, không đợi
+// thợ bấm NEXT. `nguonCucBo` là boolean nên chỉ khởi động lại bộ đếm khi thật sự đổi đường.
+watch(nguonCucBo, capNhatNhipPoll);
 
 function onVisibilityChange() {
   if (!document.hidden) fetchLiveWeight();
@@ -740,7 +780,7 @@ const handleBarcodeScan = async (token: string) => {
     if (parsed.color === '' || parsed.code === '' || parsed.rack_lines.length === 0) {
       scannerService.playBeep(600, 400);
       scanning.value = false;
-      alert('Không đọc được mã QR này — kiểm tra lại đầu đọc hoặc mã tem.');
+      await baoTin('Không đọc được mã QR này — kiểm tra lại đầu đọc hoặc mã tem.');
       nextTick(() => scanInputRef.value?.focus());
       return;
     }
@@ -758,7 +798,7 @@ const handleBarcodeScan = async (token: string) => {
       const data = res.data.data;
       if (data.empty) {
         scannerService.playBeep(800, 300);
-        alert(res.data.message);
+        await baoTin(res.data.message);
         return;
       }
       applyActiveJob(data.job, data.batch);
@@ -766,7 +806,7 @@ const handleBarcodeScan = async (token: string) => {
     }
   } catch (err: any) {
     scannerService.playBeep(600, 400);
-    alert(err.response?.data?.message || 'Không thể mở lệnh sản xuất này.');
+    await baoTin(err.response?.data?.message || 'Không thể mở lệnh sản xuất này.');
   } finally {
     scanning.value = false;
     // Trả con trỏ về ô quét để bắn mã kế tiếp ngay, không phải bấm chuột lại.
@@ -909,14 +949,14 @@ function onUpdateRack(idx: number, value: string) {
  * cân chưa lưu. VBA xoá thẳng không hỏi, mà nút CLEAR lại to bằng và nằm sát nút SAVE nên
  * bấm nhầm là mất trắng cả mẻ vừa cân. Không có số nào chưa lưu thì xoá thẳng, không hỏi.
  */
-function onClear(skipConfirm = false, alreadySaved = false) {
+async function onClear(skipConfirm = false, alreadySaved = false) {
   const hasUnsaved = Object.keys(capturedWeights.value).length > 0;
   // Hỏi kể cả khi CHƯA cân ô nào, miễn là đang có đơn trên màn hình: bấm nhầm lúc đó tuy không
   // mất số cân nhưng vẫn mất đơn vừa quét, phải chạy đi lấy phiếu quét lại. Màn hình đang trắng
   // thì xoá thẳng, không hỏi (bấm CLEAR trên form trống là vô hại).
   const hasSomething = hasUnsaved || activeJob.value !== null;
   if (hasSomething && !skipConfirm) {
-    const ok = window.confirm(
+    const ok = await hoiXacNhan(
       hasUnsaved
         ? 'CLEAR sẽ xoá sạch màn hình, kể cả số đã cân nhưng CHƯA bấm SAVE.\n\nVẫn xoá?'
         : 'CLEAR sẽ xoá đơn đang mở khỏi màn hình. Quét lại mã QR để cân từ đầu.\n\nVẫn xoá?'
@@ -1055,20 +1095,26 @@ async function onSave() {
   // Dòng chưa cân sẽ bị chốt luôn thành KHÔNG ĐẠT và KHÔNG cân lại được (server chặn ghi đè
   // dòng đã COMPLETED). VBA lưu thẳng không hỏi, nhưng hậu quả ở đây là không thể hoàn tác
   // nên hỏi lại — chỉ hiện khi thật sự còn ô chưa cân, không cản luồng cân đủ 9 ô.
+  // Mở cửa sổ in NGAY TẠI ĐÂY, trước mọi `await` — vẫn còn trong "user activation" của cú click
+  // SAVE nên trình duyệt không chặn. Mở sau khi lưu xong là bị chặn (xem ghi chú ở printSlip).
+  //
+  // PHẢI mở TRƯỚC hộp xác nhận, không phải sau như trước đây. `window.confirm` cũ là hàm ĐỒNG BỘ
+  // nên mở sau nó vẫn còn user activation; hộp thoại vẽ trong trang thì bắt buộc `await`, mà mở
+  // cửa sổ sau một `await` là đúng trường hợp Chrome/Edge chặn. Thợ bấm "Không" thì đóng lại.
+  const printWin = window.open('', '_blank', 'width=780,height=980');
+
   const unweighed = rows.filter((r: any) => r.weight === null).length;
   if (unweighed > 0) {
-    const ok = window.confirm(
+    const ok = await hoiXacNhan(
       `Còn ${unweighed} dòng CHƯA CÂN. Lưu bây giờ sẽ chốt các dòng đó là KHÔNG ĐẠT và không cân lại được nữa.\n\nVẫn lưu?`
     );
-    if (!ok) return;
+    if (!ok) {
+      printWin?.close();
+      return;
+    }
   }
 
   saving.value = true;
-
-  // Mở cửa sổ in NGAY TẠI ĐÂY, trước mọi `await` — vẫn còn trong "user activation" của cú click
-  // SAVE nên trình duyệt không chặn. Mở sau khi lưu xong là bị chặn (xem ghi chú ở printSlip).
-  // window.confirm ở trên KHÔNG phá chuỗi này vì nó đồng bộ.
-  const printWin = window.open('', '_blank', 'width=780,height=980');
 
   // ===== Mẻ đọc từ QR VÀ mẻ cân tay: đi qua HÀNG ĐỢI =====
   // Xếp hàng TRƯỚC khi gửi, không phải sau khi gửi hỏng. Xếp sau thì có kẽ hở: trình duyệt bị
@@ -1151,7 +1197,7 @@ async function onSave() {
 
     // Phiếu đã in xong từ trước khi gọi mạng, nên dù kết quả thế nào cũng xoá form để thợ quét
     // mẻ kế tiếp ngay — không mất gì cả, mọi mẻ chưa lên được server đều nằm trong hàng đợi.
-    onClear(true, true);
+    await onClear(true, true);
 
     if (!printWin) {
       errorMsg.value = 'Trình duyệt đã chặn cửa sổ in nên CHƯA IN được phiếu. Cho phép popup cho trang này để lần sau in được.';
@@ -1193,7 +1239,7 @@ async function onSave() {
     } else {
       await printSlip(printWin);
     }
-    onClear(true, true);
+    await onClear(true, true);
   } catch (err: any) {
     printWin?.close(); // không để lại cửa sổ trắng lơ lửng khi lưu hỏng
     // KHÔNG xoá capturedWeights khi lỗi — số thao tác viên vừa cân phải còn nguyên để bấm
@@ -1344,7 +1390,7 @@ function dungPhieuTuLuoi(): string {
 const printSlip = async (preOpened?: Window | null) => {
   const win = cuaSoThat(preOpened) ?? window.open('', '_blank', 'width=780,height=980');
   if (!win) {
-    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    await baoTin('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
     return;
   }
   win.document.write('<p style="font-family:sans-serif;padding:20px;">Đang xử lý...</p>');
@@ -1371,9 +1417,45 @@ const printSlip = async (preOpened?: Window | null) => {
     await printSlipHtml(res.data?.data?.label_payload || '', win);
   } catch (err: any) {
     win.close();
-    alert(err.response?.data?.message || 'Không thể in phiếu cân.');
+    await baoTin(err.response?.data?.message || 'Không thể in phiếu cân.');
   }
 };
+
+/* ===================== HỘP THOẠI VẼ TRONG TRANG ===================== */
+
+// Vì sao không dùng window.confirm/alert: xem composables/useHopThoai.ts (Chrome đá khỏi F11).
+// Dùng chung với /weighing-station-large — hai màn cùng chạy toàn màn hình cả ca.
+const { thoai, hoiXacNhan, baoTin, dongThoai } = useHopThoai();
+
+/* ===================== CỠ HIỂN THỊ ===================== */
+
+/**
+ * Phóng to toàn màn hình cân theo nấc, nhớ lại cho lần sau (yêu cầu 07/08/2026 "muốn to hơn để
+ * dễ nhìn hơn").
+ *
+ * Dùng `zoom` chứ không phải `transform: scale()`: zoom tính lại bố cục thật nên chữ vẫn nét và
+ * không sinh thanh cuộn ngang giả. Đổi lại, mọi đơn vị `vw`/`vh` bên trong cũng bị nhân theo —
+ * chỗ nào dùng đã chia lại cho `--df-zoom`, xem phần style.
+ *
+ * Để thợ tự chỉnh chứ không chốt cứng một con số: mỗi trạm một cỡ màn hình, đứng gần xa khác nhau,
+ * mà đoán sai thì hoặc chữ vẫn bé hoặc bảng 9 dòng tràn khỏi màn.
+ */
+const MUC_PHONG = [1, 1.25, 1.5, 1.75];
+const KHOA_MUC_PHONG = 'ws2.co-hien-thi';
+const mucPhongTo = ref(napMucPhong());
+
+function napMucPhong(): number {
+  const v = Number(localStorage.getItem(KHOA_MUC_PHONG));
+  // Mặc định 1.25 chứ không phải 1: người dùng đã nói thẳng là bản 100% khó nhìn.
+  return MUC_PHONG.includes(v) ? v : 1.25;
+}
+
+function doiCoManHinh(buoc: number) {
+  const dangO = MUC_PHONG.indexOf(mucPhongTo.value);
+  const moi = MUC_PHONG[Math.min(MUC_PHONG.length - 1, Math.max(0, (dangO < 0 ? 1 : dangO) + buoc))];
+  mucPhongTo.value = moi;
+  localStorage.setItem(KHOA_MUC_PHONG, String(moi));
+}
 
 /* ===================== HÀNG ĐỢI GỬI MẺ ===================== */
 
@@ -1426,14 +1508,14 @@ async function onThuLai(key: string) {
  * Bỏ một mẻ khỏi hàng đợi. Hỏi xác nhận vì đây là thao tác KHÔNG hoàn tác được từ màn hình cân:
  * phiếu đã in ra giấy rồi mà mẻ thì sẽ không bao giờ lên máy chủ nữa.
  */
-function onBoMe(q: { idempotency_key: string; nhan: string; queued_at: string }) {
+async function onBoMe(q: { idempotency_key: string; nhan: string; queued_at: string }) {
   const dong = [
     `Bỏ hẳn mẻ "${q.nhan || '—'}" (xếp hàng lúc ${formatQueueTime(q.queued_at)}) khỏi hàng đợi?`,
     '',
     'Mẻ này sẽ KHÔNG BAO GIỜ được gửi lên máy chủ nữa, trong khi phiếu đã in ra giấy.',
     'Chỉ bỏ khi phiếu đó cũng bị huỷ (quét nhầm, cân lại mẻ khác).',
   ].join('\n');
-  if (!confirm(dong)) return;
+  if (!await hoiXacNhan(dong)) return;
 
   const daBo = boMe(q.idempotency_key);
   queueItems.value = danhSachChoGui();
@@ -1497,7 +1579,9 @@ onUnmounted(() => {
 .ws2-root {
   background: #eef1f6;
   color: #0d1520;
-  min-height: 100vh;
+  /* Chia cho mức phóng: `zoom` nhân mọi chiều dài bên trong, để nguyên 100vh là nền cao hơn màn
+     hình đúng bằng hệ số phóng và trang luôn có thanh cuộn dọc thừa. */
+  min-height: calc(100vh / var(--df-zoom, 1));
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -1962,10 +2046,34 @@ onUnmounted(() => {
   background: #fff;
   border-radius: 12px;
   padding: 16px;
-  width: min(860px, 94vw);
-  max-height: 86vh;
+  /* vw/vh chia lại cho mức phóng — xem ghi chú ở .ws2-root. */
+  width: min(860px, calc(94vw / var(--df-zoom, 1)));
+  max-height: calc(86vh / var(--df-zoom, 1));
   overflow: auto;
   box-shadow: 0 12px 40px rgba(10, 20, 40, 0.3);
+}
+
+/* Chỉ báo đường lấy số cân — chữ nhỏ, không tranh chỗ với số cân, nhưng luôn có mặt. */
+.raw-nguon {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  cursor: help;
+}
+
+.raw-nguon.nhanh { background: #e6f7ec; color: #1a7f43; border: 1px solid #b7e3c8; }
+.raw-nguon.cham { background: #f1f4f9; color: #6b7488; border: 1px solid #dde2ea; }
+
+/* ===== Nút chỉnh cỡ hiển thị ===== */
+.zoom-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #56617a;
 }
 
 .queue-head {

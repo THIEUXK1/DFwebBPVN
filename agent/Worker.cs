@@ -32,6 +32,7 @@ public class Worker : BackgroundService
     private readonly bool _printEnabled;
     private readonly RackSender _rackSender;
     private readonly RackOptions _rackOptions;
+    private readonly ScaleSnapshot _snapshot;
 
     // Trạng thái lần đẩy gần nhất của TỪNG backend, chỉ để quyết định có ghi log hay không.
     //
@@ -68,8 +69,10 @@ public class Worker : BackgroundService
         OfflineQueue offlineQueue,
         PrinterDiscovery printerDiscovery,
         RackSender rackSender,
-        RackOptions rackOptions)
+        RackOptions rackOptions,
+        ScaleSnapshot snapshot)
     {
+        _snapshot = snapshot;
         _logger = logger;
         _config = config;
         _scaleReader = scaleReader;
@@ -114,7 +117,7 @@ public class Worker : BackgroundService
         // cau hinh cu chua co truong nay. Xem DFAgentSetup.wxs (dropdown chon vai tro
         // luc cai) va session-log.md muc lien quan (2026-07-29).
         _role = _config.GetValue<string>("Workstation:Role", "BOTH") ?? "BOTH";
-        _scaleEnabled = _role is "BOTH" or "SCALE_ONLY";
+        _scaleEnabled = ScaleEnabled(_config);
         _printEnabled = _role is "BOTH" or "PRINT_ONLY";
 
         _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
@@ -182,6 +185,20 @@ public class Worker : BackgroundService
     /// Mặc định SMALL để cấu hình cũ (chưa có khóa này) giữ nguyên hành vi: máy đã cài bản
     /// Agent cũ vẫn ra đúng mã trạm "WS-SCALE-&lt;TÊN MÁY&gt;" như trước, không đổi sau khi cập nhật.
     /// </summary>
+    /// <summary>
+    /// Bản cài này có ĐỌC CÂN hay không.
+    ///
+    /// Tách ra thành static dùng chung với <see cref="LocalWeightServer"/> (ADR-013): bản
+    /// RACK_ONLY (`appsettings.large-inout.json`) không đọc cân, nên nó mà mở cổng cân cục bộ thì
+    /// vừa phục vụ một bản chụp rỗng vĩnh viễn, vừa có thể GIÀNH MẤT cổng của bản SCALE_ONLY cài
+    /// cùng máy — hai bản đó khác service name nên chạy song song được.
+    /// </summary>
+    public static bool ScaleEnabled(IConfiguration config)
+    {
+        string role = config.GetValue<string>("Workstation:Role", "BOTH") ?? "BOTH";
+        return role is "BOTH" or "SCALE_ONLY";
+    }
+
     public static string ResolveScaleKind(IConfiguration config)
     {
         string kind = (config.GetValue<string>("Workstation:ScaleKind") ?? "").Trim().ToUpperInvariant();
@@ -291,6 +308,12 @@ public class Worker : BackgroundService
                     // qua khi không có số hợp lệ), không cần Agent tự làm việc này.
                     if (currentWeight.HasValue)
                     {
+                        // Ghi bản chụp NGAY tại nhịp đọc (10ms), trước và độc lập với mọi việc
+                        // mạng: đây là thứ LocalWeightServer trả cho trình duyệt trên chính máy
+                        // này (ADR-013). Đặt nó sau cổng nhịp đẩy 200ms là vứt bỏ đúng cái mà
+                        // đường cục bộ sinh ra để có.
+                        _snapshot.Ghi(currentWeight.Value, isStable);
+
                         if (Math.Abs(currentWeight.Value - lastLoggedWeight) > 0.05)
                         {
                             _logger.LogInformation("Scale Weight Changed: {W} kg (Stable: {Stable})", currentWeight.Value, isStable);
