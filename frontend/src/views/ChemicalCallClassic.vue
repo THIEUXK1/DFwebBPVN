@@ -1,7 +1,7 @@
 <template>
   <!-- `pageWrapper` là HẰNG SỐ quyết định một lần lúc khởi tạo (xem script). -->
   <component :is="pageWrapper">
-  <div class="classic-container">
+  <div class="classic-container" ref="rootRef" :style="rootH ? { minHeight: rootH + 'px' } : undefined">
     <div v-if="errorMsg" class="alert-box alert-error">⚠️ {{ errorMsg }}</div>
 
     <div v-if="loading" class="card text-center padding-xl text-muted">
@@ -96,6 +96,25 @@ const loading = ref(true);
 const actionLoading = ref<number | null>(null);
 const errorMsg = ref('');
 let pollInterval: any = null;
+
+// Đo khoảng trống dọc còn lại thật (không dùng `100vh`) — trang nằm trong
+// `.content-container` của AppLayout (đã có thanh trên + padding riêng) nên `100vh` luôn
+// dài hơn phần còn lại thật và sinh cuộn thừa. Gán vào `min-height` (không phải `height`)
+// để khi nội dung cao hơn khung thì trang vẫn giãn ra và cuộn bình thường thay vì bị cắt.
+// Cùng cách làm với ChemicalCallPendingClassic.vue / WeighingStationLarge.vue.
+const rootRef = ref<HTMLElement | null>(null);
+const rootH = ref<number | null>(null);
+
+function fitRoot() {
+  const el = rootRef.value;
+  if (!el) return;
+  const top = el.getBoundingClientRect().top;
+  const parent = el.parentElement;
+  const padBottom = parent ? parseFloat(getComputedStyle(parent).paddingBottom) || 0 : 0;
+  rootH.value = Math.max(320, Math.floor(window.innerHeight - top - padBottom));
+}
+
+const refit = () => requestAnimationFrame(fitRoot);
 
 function machineSortNum(code: string): number {
   const m = /^VD(\d+)$/.exec((code || '').toUpperCase().trim());
@@ -210,11 +229,18 @@ onMounted(async () => {
     if (document.hidden) return;
     fetchChannels();
   }, 10000);
+
+  fitRoot();
+  // Đo lại một nhịp sau khi trình duyệt vẽ xong: lúc onMounted chạy, AppLayout có thể
+  // chưa dựng xong thanh trên nên `getBoundingClientRect().top` còn là số tạm.
+  requestAnimationFrame(fitRoot);
+  window.addEventListener('resize', refit);
 });
 
 onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval);
   echo.leaveChannel('chemical-channels');
+  window.removeEventListener('resize', refit);
   isFullscreen.value = previousIsFullscreen;
 });
 </script>
@@ -231,6 +257,9 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
+  /* Căn giữa cả 2 chiều: `align-items` lo trái/phải, `justify-content` lo trên/dưới trong
+     khoảng trống dọc thật đo được (xem fitRoot trong <script>). */
+  justify-content: center;
   gap: 12px;
   padding: 12px;
   background-color: #f0f0f0;
