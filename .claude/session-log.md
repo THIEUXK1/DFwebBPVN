@@ -2605,3 +2605,46 @@ Truoc do con mot cua chan im lang thu hai: `if (!currentWorkstation.value) { pre
 - `vue-tsc --noEmit` **exit 0**; `vite build` **OK 15.57s**; `check-weigh-slip.mjs` **8/8 PASS**.
 - Quet lai ca hai man tim handler truyen su kien nham: moi `@click`/`@change` con lai (`onSave`, `onNext`, `onClose`, `numDel`, `retare`, `refit`, `onIn`, `onOut`, `onCopyRacks`, `onGuiNgay`) deu la ham **khong tham so** -> khong con cho nao dinh cung loi.
 - **CHUA bam thu tren trinh duyet** — can nguoi dung mo /weighing-station-v2 bam PRINT xac nhan.
+
+### 122. /qr-printer: 2 nut goc tren ben phai mo tab lich su DA GUI / DA IN (2026-08-07)
+
+**Yeu cau:** bam SEND xong co thong bao, nhung khong tra lai duoc "vua roi da gui/in nhung gi". Them 2 nut o goc tren ben phai — khong lien quan toi form dang nhap lieu — mo sang tab khac hien lich su da gui va lich su da in.
+
+**A. Noi luu — dung `app.audit_logs`, KHONG tao bang moi**
+
+Nut `print` cua form von chi mo cua so dung phieu (khong sinh `print_jobs` nhu tram in), con SEND thi tao lo o `queue_state = WAITING` nen **khong lot vao** `/machine-dispatches/history` (endpoint do loc `CONFIRMED`). Tuc la truoc ban nay khong co nguon du lieu nao tra loi duoc cau hoi cua nguoi dung.
+
+Chon ghi vao `audit_logs` vi: (1) bang nay von la noi luu vet append-only cua he thong, CLAUDE.md muc 5 da yeu cau in tem phai ghi Audit Log; (2) `user_id` nullable nen trang cong khai ghi duoc; (3) **khong can migration tren Production giua Phase 12**. Danh doi: khong co dinh danh nguoi thuc hien (giong moi endpoint `/public` khac), chi co `client_ip`.
+
+- `action`: `QR_PRINTER_SEND` / `QR_PRINTER_PRINT`; `entity_type`: `qr_printer_form`.
+- `entity_id`: id lo that neu da gui, khong thi `COLOR-CODE`.
+- `after_data` (JSONB): color/code/machine/tank/lv/batch_id/note + 9 dong dye + 9 dong chem (**da loc bo dong trong** — don that chi dung 2-4 dong).
+
+**B. Da them**
+
+- `backend/app/Http/Controllers/QrPrinterLogController.php` — `store` (ghi) + `index` (doc, mac dinh 7 ngay, tran 200 dong, moi nhat len dau).
+- `routes/api.php`: `GET|POST /api/public/qr-printer/logs` (cung nhom public voi cac endpoint man /qr-printer dang dung).
+- `frontend/src/views/QrPrinterHistory.vue` + route `/qr-printer/history` (`requiresAuth: false`), 2 tab `?tab=sent|print`, chon khoang 1/7/30/90 ngay, o loc chay phia trinh duyet, bam mot dong de bung chi tiet 9 dong dye/chem. Tu nap lai moi 20 giay — 2 tab la 2 tien trinh rieng, khong co su kien nao ban qua lai.
+- `QrPrinterForm.vue`: dai `.vba-topbar` NGOAI mat form (khong chen vao toa do pt cua UserForm), 2 nut mo `target="_blank"` de phien nhap dang do khong bi mat; kieu nut co y khac `.vba-btn` de khong nham la nut cua phieu. Ham `logAction()` ban rồi quen — nhat ky hong khong lam hong viec da thanh cong. SEND ghi **truoc** `handleClear()`, neu khong thi form da xoa trang, khong con gi de ghi.
+
+**C. Loc du lieu**
+
+`index` co y KHONG loc theo tu khoa phia DB: noi dung nam trong cot JSON, loc phia DB se phai viet SQL rieng cho tung loai DB. Trang lich su loc phia trinh duyet tren tap da tra ve, giong cach `/print-sent-log` dang lam.
+
+**D. Kiem chung**
+
+- `php -l` controller + `routes/api.php` **OK**; `php artisan route:list --path=qr-printer` hien du 2 route.
+- `vue-tsc --noEmit` **exit 0**; `vite build` **OK 15.75s**.
+- **CHUA bam thu tren trinh duyet** — can nguoi dung mo /qr-printer, bam SEND va print roi mo 2 nut moi de xac nhan. Luu y: .env may dev tro thang DB Production nen moi lan bam thu se sinh ban ghi that trong `app.audit_logs` (chi them dong moi, khong sua/xoa gi).
+
+**E. Bo sung ngay sau do — tab DA GUI doi nguon sang bang lo that**
+
+Nguoi dung mo /qr-printer/history?tab=sent thay TRANG. Dung nhu thiet ke ban dau: nhat ky chi ghi tu luc co code moi, con toan bo lo da gui truoc do khong co dong nao.
+
+Sua: tab **DA GUI** doc thang `GET /api/public/production-batches?per_page=100` (bang `app.production_batches` — nguon su that cua viec gui don) thay vi doc audit log. Nho vay co san lich su cu, va gom ca lo gui tu man khac (/production-batches/grid, /print-order-entry) — thao tac vien tra "may VD07 da co lo chua" thi can thay het. 9 dong chi tiet doc nguoc tu `raw_qr_dye`/`raw_qr_chemical` da luu luc gui (`parseRawQr`, cung quy uoc voi `buildRawQr`; cung diem yeu: ma thuoc chua dau "-" se tach sai, giu nguyen nhu ban VBA). Cot cuoi doi thanh TRANG THAI (`status` lo + `queue_state` hang cho).
+
+Tab **DA IN** van doc audit log — bam `print` chi mo cua so dung phieu, khong sinh `print_jobs`, khong co nguon nao khac. Chi co du lieu tu 07/08/2026 tro di.
+
+Van giu `logAction('SEND')`: la ban ghi audit that (co IP may tram + anh chup form tai thoi diem bam), khong phai nguon hien thi cua tab DA GUI nua.
+
+`vue-tsc --noEmit` exit 0; `vite build` OK 15.21s.

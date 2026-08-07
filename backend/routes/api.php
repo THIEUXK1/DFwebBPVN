@@ -21,6 +21,7 @@ use App\Http\Controllers\MaterialTransportController;
 use App\Http\Controllers\OperationClientAdminController;
 use App\Http\Controllers\PrintJobController;
 use App\Http\Controllers\ProductionBatchController;
+use App\Http\Controllers\QrPrinterLogController;
 use App\Http\Controllers\RackDispatchController;
 use App\Http\Controllers\RecipeController;
 use App\Http\Controllers\ReportController;
@@ -104,6 +105,10 @@ Route::patch('/public/machine-dispatches/{id}/scale-checked', [MachineDispatchCo
 // link, không đăng nhập). CHỈ ĐỌC, không ghi gì; bản có `auth:sanctum` ở nhóm dưới vẫn giữ
 // nguyên cho các màn hình cần đăng nhập.
 Route::get('/public/scale-measurements/checker', [ScaleMeasurementController::class, 'checker']);
+// Nhật ký GỬI/IN của chính màn /qr-printer (bổ sung ngoài bản VBA gốc — xem
+// QrPrinterLogController). Cùng nhóm public vì màn hình đó mở bằng link, không đăng nhập.
+Route::get('/public/qr-printer/logs', [QrPrinterLogController::class, 'index']);
+Route::post('/public/qr-printer/logs', [QrPrinterLogController::class, 'store']);
 
 // Protected Auth Routes
 Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {

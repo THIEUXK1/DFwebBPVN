@@ -13,6 +13,18 @@
        Cách thu/phóng và bộ class `.vba-*` dùng chung cách làm với /production-batches/grid. -->
   <component :is="pageWrapper">
   <div class="vba-scroll" ref="rootRef" :style="rootH ? { height: rootH + 'px' } : undefined">
+    <!-- Dải nút NGOÀI mặt form (góc trên bên phải) — KHÔNG thuộc UserForm gốc, nên cố ý đặt
+         ngoài `.vba-form` chứ không chen vào toạ độ pt của form. Mở sang TAB MỚI để phiên nhập
+         đang dở trên form không bị mất (yêu cầu 07/08/2026). -->
+    <div class="vba-topbar">
+      <a class="ext-btn" href="/qr-printer/history?tab=sent" target="_blank" rel="noopener">
+        📤 LỊCH SỬ ĐÃ GỬI
+      </a>
+      <a class="ext-btn" href="/qr-printer/history?tab=print" target="_blank" rel="noopener">
+        🖨️ LỊCH SỬ ĐÃ IN
+      </a>
+    </div>
+
     <div class="vba-stage-wrap" ref="wrapRef">
       <!-- Lớp đệm mang ĐÚNG kích thước SAU khi thu/phóng: transform: scale() không đổi ô layout
            của phần tử, thiếu lớp này thì lúc phóng > 1 mặt form tràn ra ngoài vùng cuộn. -->
@@ -419,6 +431,33 @@ function handleClose(): void {
 }
 
 /* ===================================================================================
+ * Nhật ký GỬI / IN — phần BỔ SUNG ngoài bản VBA gốc (yêu cầu 07/08/2026)
+ * =================================================================================== */
+
+/**
+ * Ghi lại một lần bấm SEND/print để tra ở /qr-printer/history.
+ *
+ * "Bắn rồi quên": nhật ký hỏng KHÔNG được làm hỏng việc đã thành công (đơn đã tạo, phiếu đã mở
+ * ra để in) — nên nuốt lỗi ở đây, chỉ ghi console cho người bảo trì.
+ */
+function logAction(kind: 'SEND' | 'PRINT', extra: { batch_id?: string; note?: string } = {}): void {
+  const rows = (list: Row[]) => list.map(r => ({ rack: r.rack, code: r.code, weight: r.weight }));
+  axios
+    .post(`${API}/qr-printer/logs`, {
+      kind,
+      color: colorRef.value?.value ?? '',
+      code: header.code,
+      machine: header.machine,
+      tank: header.tank,
+      lv: header.lv,
+      dye: rows(dye),
+      chem: rows(chem),
+      ...extra,
+    })
+    .catch(err => console.error('Không ghi được nhật ký ' + kind + ':', err));
+}
+
+/* ===================================================================================
  * SEND — `btnSend_Click`
  * =================================================================================== */
 
@@ -488,6 +527,9 @@ async function handleSend(): Promise<void> {
 
     await axios.post(`${API}/production-batches/${created.data.data.id}/approve`, {});
 
+    // Ghi nhật ký TRƯỚC khi xoá trắng form — sau handleClear() thì không còn gì để ghi lại.
+    logAction('SEND', { batch_id: created.data.data.id });
+
     // Bản gốc repo GỌI btnClear_Click trước khi báo "Send OK" (bản cũ trong Danny/ comment dòng
     // này lại) — form được xoá trắng sau khi gửi.
     handleClear();
@@ -536,6 +578,7 @@ async function handlePrint(): Promise<void> {
   printing.value = true;
   try {
     await writeSlipToWindow(win, slipData());
+    logAction('PRINT', { note: `Khổ giấy ${paperW.value} × ${paperH.value} mm` });
     say('Đã mở phiếu để in.');
   } catch (err) {
     win.close();
@@ -818,6 +861,36 @@ onUnmounted(() => {
   background-color: #808080;
   min-height: 360px;
 }
+
+/* Dải nút phụ trên cùng. `flex: none` để nó không co giãn — phần chiều cao còn lại vẫn thuộc về
+   mặt form và `fitStage` tự tính lại mức thu/phóng theo chỗ còn lại. */
+.vba-topbar {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+/* Cố ý KHÁC kiểu nút bên trong form (`.vba-btn` mặt xám nổi kiểu MSForms): 2 nút này không phải
+   một phần của UserForm gốc, nhìn khác đi để thao tác viên không nhầm là nút của phiếu. */
+.ext-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background-color: #303030;
+  color: #ffffff;
+  border: 1px solid #101010;
+  border-radius: 3px;
+  font: bold 8pt Tahoma, 'MS Sans Serif', sans-serif;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ext-btn:hover { background-color: #454545; }
+.ext-btn:active { background-color: #202020; }
 
 /* Vùng chứa mặt form: chiếm hết chỗ còn lại sau dải trạng thái. Vẫn để `auto` chứ không `hidden`
    — khi cửa sổ bé hơn cả mức thu nhỏ tối thiểu (30%) thì còn cuộn được thay vì mất nội dung. */

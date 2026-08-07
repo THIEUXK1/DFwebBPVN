@@ -136,6 +136,14 @@ const routes = [
     component: () => import('../views/QrPrinterForm.vue'),
     meta: { requiresAuth: false }
   },
+  // Lịch sử GỬI/IN của chính màn /qr-printer — mở từ 2 nút góc trên bên phải của form, sang tab
+  // mới. Không có trong bản VBA gốc (yêu cầu 07/08/2026). Cùng requiresAuth:false với form.
+  {
+    path: '/qr-printer/history',
+    name: 'QrPrinterHistory',
+    component: () => import('../views/QrPrinterHistory.vue'),
+    meta: { requiresAuth: false }
+  },
   {
     path: '/print-sent-log',
     name: 'PrintSentLog',
