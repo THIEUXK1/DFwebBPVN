@@ -1,4 +1,4 @@
-<#
+﻿<#
     Kiểm chứng bản backup mới nhất — CHỈ ĐỌC, không đụng vào database.
 
     Kiểm tra 4 điều kiện của bản dump mới nhất:

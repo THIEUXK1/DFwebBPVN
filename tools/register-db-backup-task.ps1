@@ -1,4 +1,4 @@
-<#
+﻿<#
     Đăng ký Scheduled Task DFWeb-Backup trên CS-SERVER.
     Chạy MỘT LẦN, bằng PowerShell quyền Administrator, ngay trên server:
 

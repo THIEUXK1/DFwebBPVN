@@ -1,4 +1,4 @@
-<#
+﻿<#
     Sao lưu định kỳ database PostgreSQL của DFWeb trên CS-SERVER.
     Chạy qua Scheduled Task DFWeb-Backup -> tools\db-backup.bat -> script này.
 
