@@ -30,13 +30,14 @@ class MesSedoClient
      */
     public function fetchGanttRows(): array
     {
+        $profile = $this->profile('default');
         $jar = new CookieJar();
-        $this->login($jar);
+        $this->login($jar, $profile);
 
         // PHẢI gửi đúng object rỗng "{}". Nếu dùng ->post($url, []) thì Laravel json_encode
         // mảng rỗng thành "[]" (mảng, không phải object) và MES deserialize thất bại, trả
         // {"code":500,...} — mất 1 lượt debug vì lỗi này không nói gì về nguyên nhân thật.
-        $data = $this->postJson('rsedo/tBatch/getDataForGantt', $jar, '{}');
+        $data = $this->postJson('rsedo/tBatch/getDataForGantt', $jar, '{}', $profile['base_url']);
 
         if (!isset($data['rows'])) {
             throw new RuntimeException(sprintf(
@@ -66,8 +67,14 @@ class MesSedoClient
         int $pageSize = 200,
         int $maxPages = 200,
     ): array {
+        $profile = $this->profile('batch');
         $jar = new CookieJar();
-        $this->login($jar);
+        $this->login($jar, $profile);
+
+        // Bối cảnh nhà máy/org — thiếu thì batchView có thể trả "未找到工厂，请添加权限！".
+        $batchCfg = $this->config['batch'] ?? [];
+        $factoryCode = (string) ($batchCfg['factory_code'] ?? '');
+        $orgFilterValue = $batchCfg['org_filter_value'] ?? null;
 
         $all = [];
 
@@ -85,10 +92,11 @@ class MesSedoClient
                 'firstSearch' => false,
                 'isLike' => 'like',
                 'batchState' => '',
-                'factoryCode' => '',
+                'factoryCode' => $factoryCode,
+                'orgFilterValue' => $orgFilterValue,
             ], JSON_UNESCAPED_UNICODE);
 
-            $data = $this->postJson('eBatchLine/batchView', $jar, $body);
+            $data = $this->postJson('eBatchLine/batchView', $jar, $body, $profile['base_url']);
 
             $rows = $data['rows'] ?? null;
             if (!is_array($rows) || $rows === []) {
@@ -123,21 +131,50 @@ class MesSedoClient
         return sprintf('#%02X%02X%02X', $r, $g, $b);
     }
 
-    private function login(CookieJar $jar): void
+    /**
+     * Gộp cấu hình đăng nhập cho một "profile": 'default' (đồng bộ màu) hoặc 'batch' (giờ
+     * kết thúc nhuộm). Profile 'batch' cho phép ghi đè base_url/tài khoản/đường login riêng;
+     * trường nào để trống thì tự dùng lại cấu hình chính.
+     *
+     * @return array{base_url: string, username: ?string, password: ?string, login_path: string}
+     */
+    private function profile(string $name): array
     {
-        $username = $this->config['username'] ?? null;
-        $password = $this->config['password'] ?? null;
+        $c = $this->config;
+        $defaultLogin = ltrim((string) ($c['login_path'] ?? 'sys/ssologin'), '/');
 
-        if (!$username || !$password) {
-            throw new RuntimeException('Chưa cấu hình MES_USERNAME/MES_PASSWORD trong .env.');
+        if ($name === 'batch') {
+            $b = $c['batch'] ?? [];
+
+            return [
+                'base_url' => rtrim((string) (($b['base_url'] ?? null) ?: $c['base_url']), '/'),
+                'username' => ($b['username'] ?? null) ?: ($c['username'] ?? null),
+                'password' => ($b['password'] ?? null) ?: ($c['password'] ?? null),
+                'login_path' => ltrim((string) (($b['login_path'] ?? null) ?: $defaultLogin), '/'),
+            ];
+        }
+
+        return [
+            'base_url' => rtrim((string) $c['base_url'], '/'),
+            'username' => $c['username'] ?? null,
+            'password' => $c['password'] ?? null,
+            'login_path' => $defaultLogin,
+        ];
+    }
+
+    /** @param array{base_url: string, username: ?string, password: ?string, login_path: string} $profile */
+    private function login(CookieJar $jar, array $profile): void
+    {
+        if (!$profile['username'] || !$profile['password']) {
+            throw new RuntimeException('Chưa cấu hình tài khoản MES (MES_USERNAME/MES_PASSWORD hoặc MES_BATCH_*).');
         }
 
         $login = Http::withOptions($this->httpOptions($jar))
             ->timeout($this->timeout())
             ->asForm()
-            ->post($this->baseUrl() . '/sys/ssologin', [
-                'username' => $username,
-                'password' => $password,
+            ->post($profile['base_url'] . '/' . $profile['login_path'], [
+                'username' => $profile['username'],
+                'password' => $profile['password'],
             ]);
 
         $loginJson = $login->json();
@@ -156,12 +193,12 @@ class MesSedoClient
      *
      * @return array<string, mixed>
      */
-    private function postJson(string $path, CookieJar $jar, string $jsonBody): array
+    private function postJson(string $path, CookieJar $jar, string $jsonBody, string $baseUrl): array
     {
         $response = Http::withOptions($this->httpOptions($jar))
             ->timeout($this->timeout())
             ->withBody($jsonBody, 'application/json')
-            ->post($this->baseUrl() . '/' . ltrim($path, '/'));
+            ->post(rtrim($baseUrl, '/') . '/' . ltrim($path, '/'));
 
         $data = $response->json();
 
@@ -172,11 +209,6 @@ class MesSedoClient
         }
 
         return $data;
-    }
-
-    private function baseUrl(): string
-    {
-        return rtrim((string) $this->config['base_url'], '/');
     }
 
     private function timeout(): int

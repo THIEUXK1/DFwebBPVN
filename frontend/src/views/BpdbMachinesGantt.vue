@@ -164,7 +164,11 @@
         <dt>Bắt đầu</dt>
         <dd>{{ detailPopup.startText }}</dd>
         <dt>Kết thúc</dt>
-        <dd>{{ detailPopup.endText }}</dd>
+        <dd>
+          {{ detailPopup.endText }}
+          <span v-if="detailPopup.endSource === 'MES'" class="gantt-detail-note">giờ thật từ MES</span>
+          <span v-else-if="detailPopup.endSource === 'BPDB'" class="gantt-detail-note">ước tính (giờ pha BPDB, chưa có xác nhận MES)</span>
+        </dd>
         <template v-if="detailPopup.errorMessage">
           <dt class="text-error">Lỗi</dt>
           <dd class="text-error">{{ detailPopup.errorMessage }}</dd>
@@ -460,6 +464,8 @@ interface GanttDetail {
   uncompleted: boolean;
   startText: string;
   endText: string;
+  /** Nguồn giờ kết thúc: 'MES' (thật) | 'BPDB' (ước tính giờ pha) | 'BPDB_RUNNING' (đang chạy). */
+  endSource: string;
   errorMessage: string | null;
   barColor: string;
   /** Số mẻ đã xong liên tiếp giống nhau được gộp chung vào thanh này (1 = chưa gộp). */
@@ -482,6 +488,7 @@ const buildDetail = (item: any, realEnd: Date, barColor: string): GanttDetail =>
     uncompleted: !!item.uncompleted,
     startText: formatTime(item.start),
     endText: item.uncompleted ? 'Chưa kết thúc' : formatTime(realEnd.toISOString()),
+    endSource: item.endSource ?? 'BPDB',
     errorMessage: item.errorMessage || null,
     barColor,
     mergedCount: 1,
