@@ -88,36 +88,50 @@
           <template v-for="(row, i) in dye" :key="'dye-' + i">
             <input
               v-model="row.rack"
-              :ref="el => { if (i === 8) rack9Ref = el as HTMLInputElement | null }"
+              :ref="el => setCell(i, 0, el)"
               class="vba-text vba-rack"
               :style="box(12, DYE_RACK_TOP[i], 30, 44.4)"
+              @keydown="onCellKey($event, i, 0)"
             />
             <input
               v-model="row.code"
+              :ref="el => setCell(i, 1, el)"
               class="vba-text vba-big"
               :style="{ ...box(48, DYE_CODE_TOP[i], 156, 44.4), backgroundColor: row.fill }"
               @change="fillDyeRack(i)"
+              @keydown="onCellKey($event, i, 1)"
             />
             <input
               v-model="row.weight"
-              :ref="el => { if (i === 0) weight1Ref = el as HTMLInputElement | null }"
+              :ref="el => setCell(i, 2, el)"
               class="vba-text vba-big"
               :style="{ ...box(210, DYE_WEIGHT_TOP[i], 132, 44.4), backgroundColor: row.fill }"
+              @keydown="onCellKey($event, i, 2)"
             />
           </template>
 
           <template v-for="(row, i) in chem" :key="'chem-' + i">
-            <input v-model="row.rack" class="vba-text vba-rack" :style="box(366, CHEM_RACK_TOP[i], 30, 44.4)" />
+            <input
+              v-model="row.rack"
+              :ref="el => setCell(i, 3, el)"
+              class="vba-text vba-rack"
+              :style="box(366, CHEM_RACK_TOP[i], 30, 44.4)"
+              @keydown="onCellKey($event, i, 3)"
+            />
             <input
               v-model="row.code"
+              :ref="el => setCell(i, 4, el)"
               class="vba-text vba-big"
               :style="{ ...box(402, CHEM_CODE_TOP[i], 96, 44.4), backgroundColor: row.fill }"
               @change="fillChemRack(i)"
+              @keydown="onCellKey($event, i, 4)"
             />
             <input
               v-model="row.weight"
+              :ref="el => setCell(i, 5, el)"
               class="vba-text vba-big"
               :style="{ ...box(504, CHEM_WEIGHT_TOP[i], 78, 44.4), backgroundColor: row.fill }"
+              @keydown="onCellKey($event, i, 5)"
             />
           </template>
         </div>
@@ -195,6 +209,7 @@
         ×
         <input v-model.number="paperH" type="number" min="10" max="300" step="0.5" />
       </label>
+      <span class="vba-hint">Mũi tên ←↑→↓ chuyển ô, Enter xuống ô dưới</span>
       <span v-if="statusMsg" :class="{ 'is-error': statusIsError }">{{ statusMsg }}</span>
     </div>
 
@@ -278,10 +293,84 @@ const dye = reactive<Row[]>(Array.from({ length: 9 }, blankRow));
 const chem = reactive<Row[]>(Array.from({ length: 9 }, blankRow));
 
 const colorRef = ref<HTMLInputElement | null>(null);
-/** `txt_RACK9` — bản gốc nhảy focus xuống ô RACK DÒNG 9 sau khi tách mã. */
-const rack9Ref = ref<HTMLInputElement | null>(null);
-/** `txt_WEIGHT1` — đích focus của nút CLEAR WEIGHT. */
-const weight1Ref = ref<HTMLInputElement | null>(null);
+
+/* ===================================================================================
+ * Di chuyển giữa các ô bằng bàn phím (BỔ SUNG ngoài bản VBA gốc — yêu cầu 07/08/2026)
+ *
+ * 18 ô của 2 khối được coi là MỘT lưới 9 dòng × 6 cột liền nhau, đúng như mắt nhìn trên form:
+ *   cột 0/1/2 = RACK / DYE CODE / WEIGHT      cột 3/4/5 = RACK / chem CODE / WEIGHT
+ * nên mũi tên phải ở ô WEIGHT thuốc nhuộm sẽ sang thẳng ô RACK hoá chất cùng dòng.
+ * =================================================================================== */
+
+const ROWS = 9;
+const COLS = 6;
+
+/** Lưới ô phẳng, chỉ số = dòng * COLS + cột. */
+const cells = ref<(HTMLInputElement | null)[]>([]);
+
+function setCell(row: number, col: number, el: unknown): void {
+  cells.value[row * COLS + col] = (el as HTMLInputElement | null) ?? null;
+}
+
+/** Bôi đen sẵn nội dung khi nhảy tới ô mới — gõ đè được ngay, giống cách Excel nhận ô. */
+function focusCell(row: number, col: number): void {
+  const el = cells.value[row * COLS + col];
+  if (!el) return;
+  el.focus();
+  el.select();
+}
+
+/** Cả nội dung đang được bôi đen (vừa nhảy tới ô) — coi như con trỏ ở cả 2 mép. */
+const allSelected = (el: HTMLInputElement) =>
+  el.selectionStart === 0 && el.selectionEnd === el.value.length;
+
+const caretAtStart = (el: HTMLInputElement) =>
+  allSelected(el) || (el.selectionStart === 0 && el.selectionEnd === 0);
+
+const caretAtEnd = (el: HTMLInputElement) =>
+  allSelected(el) ||
+  (el.selectionStart === el.value.length && el.selectionEnd === el.value.length);
+
+/**
+ * Trái/phải CHỈ đổi ô khi con trỏ đã ở mép — còn lại vẫn là di chuyển con trỏ trong ô, nếu không
+ * thì không sửa được một ký tự ở giữa mã. Lên/xuống thì luôn đổi ô (trong ô 1 dòng, 2 phím này
+ * chỉ nhảy con trỏ về đầu/cuối nên không mất gì).
+ */
+function onCellKey(e: KeyboardEvent, row: number, col: number): void {
+  // Giữ nguyên tổ hợp chọn văn bản (Shift+mũi tên) và nhảy từ (Ctrl+mũi tên); bỏ qua lúc bộ gõ
+  // tiếng Việt đang dựng ký tự.
+  if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
+
+  const el = e.target as HTMLInputElement;
+
+  switch (e.key) {
+    case 'Enter':
+    case 'ArrowDown':
+      e.preventDefault();
+      if (row < ROWS - 1) focusCell(row + 1, col);
+      // Enter ở dòng cuối vòng lên đầu cột kế tiếp để điền hết bảng mà không phải rời tay khỏi
+      // bàn phím; mũi tên xuống thì dừng lại, đúng nghĩa "đi xuống".
+      else if (e.key === 'Enter' && col < COLS - 1) focusCell(0, col + 1);
+      break;
+
+    case 'ArrowUp':
+      e.preventDefault();
+      if (row > 0) focusCell(row - 1, col);
+      break;
+
+    case 'ArrowLeft':
+      if (!caretAtStart(el) || col === 0) return;
+      e.preventDefault();
+      focusCell(row, col - 1);
+      break;
+
+    case 'ArrowRight':
+      if (!caretAtEnd(el) || col === COLS - 1) return;
+      e.preventDefault();
+      focusCell(row, col + 1);
+      break;
+  }
+}
 
 const paperW = ref(DEFAULT_PAPER_W_MM);
 const paperH = ref(DEFAULT_PAPER_H_MM);
@@ -382,7 +471,8 @@ function onColorCommit(): void {
   headerLocked.value = true;
   say(`Đã tách tem: ${parts[0]} — ${header.code || '(không có mã hàng)'}.`);
 
-  nextTick(() => rack9Ref.value?.focus());
+  // `txt_RACK9` — bản gốc nhảy focus xuống ô RACK DÒNG 9 sau khi tách mã.
+  nextTick(() => focusCell(8, 0));
 }
 
 /** `txt_dye{i}_AfterUpdate` → `FillDyeRack i` (cột E → cột D của sheet `semi`; không thấy → "0"). */
@@ -421,7 +511,8 @@ function handleClear(): void {
 /** `btn_clearWeight_Click` — chỉ xoá 9 ô WEIGHT của khối thuốc nhuộm rồi focus ô dòng 1. */
 function handleClearWeight(): void {
   for (const row of dye) row.weight = '';
-  nextTick(() => weight1Ref.value?.focus());
+  // `txt_WEIGHT1` — ô WEIGHT dòng 1 của khối thuốc nhuộm.
+  nextTick(() => focusCell(0, 2));
 }
 
 /** `btnClose_Click` — bản gốc Unload form và hiện lại Excel; ở web tương đương xoá trắng phiên. */
@@ -1095,6 +1186,11 @@ onUnmounted(() => {
 }
 
 .vba-zoom {
+  color: #404040;
+  white-space: nowrap;
+}
+
+.vba-hint {
   color: #404040;
   white-space: nowrap;
 }

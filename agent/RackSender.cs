@@ -146,12 +146,36 @@ public class RackSender
         return false;
     }
 
-    /// <summary>ModAPI_mouse.SendTextToApp — đặt clipboard, click vào ô, dán.</summary>
+    /// <summary>
+    /// ModAPI_mouse.SendTextToApp — đặt clipboard, click vào ô, dán.
+    ///
+    /// Nguyên văn bản gốc (giải nén 07/08/2026 từ vbaProject.bin của workbook cân to):
+    ///
+    ///     Public Sub SendTextToApp(ByVal s As String, ByVal x As Long, ByVal y As Long)
+    ///         SetClipboardText s
+    ///         ClickAt x, y
+    ///         DoEvents
+    ///         SendKeys "^v"
+    ///         DoEvents
+    ///     End Sub
+    ///
+    /// HAI LỆNH `DoEvents` NÀY TỪNG BỊ BỎ SÓT khi port (sửa 07/08/2026). Chúng không phải thủ tục
+    /// thừa của VBA: `DoEvents` nhường quyền cho hệ điều hành bơm hết hàng đợi thông điệp, tức
+    /// **chờ ứng dụng đích xử lý xong cú click và đưa con trỏ nhập vào đúng ô** rồi mới dán. Bỏ đi
+    /// thì Agent bắn Ctrl+V chỉ vài micro-giây sau cú click, lúc app đích còn chưa kịp đổi tiêu
+    /// điểm — mã rack rơi vào ô đang focus trước đó hoặc mất hẳn. Đây đúng là triệu chứng "bấm OUT
+    /// mà không thấy nó làm giống bản Excel".
+    ///
+    /// Agent không có message pump để mà `DoEvents`, nên thay bằng một khoảng nghỉ ngắn — cùng tác
+    /// dụng đứng từ phía ứng dụng đích: cho nó thời gian xử lý xong việc trước.
+    /// </summary>
     private bool SendTextToApp(string s, int x, int y)
     {
         if (!SetClipboardText(s)) return false;
         ClickAt(x, y);
+        SmartDelay(_options.PasteDelayMs);   // DoEvents thứ nhất — chờ app đích nhận cú click
         PressCtrlV();
+        SmartDelay(_options.PasteDelayMs);   // DoEvents thứ hai — chờ app đích nuốt xong Ctrl+V
         return true;
     }
 
@@ -289,6 +313,15 @@ public class RackOptions
 
     /// <summary>SmartDelay 200 — giữa các bước còn lại.</summary>
     public int StepDelayMs { get; set; } = 200;
+
+    /// <summary>
+    /// Thay cho hai lệnh `DoEvents` trong `SendTextToApp` của VBA — xem ghi chú ở hàm đó.
+    ///
+    /// 60ms là mức đủ cho ứng dụng đích đổi tiêu điểm trên máy trạm bình thường; tổng thêm vào một
+    /// lượt OUT là 6 x 120ms = 0.72 giây, vẫn nằm gọn trong 12 giây mà màn hình chờ Agent ack.
+    /// Máy chậm/app đích nặng thì tăng con số này lên trước khi nghĩ tới việc đổi toạ độ.
+    /// </summary>
+    public int PasteDelayMs { get; set; } = 60;
 
     public int PollIntervalMs { get; set; } = 2000;
     public bool Enabled { get; set; } = false;
