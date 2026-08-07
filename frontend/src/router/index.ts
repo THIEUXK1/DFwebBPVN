@@ -2,6 +2,27 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { ROUTE_CAPABILITY_MAP } from '../services/workstation';
 
+/**
+ * Màn PHỤ TRỢ mà một tài khoản bị khoá công đoạn vẫn được mở, ngoài màn hình chính của mình.
+ *
+ * Khoá "1 máy tính = 1 công đoạn" (WS-001) cố ý rất chặt: gõ tay URL màn khác là bị đá về. Nhưng
+ * nút CHECK của hai trạm cân mở Lịch sử cân sang TAB MỚI (yêu cầu 07/08/2026) — không có ngoại lệ
+ * này thì tab mới bị đá ngược về màn cân ngay lúc mở, và người dùng chỉ thấy "bấm CHECK không ra
+ * gì", không có lỗi nào để mà lần.
+ *
+ * Nới ĐÚNG một màn cho ĐÚNG hai trạm, không phải mở rộng khoá:
+ *   · Lịch sử cân chỉ là xem lại đúng những mẻ mà chính công đoạn này vừa lưu — cùng công đoạn,
+ *     không phải đi sang công đoạn khác.
+ *   · Nó chỉ đọc; hành động duy nhất là IN LẠI phiếu, mà việc đó đã có Audit Log bắt buộc
+ *     (CLAUDE.md mục 5, `WEIGH_SLIP_REPRINT`).
+ *
+ * Thêm màn vào đây là NỚI QUYỀN — cân nhắc như một thay đổi bảo mật, đừng thêm cho tiện.
+ */
+const MAN_PHU_TRO: Record<string, string[]> = {
+  '/weighing-station-v2': ['/weighing-history'],
+  '/weighing-station-large': ['/weighing-history'],
+};
+
 // Mọi view đều nạp lười `() => import(...)`. Trước 2026-08-02 có 29 view import tĩnh, dồn
 // toàn bộ ứng dụng vào một chunk ~692 kB — mở BẤT KỲ trang nào cũng phải tải xong cả 29 màn
 // hình mới hiện được. Nạp lười cắt chunk chung xuống còn phần lõi, mỗi trang chỉ tải đúng
@@ -369,7 +390,11 @@ router.beforeEach((to, _from, next) => {
       next(lockedScreen);
       return;
     }
-  } else if (requiresAuth && !authStore.isAdmin && lockedScreen && to.path !== lockedScreen) {
+  } else if (
+    requiresAuth && !authStore.isAdmin && lockedScreen
+    && to.path !== lockedScreen
+    && !(MAN_PHU_TRO[lockedScreen] || []).includes(to.path)
+  ) {
     // "1 máy tính = 1 công đoạn" (WS-001): tài khoản vận hành gắn cứng trạm chỉ ở đúng màn
     // hình của công đoạn mình — cannho -> /weighing-station-v2, canto -> /weighing-station-large.
     // Đây vừa là đích sau khi đăng nhập, vừa là hàng rào: gõ tay URL màn khác cũng bị đá về

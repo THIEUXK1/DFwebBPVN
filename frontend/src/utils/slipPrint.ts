@@ -102,11 +102,20 @@ const SCRIPT_TU_IN = `<script>
   // với 203dpi thật (8.0 vs 7.992 dot/mm), không đủ để dịch nổi một dot trên cả bề rộng tem.
   var DOT_MM = 8;
 
-  // Ngưỡng nhị phân hoá, thang 0-255. Đặt CAO hơn mức giữa (128) là cố ý: nét chữ nhỏ do trình
-  // duyệt vẽ có lõi đen và hai bên xám nhạt dần; lấy ngưỡng giữa thì nét bị gọt còn 1 dot và chữ
-  // ra mảnh/gãy. 176 giữ lại phần xám đậm thành đen, nét dày lên ~1 dot mỗi bên — trên máy in
-  // nhiệt dày mà liền vẫn dễ đọc hơn mảnh mà đứt.
-  var NGUONG = 176;
+  // Ngưỡng nhị phân hoá, thang 0-255. Lấy ĐÚNG mức giữa: pixel nào tối hơn nửa đường thì thành
+  // đen, còn lại trắng — giữ nguyên hình dạng chữ trình duyệt vẽ ra, chỉ bỏ phần xám.
+  //
+  // Bản đầu cùng ngày để 176 với ý "nét dày mà liền dễ đọc hơn mảnh mà đứt". SAI, và người dùng
+  // báo ngay: ở cỡ 12 dot, ngưỡng đó nuốt cả vùng xám nhạt GIỮA hai nét nên các chữ dính vào nhau
+  // thành mảng đen — mắt đọc ra đúng là "mờ", chính thứ đang phải chữa.
+  //
+  // Đã so ba tổ hợp bằng ảnh 1:1 ở đúng 203dpi (xem session-log):
+  //   thường + 128 : chữ VỠ — nét mảnh hơn 1.5 dot biến mất hẳn. "WEIGHT" ra "WE GHT",
+  //                  "2026" ra "2025". Số đọc sai là hỏng nguy hiểm, không phải xấu.
+  //   đậm    + 176 : ký tự đúng nhưng dày, dính nhau -> "mờ".
+  //   đậm    + 128 : ký tự đúng, nét đặc, không dính.  <-- đang dùng
+  // Đừng đổi hai con số này nếu chưa render lại ảnh 1:1 và NHÌN.
+  var NGUONG = 128;
 
   var FONT = 'Calibri, Carlito, Arial, sans-serif';
 
@@ -118,8 +127,11 @@ const SCRIPT_TU_IN = `<script>
   /**
    * Đọc bảng HTML của payload thành mảng 2 chiều.
    *
-   * CỐ Ý bỏ qua tr.b (cờ in đậm theo dòng của weighSlip.ts): ở đây MỌI dòng đều in đậm, xem
-   * chonCoChu(). Giữ lại cờ đó thì dòng thường ra nét mảnh và gãy sau khi nhị phân hoá.
+   * CỐ Ý bỏ qua tr.b (cờ in đậm theo dòng của weighSlip.ts): ở đây MỌI dòng đều in đậm.
+   *
+   * Đây là chỗ lệch bản VBA (VBA chỉ đậm dòng 1 và 7) và đã thử bỏ lệch — không được: ở cỡ 12 dot,
+   * nét chữ THƯỜNG của Calibri mảnh hơn 1.5 dot nên nhị phân hoá xong là đứt, ký tự vỡ thành chữ
+   * khác. Cái quyết định độ nét là NGƯỠNG chứ không phải độ đậm, xem NGUONG ở trên.
    *
    * (Không dùng dấu nháy ngược trong khối này: cả đoạn script nằm trong một template literal,
    * một dấu nháy ngược lạc vào là cắt đứt chuỗi ngay tại đó.)
@@ -149,9 +161,8 @@ const SCRIPT_TU_IN = `<script>
     if (caoHang < 9) return null;   // dưới 9 dot/dòng thì chữ không còn hình dạng để mà đọc
     // Chừa 1 dot cho viền trên + 2 dot thở trên/dưới phần chữ.
     for (var px = Math.min(40, caoHang - 3); px >= 6; px--) {
-      // In ĐẬM toàn bộ: ở cỡ dưới 16 dot, nét chữ thường mảnh hơn 1.5 dot nên sau khi nhị phân
-      // hoá bị đứt quãng. Đây là chỗ CỐ Ý lệch bản VBA (VBA chỉ đậm dòng 1 và 7) — cùng lý do mà
-      // utils/tsplPrint.ts cũng để font-weight 700 cho mọi tem.
+      // Đo bề rộng cột bằng chữ ĐẬM: đậm rộng hơn thường, nên cỡ chữ chọn ra vừa cho dòng đậm
+      // (dòng 1 và 7) thì chắc chắn cũng vừa cho dòng thường.
       ctx.font = 'bold ' + px + 'px ' + FONT;
       var dem = Math.max(3, Math.round(px * 0.34));   // lề trái/phải trong ô
       var rongCot = [], tong = 1, c, r;
@@ -184,10 +195,13 @@ const SCRIPT_TU_IN = `<script>
     ctx.fillRect(0, 0, 1, h);
     for (c = 0; c < soCot; c++) { x += dung.rongCot[c]; ctx.fillRect(x, 0, 1, h); }
 
-    ctx.font = 'bold ' + dung.px + 'px ' + FONT;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
     for (r = 0; r < hang.length; r++) {
+      // ĐẬM MỌI DÒNG, kể cả những dòng VBA để chữ thường — lý do (chữ thường đứt nét ở 12 dot)
+      // xem docBang(), nơi cờ đậm theo dòng bị bỏ ngay từ lúc đọc bảng nên ở đây cũng không còn
+      // gì để mà rẽ nhánh.
+      ctx.font = 'bold ' + dung.px + 'px ' + FONT;
       x = 1;
       for (c = 0; c < soCot; c++) {
         var t = hang[r].o[c];

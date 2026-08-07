@@ -670,10 +670,11 @@ const POLL_MS_WEIGHING = 200;
 const POLL_MS_IDLE = 1000;
 
 /**
- * Nhịp khi đọc thẳng Agent "Cân to" trên máy này (ADR-013) — cuộc gọi không rời khỏi máy nên
- * dày gấp 3 lần mà không tốn gì của máy chủ. Xem ghi chú đầy đủ ở WeighingStationV2.vue.
+ * Nhịp khi đọc thẳng Agent "Cân to" trên máy này (ADR-013) — cuộc gọi không rời khỏi máy nên dày
+ * gấp 8 lần mà không tốn gì của máy chủ. Hạ 60 -> 25ms ngày 07/08/2026; lý do và giới hạn (nhịp
+ * phát của chính cái cân) xem ghi chú đầy đủ ở WeighingStationV2.vue.
  */
-const POLL_MS_CUC_BO = 60;
+const POLL_MS_CUC_BO = 25;
 
 const dangCan = computed(() => activeJob.value !== null || currentIndex.value >= 0);
 

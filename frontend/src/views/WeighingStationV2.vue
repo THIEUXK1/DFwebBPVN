@@ -92,7 +92,8 @@
           <!-- PHẢI có ngoặc: `@click="printSlip"` khiến Vue truyền PointerEvent vào tham số
                `preOpened`, và nút PRINT chết câm — xem ghi chú ở printSlip(). -->
           <button class="vba-btn sm" @click="printSlip()">PRINT</button>
-          <button class="vba-btn sm" @click="showChecker = true">CHECK</button>
+          <!-- CHECK mở LỊCH SỬ CÂN sang tab mới (yêu cầu 07/08/2026) — xem moLichSuCan(). -->
+          <button class="vba-btn sm" @click="moLichSuCan()">CHECK</button>
           <button class="vba-btn wide" @click="onClose">CLOSE</button>
         </div>
       </div>
@@ -275,8 +276,6 @@
     <!-- Hộp thoại thay alert/confirm — xem composables/useHopThoai.ts. -->
     <HopThoaiVba :thoai="thoai" @dong="dongThoai" />
 
-    <WeighingCheckerModal :show="showChecker" @close="showChecker = false" />
-
     <!-- z-index 40: dưới lớp phủ bảng hàng đợi (.queue-overlay = 50) -->
     <FullscreenButton variant="vba" :z-index="40" />
   </div>
@@ -299,7 +298,6 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
-import WeighingCheckerModal from '../components/weighing/WeighingCheckerModal.vue';
 import VbaRackGrid from '../components/weighing/VbaRackGrid.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
 import HopThoaiVba from '../components/HopThoaiVba.vue';
@@ -330,7 +328,6 @@ const {
 
 const activeJob = ref<any | null>(null);
 const activeBatch = ref<any | null>(null);
-const showChecker = ref(false);
 const showQueue = ref(false);
 const queueItems = ref<ReturnType<typeof danhSachChoGui>>([]);
 /** Kết quả lần bấm THỬ LẠI / BỎ MẺ / GỬI NGAY gần nhất — hiện ngay trong bảng hàng đợi. */
@@ -439,11 +436,18 @@ const POLL_MS_IDLE = 1000;
 /**
  * Nhịp khi đang đọc thẳng Agent trên máy này (ADR-013).
  *
- * Dày gấp hơn 3 lần nhịp qua backend mà KHÔNG tốn gì của ai: cuộc gọi không rời khỏi máy, không
- * chạm mạng, không tốn một vòng bootstrap Laravel nào. 60ms cộng với 10ms nhịp đọc của Agent cho
- * độ trễ tổng ~70ms — đủ để mặt số chạy mượt như bản VBA.
+ * Dày gấp 8 lần nhịp qua backend mà KHÔNG tốn gì của máy chủ: cuộc gọi không rời khỏi máy, không
+ * chạm mạng, không tốn một vòng bootstrap Laravel nào.
+ *
+ * 25ms (hạ từ 60ms ngày 07/08/2026 theo yêu cầu "nhanh hơn nữa"): chờ nhịp trung bình còn ~12ms,
+ * cộng tuổi bản chụp của Agent (tối đa 15ms) và ~2ms cho cuộc gọi -> tổng ~25ms.
+ *
+ * ĐỪNG hạ tiếp nếu chưa đo NHỊP PHÁT CỦA CHÍNH CÁI CÂN. Cân nối qua PuTTY chỉ bắn ra một dòng
+ * mỗi lần nó muốn (thường 5-20 lần/giây); hỏi dày hơn nhịp đó chỉ đọc lại đúng con số cũ và đốt
+ * CPU máy trạm chứ không làm mặt số đổi nhanh hơn. Muốn xuống dưới mốc này thì đổi sang Agent tự
+ * ĐẨY (SSE) chứ không phải hỏi dày thêm — hỏi bao nhiêu cũng vẫn còn một khoảng chờ nhịp.
  */
-const POLL_MS_CUC_BO = 60;
+const POLL_MS_CUC_BO = 25;
 
 const dangCan = computed(() => activeJob.value !== null || currentIndex.value >= 0);
 
@@ -1420,6 +1424,24 @@ const printSlip = async (preOpened?: Window | null) => {
     await baoTin(err.response?.data?.message || 'Không thể in phiếu cân.');
   }
 };
+
+/**
+ * Nút CHECK — mở LỊCH SỬ CÂN (`/weighing-history`) sang một TAB MỚI.
+ *
+ * Tab mới chứ không phải điều hướng: màn cân đang giữ nguyên cả mẻ dở lẫn số đã cân chưa lưu
+ * (`capturedWeights`), rời trang là mất sạch. Mở tab riêng thì thợ tra cứu xong đóng tab là quay
+ * lại đúng chỗ đang đứng.
+ *
+ * Tài khoản trạm bị khoá công đoạn nên `/weighing-history` phải nằm trong `MAN_PHU_TRO` của
+ * `router/index.ts` — thiếu là tab mới bị đá ngược về màn cân ngay lúc mở.
+ *
+ * Trước 07/08/2026 nút này mở hộp "Tra cứu bán thành phẩm" (`WeighingCheckerModal`, tra theo
+ * COLOR+CODE, KHÔNG có nút in lại). Component đó vẫn còn nguyên trong repo, chỉ không còn chỗ gọi
+ * ở màn này — dựng lại thành nút riêng là một dòng, nếu vẫn cần dùng.
+ */
+function moLichSuCan() {
+  window.open('/weighing-history', '_blank');
+}
 
 /* ===================== HỘP THOẠI VẼ TRONG TRANG ===================== */
 

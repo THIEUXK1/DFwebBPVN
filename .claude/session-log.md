@@ -2910,3 +2910,71 @@ co dinh) nen o do nut A−/A+ moi co viec de lam.
 - **CHUA xem bang mat tren trinh duyet** o ca hai man. Can nguoi dung: bam F11, quet mot don, bam
   CLEAR -> phai hien hop thoai trong trang va VAN o toan man hinh; roi bam SAVE khi con dong chua
   can -> phai hien hop thoai VA sau khi bam DONG Y phai IN RA PHIEU (day la cho de vo nhat, muc C).
+
+### 128. Tem van "mo" sau muc 124 — loi la NGUONG nhi phan hoa, khong phai khu rang cua (2026-08-07)
+
+**A. Nguoi dung bao:** *"tem in ra bi mo, toi muon no binh thuong thoi, tat khu rang cua di"*.
+
+**B. Dinh chinh muc 124.** Khu rang cua ĐA tat roi (canvas 1-bit, trong anh khong con mot sac xam
+nao — da do). Cai lam mo la **nguong 128 tui dat thanh 176** voi ly le "net day ma lien de doc hon
+manh ma dut". Sai: o co 12 dot, nguong do nuot ca vung xam nhat **GIUA hai net**, cac chu dinh vao
+nhau thanh mang den — mat doc ra dung la "mo". Toi tu tao ra dung cai trieu chung dang phai chua.
+
+**C. Da so BA to hop bang anh 1:1 o dung 203dpi, khong doan**
+
+| To hop | Ket qua |
+|---|---|
+| thuong + 128 | **CHU VO** — net manh hon 1.5 dot bien mat han. "WEIGHT" ra "WE GHT", "TESTQR" ra "^ESTQR", **"2026" ra "2025"**. So doc sai la hong nguy hiem, khong phai xau. |
+| dam + 176 (ban muc 124) | ky tu dung nhung day, dinh nhau -> "mo" |
+| **dam + 128** | ky tu dung, net dac, khong dinh  <-- **da chot** |
+
+Bai hoc: **do dam giu cho ky tu khoi vo, con NGUONG moi la thu quyet dinh net hay nhoe.** Truoc do
+tui gan hai thu nay vao nhau ("dam thi phai nguong cao") va do chinh la loi.
+
+**D. Da lam**
+- `NGUONG` 176 -> **128**; giu in dam moi dong (thu bo dam theo dung VBA roi, chu vo, xem bang tren).
+- Ghi thang bang so sanh vao comment cua `NGUONG` kem canh bao "dung doi neu chua render lai anh
+  1:1 va NHIN" — de lan sau khong ai (ke ca toi) chinh mo mot con so roi tu tin no tot hon.
+
+**E. Kiem chung**
+- Anh 1:1 render lai: doc duoc tung ky tu, khong con mang den dinh nhau.
+- `check-weigh-slip.mjs` 8/8 (payload khong doi), `vue-tsc` exit 0, `vite build` sach.
+- **VAN CHUA in tren may TSC that.** Anh 1:1 la dung so dot may in nhan, nhung con mot khau nua
+  chua kiem duoc bang script: Chrome rasterize trang luc in o do phan giai cua NO roi driver moi
+  ha xuong 203dpi. Neu khau do lam nhoe lai thi phai in thu moi biet — can nguoi dung in 1 to.
+
+### 129. Nut CHECK cua /weighing-station-v2 -> mo Lich su can sang TAB MOI (2026-08-07)
+
+**A. Yeu cau:** *"khi toi an check toi muon sang 1 tap khac, tap nay la lich su can da save va co nut in lai"*.
+
+**B. Da lam**
+- `WeighingStationV2.vue`: nut CHECK goi `moLichSuCan()` -> `window.open('/weighing-history', '_blank')`.
+  **Tab moi chu khong dieu huong**: man can dang giu ca me do lan so da can CHUA LUU
+  (`capturedWeights`), roi trang la mat sach. Mo tab rieng thi tra cuu xong dong tab la ve dung cho.
+- `/weighing-history` **da co san** dung thu can: moi dong la mot vong can da COMPLETED, co loc
+  ngay/tim nhanh, va co nut **IN LAI (🖨)** ghi Audit Log `WEIGH_SLIP_REPRINT`. Khong phai lam moi.
+
+**C. Cai bay suyt lam tinh nang chet cam**
+
+Tai khoan tram bi khoa cong doan (WS-001): `router/index.ts` da tay MOI duong khac ve
+`lockedScreen`. Neu chi doi nut ma khong dung toi router thi **tab moi bi da nguoc ve man can ngay
+luc mo**, va nguoi dung chi thay "bam CHECK khong ra gi" — khong co loi nao de ma lan ra.
+
+Da them `MAN_PHU_TRO` trong `router/index.ts`: noi DUNG mot man cho DUNG hai tram can. Ly do chap
+nhan duoc: (1) Lich su can chi la xem lai nhung me ma chinh cong doan nay vua luu, khong phai di
+sang cong doan khac; (2) no chi doc, hanh dong duy nhat la IN LAI ma viec do da co Audit Log bat
+buoc. **Day la NOI QUYEN** — da ghi canh bao ngay tren bien do: them man vao day phai can nhac nhu
+mot thay doi bao mat.
+
+**D. Mat gi**
+
+Nut CHECK truoc day mo `WeighingCheckerModal` — "Tra cuu ban thanh pham da can", tra theo
+COLOR+CODE, **khong co nut in lai**. Nay khong con cho goi o man V2 nua. **Component van con
+nguyen trong repo**, dung lai thanh mot nut rieng chi la mot dong — chua lam vi nguoi dung khong
+yeu cau. Da go `import`/`ref`/the goi khong con dung de khong de lai code chet.
+
+**E. Kiem chung**
+- `vue-tsc --noEmit` exit 0; `vite build` thanh cong.
+- **CHUA thu tren trinh duyet.** Can nguoi dung dang nhap **bang tai khoan `cannho`** (khong phai
+  admin — admin khong bi khoa nen khong the hien duoc cai bay o muc C) roi bam CHECK: phai mo tab
+  moi vao Lich su can va **o lai do**, khong bi da ve man can.
