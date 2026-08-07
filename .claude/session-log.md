@@ -2648,3 +2648,22 @@ Tab **DA IN** van doc audit log — bam `print` chi mo cua so dung phieu, khong 
 Van giu `logAction('SEND')`: la ban ghi audit that (co IP may tram + anh chup form tai thoi diem bam), khong phai nguon hien thi cua tab DA GUI nua.
 
 `vue-tsc --noEmit` exit 0; `vite build` OK 15.21s.
+
+---
+
+### 123. Backup dinh ky DB PostgreSQL — dua script vao repo (2026-08-07)
+
+**Cau hoi cua nguoi dung:** "DB hien tai co backup dinh ki chua". Tim ca repo: KHONG co script backup nao. Ghi chu server co nhac mot Scheduled Task `DFWeb-Backup` (2h sang, giu 14 ngay, `C:\web\tools\backups\`) nhung script do — neu con ton tai — nam ngoai repo, khong ai review duoc, khong biet con chay khong. **Chua kiem chung duoc tren server**: auto-mode classifier chan moi lenh SSH toi 10.0.60.209, nguoi dung phai tu chay lenh kiem tra.
+
+**Da them (4 file, deu chua chay tren server):**
+
+- `tools/db-backup.ps1` — doc `backend/.env` lay DB_DATABASE/USERNAME/PASSWORD/PORT, `pg_dump -Fc -Z 6` qua **loopback 127.0.0.1** (chay ngay tren server, khong di vong qua LAN) + `pg_dumpall --globals-only`. Vi sao can file globals: role/quyen nam o cap cluster, KHONG co trong dump cua 1 database — thieu no thi restore sang may khac se mat het user.
+- `tools/db-backup.bat` — vo boc cho Scheduled Task, redirect stdout vao `tools\logs\db-backup.log` (dung quy uoc cua `bpdb-sync.bat`; script .ps1 co y KHONG tu ghi file log de tranh 2 nguon cung ghi).
+- `tools/db-backup-verify.ps1` — kiem chung ban moi nhat: tuoi < 26h, kich thuoc, doc muc luc bang `pg_restore -l`, dem so bang co du lieu, co file globals khong. **CHI DOC**. Co y KHONG restore that vao server: viec do phai tao roi xoa database tam, ma `DROP DATABASE` nam trong danh sach lenh bi cam (`rules/database-safety.md` muc 2). Restore test day du (yeu cau Phase 13) phai lam tren may dev.
+- `tools/register-db-backup-task.ps1` — dang ky task chay 02:00 hang ngay bang tai khoan SYSTEM. Neu task cung ten da ton tai thi IN RA cau hinh cu truoc roi moi ghi de (co `-WhatIfOnly` de chi xem).
+
+**Quy tac giu ban cu:** giu 14 ngay gan nhat; rieng ban chay ngay mung 1 giu them 6 thang — de con diem khoi phuc dai han ma khong phinh dia. Dump < 512 KB coi la hong, bao loi va GIU LAI file de dieu tra chu khong ghi de.
+
+**Diem yeu con lai:** backup nam cung o dia voi `C:\pgdata` — hong o dia la mat ca hai. Tham so `-MirrorDir` da co san nhung de trong, vi task chay bang SYSTEM khong truy cap duoc share mang; muon mirror phai doi sang tai khoan mien co quyen ghi len share.
+
+**Kiem chung:** 3 file .ps1 parse sach bang `[Parser]::ParseFile` (0 loi cu phap); logic giu/xoa theo ten file test rieng bang bo ten gia — dung ngay 01 giu, ngay thuong qua 14 ngay xoa, file khong dung dinh dang bi bo qua. **Chua chay that lan nao** — chua biet `pg_dump` tren server that mat bao lau, file to bao nhieu.
