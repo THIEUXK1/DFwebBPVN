@@ -165,7 +165,7 @@
      micro-giay sau cu click, luc app dich chua kip doi tieu diem, ma rack roi vao o dang focus
      truoc do hoac mat han. Thay bang nghi 60ms (Rack:PasteDelayMs).
      Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode. -->
-<?define PackageVersion = "4.3.0.0"?>
+<?define PackageVersion = "4.4.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.ProductLabel))"

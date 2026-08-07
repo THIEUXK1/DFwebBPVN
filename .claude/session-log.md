@@ -3054,3 +3054,67 @@ hoi) — do bo duoc mot buoc bam tay moi lan luu me.
 
 Con lai (chua lam): neu sau nay muon bo han trinh duyet khoi duong in thi phai in qua Local Agent
 (ADR-002), viec do lon hon nhieu va chua can thiet.
+
+---
+
+### 131. Duong can cuc bo them SSE — Agent TU DAY so, bo hoi vong 25ms (Agent 4.4.0.0) — 2026-08-07
+
+**A. Yeu cau**
+
+"co cach nhan can nao nhanh hon khong, kieu lay truc tiep tu web vao can luon".
+
+**B. Lay thang tu trinh duyet vao can: KHONG lam**
+
+Trinh duyet co Web Serial API, nhung:
+1. ADR-002 cam trang web noi chuyen thang voi phan cung.
+2. **Chan cung**: cong COM la DOC QUYEN, mot luc chi mot chuong trinh mo duoc. PuTTY dang giu no,
+   va chinh file log cua PuTTY la thu **ca Agent lan Excel VBA cu** cung doc. Trinh duyet gianh
+   cong do la he Excel chet ngay — ma Phase 12 dang chay song song hai he.
+3. Duoc khoang 15ms. Khong dang.
+
+**C. Da lam: SSE tren duong cuc bo**
+
+Truoc: Agent ghi ban chup moi 10ms, trinh duyet **hoi vong** moi 25ms. Nghia la so nao cung nam
+khong trung binh 12ms trong bo nho Agent truoc khi co ai toi lay, va 24/25 lan hoi la hoi thua.
+
+Nay them `GET /weight/stream` (SSE) canh `GET /weight` cu:
+- `ScaleSnapshot` co them **chuong bao** (`ChoSoMoi()`) — TaskCompletionSource dung-mot-lan roi
+  thay moi. Khong dung `event` C# vi ben cho la code bat dong bo; `event` goi lai DONG BO ngay
+  tren luong doc can, tuc day mot goi qua socket ngay giua vong lap 10ms khong duoc phep chan.
+  `RunContinuationsAsynchronously` bat buoc, cung ly do.
+- `LocalWeightServer.PhucVuLuong()` day goi khi **so can hoac co on dinh DOI**, hoac khi da im qua
+  500ms. KHONG so ca goi JSON de quyet dinh: trong goi co `age_ms` nhich moi mili giay nen so ca
+  goi la lan nao cung "khac" -> 100 goi/giay, dung cai lang phi vua bo di.
+- 500ms nhip tim la BAT BUOC, hai viec: (1) `age_ms` phai tiep tuc nhich len, khong thi can CHET
+  CUNG trong y het can dang dung yen — ma man hinh dua dung vao `age_ms` de bat "MAT TIN HIEU" va
+  de chan luu; (2) ket noi da dut chi lo ra khi ghi vao no.
+
+**D. Frontend: SSE CHONG LEN poll, khong thay the**
+
+`useScaleFeed.ts` mo `EventSource` toi `/weight/stream`. Nhip poll cu VAN CHAY va tro thanh
+**nguoi canh chung**: `fetchLiveWeight()` thoat ngay neu SSE con co so ve trong 1500ms; im lau hon
+la no tu ganh lai (duong cuc bo `/weight`, roi backend). Nho vay hong SSE o bat ky dang nao —
+Agent cu chua co endpoint, Chrome chan, ket noi dut — cung chi la mat toc do, khong mat so can.
+
+Hai bay da chan san:
+- `onmessage` phai tu kiem `useSimValue` — no KHONG di qua `fetchLiveWeight` nen thieu dong do la
+  so that de len so gia lap dang go tay ma khong de lai dau vet (dung loi cua V1).
+- `onerror` phai goi `close()`. Bo tham chieu khong thi EventSource **tu noi lai vo han moi ~3
+  giay** — may van phong khong co Agent se do ruc Console mai mai.
+
+**E. Kiem chung**
+- `dotnet test --filter LocalWeightServerTests`: **10 pass / 0 fail** (7 cu + 3 moi). Ba test moi:
+  goi dau tien ve ngay khi ket noi; so moi ra khoi Agent **duoi 200ms** (day chu khong phai hoi);
+  ghi lai so Y HET trong 1 giay chi ra 1-8 goi chu khong phai ~100.
+  LUU Y: may nay khong co .NET 8 runtime, phai chay bang `DOTNET_ROLL_FORWARD=Major`.
+- `vue-tsc --noEmit` exit 0; `vite build` OK.
+- Da build lai 3 MSI len **4.4.0.0**, da copy sang `backend/public/downloads/` va
+  `C:\Users\v240298\Downloads\BoCaiCan\`.
+- **CHUA thu tren trinh duyet va CHUA cai ban 4.4.0.0 len may nao.** May dev dang cai 4.2.0.0
+  (chua co `/weight/stream`) nen no se chay nhanh du phong cho toi khi cai ban moi.
+
+**F. Ghi chu do luong con thieu**
+
+May dev **khong co so can song**: `D:\scale\putty_log.txt` dung tu 04/08, PuTTY khong chay. Agent
+van tra 0.01/stable vi doc lai dong cuoi file cu. Nen do tre THAT chua do duoc o day — phai do tai
+may tram ngoai xuong.

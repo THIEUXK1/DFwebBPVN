@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace DFAgent;
 
@@ -23,8 +25,34 @@ public sealed class ScaleSnapshot
     /// </summary>
     private volatile BanChup? _moiNhat;
 
+    /// <summary>
+    /// Chuông báo "vừa có số mới", cho <see cref="LocalWeightServer"/> đẩy SSE ngay lúc số đổi
+    /// thay vì hỏi vòng.
+    ///
+    /// Vì sao TaskCompletionSource dùng-một-lần rồi thay mới, thay vì một sự kiện C# thường: bên
+    /// chờ là code BẤT ĐỒNG BỘ (`await`), mà `event` chỉ gọi lại đồng bộ ngay trên luồng đọc cân —
+    /// đẩy một gói qua socket ngay trong đó là chặn đúng cái vòng lặp 10ms không được phép chặn.
+    ///
+    /// <c>RunContinuationsAsynchronously</c> BẮT BUỘC vì cùng lý do: thiếu nó thì `TrySetResult`
+    /// chạy tiếp phần `await` của luồng SSE NGAY TRÊN luồng vừa gọi <see cref="Ghi"/>.
+    /// </summary>
+    private TaskCompletionSource<bool> _chuong = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public void Ghi(double weight, bool stable)
-        => _moiNhat = new BanChup(weight, stable, DateTime.UtcNow);
+    {
+        _moiNhat = new BanChup(weight, stable, DateTime.UtcNow);
+        // Thay chuông TRƯỚC khi rung: người chờ tiếp theo phải bắt được cái mới, không phải cái
+        // vừa kêu xong (nếu không họ chờ mãi một chuông đã kêu rồi).
+        Interlocked.Exchange(ref _chuong, new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously))
+            .TrySetResult(true);
+    }
+
+    /// <summary>
+    /// Task hoàn tất ở lần <see cref="Ghi"/> KẾ TIẾP. Phải lấy Task này TRƯỚC khi đọc
+    /// <see cref="Doc"/>, nếu không có khe hở: số mới ghi vào đúng giữa hai lệnh thì bên chờ vừa
+    /// đọc được số cũ vừa nằm chờ một chuông đã rung xong.
+    /// </summary>
+    public Task ChoSoMoi() => Volatile.Read(ref _chuong).Task;
 
     public BanChup? Doc() => _moiNhat;
 

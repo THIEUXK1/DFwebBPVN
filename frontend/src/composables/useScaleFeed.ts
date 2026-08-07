@@ -84,6 +84,20 @@ const TIMEOUT_CUC_BO_MS = 300;
  */
 const THU_LAI_CUC_BO_MS = 30_000;
 
+/**
+ * ĐƯỜNG SSE (07/08/2026) — Agent TỰ ĐẨY số thay vì màn hình hỏi vòng.
+ *
+ * Hỏi vòng 25ms nghĩa là số nào cũng nằm không trung bình 12ms trong bộ nhớ Agent trước khi có ai
+ * tới lấy, và 24/25 lần hỏi là hỏi thừa. SSE bỏ hẳn khoảng nằm chờ đó: Agent ghi số mới xong là
+ * đẩy ngay.
+ *
+ * Không thay thế gì cả, chỉ CHỒNG LÊN: nhịp poll cũ vẫn chạy và trở thành người canh chừng — hễ
+ * SSE im quá `SSE_COI_LA_DUT_MS` là nó tự gánh lại (đường cục bộ, rồi backend). Nhờ vậy hỏng SSE
+ * ở bất kỳ dạng nào — Agent cũ chưa có endpoint, Chrome chặn, kết nối đứt — cũng chỉ là mất tốc
+ * độ, không mất số cân.
+ */
+const SSE_COI_LA_DUT_MS = 1_500;
+
 export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
   // liveWeight = NET (đã trừ bì) — giá trị dùng để hiển thị/so dung sai/gửi khi lưu.
   const liveWeight = ref<number>(0);
@@ -111,6 +125,10 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
 
   // 0 = cứ thử đường cục bộ. Khác 0 = mốc thời gian được phép thử lại (xem THU_LAI_CUC_BO_MS).
   let mocThuLaiCucBo = 0;
+
+  // Kênh SSE tới Agent trên chính máy này, và mốc gói cuối nhận được (0 = chưa nhận gói nào).
+  let kenhSse: EventSource | null = null;
+  let mocNhanSse = 0;
 
   // signalLive = Agent thực sự vừa đẩy số lên trong vòng STALE_READING_MS. Đây là CỔNG AN TOÀN:
   // điều kiện chốt bì, tính delta và cho phép lưu. KHÔNG dùng nó để bật đèn cảnh báo — xem
@@ -304,6 +322,60 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
     }
   }
 
+  /** SSE đang thực sự có số về (không chỉ "đã mở kết nối"). */
+  function kenhSseSong(): boolean {
+    return kenhSse !== null && Date.now() - mocNhanSse < SSE_COI_LA_DUT_MS;
+  }
+
+  function dongKenhSse() {
+    if (kenhSse) {
+      // BẮT BUỘC close(): EventSource tự nối lại vô hạn mỗi ~3 giây nếu chỉ bỏ tham chiếu. Máy
+      // văn phòng mở màn hình này không có Agent, để vậy là Console đỏ rực mãi mãi.
+      kenhSse.close();
+      kenhSse = null;
+    }
+    mocNhanSse = 0;
+  }
+
+  /**
+   * Mở kênh SSE nếu chưa có. Không chờ gì cả — gói đầu tiên tới lúc nào thì `nguonCucBo` bật lúc
+   * đó; từ giờ tới lúc ấy nhịp poll vẫn gánh như cũ nên màn hình không hụt số nào.
+   */
+  function moKenhCucBo() {
+    if (kenhSse) return;
+    try {
+      const es = new EventSource(`http://127.0.0.1:${CONG_AGENT_CUC_BO[scaleKind]}/weight/stream`);
+      kenhSse = es;
+
+      es.onmessage = (ev) => {
+        // Đang giả lập thì số thật phải bị bỏ qua HOÀN TOÀN. `fetchLiveWeight` có sẵn chốt này,
+        // nhưng SSE không đi qua đó — thiếu dòng này là số Agent đè lên số đang gõ tay và không
+        // để lại dấu vết gì (đúng lỗi của V1, xem ghi chú ở useSimValue).
+        if (useSimValue.value) return;
+
+        mocNhanSse = Date.now();
+        nguonCucBo.value = true;
+        mocThuLaiCucBo = 0; // đường nhanh còn sống thì đừng cấm vận nó
+        try {
+          apDungSoDoc(JSON.parse(ev.data));
+        } catch {
+          // Gói hỏng: bỏ qua gói đó thôi. Đóng cả kênh vì một gói lỗi là phản ứng thái quá —
+          // người canh chừng bên dưới sẽ tự xử nếu hỏng thật sự kéo dài.
+        }
+      };
+
+      es.onerror = () => {
+        // Agent chưa có endpoint này (bản cũ hơn 4.4), Chrome chặn, hoặc kết nối đứt — cả ba xử
+        // lý y nhau: đóng lại, để nhịp poll gánh, và thử lại sau như đường cục bộ vẫn làm.
+        dongKenhSse();
+        nguonCucBo.value = false;
+        mocThuLaiCucBo = Date.now() + THU_LAI_CUC_BO_MS;
+      };
+    } catch {
+      kenhSse = null;
+    }
+  }
+
   const fetchLiveWeight = async () => {
     // GIẢ LẬP: nạp lại số đang gõ mỗi nhịp, đúng như cái cân thật bắn số liên tục.
     //
@@ -316,9 +388,15 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
     }
     if (!currentWorkstation.value) return;
 
+    // SSE đang có số về thì nhịp này không có việc gì để làm — số đã lên màn hình từ trước rồi.
+    // Đây cũng chính là chỗ nhịp poll biến thành NGƯỜI CANH CHỪNG: hễ SSE im quá ngưỡng là dòng
+    // này không chặn nữa và cả hai đường dự phòng bên dưới lập tức chạy lại.
+    if (kenhSseSong()) return;
+
     // ĐƯỜNG NHANH TRƯỚC (ADR-013). Hỏng thì rơi thẳng xuống đường backend NGAY TRONG NHỊP NÀY,
     // không bỏ trắng một nhịp — thợ không được phép thấy số cân khựng lại chỉ vì Agent vừa restart.
     if (Date.now() >= mocThuLaiCucBo) {
+      moKenhCucBo(); // mở/mở lại kênh đẩy; gói đầu về thì từ nhịp sau dòng trên tự chặn
       const cucBo = await docTuAgentCucBo();
       if (cucBo) {
         nguonCucBo.value = true;
@@ -326,6 +404,9 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
         apDungSoDoc(cucBo);
         return;
       }
+      // Cổng cục bộ không trả lời thì kênh SSE cũng không thể sống — đóng luôn cho khỏi treo một
+      // kết nối vô dụng, và để lần thử lại sau mở lại cả hai cùng lúc.
+      dongKenhSse();
       nguonCucBo.value = false;
       mocThuLaiCucBo = Date.now() + THU_LAI_CUC_BO_MS;
     }
@@ -384,6 +465,9 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
       clearInterval(livePoller);
       livePoller = null;
     }
+    // Dừng nhịp mà để kênh SSE sống là số cân vẫn chảy vào màn hình sau khi đã "dừng" — đúng thứ
+    // các màn hình gọi stopPolling() để tránh (rời trang, tắt trạm).
+    dongKenhSse();
   }
 
   // Nạp ngay lúc gõ, không đợi nhịp kế. Trùng việc với `fetchLiveWeight` là có chủ ý: nhịp poll
@@ -393,7 +477,14 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
   });
 
   // Bật/tắt giả lập — không trộn bì giữa cân thật và giả lập.
-  watch(useSimValue, () => resetTareForNewSlot());
+  watch(useSimValue, (bat) => {
+    resetTareForNewSlot();
+    // Bật giả lập: đóng kênh SSE hẳn thay vì để `onmessage` bỏ qua từng gói — giữ một kết nối
+    // đang đổ số vào một cái chốt đóng là mời gọi lỗi sau này.
+    // Tắt giả lập: mở lại đường nhanh NGAY, không bắt chờ hết 30 giây cấm vận.
+    if (bat) dongKenhSse();
+    else mocThuLaiCucBo = 0;
+  });
 
   onUnmounted(stopPolling);
 

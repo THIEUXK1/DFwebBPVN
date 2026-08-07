@@ -191,6 +191,106 @@ public class LocalWeightServerTests : IAsyncLifetime
         await rackOnly.StopAsync(CancellationToken.None);
     }
 
+    /* =============================== SSE: /weight/stream =============================== */
+
+    private async Task<HttpResponseMessage> MoLuong()
+        => await _http.GetAsync($"http://127.0.0.1:{CongTest}/weight/stream",
+                                HttpCompletionOption.ResponseHeadersRead);
+
+    /// <summary>Doc toi goi `data:` ke tiep. Nem TimeoutException neu qua lau khong co gi.</summary>
+    private static async Task<JsonElement> DocMotGoi(StreamReader doc, int hetGioMs = 3000)
+    {
+        using var cts = new CancellationTokenSource(hetGioMs);
+        while (true)
+        {
+            var dong = await doc.ReadLineAsync(cts.Token);
+            if (dong is null) throw new IOException("Luong dong som.");
+            if (!dong.StartsWith("data: ")) continue;
+            // Clone(): JsonDocument bi dispose ngay sau day, RootElement se khong con doc duoc.
+            using var jd = JsonDocument.Parse(dong["data: ".Length..]);
+            return jd.RootElement.Clone();
+        }
+    }
+
+    [Fact]
+    public async Task Stream_gui_goi_dau_tien_ngay_khi_vua_ket_noi()
+    {
+        // Khong co goi dau nay thi man hinh dung im cho toi lan can KE TIEP — mo trang giua ca
+        // dang can do la thay o trong.
+        _snapshot.Ghi(3.21, stable: true);
+
+        using var res = await MoLuong();
+        Assert.Equal("text/event-stream", res.Content.Headers.ContentType?.MediaType);
+
+        using var doc = new StreamReader(await res.Content.ReadAsStreamAsync());
+        var j = await DocMotGoi(doc);
+
+        // Cung hinh dang voi /weight — frontend dung CHUNG apDungSoDoc() cho ca hai duong.
+        Assert.Equal(3.21, j.GetProperty("weight").GetDouble(), 6);
+        Assert.True(j.GetProperty("is_stable").GetBoolean());
+        Assert.True(j.GetProperty("has_reading").GetBoolean());
+        Assert.Equal("AGENT_LOCAL", j.GetProperty("source").GetString());
+        Assert.Equal("WS-SCALE-TEST", j.GetProperty("workstation_id").GetString());
+    }
+
+    [Fact]
+    public async Task Stream_day_NGAY_khi_co_so_moi()
+    {
+        _snapshot.Ghi(1.0, stable: false);
+
+        using var res = await MoLuong();
+        using var doc = new StreamReader(await res.Content.ReadAsStreamAsync());
+        await DocMotGoi(doc); // goi dau tien (so cu)
+
+        // DAY LA LY DO TON TAI CUA SSE. Neu ai do sau nay doi thanh vong lap co nhip, con so nay
+        // se vot len bang dung nhip do — va do chinh la thu vua bo di.
+        var dongHo = System.Diagnostics.Stopwatch.StartNew();
+        _snapshot.Ghi(7.77, stable: true);
+        var j = await DocMotGoi(doc);
+        dongHo.Stop();
+
+        Assert.Equal(7.77, j.GetProperty("weight").GetDouble(), 6);
+        Assert.True(dongHo.ElapsedMilliseconds < 200,
+            $"So moi mat {dongHo.ElapsedMilliseconds}ms moi ra khoi Agent — dang hoi vong chu khong phai day.");
+    }
+
+    [Fact]
+    public async Task Stream_khong_day_lai_khi_so_khong_doi()
+    {
+        // Worker ghi ban chup moi 10ms KE CA khi so y het nhau (no doc lai dong cuoi file log).
+        // Day het tung cai la 100 goi/giay — dung cai lang phi ma SSE sinh ra de dep. Chi duoc
+        // day khi so DOI, cong mot nhip tim ~2 lan/giay (ToiDaImMs).
+        _snapshot.Ghi(5.0, stable: true);
+
+        using var res = await MoLuong();
+        var doc = new StreamReader(await res.Content.ReadAsStreamAsync());
+
+        int dem = 0;
+        var demXong = Task.Run(async () =>
+        {
+            try
+            {
+                string? dong;
+                while ((dong = await doc.ReadLineAsync()) != null)
+                    if (dong.StartsWith("data: ")) Interlocked.Increment(ref dem);
+            }
+            catch { /* dong ket noi ben duoi — het viec */ }
+        });
+
+        var het = DateTime.UtcNow.AddSeconds(1);
+        while (DateTime.UtcNow < het)
+        {
+            _snapshot.Ghi(5.0, stable: true);   // Y HET so cu
+            await Task.Delay(10);
+        }
+
+        res.Dispose();
+        await demXong;
+
+        // 1 goi dau + ~2 nhip tim. Nguong 8 de con cho may build cham; hong that thi ra ~100.
+        Assert.InRange(dem, 1, 8);
+    }
+
     public async Task DisposeAsync()
     {
         _cts.Cancel();
