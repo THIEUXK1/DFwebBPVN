@@ -88,12 +88,17 @@ try {
         Write-Log "Đã tạo thư mục backup: $BackupDir"
     }
 
-    if (Test-Path -LiteralPath $PgPassFile) {
-        $env:PGPASSFILE = $PgPassFile
-        Write-Log "Xác thực bằng $PgPassFile"
-    } else {
+    # Đặt cả 2: PGPASSWORD thắng thế, PGPASSFILE là lưới đỡ nếu .env thiếu mật khẩu.
+    # Riêng pg_dumpall nối vào database `postgres` (không phải production_web) nên
+    # dòng .pgpass viết cứng tên database sẽ KHÔNG khớp — đó là lý do lần chạy
+    # 07/08/2026 treo vô hạn ở bước globals.
+    if ($cfg['DB_PASSWORD']) {
         $env:PGPASSWORD = $cfg['DB_PASSWORD']
         Write-Log 'Xác thực bằng DB_PASSWORD trong .env'
+    }
+    if (Test-Path -LiteralPath $PgPassFile) {
+        $env:PGPASSFILE = $PgPassFile
+        Write-Log "Có sẵn $PgPassFile làm phương án dự phòng"
     }
 
     $stamp    = Get-Date -Format 'yyyyMMdd_HHmmss'
@@ -101,7 +106,9 @@ try {
     $globFile = Join-Path $BackupDir ("globals_{0}.sql" -f $stamp)
 
     Write-Log "pg_dump $dbName -> $dumpFile"
-    & $pgDump -h $dbHost -p $dbPort -U $dbUser -d $dbName -Fc -Z 6 -f $dumpFile
+    # -w: tuyệt đối không hỏi mật khẩu. Task chạy nền không có ai gõ vào, thiếu cờ
+    # này thì sai mật khẩu = treo đến hết ExecutionTimeLimit thay vì báo lỗi ngay.
+    & $pgDump -w -h $dbHost -p $dbPort -U $dbUser -d $dbName -Fc -Z 6 -f $dumpFile
     if ($LASTEXITCODE -ne 0) { throw "pg_dump thất bại (exit $LASTEXITCODE)" }
 
     $sizeKB = [math]::Round((Get-Item -LiteralPath $dumpFile).Length / 1KB, 1)
@@ -113,7 +120,7 @@ try {
     # Roles/quyền nằm ở cấp cluster, không có trong dump của 1 database —
     # thiếu file này thì restore sang máy mới sẽ mất user/permission.
     Write-Log "pg_dumpall --globals-only -> $globFile"
-    & $pgDumpAll -h $dbHost -p $dbPort -U $dbUser --globals-only -f $globFile
+    & $pgDumpAll -w -h $dbHost -p $dbPort -U $dbUser --globals-only -f $globFile
     if ($LASTEXITCODE -ne 0) { throw "pg_dumpall thất bại (exit $LASTEXITCODE)" }
 
     if ($MirrorDir -ne '') {
