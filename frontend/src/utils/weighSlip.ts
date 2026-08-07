@@ -46,7 +46,7 @@
  * (cân to) vì `btnPrint_Click` của workbook cân to
  * `5.Semiauto- lockmove SEND OVER6 - delta-stable-final-221.xlsm` **giống hệt** workbook cân nhỏ
  * — đã đối chiếu nguyên văn cả hai module `scaleform`, kể cả khổ giấy trong
- * `printerSettings1.bin` (cùng 53.3 x 101.6mm). Không có gì để tách riêng.
+ * `printerSettings1.bin` (cùng 53.3 x 101.6mm ở thời điểm đối chiếu). Không có gì để tách riêng.
  *
  * Chỗ DUY NHẤT cố ý không chép y nguyên (đã báo người dùng): dòng CÂN TAY vẫn in "MANUAL" thay vì
  * "REJECTED". Cân tay là luồng chỉ có ở web (VBA không có), nên không có tờ phiếu VBA nào để mà
@@ -148,15 +148,19 @@ export function nowSlipTimestamp(d = new Date()): string {
 }
 
 /**
- * Khổ giấy phiếu, mm. Lấy từ chính DEVMODE lưu trong workbook
+ * Khổ giấy phiếu, mm — cuộn tem **60 x 40mm (6cm x 4cm), nằm ngang**, theo yêu cầu người dùng
+ * 07/08/2026 cho trạm `/weighing-station-v2`.
+ *
+ * Trước đó là 53.3 x 101.6mm dọc, lấy từ DEVMODE lưu trong workbook
  * (`xl/printerSettings/printerSettings1.bin`: TSC TTP-244 Pro, dmPaperWidth 533, dmPaperLength
- * 1016, tức 53.3 x 101.6mm, dọc) — tức đúng cuộn tem mà máy in của trạm đang nạp.
+ * 1016). Cuộn tem ngoài xưởng đã đổi nên số ở đây không còn bám theo workbook nữa.
  *
  * `margin` = 0.2cm, đúng 4 lề mà `btnPrint_Click` đặt trong PageSetup.
  *
- * Đây là CHỖ DUY NHẤT phải sửa nếu đổi cuộn tem, và phải sửa cả bản PHP cho khớp.
+ * Đây là CHỖ DUY NHẤT phải sửa nếu đổi cuộn tem, và phải sửa cả bản PHP cho khớp. Hướng xoay
+ * KHÔNG cần sửa theo: `utils/slipPrint.ts` tự chọn xoay hay không tuỳ khổ nào ra chữ to hơn.
  */
-export const SLIP_PAGE_MM = { width: 53.3, height: 101.6, margin: 2 };
+export const SLIP_PAGE_MM = { width: 60, height: 40, margin: 2 };
 
 /** Số dòng dữ liệu luôn in ra — `For i = 1 To 9` của VBA. */
 const SLIP_DATA_ROWS = 9;

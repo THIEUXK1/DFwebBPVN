@@ -741,18 +741,22 @@ class WeighingJobController extends Controller
     }
 
     /**
-     * Khổ giấy phiếu (mm) và lề, lấy từ chính DEVMODE lưu trong workbook
+     * Khổ giấy phiếu (mm) và lề — cuộn tem **60 x 40mm (6cm x 4cm), nằm ngang**, theo yêu cầu
+     * người dùng 07/08/2026 cho trạm /weighing-station-v2.
+     *
+     * Trước đó là 53.3 x 101.6mm dọc, lấy từ DEVMODE lưu trong workbook
      * `4.semiauto-small scale - delta-stable-final_DF026-027.xlsm`
      * (`xl/printerSettings/printerSettings1.bin`: TSC TTP-244 Pro, dmPaperWidth 533,
-     * dmPaperLength 1016 → 53.3 x 101.6mm, dọc). Lề 0.2cm = đúng PageSetup của btnPrint_Click.
+     * dmPaperLength 1016). Cuộn tem ngoài xưởng đã đổi nên số ở đây không còn bám theo workbook.
+     * Lề 0.2cm = đúng PageSetup của btnPrint_Click.
      *
      * Để dạng chuỗi chứ không phải float: chuỗi phiếu phải khớp TỪNG KÝ TỰ với bản
      * `frontend/src/utils/weighSlip.ts`, mà PHP và JS in số thực ra chuỗi không phải lúc nào cũng
      * giống nhau. Đổi cuộn tem thì sửa cả hai nơi.
      */
-    private const SLIP_PAGE_W_MM = '53.3';
+    private const SLIP_PAGE_W_MM = '60';
 
-    private const SLIP_PAGE_H_MM = '101.6';
+    private const SLIP_PAGE_H_MM = '40';
 
     private const SLIP_PAGE_MARGIN_MM = '2';
 

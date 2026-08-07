@@ -59,13 +59,16 @@ ${autoPrint ? SCRIPT_TU_IN : ''}
 }
 
 /**
- * XOAY 90° SANG PHẢI rồi co phiếu cho vừa ĐÚNG MỘT TRANG — bản dựng lại của
- * `FitToPagesWide = 1` + `FitToPagesTall = 1` trong PageSetup của VBA, cộng phần xoay.
+ * Co phiếu cho vừa ĐÚNG MỘT TRANG — bản dựng lại của `FitToPagesWide = 1` +
+ * `FitToPagesTall = 1` trong PageSetup của VBA — và XOAY 90° SANG PHẢI **nếu xoay ra chữ to hơn**.
  *
- * Vì sao phải xoay (yêu cầu 06/08/2026, kèm số đo): bảng phiếu 5 cột tự nhiên rộng **127.5mm**,
- * cao **106.1mm** — nằm NGANG. Con tem thì 53.3 × 101.6mm, tức DỌC. Ép thẳng vào là phiếu co còn
- * 39%, chữ 12pt xuống 4.6pt. Xoay 90° rồi mới co thì hệ số lên 46% (dùng hết chiều dài 101.6mm
- * cho bề rộng bảng) và chữ ra 5.6pt.
+ * Bảng phiếu 5 cột nằm NGANG (tự nhiên rộng ~127.5mm, cao ~106.1mm trước khi bỏ chiều cao dòng cố
+ * định), nên hướng nào có lợi phụ thuộc con tem đang nạp:
+ *   - Tem DỌC (53.3 × 101.6mm, cuộn cũ): ép thẳng thì phiếu co còn 39%, chữ 12pt xuống 4.6pt;
+ *     xoay rồi mới co thì lên 46% và chữ ra 5.6pt — xoay có lợi (đo thật 06/08/2026).
+ *   - Tem NGANG (60 × 40mm, cuộn hiện tại): bảng đã cùng hướng với tem, xoay chỉ làm chữ nhỏ đi.
+ * Vì thế KHÔNG hardcode hướng: đo cả hai rồi lấy hệ số co lớn hơn. Đổi cuộn tem chỉ cần sửa
+ * `SLIP_PAGE_MM` (và hằng tương ứng bên PHP), không phải sờ vào đây.
  *
  * Xoay ở ĐÂY chứ không sửa payload là có chủ đích: `print_jobs.label_payload` phải khớp TỪNG KÝ
  * TỰ giữa `utils/weighSlip.ts` và `WeighingJobController::buildSlipHtml` (script đối soát
@@ -96,9 +99,14 @@ window.onload = function () {
     // tăng, tức CHỮ IN RA TO HƠN dù cỡ chữ khai báo không đổi.
     for (i = 0; i < o.length; i++) { o[i].style.height = 'auto'; o[i].style.lineHeight = '1.08'; }
 
-    // Đã xoay 90 độ nên BỀ RỘNG tem chặn CHIỀU CAO bảng và ngược lại — đảo hai vế so với bản
+    // Khi xoay 90 độ thì BỀ RỘNG tem chặn CHIỀU CAO bảng và ngược lại — đảo hai vế so với bản
     // không xoay, quên đảo là phiếu vẫn tràn ra ngoài tem.
-    var k = Math.min(1, rongPx / table.offsetHeight, caoPx / table.offsetWidth);
+    var rongBang = table.offsetWidth, caoBang = table.offsetHeight;
+    var kThang = Math.min(rongPx / rongBang, caoPx / caoBang);
+    var kXoay = Math.min(rongPx / caoBang, caoPx / rongBang);
+    var xoay = kXoay > kThang;
+
+    var k = Math.min(1, xoay ? kXoay : kThang);
     if (isFinite(k) && k > 0) {
       // (2) THU NHỎ BẰNG zoom, KHÔNG PHẢI transform: scale(). Chrome rasterize lớp có transform
       // ở độ phân giải MÀN HÌNH rồi mới phóng lên độ phân giải máy in -> chữ nhỏ ra rỗ/vỡ đúng
@@ -115,23 +123,27 @@ window.onload = function () {
         r = table.getBoundingClientRect();
         if (!r.width || !r.height) break;
         // Sau khi xoay: chiều cao bảng thành bề rộng in, bề rộng bảng thành chiều cao in.
-        var heSo = Math.min(rongPx / r.height, caoPx / r.width);
+        var heSo = xoay
+          ? Math.min(rongPx / r.height, caoPx / r.width)
+          : Math.min(rongPx / r.width, caoPx / r.height);
         // heSo >= 1 nghĩa là ĐÃ NẰM GỌN trong tem; chỉ được dừng ở trạng thái đó, không bao giờ
         // dừng khi còn thừa ra (dù chỉ 0.1%) — thừa là bị xén mất một cột.
         if (heSo >= 1 && (heSo < 1.01 || k >= 1)) break;
         k = Math.min(1, k * heSo * 0.999);   // 0.999: chừa vụn làm tròn, tránh dao động qua lại
       }
 
-      table.style.transformOrigin = 'top left';
-      // Toạ độ trong transform tính theo hệ CỦA CHÍNH phần tử, mà hệ đó đã bị zoom co lại — nên
-      // muốn dịch đúng r.height khi vẽ ra thì phải ghi r.height chia k. Xoay quanh góc trên-trái
-      // đẩy bảng sang trái trục (x' = -y) nên phải dịch phải đúng bằng chiều cao bảng.
-      table.style.transform = 'translateX(' + (r.height / k) + 'px) rotate(90deg)';
-      // Hộp bố cục của bảng KHÔNG xoay theo transform, nên phải ép lại kích thước của khung trang
-      // — nếu không, phần thừa vẫn tính là nội dung và trình duyệt đẩy sang trang 2.
-      page.style.width = r.height + 'px';
-      page.style.height = r.width + 'px';
-      page.style.overflow = 'hidden';
+      if (xoay) {
+        table.style.transformOrigin = 'top left';
+        // Toạ độ trong transform tính theo hệ CỦA CHÍNH phần tử, mà hệ đó đã bị zoom co lại — nên
+        // muốn dịch đúng r.height khi vẽ ra thì phải ghi r.height chia k. Xoay quanh góc trên-trái
+        // đẩy bảng sang trái trục (x' = -y) nên phải dịch phải đúng bằng chiều cao bảng.
+        table.style.transform = 'translateX(' + (r.height / k) + 'px) rotate(90deg)';
+        // Hộp bố cục của bảng KHÔNG xoay theo transform, nên phải ép lại kích thước của khung
+        // trang — nếu không, phần thừa vẫn tính là nội dung và trình duyệt đẩy sang trang 2.
+        page.style.width = r.height + 'px';
+        page.style.height = r.width + 'px';
+        page.style.overflow = 'hidden';
+      }
 
       // (3) Nét viền 0.2mm sau khi co chỉ còn ~0.7 dot ở 203dpi -> máy in nhiệt rasterize ra nét
       // ĐỨT QUÃNG (lỗi thật đã gặp 31/07/2026 ở /print-station). Excel không bị vậy vì GDI không
