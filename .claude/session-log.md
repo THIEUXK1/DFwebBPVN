@@ -2978,3 +2978,53 @@ yeu cau. Da go `import`/`ref`/the goi khong con dung de khong de lai code chet.
 - **CHUA thu tren trinh duyet.** Can nguoi dung dang nhap **bang tai khoan `cannho`** (khong phai
   admin — admin khong bi khoa nen khong the hien duoc cai bay o muc C) roi bam CHECK: phai mo tab
   moi vao Lich su can va **o lai do**, khong bi da ve man can.
+
+---
+
+### 130. Bam SAVE/PRINT khong con van khoi F11 — bo cua so in, in bang IFRAME AN (2026-08-07)
+
+**A. Trieu chung**
+
+Sau muc 125/127 (bo `confirm`/`alert` sang `HopThoaiVba`) thi bam CLEAR da giu duoc F11, nhung bam
+**SAVE** van van ra khoi toan man hinh. Nut PRINT cung vay.
+
+**B. Nguyen nhan**
+
+Khong phai hop thoai nua. La `window.open('', '_blank', 'width=780,height=980')` — luong SAVE mo
+san mot **CUA SO trinh duyet moi** de in phieu vao do. Chrome/Edge **thoat che do toan man hinh
+(F11)** cua cua so hien tai ngay khi trang mo mot cua so moi: cua so moi phai hien ra duoc thi cua
+so dang phu kin man hinh buoc phai thu ve dang thuong. Khong co CSS/JS nao chan duoc.
+
+(Luu y phan biet: `window.open(url, '_blank')` KHONG kem `width/height` chi mo mot **tab**, khong
+lam mat F11 — nen nut CHECK o muc 129 van an toan.)
+
+**C. Da sua**
+
+Them `inPhieuTrongTrang()` trong `utils/slipPrint.ts`: in bang mot **iframe an** dat ngay trong
+trang, khong tao cua so nao.
+- Iframe day ra ngoai man hinh (`position:fixed; left:-10000px`) chu **khong** `display:none` —
+  phan tu display:none khong duoc bo cuc, ma doan script tu in phai do `offsetWidth` cua bang moi
+  chon duoc co chu.
+- Dung lai MOT khung duy nhat cho moi lan in, khong tao/xoa moi lan: xoa dung luc thi phai rinh
+  xem hop thoai in dong chua, ma khong co su kien nao bao tin cay duoc.
+- `window.print()` trong iframe chi in NOI DUNG IFRAME, khong in trang cha.
+- Trong `SCRIPT_TU_IN`, `window.close()` nay boc `if (!window.frameElement)` — trong iframe thi
+  close() vo tac dung va Chrome ghi canh bao ra console.
+
+**D. Duoc kem theo: het rang buoc "user activation"**
+
+Iframe tao duoc sau `await`, nen bo duoc toan bo phan cong kenh `printWin` da dung tu 06/08:
+khong con mo san cua so truoc hop xac nhan, khong con truyen `preOpened` vao `printSlip()`, khong
+con nhanh bao loi "trinh duyet da chan cua so in" (khong con cua so de ma bi chan), khong con
+`printWin?.close()` khi luu hong. `printSlip()` gio khong nhan tham so.
+
+Ap dung cho **ca hai** man `/weighing-station-v2` va `/weighing-station-large` (nguoi dung da yeu
+cau doi ngang hai man tu muc 127).
+
+`printSlipHtml()` va `cuaSoThat()` VAN GIU trong `slipPrint.ts` — `WeighingHistory.vue` va
+`WeighingStation.vue` con dung, hai man do khong chay F11 nen chua doi.
+
+**E. Kiem chung**
+- `vue-tsc --noEmit` exit 0; `vite build` OK; `scripts/check-weigh-slip.mjs` 8 pass / 0 fail.
+- **CHUA thu tren trinh duyet va CHUA in thu tren may in that.** Can nguoi dung bam F11 roi bam
+  SAVE: phai VAN o toan man hinh, va hop thoai in van hien ra binh thuong.

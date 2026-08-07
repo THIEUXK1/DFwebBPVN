@@ -152,7 +152,9 @@ const SCRIPT_TU_IN = `<script>
     // window.print() CHẶN tới khi hộp thoại in đóng trên Chrome/Edge (xác nhận 30/07/2026), nên
     // gọi window.close() ngay sau là đủ, không cần chờ sự kiện afterprint.
     window.print();
-    window.close();
+    // Trong iframe thì close() vô tác dụng (chỉ cửa sổ do script mở mới tự đóng được) và Chrome
+    // ghi một cảnh báo ra console — chỉ gọi khi đúng là cửa sổ riêng.
+    if (!window.frameElement) window.close();
   }
 
   // Phải chờ font nạp xong mới đo được bề rộng chữ: đo lúc font dự phòng còn đang dùng thì cỡ chữ
@@ -163,6 +165,44 @@ const SCRIPT_TU_IN = `<script>
   };
 })();
 <\/script>`;
+
+/**
+ * In phiếu bằng một IFRAME ẨN ngay trong trang — KHÔNG mở cửa sổ mới.
+ *
+ * Vì sao bỏ `window.open` (07/08/2026): Chrome/Edge **thoát chế độ toàn màn hình (F11)** của cửa sổ
+ * hiện tại ngay khi trang mở một cửa sổ trình duyệt mới — cửa sổ mới phải hiện ra được thì cửa sổ
+ * đang phủ kín màn hình buộc phải thu về dạng thường. Máy trạm cân chạy F11 suốt ca, nên mỗi lần
+ * bấm SAVE là thợ mất toàn màn hình và phải bấm F11 lại. Iframe không tạo cửa sổ nào nên không
+ * đụng tới trạng thái đó. (Cùng lý do đã bỏ `confirm`/`alert` sang `HopThoaiVba`.)
+ *
+ * Được lợi kèm theo: hết ràng buộc "user activation". Iframe tạo được sau `await`, nên chỗ gọi
+ * không phải mở sẵn cửa sổ rồi truyền vào nữa, và cũng không còn cảnh bị chặn popup.
+ *
+ * `window.print()` bên trong iframe chỉ in NỘI DUNG IFRAME, không in trang cha.
+ */
+let khungIn: HTMLIFrameElement | null = null;
+
+export function inPhieuTrongTrang(slipHtml: string): void {
+  // Dùng lại MỘT khung duy nhất thay vì tạo rồi xoá mỗi lần in: xoá đúng lúc thì phải rình xem hộp
+  // thoại in đã đóng chưa, mà không có sự kiện nào báo tin cậy được. Giữ lại một khung ẩn thì lần
+  // in sau chỉ ghi đè nội dung.
+  if (!khungIn || !khungIn.isConnected) {
+    khungIn = document.createElement('iframe');
+    khungIn.setAttribute('aria-hidden', 'true');
+    khungIn.title = 'Phieu can';
+    // Đẩy ra ngoài màn hình chứ KHÔNG dùng `display:none`: phần tử display:none không được bố cục,
+    // mà đoạn script tự in phải đo `offsetWidth` của bảng mới chọn được cỡ chữ. Khung để rộng hơn
+    // con tem nhiều để bảng không bị ngắt dòng oan trong lúc thử các cỡ chữ lớn.
+    khungIn.style.cssText = 'position:fixed;left:-10000px;top:0;width:200mm;height:300mm;border:0;';
+    document.body.appendChild(khungIn);
+  }
+
+  const doc = khungIn.contentDocument;
+  if (!doc) return;
+  doc.open();
+  doc.write(wrapSlipDocument(slipHtml, true));
+  doc.close();
+}
 
 /**
  * Lọc lấy đúng một `Window` thật, trả `null` cho mọi thứ khác.

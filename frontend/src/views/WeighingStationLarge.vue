@@ -239,7 +239,7 @@ import { currentWorkstation, adoptLocalWorkstation } from '../services/workstati
 import { scannerService } from '../services/scanner';
 import { isFullscreen } from '../services/layout';
 import { useScaleFeed } from '../composables/useScaleFeed';
-import { printSlipHtml, cuaSoThat } from '../utils/slipPrint';
+import { inPhieuTrongTrang } from '../utils/slipPrint';
 import { parseDyeQr, MAX_RACK_LINES, type ParsedDyeQr } from '../utils/qrDyeParser';
 import { processTone, processBackground } from '../utils/processColor';
 import { buildSlipHtml, processStatus, nowSlipTimestamp, MANUAL_MATERIAL_CODE } from '../utils/weighSlip';
@@ -1136,23 +1136,15 @@ async function onSave() {
     return;
   }
 
-  // Mở cửa sổ in NGAY TẠI ĐÂY, trước mọi `await` — còn trong "user activation" của cú click SAVE
-  // nên trình duyệt không chặn. Mở sau khi lưu xong là bị chặn.
-  //
-  // PHẢI mở TRƯỚC hộp xác nhận, không phải sau như trước đây. `window.confirm` cũ là hàm ĐỒNG BỘ
-  // nên mở sau nó vẫn còn user activation; hộp thoại vẽ trong trang thì bắt buộc `await`, mà mở
-  // cửa sổ sau một `await` là đúng trường hợp Chrome/Edge chặn. Thợ bấm "KHÔNG" thì đóng lại.
-  const printWin = window.open('', '_blank', 'width=780,height=980');
-
+  // KHÔNG mở sẵn cửa sổ in ở đây nữa (07/08/2026). Phiếu in bằng iframe ẩn ngay trong trang —
+  // xem `inPhieuTrongTrang()`: không có cửa sổ mới nên không văng khỏi F11, và cũng hết ràng buộc
+  // "user activation" bắt phải mở trước mọi `await`.
   const unweighed = rows.filter((r: any) => r.weight === null).length;
   if (unweighed > 0) {
     const ok = await hoiXacNhan(
       `Còn ${unweighed} dòng CHƯA CÂN. Lưu bây giờ sẽ chốt các dòng đó là KHÔNG ĐẠT và không cân lại được nữa.\n\nVẫn lưu?`
     );
-    if (!ok) {
-      printWin?.close();
-      return;
-    }
+    if (!ok) return;
   }
 
   saving.value = true;
@@ -1180,7 +1172,7 @@ async function onSave() {
     );
 
     // IN NGAY, TRƯỚC khi chạm mạng — mọi dữ liệu cần in đã nằm trên màn hình.
-    if (printWin) await printSlipHtml(phieuCucBo, printWin);
+    inPhieuTrongTrang(phieuCucBo);
 
     let daLenServer = false;
     let loiNghiepVu: string | null = null;
@@ -1207,9 +1199,7 @@ async function onSave() {
     clearSession();
     await onClear(true, true);
 
-    if (!printWin) {
-      errorMsg.value = 'Trình duyệt đã chặn cửa sổ in nên CHƯA IN được phiếu. Cho phép popup cho trang này để lần sau in được.';
-    } else if (loiNghiepVu) {
+    if (loiNghiepVu) {
       errorMsg.value = `Máy chủ TỪ CHỐI mẻ này: ${loiNghiepVu} Phiếu đã in, mẻ vẫn nằm trong hàng đợi.`;
     } else if (!daLenServer) {
       errorMsg.value =
@@ -1230,19 +1220,14 @@ async function onSave() {
     scannerService.playBeep(1800, 150);
     clearSession();
 
-    if (!printWin) {
-      errorMsg.value = 'ĐÃ LƯU XONG mẻ cân, nhưng trình duyệt chặn cửa sổ in. Cho phép popup rồi bấm PRINT để in phiếu.';
-      return;
-    }
     const slipPayload = saveRes.data?.data?.slip?.label_payload;
     if (slipPayload) {
-      await printSlipHtml(slipPayload, printWin);
+      inPhieuTrongTrang(slipPayload);
     } else {
-      await printSlip(printWin);
+      await printSlip();
     }
     await onClear(true, true);
   } catch (err: any) {
-    printWin?.close();
     // KHÔNG xoá capturedWeights khi lỗi — số vừa cân phải còn nguyên để bấm SAVE lại.
     errorMsg.value = err.response?.data?.message || 'Không lưu được mẻ cân. Số đã cân vẫn còn trên màn hình — thử SAVE lại.';
   } finally {
@@ -1349,25 +1334,19 @@ function dungPhieuTuLuoi(): string {
 }
 
 /**
- * btnPrint_Click. `preOpened` bắt buộc khi in nằm sau một `await` (luồng SAVE) — xem onSave.
+ * btnPrint_Click. In qua iframe ẩn trong chính trang này (`inPhieuTrongTrang`) — không mở cửa sổ
+ * mới nên không văng khỏi F11, và gọi được ở bất kỳ đâu kể cả sau `await` (luồng SAVE).
  *
  * In VÔ ĐIỀU KIỆN đúng bản gốc: `btnPrint_Click` của workbook cân to (giống hệt workbook cân nhỏ)
  * đổ thẳng 9 ô `txt_rack/dye/weight/process` ra sheet, không hỏi trạm và không đòi phải có số cân
  * — form trắng vẫn ra một tờ 9 dòng trống. Mọi cửa chặn thêm đều biến nút PRINT thành nút im lặng.
  */
-const printSlip = async (preOpened?: Window | null) => {
-  const win = cuaSoThat(preOpened) ?? window.open('', '_blank', 'width=780,height=980');
-  if (!win) {
-    await baoTin('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
-    return;
-  }
-  win.document.write('<p style="font-family:sans-serif;padding:20px;">Đang xử lý...</p>');
-
+const printSlip = async () => {
   // Cân tay, mẻ đọc từ QR, và cả form trắng: đều dựng phiếu ngay tại trình duyệt từ 9 dòng đang
   // hiện. Chưa gắn trạm cũng rơi vào đây thay vì thoát im lặng: server cần `workstation_code` để
   // ghi PrintJob, nhưng tờ giấy thì không — dữ liệu để in đã nằm sẵn trên màn hình.
   if (!activeJob.value?.id || !currentWorkstation.value) {
-    await printSlipHtml(dungPhieuTuLuoi(), win);
+    inPhieuTrongTrang(dungPhieuTuLuoi());
     return;
   }
 
@@ -1375,9 +1354,8 @@ const printSlip = async (preOpened?: Window | null) => {
     const res = await axios.post(`/api/weighing-jobs/${activeJob.value.id}/print-slip`, {
       workstation_code: currentWorkstation.value.code,
     });
-    await printSlipHtml(res.data?.data?.label_payload || '', win);
+    inPhieuTrongTrang(res.data?.data?.label_payload || '');
   } catch (err: any) {
-    win.close();
     await baoTin(err.response?.data?.message || 'Không thể in phiếu cân.');
   }
 };

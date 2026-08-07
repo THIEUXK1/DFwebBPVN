@@ -89,8 +89,6 @@
           <!-- KHÔNG khoá theo "đã có đơn chưa": bấm NEXT trên form trắng là dùng màn hình như một
                cái cân thường (yêu cầu 2026-08-02). Không lưu gì cả, xem cảnh báo dưới lưới. -->
           <button class="vba-btn big accent" @click="onNext" :disabled="saving || !canPressNext">NEXT</button>
-          <!-- PHẢI có ngoặc: `@click="printSlip"` khiến Vue truyền PointerEvent vào tham số
-               `preOpened`, và nút PRINT chết câm — xem ghi chú ở printSlip(). -->
           <button class="vba-btn sm" @click="printSlip()">PRINT</button>
           <!-- CHECK mở LỊCH SỬ CÂN sang tab mới (yêu cầu 07/08/2026) — xem moLichSuCan(). -->
           <button class="vba-btn sm" @click="moLichSuCan()">CHECK</button>
@@ -306,7 +304,7 @@ import { currentWorkstation, adoptLocalWorkstation } from '../services/workstati
 import { scannerService } from '../services/scanner';
 import { isFullscreen } from '../services/layout';
 import { useScaleFeed } from '../composables/useScaleFeed';
-import { printSlipHtml, cuaSoThat } from '../utils/slipPrint';
+import { inPhieuTrongTrang } from '../utils/slipPrint';
 import { parseDyeQr, MAX_RACK_LINES, type ParsedDyeQr } from '../utils/qrDyeParser';
 import { processTone } from '../utils/processColor';
 import { buildSlipHtml, processStatus, nowSlipTimestamp, MANUAL_MATERIAL_CODE } from '../utils/weighSlip';
@@ -1099,23 +1097,16 @@ async function onSave() {
   // Dòng chưa cân sẽ bị chốt luôn thành KHÔNG ĐẠT và KHÔNG cân lại được (server chặn ghi đè
   // dòng đã COMPLETED). VBA lưu thẳng không hỏi, nhưng hậu quả ở đây là không thể hoàn tác
   // nên hỏi lại — chỉ hiện khi thật sự còn ô chưa cân, không cản luồng cân đủ 9 ô.
-  // Mở cửa sổ in NGAY TẠI ĐÂY, trước mọi `await` — vẫn còn trong "user activation" của cú click
-  // SAVE nên trình duyệt không chặn. Mở sau khi lưu xong là bị chặn (xem ghi chú ở printSlip).
   //
-  // PHẢI mở TRƯỚC hộp xác nhận, không phải sau như trước đây. `window.confirm` cũ là hàm ĐỒNG BỘ
-  // nên mở sau nó vẫn còn user activation; hộp thoại vẽ trong trang thì bắt buộc `await`, mà mở
-  // cửa sổ sau một `await` là đúng trường hợp Chrome/Edge chặn. Thợ bấm "Không" thì đóng lại.
-  const printWin = window.open('', '_blank', 'width=780,height=980');
-
+  // KHÔNG mở sẵn cửa sổ in ở đây nữa (07/08/2026). Phiếu in bằng iframe ẩn trong chính trang này
+  // — xem `inPhieuTrongTrang()`: không có cửa sổ mới nên không văng khỏi F11, và cũng không còn
+  // ràng buộc "user activation" bắt phải mở trước mọi `await`.
   const unweighed = rows.filter((r: any) => r.weight === null).length;
   if (unweighed > 0) {
     const ok = await hoiXacNhan(
       `Còn ${unweighed} dòng CHƯA CÂN. Lưu bây giờ sẽ chốt các dòng đó là KHÔNG ĐẠT và không cân lại được nữa.\n\nVẫn lưu?`
     );
-    if (!ok) {
-      printWin?.close();
-      return;
-    }
+    if (!ok) return;
   }
 
   saving.value = true;
@@ -1168,9 +1159,9 @@ async function onSave() {
     // SAVE xong chờ mãi tem mới hiện".
     //
     // An toàn vì bản dựng của trình duyệt đã được đối chiếu TỪNG KÝ TỰ với bản server
-    // (frontend/scripts/check-weigh-slip.mjs). window.print() chặn trong cửa sổ CON, không chặn
-    // trang này, nên request bên dưới vẫn bay đi bình thường trong lúc hộp thoại in đang mở.
-    if (printWin) await printSlipHtml(phieuCucBo, printWin);
+    // (frontend/scripts/check-weigh-slip.mjs). Iframe tự in sau khi nạp xong font, không chặn
+    // dòng chảy ở đây, nên request bên dưới vẫn bay đi bình thường.
+    inPhieuTrongTrang(phieuCucBo);
 
     let daLenServer = false;
     let loiNghiepVu: string | null = null;
@@ -1203,9 +1194,7 @@ async function onSave() {
     // mẻ kế tiếp ngay — không mất gì cả, mọi mẻ chưa lên được server đều nằm trong hàng đợi.
     await onClear(true, true);
 
-    if (!printWin) {
-      errorMsg.value = 'Trình duyệt đã chặn cửa sổ in nên CHƯA IN được phiếu. Cho phép popup cho trang này để lần sau in được.';
-    } else if (loiNghiepVu) {
+    if (loiNghiepVu) {
       errorMsg.value =
         `Máy chủ TỪ CHỐI mẻ này: ${loiNghiepVu} Phiếu đã in, mẻ vẫn nằm trong hàng đợi — `
         + 'bấm chỉ báo "mẻ chờ gửi" để xem và xử lý.';
@@ -1231,21 +1220,16 @@ async function onSave() {
     scannerService.playBeep(1800, 150);
     clearSession();
 
-    if (!printWin) {
-      errorMsg.value = 'ĐÃ LƯU XONG mẻ cân, nhưng trình duyệt chặn cửa sổ in. Cho phép popup cho trang này rồi bấm PRINT để in phiếu.';
-      return;
-    }
     // Đúng đuôi btnSave_Click của VBA: `btnPrint.Value = True` rồi `btnCLEAR.Value = True`
     // — in phiếu xong là form trắng, sẵn sàng quét đơn kế.
     const slipPayload = saveRes.data?.data?.slip?.label_payload;
     if (slipPayload) {
-      await printSlipHtml(slipPayload, printWin);
+      inPhieuTrongTrang(slipPayload);
     } else {
-      await printSlip(printWin);
+      await printSlip();
     }
     await onClear(true, true);
   } catch (err: any) {
-    printWin?.close(); // không để lại cửa sổ trắng lơ lửng khi lưu hỏng
     // KHÔNG xoá capturedWeights khi lỗi — số thao tác viên vừa cân phải còn nguyên để bấm
     // SAVE lại, nếu không họ mất trắng cả mẻ.
     errorMsg.value = err.response?.data?.message || 'Không lưu được mẻ cân. Số đã cân vẫn còn trên màn hình — thử SAVE lại.';
@@ -1378,27 +1362,14 @@ function dungPhieuTuLuoi(): string {
 }
 
 /**
- * `preOpened` = cửa sổ đã được mở sẵn bởi chỗ gọi. BẮT BUỘC dùng khi in nằm sau một `await`
- * (luồng SAVE): Chrome/Edge chỉ cho `window.open` trong lúc còn "user activation" — tức ngay
- * trong handler của cú click, chưa qua await nào. Gọi sau `await axios.post(...)` là bị chặn
- * ngay, và trước bản vá này luồng SAVE dính đúng lỗi đó: mẻ ĐÃ lưu xong nhưng phiếu không in
- * được, form vẫn bị onClear() xoá sạch, nên bấm SAVE lại chỉ còn báo lỗi — thao tác viên tưởng
- * là chưa lưu được gì.
+ * In phiếu qua iframe ẩn trong chính trang này (`inPhieuTrongTrang`) — không mở cửa sổ mới, nên
+ * không văng khỏi F11 và không còn ràng buộc "user activation" của `window.open`. Nhờ vậy gọi
+ * được ở bất kỳ đâu, kể cả sau `await axios.post(...)` trong luồng SAVE.
  *
- * Nút PRINT gọi thẳng từ cú click nên không cần truyền gì, tự mở như cũ — nhưng trong template
- * phải viết `@click="printSlip()"` CÓ NGOẶC, xem `cuaSoThat()` trong `utils/slipPrint.ts`.
- *
- * Ngoài ra hàm này in VÔ ĐIỀU KIỆN, đúng `btnPrint_Click` của VBA: không hỏi đã gắn trạm chưa,
- * không đòi phải có sẵn số cân. Mọi cửa chặn thêm đều biến nút PRINT thành nút im lặng.
+ * Hàm này in VÔ ĐIỀU KIỆN, đúng `btnPrint_Click` của VBA: không hỏi đã gắn trạm chưa, không đòi
+ * phải có sẵn số cân. Mọi cửa chặn thêm đều biến nút PRINT thành nút im lặng.
  */
-const printSlip = async (preOpened?: Window | null) => {
-  const win = cuaSoThat(preOpened) ?? window.open('', '_blank', 'width=780,height=980');
-  if (!win) {
-    await baoTin('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
-    return;
-  }
-  win.document.write('<p style="font-family:sans-serif;padding:20px;">Đang xử lý...</p>');
-
+const printSlip = async () => {
   // Cân tay, mẻ đọc từ QR (chưa có id nào dưới DB — đường thường của V2), và cả form trắng: đều
   // dựng phiếu ngay tại trình duyệt từ 9 dòng đang hiện. Form TRẮNG vẫn ra một tờ 9 dòng trống,
   // KHÔNG chặn lại — `btnPrint_Click` của VBA in bất kể ô có gì hay không. Bản trước chặn bằng
@@ -1410,7 +1381,7 @@ const printSlip = async (preOpened?: Window | null) => {
   // (Trước đây nhánh mẻ QR gọi `/api/weighing-jobs/null/print-slip` và luôn 404, tức nút PRINT
   // hỏng với chính luồng chạy chính.)
   if (!activeJob.value?.id || !currentWorkstation.value) {
-    await printSlipHtml(dungPhieuTuLuoi(), win);
+    inPhieuTrongTrang(dungPhieuTuLuoi());
     return;
   }
 
@@ -1418,9 +1389,8 @@ const printSlip = async (preOpened?: Window | null) => {
     const res = await axios.post(`/api/weighing-jobs/${activeJob.value.id}/print-slip`, {
       workstation_code: currentWorkstation.value.code,
     });
-    await printSlipHtml(res.data?.data?.label_payload || '', win);
+    inPhieuTrongTrang(res.data?.data?.label_payload || '');
   } catch (err: any) {
-    win.close();
     await baoTin(err.response?.data?.message || 'Không thể in phiếu cân.');
   }
 };
