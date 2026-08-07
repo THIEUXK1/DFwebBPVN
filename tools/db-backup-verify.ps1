@@ -20,7 +20,7 @@ param(
     [string]$PgBin     = 'C:\web\tools\postgresql\bin',
     [string]$BackupDir = 'C:\web\tools\backups',
     [int]$MaxAgeHours  = 26,
-    [int]$MinDumpSizeKB = 512,
+    [int]$MinDumpSizeKB = 100,
     [int]$MinTableCount = 20
 )
 

@@ -24,8 +24,14 @@ param(
     [int]$RetentionDays           = 14,
     [int]$MonthlyRetentionMonths  = 6,
 
-    # Dump nhỏ hơn ngưỡng này coi như hỏng (DB thật hiện ~vài chục MB).
-    [int]$MinDumpSizeKB = 512
+    # Dump nhỏ hơn ngưỡng này coi như hỏng. Dump thật ngày 07/08/2026 là 841 KB
+    # và đang tăng nhanh theo dữ liệu cân (300 KB ngày 05/08) — 100 KB là sàn an
+    # toàn, thấp hơn cả bản nhỏ nhất từng có (218 KB, 25/07).
+    [int]$MinDumpSizeKB = 100,
+
+    # File mật khẩu do bản backup cũ (pg-backup.bat) dựng sẵn và đã chạy tốt.
+    # Có file này thì dùng, khỏi phải đọc mật khẩu ra từ .env.
+    [string]$PgPassFile = 'C:\web\tools\.pgpass'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -82,7 +88,14 @@ try {
         Write-Log "Đã tạo thư mục backup: $BackupDir"
     }
 
-    $env:PGPASSWORD = $cfg['DB_PASSWORD']
+    if (Test-Path -LiteralPath $PgPassFile) {
+        $env:PGPASSFILE = $PgPassFile
+        Write-Log "Xác thực bằng $PgPassFile"
+    } else {
+        $env:PGPASSWORD = $cfg['DB_PASSWORD']
+        Write-Log 'Xác thực bằng DB_PASSWORD trong .env'
+    }
+
     $stamp    = Get-Date -Format 'yyyyMMdd_HHmmss'
     $dumpFile = Join-Path $BackupDir ("{0}_{1}.dump" -f $dbName, $stamp)
     $globFile = Join-Path $BackupDir ("globals_{0}.sql" -f $stamp)
@@ -159,6 +172,7 @@ catch {
 }
 finally {
     $env:PGPASSWORD = $null
+    $env:PGPASSFILE = $null
 }
 
 $elapsed = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
