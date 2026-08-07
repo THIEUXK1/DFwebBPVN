@@ -150,7 +150,7 @@
 
 import { ref, reactive, computed, watch, onMounted } from 'vue';
 import axios from 'axios';
-import { printSlipHtml } from '../utils/slipPrint';
+import { inPhieuTrongTrang } from '../utils/slipPrint';
 
 /**
  * Tải MỘT cửa sổ dữ liệu rồi tìm kiếm/phân trang hoàn toàn tại trình duyệt (2026-08-02).
@@ -299,25 +299,27 @@ function resetFilters() {
  * CLAUDE.md mục 5 bắt buộc mọi lượt in lại phải để lại Audit Log bất biến (ai in, vòng nào, lúc
  * nào). Dựng ở client thì không có gì để mà ghi.
  *
- * `window.open` gọi ĐỒNG BỘ ngay trong handler, trước mọi `await` — sau await là mất "user
- * activation" và Chrome/Edge chặn popup (đúng lỗi đã dính ở luồng SAVE của Trạm cân).
+ * IN QUA IFRAME (`inPhieuTrongTrang`), ĐÚNG NHƯ NÚT PRINT CỦA `/weighing-station-v2` — không mở
+ * cửa sổ mới nữa (yêu cầu người dùng 07/08/2026: "tem in lại phải bằng kích cỡ ở trạm cân, là 1
+ * thì càng tốt", lấy trạm cân làm chuẩn).
+ *
+ * Nội dung phiếu vốn đã giống hệt nhau: hai màn gọi CÙNG endpoint `/print-slip`, cùng
+ * `WeighingJobController::buildSlipHtml`, cùng khổ 60x40mm. Thứ làm tem ra giấy khác cỡ là VẬT
+ * CHỨA lúc in: `SCRIPT_TU_IN` (xem `utils/slipPrint.ts`) chọn cỡ chữ bằng cách ĐO
+ * `table.offsetWidth/offsetHeight` ngay trong tài liệu đang chứa phiếu. Cửa sổ popup 780x980px và
+ * iframe 200x300mm là hai khung đo khác nhau, nên hai bên chốt ra hai cỡ chữ khác nhau dù chuỗi
+ * HTML vào giống từng ký tự. Dùng chung một đường in là hết lệch, và hết cả một lớp lỗi: không còn
+ * bị chặn popup, không còn văng khỏi F11.
  */
 async function reprint(job: any) {
   if (reprintingId.value) return;
-  const win = window.open('', '_blank', 'width=780,height=980');
-  if (!win) {
-    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
-    return;
-  }
-  win.document.write('<p style="font-family:sans-serif;padding:20px;">Đang dựng phiếu…</p>');
   reprintingId.value = job.id;
   try {
     // KHÔNG gửi workstation_code: phiếu in lại phải mang mã trạm ĐÃ CÂN ra nó, không phải máy
     // văn phòng đang mở màn hình này. Server tự lấy từ chính vòng cân (xem printSlip).
     const res = await axios.post(`/api/weighing-jobs/${job.id}/print-slip`, {});
-    await printSlipHtml(res.data?.data?.label_payload || '', win);
+    inPhieuTrongTrang(res.data?.data?.label_payload || '');
   } catch (err: any) {
-    win.close();
     alert(err.response?.data?.message || 'Không in lại được phiếu cân.');
   } finally {
     reprintingId.value = null;

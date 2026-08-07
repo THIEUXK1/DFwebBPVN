@@ -582,7 +582,10 @@ public class Worker : BackgroundService
                     ok = cmd.Action == "IN"
                         ? _rackSender.SendIn()
                         : _rackSender.SendOut(cmd.Racks ?? Array.Empty<string>());
-                    if (!ok) error = "Agent không thực hiện được thao tác (xem log Agent).";
+                    // Lý do THẬT nếu có (RackSender.LoiCuoi) — thợ đứng ở màn cân không mở được
+                    // log của máy trạm, mà "chưa mở ứng dụng pha màu" với "sai toạ độ" là hai
+                    // việc phải xử lý khác hẳn nhau.
+                    if (!ok) error = _rackSender.LoiCuoi ?? "Agent không thực hiện được thao tác (xem log Agent).";
                 }
                 catch (Exception ex)
                 {

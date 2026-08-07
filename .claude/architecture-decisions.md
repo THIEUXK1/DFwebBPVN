@@ -120,7 +120,7 @@ Tài liệu này ghi nhận các Quyết định Kiến trúc (ADR - Architectur
   - `FireRackBatch` gửi **đủ 6 ô, kể cả ô rỗng** — dán chuỗi rỗng chính là để XOÁ giá trị còn sót của lô trước bên ứng dụng đích. Bỏ qua ô rỗng sẽ để lại rác của lô cũ.
   - Nút xác nhận của `IN` là **(750,430)**, KHÁC nút xác nhận của `OUT` (750,215).
 - **Nguồn mã đối chiếu:** VBA project của workbook bị khoá mật khẩu nên không mở được qua Excel COM. Mã nguồn lấy được bằng cách giải nén trực tiếp `xl/vbaProject.bin` theo MS-OVBA (mật khẩu chỉ khoá giao diện VBE, không mã hoá module) — script tại scratchpad phiên 2026-08-03. Đã đối chiếu `scaleform.btn_Out_Click`/`btn_In_Click`, `Mod_sendRackauto`, `ModAPI_mouse`, `ModDelay_paste`.
-- **Không port:** `SetTopMost Me, False/True` — thao tác gỡ/bật always-on-top của chính UserForm VBA, Agent không có form nên không có gì để gỡ.
+- ~~**Không port:** `SetTopMost Me, False/True` — thao tác gỡ/bật always-on-top của chính UserForm VBA, Agent không có form nên không có gì để gỡ.~~ **ĐÃ ĐẢO NGƯỢC 07/08/2026 — xem mục cập nhật cuối ADR này.**
   - `Rack:Enabled` mặc định **false**: chỉ trạm được bật tường minh mới chiếm chuột.
 - **Lý do vẫn tôn trọng ADR-002:** Trình duyệt tuyệt đối không chạm ứng dụng cục bộ; toàn bộ phần "bẩn" nằm trong Agent — đúng ranh giới phân lớp đã chốt.
 - **Hệ quả / rủi ro phải chấp nhận:**
@@ -129,6 +129,21 @@ Tài liệu này ghi nhận các Quyết định Kiến trúc (ADR - Architectur
   - Bắt buộc `idempotency_key` UNIQUE (`database-safety` mục 4): Agent đồng bộ lại sau khi mất mạng mà bắn trùng nghĩa là **cấp thừa vật tư**.
   - Lệnh xử lý **tuần tự**, không song song — cả máy chỉ có một con chuột.
 - **Chưa làm:** chưa hiệu chỉnh toạ độ trên máy trạm thật, chưa chạy thử đầu-cuối với hệ pha màu. `Rack:Enabled=false` cho tới khi hiệu chỉnh xong.
+
+### Cập nhật 07/08/2026 (Agent 4.5.0.0) — PORT `SetTopMost Me, False/True`, bỏ "RPA mù"
+- **Yêu cầu gốc:** *"xem có phương án nào để tôi có thể dùng in out giống 5.Semiauto- lockmove SEND OVER6... 100%"*.
+- **Cái sai của quyết định cũ:** dòng "Không port `SetTopMost Me, False/True`" đúng về câu chữ (Agent không có UserForm) nhưng **sai về hệ quả**. `SetTopMost Me, False` trong bản gốc không chỉ gỡ form Excel — nó là bước **làm lộ cửa sổ ứng dụng pha màu ra mặt trước**, nhờ vậy `ClickAt 10, 100` ngay sau đó mới rơi đúng vào nó. Trên bản web, cái đang che ứng dụng pha màu là **trình duyệt chạy toàn màn hình (F11/kiosk)** của màn cân. Không gỡ ra thì cú click (10,100) trúng trình duyệt và cả 6 lần `Ctrl+V` đổ vào trang web — trong khi mọi lệnh Win32 (`SetCursorPos`, clipboard) đều trả về thành công nên Agent **ack DONE**. Đúng kiểu báo thành công giả mà chính ADR này cấm ở chỗ khác.
+- **Quyết định mới:** Agent **phải xác định được cửa sổ đích trước khi bắn** — nhưng **tự dò, không bắt khai báo** (bản 4.5.0.0 bắt điền tiêu đề cửa sổ; 4.6.0.0 bỏ yêu cầu đó sau phản hồi *"sao lại cài đặt nhiều thế, không có cách nào bấm và nó hoạt động như bình thường à"*):
+  - Chính bản VBA gốc **cũng không biết ứng dụng pha màu tên gì**: `SetTopMost Me, False` chỉ đẩy cái đang che xuống rồi click thẳng vào toạ độ, cái gì nằm ở đó thì nhận. Agent làm đúng như vậy: `WindowFromPoint` tại toàn bộ toạ độ sắp click (bỏ phiếu theo đa số, bỏ nền desktop/thanh tác vụ) → thấy **trình duyệt** thì `SetWindowPos(HWND_BOTTOM)` đẩy xuống đáy (= `SetTopMost Me, False`) → nhìn lại → cái lộ ra chính là ứng dụng đích.
+  - Cố ý **không thu nhỏ** trình duyệt: bản gốc cũng chỉ bỏ always-on-top chứ không thu nhỏ form, và thu nhỏ thì có nguy cơ trình duyệt bung khỏi toàn màn hình lúc khôi phục (đúng cái phiền mà mục 125/127/130 session-log đã mất công dẹp).
+  - Đưa cửa sổ lên trước bằng `AttachThreadInput` + `SetForegroundWindow`, rồi **chờ có xác minh** (`Rack:ForegroundTimeoutMs`, mặc định 1500ms) cho tới khi nó thật sự ở trước — không chờ mù bằng `SmartDelay`. Tính cả trường hợp tiêu điểm nằm ở cửa sổ con cùng tiến trình (hộp thoại của ứng dụng đích).
+  - Bắn xong **trả tiêu điểm về cửa sổ đứng trước đó** (trình duyệt của thợ) — đúng cặp `SetTopMost Me, True`. Tắt được bằng `Rack:RestoreForeground=false`.
+  - `Rack:TargetWindowTitle` / `Rack:TargetProcessName` **vẫn còn nhưng là TUỲ CHỌN**, chỉ dùng khi vùng toạ độ có nhiều cửa sổ chồng nhau và bước tự dò chọn nhầm (log ghi rõ mỗi lượt nó chọn cửa sổ nào).
+  - `agent/WindowFocus.cs` là nơi chứa toàn bộ phần này.
+- **Không tìm thấy cửa sổ đích ⇒ FAILED ngay, KHÔNG bắn mù** (`Rack:RequireTargetWindow`, mặc định `true`). Lý do cụ thể ("chưa mở ứng dụng pha màu" / "chưa cấu hình cửa sổ đích" / "clipboard bị chiếm") đi ngược lên qua `RackSender.LoiCuoi` → ack `error_message` → `GET /api/rack-dispatch/{id}` → **hiện nguyên văn trên màn cân**; thợ đứng ở xưởng không mở được log máy trạm. Khi Agent chưa xác định được cửa sổ, log in ra **danh sách toàn bộ cửa sổ đang mở** để lấy tiêu đề mà cấu hình.
+- **Vẫn giữ nguyên (không đổi hành vi bản gốc):** toạ độ là **toạ độ màn hình tuyệt đối**, thứ tự bước và mọi mốc trễ y như cũ. Chỉ thêm cảnh báo (không chặn) khi toạ độ cấu hình nằm **ngoài khung cửa sổ đích** — dấu hiệu chưa đo lại toạ độ trên máy trạm này. Phương án click **tương đối theo cửa sổ** vẫn chưa làm, đúng như chủ dự án đã chốt 2026-08-03.
+- **Rủi ro còn lại đã thu hẹp:** không còn "dán vào cửa sổ bất kỳ" ở mức *sai cửa sổ*; còn lại là *sai ô trong đúng cửa sổ* nếu ứng dụng pha màu mở khác vị trí/độ phân giải so với lúc hiệu chỉnh.
+- **Ảnh hưởng khi nâng cấp:** cài đè MSI là xong, **không phải sửa cấu hình gì**. Muốn quay lại hành vi bắn mù của 4.4: `Rack:RequireTargetWindow=false`.
 
 ---
 ## ADR-013: Agent phục vụ số cân ngay tại máy trạm (đường cục bộ 127.0.0.1), backend làm đường dự phòng

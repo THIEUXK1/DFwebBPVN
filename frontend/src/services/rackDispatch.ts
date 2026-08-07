@@ -50,7 +50,7 @@ type TrangThaiLenh = 'PENDING' | 'SENT' | 'DONE' | 'FAILED';
  * Lỗi mạng giữa chừng KHÔNG dừng vòng hỏi: mất mạng chốc lát không có nghĩa là lệnh hỏng, và
  * lệnh vẫn nằm nguyên dưới server. Hết giờ thì trả về trạng thái cuối cùng đọc được.
  */
-async function choAgentThucHien(id: string): Promise<TrangThaiLenh> {
+async function choAgentThucHien(id: string): Promise<{ trangThai: TrangThaiLenh; loi?: string }> {
   const hetHan = Date.now() + CHO_KET_QUA_MS;
   let cuoiCung: TrangThaiLenh = 'PENDING';
 
@@ -61,14 +61,16 @@ async function choAgentThucHien(id: string): Promise<TrangThaiLenh> {
       const st = res.data?.data?.command_status as TrangThaiLenh | undefined;
       if (st) {
         cuoiCung = st;
-        if (st === 'DONE' || st === 'FAILED') return st;
+        if (st === 'DONE' || st === 'FAILED') {
+          return { trangThai: st, loi: res.data?.data?.error_message || undefined };
+        }
       }
     } catch {
       // bỏ qua, hỏi lại nhịp sau
     }
   }
 
-  return cuoiCung;
+  return { trangThai: cuoiCung };
 }
 
 function newIdempotencyKey(wsCode: string, action: RackAction): string {
@@ -105,15 +107,18 @@ export async function guiRackSangAgent(
       return { ok: true, message: `Đã xếp ${viecDaLam} vào hàng đợi gửi sang hệ pha màu.` };
     }
 
-    const ketQua = await choAgentThucHien(id);
+    const { trangThai: ketQua, loi } = await choAgentThucHien(id);
 
     if (ketQua === 'DONE') {
       return { ok: true, message: `Hệ pha màu đã nhận ${viecDaLam}.` };
     }
     if (ketQua === 'FAILED') {
+      // Hiện nguyên văn lý do Agent báo về: từ 4.5.0.0 Agent phân biệt được "chưa mở ứng dụng pha
+      // màu", "chưa cấu hình cửa sổ đích", "clipboard bị chiếm" — ba việc sửa ở ba chỗ khác nhau,
+      // mà thợ đứng ở màn cân thì không mở log máy trạm được.
       return {
         ok: false,
-        message: `Agent KHÔNG thực hiện được ${viecDaLam} (xem log Agent trên máy trạm). `
+        message: (loi ? `${loi} ` : `Agent KHÔNG thực hiện được ${viecDaLam} (xem log Agent trên máy trạm). `)
           + 'Dùng nút COPY để dán tay sang hệ pha màu.',
       };
     }

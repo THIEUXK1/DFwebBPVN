@@ -165,7 +165,33 @@
      micro-giay sau cu click, luc app dich chua kip doi tieu diem, ma rack roi vao o dang focus
      truoc do hoac mat han. Thay bang nghi 60ms (Rack:PasteDelayMs).
      Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode. -->
-<?define PackageVersion = "4.4.0.0"?>
+<!-- 4.5.0.0 (07/08/2026) — port not cuoi con thieu cua "SEND OVER 6": SetTopMost Me, False/True.
+     Ban VBA goc mo dau moi luot ban bang 'SetTopMost Me, False' - go form Excel khoi mat truoc
+     de cua so ung dung pha mau lo ra, nen cu 'ClickAt 10, 100' roi DUNG vao no. Ban port bo doan
+     nay voi ly do "Agent khong co form nen khong co gi de go" - dung cau chu, sai he qua: cai
+     che ung dung pha mau bay gio la TRINH DUYET CHAY TOAN MAN HINH (F11/kiosk) cua man can. Ket
+     qua: click (10,100) trung trinh duyet, 6 lan Ctrl+V do vao trang web, ma Agent van ack DONE
+     vi moi lenh Win32 deu tra ve thanh cong - bao thanh cong gia.
+     Sua: Agent tim cua so dich theo Rack:TargetWindowTitle / Rack:TargetProcessName, dua len
+     truoc, XAC MINH da o truoc that (AttachThreadInput + cho co kiem tra) roi moi ban; ban xong
+     tra tieu diem ve trinh duyet (= SetTopMost Me, True). Khong xac dinh duoc cua so dich thi
+     BAO HONG kem ly do cu the (hien thang tren man can) thay vi ban mu - Rack:RequireTargetWindow
+     mac dinh true; dat false de quay ve hanh vi 4.4.
+     Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode. -->
+
+<!-- 4.6.0.0 (07/08/2026) — CAI XONG LA CHAY, khong phai khai bao gi.
+     Ban 4.5.0.0 bat dien Rack:TargetWindowTitle (tieu de cua so ung dung pha mau) moi ban duoc.
+     Nghi lai thi chinh ban VBA goc CUNG KHONG BIET ung dung pha mau ten gi: 'SetTopMost Me, False'
+     chi day cai dang che xuong duoi roi click thang vao toa do, cai gi nam do thi nhan.
+     Lam dung nhu vay: nhin xem cua so nao dang nam duoi cac toa do sap click (WindowFromPoint, bo
+     phieu theo da so cac diem), thay TRINH DUYET thi day xuong day (SetWindowPos HWND_BOTTOM - co
+     y khong thu nho, de trinh duyet khong bung ra khoi toan man hinh) roi nhin lai; cai lo ra
+     chinh la ung dung pha mau. Ban xong tra tieu diem ve trinh duyet.
+     TargetWindowTitle/TargetProcessName van con nhung TUY CHON - chi dien khi vung toa do co nhieu
+     cua so chong nhau va buoc tu do chon nham.
+     Khong xac dinh duoc cua so dich van BAO HONG kem ly do cu the tren man can, khong ban mu.
+     Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode. -->
+<?define PackageVersion = "4.6.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.ProductLabel))"

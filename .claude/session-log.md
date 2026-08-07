@@ -3118,3 +3118,97 @@ Hai bay da chan san:
 May dev **khong co so can song**: `D:\scale\putty_log.txt` dung tu 04/08, PuTTY khong chay. Agent
 van tra 0.01/stable vi doc lai dong cuoi file cu. Nen do tre THAT chua do duoc o day — phai do tai
 may tram ngoai xuong.
+
+---
+
+### 132. IN/OUT cua /weighing-station-large "chua giong ban Excel 100%" — thieu han `SetTopMost Me, False` (Agent 4.5.0.0) — 2026-08-07
+
+**Yeu cau goc:** *"xem co phuong an nao de toi co the dung in out giong 5.Semiauto- lockmove SEND
+OVER6 - delta-stable-final-221.xlsm 100%"*.
+
+**A. Doi chieu lai nguon that**
+
+Giai nen `xl/vbaProject.bin` (MS-OVBA) cua workbook can to, doc `scaleform.btn_Out_Click` /
+`btn_In_Click`, `Mod_sendRackauto`, `ModAPI_mouse`, `ModDelay_paste`. Tim ra 3 cho lech giua ban
+port va ban goc:
+
+1. **Thieu `SetTopMost Me, False` / `True`** — chi mang. Chi tiet o muc B.
+2. Tre 2 giay do `Rack:PollIntervalMs` (Excel bam la chay ngay).
+3. Nhanh OUT khi `txt_WEIGHT1` trong: ban goc ban thang `txt_RACK1..6` theo dung vi tri dong, KE CA
+   o rong, KHONG loc "0"; ban web luon gom-nen-loc. Khac ket qua khi co dong trong o giua.
+
+Muc nay chi sua (1) theo dung yeu cau; (2) va (3) van con.
+
+**B. Loi that: khong ai go trinh duyet ra khoi mat truoc**
+
+Ban VBA mo dau moi luot ban bang `SetTopMost Me, False` -> `DoEvents` -> `SmartDelay 150` ->
+`ClickAt 10, 100`. Cau dau khong chi "go form Excel": no lam **lo cua so ung dung pha mau ra mat
+truoc**, nho vay cu click (10,100) ngay sau moi roi dung vao no.
+
+Ban port bo doan nay (ADR-012: *"Agent khong co form nen khong co gi de go"*) — dung cau chu, sai he
+qua. Cai che ung dung pha mau bay gio **la trinh duyet chay toan man hinh F11/kiosk** cua chinh man
+can. Ket qua: click (10,100) trung trinh duyet, 6 lan Ctrl+V do vao trang web, ma Agent **van ack
+DONE** vi `SetCursorPos`/clipboard deu tra ve thanh cong. Bao thanh cong gia — tho tuong da cap rack.
+
+**C. Da sua (Agent 4.5.0.0)**
+
+- `agent/WindowFocus.cs` (moi): liet ke cua so (bo qua cua so cloaked va cua so cua chinh Agent),
+  tim theo MOT PHAN tieu de va/hoac ten tien trinh, dua len truoc bang `AttachThreadInput` +
+  `SetForegroundWindow` roi **cho co xac minh** toi khi no thuc su o truoc (tinh ca cua so con cung
+  tien trinh — ung dung dich bat hop thoai thi tieu diem nam o hop thoai).
+- `agent/RackSender.cs`: goi buoc tren truoc moi luot OUT/IN; **khong xac dinh duoc cua so dich thi
+  FAILED ngay, khong ban mu** (`Rack:RequireTargetWindow`, mac dinh true). Ban xong tra tieu diem ve
+  cua so dung truoc do = `SetTopMost Me, True`. Them canh bao (khong chan) khi toa do cau hinh nam
+  NGOAI khung cua so dich — dau hieu chua do lai toa do tren may nay.
+- Ly do hong that di nguoc len man hinh: `RackSender.LoiCuoi` -> ack `error_message` ->
+  `GET /api/rack-dispatch/{id}` -> `rackDispatch.ts` hien nguyen van. Truoc day moi loi deu ra mot
+  cau chung "xem log Agent tren may tram", ma tho dung o xuong thi khong mo duoc log may tram.
+  Khi chua xac dinh duoc cua so, log Agent in ra **danh sach toan bo cua so dang mo** de lay tieu de.
+- Cau hinh moi (`Rack`): `TargetWindowTitle`, `TargetProcessName`, `RequireTargetWindow`,
+  `ForegroundTimeoutMs` (1500), `RestoreForeground`. Da them vao ca 3 file appsettings.
+- ADR-012: them muc cap nhat 07/08/2026, gach dong "Khong port SetTopMost".
+
+**KHONG doi:** toa do van la toa do MAN HINH TUYET DOI, thu tu buoc va moi moc tre giu nguyen. Phuong
+an click TUONG DOI theo cua so van chua lam (chu du an da chot 03/08 la giu dung hanh vi ban goc).
+
+**D. Kiem chung**
+- `dotnet test`: **54 pass / 0 fail** (chay voi `DOTNET_ROLL_FORWARD=Major` — may nay khong co .NET 8
+  runtime). Luu y: chua co test rieng cho `WindowFocus` — no thao tac cua so that cua desktop nen
+  test tu dong se doi hoi mot ung dung that dang mo.
+- `vue-tsc --noEmit` exit 0.
+- Da build 3 MSI len **4.5.0.0**, da copy sang `backend/public/downloads/`.
+- **CHUA cai va CHUA chay thu tren may tram co ung dung pha mau that.**
+
+**E. Anh huong khi nang cap**
+
+May dang chay 4.4.0.0 **bat buoc phai dien `Rack:TargetWindowTitle`** sau khi cai de len, neu khong
+IN/OUT se bao hong (kem huong dan day du tren man hinh) thay vi ban mu nhu truoc. Do la co y: ban mu
+im lang nguy hiem hon bao hong. Muon giu hanh vi cu: `Rack:RequireTargetWindow=false`.
+
+**F. Bo sung 4.6.0.0 cung ngay — bo yeu cau khai bao tieu de cua so**
+
+Phan hoi cua nguoi dung ngay sau khi ban 4.5.0.0: *"sao lai cai dat nhieu the, khong co cach nao bam
+va no hoat dong nhu binh thuong a"*. Dung — va nghi lai thi ban 4.5 da hieu sai ban goc mot lan nua:
+**chinh VBA cung KHONG BIET ung dung pha mau ten gi**. `SetTopMost Me, False` chi day cai dang che
+xuong duoi roi click thang vao toa do, cai gi nam do thi nhan. Bat tho di tra tieu de cua so la them
+mot buoc ban goc khong he co.
+
+Lam lai dung nhu vay (`WindowFocus.CuaSoTaiCacDiem` + `DayXuongDay`):
+1. `WindowFromPoint` tai TOAN BO toa do sap click (9 diem), leo len cua so goc, bo phieu theo da so —
+   mot diem le roi trung mep cua so khac khong doi duoc ket qua. Bo nen desktop / thanh tac vu.
+2. Neu ke thang phieu la TRINH DUYET (chrome/msedge/firefox/...) thi `SetWindowPos(HWND_BOTTOM)` day
+   no xuong day = `SetTopMost Me, False`, cho `PreDelayMs` roi nhin lai.
+3. Cai lo ra chinh la ung dung pha mau -> dua len truoc -> ban. Khong co gi lo ra (chi thay nen
+   desktop) hoac van la trinh duyet -> FAILED kem ly do cu the, khong ban mu.
+
+CO Y khong dung `SW_MINIMIZE`: ban goc cung chi bo always-on-top chu khong thu nho form, va thu nho
+trinh duyet thi co nguy co no bung ra khoi toan man hinh luc khoi phuc — dung cai phien ma muc 125,
+127, 130 da mat cong dep.
+
+`TargetWindowTitle` / `TargetProcessName` VAN CON nhung thanh TUY CHON, chi dien khi vung toa do co
+nhieu cua so chong nhau va buoc tu do chon nham (log ghi ro moi luot no chon cua so nao).
+
+=> Cach cai bay gio: chay MSI, xong. Khong sua file cau hinh, khong chay PowerShell tra tieu de.
+
+Kiem chung lai: `dotnet test` 54 pass / 0 fail, da build 3 MSI len **4.6.0.0**. Van CHUA chay thu
+tren may tram co ung dung pha mau that.
