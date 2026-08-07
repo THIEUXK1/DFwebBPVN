@@ -157,8 +157,12 @@ export function nowSlipTimestamp(d = new Date()): string {
  *
  * `margin` = 0.2cm, đúng 4 lề mà `btnPrint_Click` đặt trong PageSetup.
  *
- * Đây là CHỖ DUY NHẤT phải sửa nếu đổi cuộn tem, và phải sửa cả bản PHP cho khớp. Hướng xoay
- * KHÔNG cần sửa theo: `utils/slipPrint.ts` tự chọn xoay hay không tuỳ khổ nào ra chữ to hơn.
+ * Đây là CHỖ DUY NHẤT phải sửa nếu đổi cuộn tem, và phải sửa cả bản PHP cho khớp.
+ *
+ * PHẢI khai đúng CHIỀU của con tem đang nạp (rộng/cao không được đảo cho tiện): đường in không
+ * còn xoay được nữa. Xoay bắt buộc đi qua `transform`, mà bất cứ `transform`/`zoom`/canvas nào
+ * cũng buộc Chrome gửi xuống driver một tấm ẢNH thay vì chữ, và máy in nhiệt 1 bit dither ảnh đó
+ * ra lưới chấm — xem ghi chú đầu `utils/slipPrint.ts`.
  */
 export const SLIP_PAGE_MM = { width: 60, height: 40, margin: 2 };
 
@@ -172,9 +176,12 @@ const SLIP_DATA_ROWS = 9;
  *   - `.Columns.AutoFit`                           -> white-space:nowrap + bảng tự co theo nội dung
  * Chiều cao dòng 5.3mm = 15pt, đúng chiều cao dòng mặc định của Excel (VBA không đụng tới nó).
  *
- * Viền để 0.2mm (~1.6 dot ở 203dpi) chứ không phải 1px: phiếu bị co lại để vừa 1 trang (xem
- * `utils/slipPrint.ts`), viền mảnh hơn thế sau khi co xuống dưới 1 dot là máy in nhiệt rasterize
- * ra nét đứt quãng — lỗi thật đã gặp 31/07/2026 ở /print-station.
+ * Viền để 0.2mm (~1.6 dot ở 203dpi) chứ không phải 1px: viền mảnh hơn 1 dot bị máy in nhiệt
+ * rasterize ra nét đứt quãng — lỗi thật đã gặp 31/07/2026 ở /print-station.
+ *
+ * Con số này chỉ có tác dụng cho bản XEM TRƯỚC: lúc in thật, `utils/slipPrint.ts` ghi đè thành
+ * 0.25mm = đúng 2 dot chẵn. Phiếu không còn bị co nữa nên cỡ viền không đổi theo hệ số co như
+ * trước, mà chỉ cần tròn dot.
  */
 const SLIP_CSS =
   `@page { size: ${SLIP_PAGE_MM.width}mm ${SLIP_PAGE_MM.height}mm; margin: ${SLIP_PAGE_MM.margin}mm; }\n` +

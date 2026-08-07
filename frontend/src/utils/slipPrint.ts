@@ -37,9 +37,10 @@ export function wrapSlipDocument(slipHtml: string, autoPrint: boolean): string {
     margin: 0;
     background: #fff;
   }
-  /* Trên màn hình tem thật khá bé — phóng to cho dễ soát, lúc in luôn trả về 1:1. Dùng zoom chứ
-     không phải transform để layout giãn ra thật. Chỉ áp SAU khi đã đo xong (class .ready), vì
-     zoom làm sai số đo offsetWidth của bảng. */
+  /* Trên màn hình tem thật khá bé — phóng to cho dễ soát. Chỉ áp SAU khi đã đo xong (class
+     .ready), vì zoom làm sai số đo offsetWidth của bảng.
+     PHẢI nằm trong @media screen: zoom lúc IN là buộc Chrome rasterize thành ảnh, xem ghi chú
+     ở khối @media print bên dưới. */
   @media screen {
     body { padding: 6mm; display: flex; justify-content: center; }
     body.ready .df-slip-page { zoom: 2.4; }
@@ -49,10 +50,10 @@ export function wrapSlipDocument(slipHtml: string, autoPrint: boolean): string {
     body { padding: 0; }
     .df-slip-page { outline: none; }
   }
-  /* Ảnh phiếu đã tô sẵn ở ĐÚNG lưới dot của máy in (xem SCRIPT_TU_IN): mỗi pixel = 1 dot, chỉ có
-     đen tuyệt đối hoặc trắng tuyệt đối. Bắt buộc nội suy LÁNG GIỀNG GẦN NHẤT — để trình duyệt nội
-     suy trơn (mặc định) là nó pha lại sắc xám ở mọi cạnh nét, đúng thứ vừa khử xong. */
-  canvas.df-slip-bitmap { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+  /* KHÔNG thêm zoom/transform/filter/opacity nào vào .df-slip hay tổ tiên của nó trong @media
+     print. Bất cứ thứ nào trong số đó buộc Chrome rasterize vùng đó thành ẢNH rồi mới gửi xuống
+     driver, và driver hạ ảnh về 203dpi bằng cách dither -> viền và chữ ra lưới chấm (ảnh chụp tem
+     thật 07/08/2026). Để nguyên là chữ thì driver tự vẽ glyph ở 203dpi, nét liền. Xem SCRIPT_TU_IN. */
 </style>
 </head>
 <body>
@@ -63,216 +64,90 @@ ${autoPrint ? SCRIPT_TU_IN : ''}
 }
 
 /**
- * TÔ PHIẾU THÀNH ẢNH 1-BIT ĐÚNG LƯỚI DOT CỦA MÁY IN, rồi mới in ảnh đó.
+ * Co phiếu cho vừa MỘT TRANG bằng cách CHỌN CỠ CHỮ, rồi in CHỮ THẬT.
  *
- * ============================ VÌ SAO KHÔNG CÒN LÀ HTML CO GIÃN ============================
- * Bản trước để nguyên bảng HTML rồi `zoom` cho vừa tem. Chữ vì thế do TRÌNH DUYỆT vẽ, mà trình
- * duyệt luôn khử răng cưa: mỗi nét chữ có viền xám hai bên. Máy in tem là máy in NHIỆT **1 bit** —
- * không in được xám, driver phải dither sắc xám thành lưới chấm thưa. Ở cỡ chữ ~11-15 dot thì
- * phần viền xám chiếm gần nửa nét, nên cái ra giấy là chấm lấm tấm quanh mỗi chữ: đúng cảm giác
- * "MỜ" mà mắt thấy. Không có thuộc tính CSS nào tắt được khử răng cưa trên Chrome/Windows
- * (`-webkit-font-smoothing` chỉ có tác dụng trên macOS — nó nằm trong `wrapSlipDocument` từ trước
- * và thực tế KHÔNG làm gì cả trên máy trạm).
+ * ================= VÌ SAO KHÔNG ĐƯỢC DÙNG ẢNH, `zoom`, HAY `transform` =================
+ * Ảnh in ra ngày 07/08/2026 (ảnh chụp tem thật) cho thấy CẢ viền ô lẫn nét chữ đều vỡ thành lưới
+ * chấm đều nhau. Đó là driver máy in **dither một tấm ảnh xám**, không phải khử răng cưa.
  *
- * Cách duy nhất ra nét tuyệt đối là tự quyết định từng dot:
- *   1. Dựng canvas đúng **số dot thật** của vùng in (60x40mm, lề 2mm, 8 dot/mm -> 448 x 288 dot).
- *   2. Vẽ lưới ô + chữ vào canvas ở đúng độ phân giải đó (không co giãn về sau).
- *   3. **Nhị phân hoá**: quét từng pixel, tối hơn ngưỡng -> ĐEN đặc, còn lại -> TRẮNG đặc. Sau
- *      bước này trong ảnh không còn một sắc xám nào để mà dither.
- *   4. In canvas ở đúng kích thước vật lý của nó (số dot / 8 mm) với `image-rendering: pixelated`,
- *      tức 1 pixel ảnh = 1 dot máy in, không nội suy.
+ * Đường đi sinh ra nó: bất cứ thứ gì Chrome phải rasterize (canvas, phần tử có `zoom`, phần tử có
+ * `transform`) đều được gửi xuống driver dưới dạng ẢNH BITMAP ở độ phân giải của Chrome, rồi driver
+ * đổi kích thước ảnh đó về 203dpi của máy in. Qua hai lần đổi kích thước, đen đặc thành xám, mà máy
+ * in nhiệt 1 bit không in được xám nên nó dither ra lưới chấm. **Tô ảnh 1-bit cũng không cứu được**
+ * — đã thử (bản canvas 07/08/2026, xem session-log mục 124/128): ảnh vào pipeline đó là hỏng, dù
+ * trước khi vào nó sạch tới đâu.
  *
- * Đánh đổi đã biết: chữ KHÔNG to lên: nét sạch hơn chứ ngân sách dot không đổi. Muốn to hơn nữa
- * thì phải bớt dòng — 288 dot chia 19 dòng chỉ được 15 dot/dòng. Xem bảng ngân sách trong
- * `session-log.md`.
+ * Bản VBA in nét vì Excel gửi xuống driver **CHỮ**, và driver tự vẽ glyph thẳng ở 203dpi — không
+ * có tấm ảnh nào để mà dither. Nên ở đây phải làm y hệt: để nguyên bảng HTML là chữ thật, chỉ
+ * **chọn cỡ chữ** sao cho bảng vừa trang, và tuyệt đối không đụng vào `zoom`/`transform`/canvas.
  *
- * Vẫn giữ nguyên tinh thần `FitToPagesWide/Tall = 1` của VBA: chọn cỡ chữ LỚN NHẤT mà cả bảng còn
- * nằm gọn trong tem, và XOAY 90° nếu xoay cho cỡ chữ lớn hơn (tem dọc 53.3x101.6 của cuộn cũ thì
- * xoay có lợi, tem ngang 60x40 hiện tại thì không) — nên đổi cuộn tem chỉ cần sửa `SLIP_PAGE_MM`
- * và hằng tương ứng bên PHP, không phải sờ vào đây.
+ * Đánh đổi đã biết và chấp nhận: KHÔNG XOAY được nữa (xoay bắt buộc phải qua `transform`, tức quay
+ * lại đường ảnh). Muốn phiếu nằm đúng chiều thì phải khai báo `SLIP_PAGE_MM` ĐÚNG chiều con tem
+ * đang nạp — xem `utils/weighSlip.ts`.
  *
- * Tô ở ĐÂY chứ không sửa payload là có chủ đích: `print_jobs.label_payload` phải khớp TỪNG KÝ TỰ
- * giữa `utils/weighSlip.ts` và `WeighingJobController::buildSlipHtml` (script đối soát
- * `frontend/scripts/check-weigh-slip.mjs`), và bản xem trước ở Lịch sử in vẫn cần bảng HTML đọc
- * được. Payload vẫn là bảng HTML; canvas chỉ là cách VẼ nó ra giấy.
+ * Phải đo tại trình duyệt chứ không tính sẵn được lúc dựng chuỗi: bề rộng cột phụ thuộc bề rộng
+ * thật của từng chữ Calibri sau khi `.Columns.AutoFit`, mà bên PHP không có cách nào biết.
  */
 const SCRIPT_TU_IN = `<script>
 (function () {
-  // TSC 203dpi. Dùng 8 dot/mm đúng quy ước của TSPL (và của utils/tsplPrint.ts) — lệch 0.1% so
-  // với 203dpi thật (8.0 vs 7.992 dot/mm), không đủ để dịch nổi một dot trên cả bề rộng tem.
-  var DOT_MM = 8;
+  // 1 CSS px = 1/96 inch, ở cả màn hình lẫn lúc in — nên đo bằng px trên màn hình rồi dùng thẳng
+  // cho trang in là hợp lệ, không phải quy đổi gì.
+  var PX_MM = 96 / 25.4;
 
-  // Ngưỡng nhị phân hoá, thang 0-255. Lấy ĐÚNG mức giữa: pixel nào tối hơn nửa đường thì thành
-  // đen, còn lại trắng — giữ nguyên hình dạng chữ trình duyệt vẽ ra, chỉ bỏ phần xám.
-  //
-  // Bản đầu cùng ngày để 176 với ý "nét dày mà liền dễ đọc hơn mảnh mà đứt". SAI, và người dùng
-  // báo ngay: ở cỡ 12 dot, ngưỡng đó nuốt cả vùng xám nhạt GIỮA hai nét nên các chữ dính vào nhau
-  // thành mảng đen — mắt đọc ra đúng là "mờ", chính thứ đang phải chữa.
-  //
-  // Đã so ba tổ hợp bằng ảnh 1:1 ở đúng 203dpi (xem session-log):
-  //   thường + 128 : chữ VỠ — nét mảnh hơn 1.5 dot biến mất hẳn. "WEIGHT" ra "WE GHT",
-  //                  "2026" ra "2025". Số đọc sai là hỏng nguy hiểm, không phải xấu.
-  //   đậm    + 176 : ký tự đúng nhưng dày, dính nhau -> "mờ".
-  //   đậm    + 128 : ký tự đúng, nét đặc, không dính.  <-- đang dùng
-  // Đừng đổi hai con số này nếu chưa render lại ảnh 1:1 và NHÌN.
-  var NGUONG = 128;
-
-  var FONT = 'Calibri, Carlito, Arial, sans-serif';
+  // Cỡ chữ nhỏ nhất còn chấp nhận, tính bằng dot của máy in 203dpi (8 dot/mm). Dưới 9 dot thì chữ
+  // không còn hình dạng để mà đọc; thà để tràn và báo lỗi còn hơn in ra một tờ không ai đọc được.
+  var TOI_THIEU_DOT = 9;
 
   function docSo(el, ten) {
     var v = parseFloat(el.getAttribute(ten));
     return isFinite(v) ? v : 0;
   }
 
-  /**
-   * Đọc bảng HTML của payload thành mảng 2 chiều.
-   *
-   * CỐ Ý bỏ qua tr.b (cờ in đậm theo dòng của weighSlip.ts): ở đây MỌI dòng đều in đậm.
-   *
-   * Đây là chỗ lệch bản VBA (VBA chỉ đậm dòng 1 và 7) và đã thử bỏ lệch — không được: ở cỡ 12 dot,
-   * nét chữ THƯỜNG của Calibri mảnh hơn 1.5 dot nên nhị phân hoá xong là đứt, ký tự vỡ thành chữ
-   * khác. Cái quyết định độ nét là NGƯỠNG chứ không phải độ đậm, xem NGUONG ở trên.
-   *
-   * (Không dùng dấu nháy ngược trong khối này: cả đoạn script nằm trong một template literal,
-   * một dấu nháy ngược lạc vào là cắt đứt chuỗi ngay tại đó.)
-   */
-  function docBang(table) {
-    var trs = table.querySelectorAll('tr'), hang = [], i, j;
-    for (i = 0; i < trs.length; i++) {
-      var tds = trs[i].querySelectorAll('td'), o = [];
-      for (j = 0; j < tds.length; j++) o.push((tds[j].textContent || '').replace(/\\s+$/, ''));
-      hang.push({ o: o });
-    }
-    return hang;
-  }
-
-  /**
-   * Cỡ chữ LỚN NHẤT (px = dot) mà bảng còn nằm gọn trong rongDot x caoDot.
-   *
-   * Dò từ to xuống nhỏ chứ không giải công thức: bề rộng cột là bề rộng THẬT của chữ Calibri ở
-   * từng cỡ, mà bề rộng đó không tỉ lệ tuyến tính với cỡ chữ (hinting làm tròn theo pixel).
-   */
-  function chonCoChu(ctx, hang, soCot, rongDot, caoDot) {
-    // Chiều cao dòng lấy TRỌN phần cao còn lại chia đều cho số dòng — không buộc nó vào cỡ chữ
-    // theo một tỉ lệ cố định. Buộc theo tỉ lệ thì chiều cao dòng nhảy nấc và phần dư bị bỏ phí:
-    // trên tem 60x40 (288 dot / 19 dòng) cách cũ chốt ở 14 dot/dòng và bỏ không 21 dot — gần một
-    // dòng rưỡi, đủ để chữ nhỏ hơn một cỡ.
-    var caoHang = Math.floor((caoDot - 1) / hang.length);
-    if (caoHang < 9) return null;   // dưới 9 dot/dòng thì chữ không còn hình dạng để mà đọc
-    // Chừa 1 dot cho viền trên + 2 dot thở trên/dưới phần chữ.
-    for (var px = Math.min(40, caoHang - 3); px >= 6; px--) {
-      // Đo bề rộng cột bằng chữ ĐẬM: đậm rộng hơn thường, nên cỡ chữ chọn ra vừa cho dòng đậm
-      // (dòng 1 và 7) thì chắc chắn cũng vừa cho dòng thường.
-      ctx.font = 'bold ' + px + 'px ' + FONT;
-      var dem = Math.max(3, Math.round(px * 0.34));   // lề trái/phải trong ô
-      var rongCot = [], tong = 1, c, r;
-      for (c = 0; c < soCot; c++) {
-        var w = 0;
-        for (r = 0; r < hang.length; r++) {
-          var t = hang[r].o[c];
-          if (t) w = Math.max(w, ctx.measureText(t).width);
-        }
-        rongCot[c] = Math.ceil(w) + 2 * dem + 1;
-        tong += rongCot[c];
-      }
-      if (tong <= rongDot) return { px: px, caoHang: caoHang, rongCot: rongCot, rong: tong, dem: dem };
-    }
-    return null;
-  }
-
-  /** Vẽ lưới ô + chữ. Mọi toạ độ là SỐ NGUYÊN dot: lệch nửa dot là nét ra xám. */
-  function ve(ctx, hang, dung) {
-    var soCot = dung.rongCot.length, w = dung.rong, h = dung.caoHang * hang.length + 1, i, r, c;
-
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = '#000';
-
-    // Viền ô: dày ĐÚNG 1 dot. fillRect chứ không strokeRect — stroke vẽ giữa đường nên nét 1px
-    // rơi vào nửa dot ở hai bên và ra xám, đúng cái đang cần tránh.
-    for (r = 0; r <= hang.length; r++) ctx.fillRect(0, r * dung.caoHang, w, 1);
-    var x = 0;
-    ctx.fillRect(0, 0, 1, h);
-    for (c = 0; c < soCot; c++) { x += dung.rongCot[c]; ctx.fillRect(x, 0, 1, h); }
-
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'left';
-    for (r = 0; r < hang.length; r++) {
-      // ĐẬM MỌI DÒNG, kể cả những dòng VBA để chữ thường — lý do (chữ thường đứt nét ở 12 dot)
-      // xem docBang(), nơi cờ đậm theo dòng bị bỏ ngay từ lúc đọc bảng nên ở đây cũng không còn
-      // gì để mà rẽ nhánh.
-      ctx.font = 'bold ' + dung.px + 'px ' + FONT;
-      x = 1;
-      for (c = 0; c < soCot; c++) {
-        var t = hang[r].o[c];
-        if (t) ctx.fillText(t, x + dung.dem, Math.round(r * dung.caoHang + dung.caoHang / 2) + 1);
-        x += dung.rongCot[c];
-      }
-    }
-    return { w: w, h: h };
-  }
-
-  /** Bước quyết định độ nét: bỏ hẳn dải xám, chỉ còn đen đặc và trắng đặc. */
-  function nhiPhanHoa(ctx, w, h) {
-    var d = ctx.getImageData(0, 0, w, h), p = d.data, i;
-    for (i = 0; i < p.length; i += 4) {
-      var v = (p[i] * 299 + p[i + 1] * 587 + p[i + 2] * 114) / 1000;
-      var den = v < NGUONG ? 0 : 255;
-      p[i] = p[i + 1] = p[i + 2] = den;
-      p[i + 3] = 255;
-    }
-    ctx.putImageData(d, 0, 0);
-  }
-
   function toPhieu() {
     var page = document.querySelector('.df-slip-page');
     var table = document.querySelector('.df-slip');
-    if (!page || !table) return false;
+    if (!page || !table) return;
 
     var lem = docSo(page, 'data-m');
-    var rongDot = Math.floor((docSo(page, 'data-w') - 2 * lem) * DOT_MM);
-    var caoDot = Math.floor((docSo(page, 'data-h') - 2 * lem) * DOT_MM);
-    if (!(rongDot > 0 && caoDot > 0)) return false;
+    var rongPx = (docSo(page, 'data-w') - 2 * lem) * PX_MM;
+    var caoPx = (docSo(page, 'data-h') - 2 * lem) * PX_MM;
+    if (!(rongPx > 0 && caoPx > 0)) return;
 
-    var hang = docBang(table), soCot = 0, i;
-    if (!hang.length) return false;
-    for (i = 0; i < hang.length; i++) soCot = Math.max(soCot, hang[i].o.length);
+    var o = table.querySelectorAll('td'), i;
 
-    var canvas = document.createElement('canvas');
-    var ctx = canvas.getContext('2d');
-    if (!ctx) return false;
-
-    var thang = chonCoChu(ctx, hang, soCot, rongDot, caoDot);
-    var quay = chonCoChu(ctx, hang, soCot, caoDot, rongDot);
-    var xoay = !!quay && (!thang || quay.px > thang.px);
-    var dung = xoay ? quay : thang;
-    if (!dung) return false;   // không cỡ nào vừa -> giữ bảng HTML, thà nhỏ còn hơn mất chữ
-
-    canvas.width = dung.rong;
-    canvas.height = dung.caoHang * hang.length + 1;
-    var kt = ve(ctx, hang, dung);
-    nhiPhanHoa(ctx, kt.w, kt.h);
-
-    // Kích thước vật lý = đúng số dot chia 8 -> 1 pixel ảnh đè lên đúng 1 dot máy in.
-    canvas.className = 'df-slip-bitmap';
-    canvas.style.width = (kt.w / DOT_MM) + 'mm';
-    canvas.style.height = (kt.h / DOT_MM) + 'mm';
-    if (xoay) {
-      // Xoay 90° là hoán vị pixel thuần tuý, không nội suy -> không mất nét.
-      canvas.style.transformOrigin = 'top left';
-      canvas.style.transform = 'translateX(' + (kt.h / DOT_MM) + 'mm) rotate(90deg)';
-      page.style.width = (kt.h / DOT_MM) + 'mm';
-      page.style.height = (kt.w / DOT_MM) + 'mm';
-      page.style.overflow = 'hidden';
+    // BỎ CHIỀU CAO DÒNG CỐ ĐỊNH của payload (5.3mm — chiều cao dòng mặc định của Excel). 19 dòng
+    // x 5.3mm = 100mm, cao gấp gần ba lần con tem, nên chính nó mới là thứ ép cỡ chữ xuống chứ
+    // không phải bề rộng. Cho dòng co về đúng hộp chữ thì cỡ chữ chọn được lớn hơn hẳn.
+    for (i = 0; i < o.length; i++) {
+      o[i].style.height = 'auto';
+      o[i].style.lineHeight = '1.12';
+      o[i].style.padding = '0 0.6mm';
+      // 0.25mm = ĐÚNG 2 dot ở 203dpi. Viền mảnh hơn 1 dot bị driver làm thành nét đứt quãng; số
+      // tròn dot thì ra nét đen liền. KHÔNG để 1px (= 2.1 dot, lẻ dot).
+      o[i].style.borderWidth = '0.25mm';
     }
 
-    table.style.display = 'none';
-    page.appendChild(canvas);
-    return true;
+    // Dò cỡ chữ từ to xuống: bề rộng chữ không tỉ lệ tuyến tính với cỡ chữ (hinting làm tròn theo
+    // pixel) nên không giải được bằng công thức, phải thử và ĐO.
+    var toiThieuPx = TOI_THIEU_DOT / 8 * PX_MM;
+    var chon = 0;
+    for (var px = 20; px >= toiThieuPx; px -= 0.5) {
+      table.style.fontSize = px + 'px';
+      if (table.offsetWidth <= rongPx && table.offsetHeight <= caoPx) { chon = px; break; }
+    }
+
+    if (!chon) {
+      // Không cỡ nào vừa. Giữ cỡ nhỏ nhất và NÓI RA — im lặng in một tờ bị xén mất cột là kiểu
+      // hỏng tệ nhất: thợ dán nhầm rồi mới phát hiện.
+      table.style.fontSize = toiThieuPx + 'px';
+      console.error('Phieu khong vua kho tem: can ' + Math.ceil(table.offsetWidth / PX_MM) + 'x'
+        + Math.ceil(table.offsetHeight / PX_MM) + 'mm, tem chi co '
+        + Math.floor(rongPx / PX_MM) + 'x' + Math.floor(caoPx / PX_MM) + 'mm.');
+    }
   }
 
   function chay() {
-    try { toPhieu(); } catch (e) { console.error('Khong to duoc phieu, in bang bang HTML:', e); }
+    try { toPhieu(); } catch (e) { console.error('Khong chon duoc co chu, in nguyen ban:', e); }
     document.body.classList.add('ready');
     // window.print() CHẶN tới khi hộp thoại in đóng trên Chrome/Edge (xác nhận 30/07/2026), nên
     // gọi window.close() ngay sau là đủ, không cần chờ sự kiện afterprint.
@@ -280,8 +155,8 @@ const SCRIPT_TU_IN = `<script>
     window.close();
   }
 
-  // Phải chờ font nạp xong mới đo được bề rộng chữ: đo lúc font dự phòng còn đang dùng thì cột
-  // rộng sai và cỡ chữ chọn ra cũng sai.
+  // Phải chờ font nạp xong mới đo được bề rộng chữ: đo lúc font dự phòng còn đang dùng thì cỡ chữ
+  // chọn ra sai.
   window.onload = function () {
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(chay, chay);
     else chay();
