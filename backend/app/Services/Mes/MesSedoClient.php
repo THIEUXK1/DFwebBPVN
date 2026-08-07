@@ -1,15 +1,14 @@
 <?php
 // backend/app/Services/Mes/MesSedoClient.php
 //
-// Client CHỈ ĐỌC tới VN-MES module Sedo Planboard. Dùng để lấy màu hiển thị thật của
-// từng mã màu (BPDB không có dữ liệu màu — xem migration create_color_swatches_table).
+// Client CHỈ ĐỌC tới VN-MES. Hai luồng dùng chung một phiên đăng nhập SSO:
+//   1. fetchGanttRows()        -> /rsedo/tBatch/getDataForGantt  (màu hiển thị của mã màu)
+//   2. fetchBatchCompletions() -> /eBatchLine/batchView          (giờ kết thúc nhuộm THẬT)
 //
-// Luồng đúng của MES (đọc từ chính JS của trang /mes/databoardSedo/gantt.html):
-//   1. POST {base}/sys/ssologin   (form-urlencoded: username, password) -> {"code":0}
-//   2. POST {base}/rsedo/tBatch/getDataForGantt  (JSON body {}) -> {"code":0,"rows":[...]}
-// Bước 2 BẮT BUỘC dùng lại cookie phiên của bước 1, nếu không MES trả về nguyên trang
-// HTML đăng nhập kèm HTTP 200 (không phải 401) — vì vậy phải tự kiểm tra nội dung trả
-// về có đúng JSON không, không thể tin mỗi status code.
+// Đăng nhập: POST {base}/sys/ssologin (form-urlencoded username/password) -> {"code":0}.
+// Mọi request sau BẮT BUỘC dùng lại cookie phiên của bước đăng nhập; nếu không MES trả về
+// nguyên trang HTML đăng nhập kèm HTTP 200 (không phải 401) — vì vậy phải tự kiểm tra nội
+// dung trả về có đúng JSON không, không thể tin mỗi status code.
 
 namespace App\Services\Mes;
 
@@ -24,60 +23,20 @@ class MesSedoClient
     }
 
     /**
-     * Trả về danh sách bản ghi phẳng: mỗi phần tử là 1 dòng máy hoặc 1 mẻ con
+     * Trả về danh sách bản ghi phẳng cho tra màu: mỗi phần tử là 1 dòng máy hoặc 1 mẻ con
      * (MES lồng mẻ trong tBatchEntityList của từng máy).
      *
      * @return array<int, array<string, mixed>>
      */
     public function fetchGanttRows(): array
     {
-        $base = rtrim((string) $this->config['base_url'], '/');
-        $username = $this->config['username'] ?? null;
-        $password = $this->config['password'] ?? null;
-
-        if (!$username || !$password) {
-            throw new RuntimeException('Chưa cấu hình MES_USERNAME/MES_PASSWORD trong .env.');
-        }
-
         $jar = new CookieJar();
+        $this->login($jar);
 
-        $login = Http::withOptions([
-            'cookies' => $jar,
-            'verify' => (bool) ($this->config['verify_ssl'] ?? true),
-        ])
-            ->timeout((int) ($this->config['timeout'] ?? 120))
-            ->asForm()
-            ->post($base . '/sys/ssologin', [
-                'username' => $username,
-                'password' => $password,
-            ]);
-
-        $loginJson = $login->json();
-        if (!is_array($loginJson) || ($loginJson['code'] ?? null) !== 0) {
-            // Không log $password, và cũng không log nguyên body (có thể chứa token phiên).
-            throw new RuntimeException(
-                'Đăng nhập MES thất bại: ' . ($loginJson['msg'] ?? 'phản hồi không hợp lệ')
-            );
-        }
-
-        $response = Http::withOptions([
-            'cookies' => $jar,
-            'verify' => (bool) ($this->config['verify_ssl'] ?? true),
-        ])
-            ->timeout((int) ($this->config['timeout'] ?? 120))
-            // PHẢI gửi đúng object rỗng "{}". Nếu dùng ->post($url, []) thì Laravel
-            // json_encode mảng rỗng thành "[]" (mảng, không phải object) và MES deserialize
-            // thất bại, trả {"code":500,"msg":"未知异常..."} — mất 1 lượt debug vì lỗi này
-            // không nói gì về nguyên nhân thật.
-            ->withBody('{}', 'application/json')
-            ->post($base . '/rsedo/tBatch/getDataForGantt');
-
-        $data = $response->json();
-
-        if (!is_array($data)) {
-            // Phiên hết hạn -> MES trả nguyên trang HTML đăng nhập kèm HTTP 200.
-            throw new RuntimeException('MES không trả về JSON (nhiều khả năng phiên đăng nhập bị từ chối).');
-        }
+        // PHẢI gửi đúng object rỗng "{}". Nếu dùng ->post($url, []) thì Laravel json_encode
+        // mảng rỗng thành "[]" (mảng, không phải object) và MES deserialize thất bại, trả
+        // {"code":500,...} — mất 1 lượt debug vì lỗi này không nói gì về nguyên nhân thật.
+        $data = $this->postJson('rsedo/tBatch/getDataForGantt', $jar, '{}');
 
         if (!isset($data['rows'])) {
             throw new RuntimeException(sprintf(
@@ -88,6 +47,66 @@ class MesSedoClient
         }
 
         return $this->flatten($data['rows']);
+    }
+
+    /**
+     * Lấy các mẻ ĐÃ KẾT THÚC (status=60) từ module 车间生产 (eBatchLine/batchView) trong
+     * khoảng endTime cho trước — nguồn giờ kết thúc nhuộm thật. Trả về danh sách dòng thô
+     * của MES (chưa lọc máy VD — việc lọc để lệnh đồng bộ làm, vì mã máy cần chuẩn hoá).
+     *
+     * MES giới hạn ngầm kích thước trang (thử nghiệm 2026-08-07: pageSize>~300 hoặc thiếu
+     * sortArrStr trả 0 dòng) nên cố định pageSize an toàn và tự phân trang tới hết.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchBatchCompletions(
+        string $endTimeStart,
+        string $endTimeEnd,
+        string $manuStep = 'ELASTIC_DYE',
+        int $pageSize = 200,
+        int $maxPages = 200,
+    ): array {
+        $jar = new CookieJar();
+        $this->login($jar);
+
+        $all = [];
+
+        for ($page = 1; $page <= $maxPages; $page++) {
+            $body = json_encode([
+                'pageNumber' => $page,
+                'pageSize' => $pageSize,
+                'manuStep' => $manuStep,
+                'status' => '60',   // đã kết thúc
+                'iscl' => 'Y',
+                'endTimeStart' => $endTimeStart,
+                'endTimeEnd' => $endTimeEnd,
+                // Bắt buộc có, nếu không MES trả 0 dòng (xem ghi chú trên).
+                'sortArrStr' => 'L.END_TIME DESC,B.BATCH_NO ASC,L.LINE_NO ASC',
+                'firstSearch' => false,
+                'isLike' => 'like',
+                'batchState' => '',
+                'factoryCode' => '',
+            ], JSON_UNESCAPED_UNICODE);
+
+            $data = $this->postJson('eBatchLine/batchView', $jar, $body);
+
+            $rows = $data['rows'] ?? null;
+            if (!is_array($rows) || $rows === []) {
+                break;
+            }
+
+            foreach ($rows as $row) {
+                if (is_array($row)) {
+                    $all[] = $row;
+                }
+            }
+
+            if (count($rows) < $pageSize) {
+                break;
+            }
+        }
+
+        return $all;
     }
 
     /**
@@ -102,6 +121,76 @@ class MesSedoClient
         $b = ($value >> 16) & 0xFF;
 
         return sprintf('#%02X%02X%02X', $r, $g, $b);
+    }
+
+    private function login(CookieJar $jar): void
+    {
+        $username = $this->config['username'] ?? null;
+        $password = $this->config['password'] ?? null;
+
+        if (!$username || !$password) {
+            throw new RuntimeException('Chưa cấu hình MES_USERNAME/MES_PASSWORD trong .env.');
+        }
+
+        $login = Http::withOptions($this->httpOptions($jar))
+            ->timeout($this->timeout())
+            ->asForm()
+            ->post($this->baseUrl() . '/sys/ssologin', [
+                'username' => $username,
+                'password' => $password,
+            ]);
+
+        $loginJson = $login->json();
+        if (!is_array($loginJson) || ($loginJson['code'] ?? null) !== 0) {
+            // Không log $password, và cũng không log nguyên body (có thể chứa token phiên).
+            throw new RuntimeException(
+                'Đăng nhập MES thất bại: ' . ($loginJson['msg'] ?? 'phản hồi không hợp lệ')
+            );
+        }
+    }
+
+    /**
+     * POST body JSON thô tới 1 endpoint MES (dùng lại phiên trong $jar) và trả mảng đã
+     * decode. Ném lỗi khi MES không trả JSON — thường là do phiên bị từ chối (MES trả
+     * nguyên trang HTML đăng nhập kèm HTTP 200).
+     *
+     * @return array<string, mixed>
+     */
+    private function postJson(string $path, CookieJar $jar, string $jsonBody): array
+    {
+        $response = Http::withOptions($this->httpOptions($jar))
+            ->timeout($this->timeout())
+            ->withBody($jsonBody, 'application/json')
+            ->post($this->baseUrl() . '/' . ltrim($path, '/'));
+
+        $data = $response->json();
+
+        if (!is_array($data)) {
+            throw new RuntimeException(
+                "MES không trả về JSON ở '$path' (nhiều khả năng phiên đăng nhập bị từ chối)."
+            );
+        }
+
+        return $data;
+    }
+
+    private function baseUrl(): string
+    {
+        return rtrim((string) $this->config['base_url'], '/');
+    }
+
+    private function timeout(): int
+    {
+        return (int) ($this->config['timeout'] ?? 120);
+    }
+
+    /** @return array<string, mixed> */
+    private function httpOptions(CookieJar $jar): array
+    {
+        return [
+            'cookies' => $jar,
+            'verify' => (bool) ($this->config['verify_ssl'] ?? true),
+        ];
     }
 
     /** @return array<int, array<string, mixed>> */
