@@ -54,8 +54,19 @@
 
     <!-- Right Side Container -->
     <div class="layout-main">
+      <!-- Dải mỏng thay chỗ topbar khi tài khoản trạm cân thu gọn nó (mặc định của cannho /
+           canto, yêu cầu 08/08/2026). CỐ Ý không dùng nút nổi (position: fixed) đè lên nội
+           dung: góc phải trên của màn cân là cụm CLEAR/SAVE/NEXT, góc trái trên là ô quét
+           COLOR — nút nổi ở đâu cũng che mất một thứ đang bấm hằng ngày. -->
+      <div class="topbar-collapsed" v-if="!isFullscreen && topbarCollapsed">
+        <button class="topbar-toggle-btn" @click="setTopbarPref('show')" title="Hiện thanh trên (trạm, tài khoản, đăng xuất)">
+          ▾ Thanh trên
+        </button>
+        <span class="collapsed-ws">{{ currentWorkstation ? currentWorkstation.code : 'Chưa cấu hình Trạm' }}</span>
+      </div>
+
       <!-- Top Bar — ẩn hoàn toàn khi đang ở chế độ Toàn màn hình -->
-      <header class="topbar" v-if="!isFullscreen">
+      <header class="topbar" v-else-if="!isFullscreen">
         <div class="topbar-left">
           <!-- Mobile Menu Burger -->
           <button v-if="canSeeMenu" @click="mobileOpen = !mobileOpen" class="mobile-burger-btn">
@@ -102,6 +113,16 @@
               <span class="status-label">Agent</span>
             </div>
           </div>
+
+          <!-- Thu gọn thanh trên — chỉ tài khoản trạm cân, đường quay lại của nút "▾ Thanh trên" -->
+          <button
+            v-if="isScaleAccount"
+            class="notif-btn"
+            @click="setTopbarPref('hide')"
+            title="Thu gọn thanh trên cho rộng màn hình cân"
+          >
+            ▴
+          </button>
 
           <!-- Toàn màn hình: ẩn sidebar + topbar để giao diện thao tác chiếm trọn màn hình -->
           <button
@@ -274,7 +295,7 @@ import {
   ROUTE_CAPABILITY_MAP
 } from '../services/workstation';
 import { theme, toggleTheme } from '../services/theme';
-import { isFullscreen } from '../services/layout';
+import { isFullscreen, topbarPref, setTopbarPref } from '../services/layout';
 
 const authStore = useAuthStore();
 const router = useRouter();
@@ -335,6 +356,31 @@ const isLockedStation = computed(() => {
 // khoản vận hành đã đăng nhập — chỉ thấy thanh trên cùng. Cố ý TÁCH khỏi `isLockedStation`:
 // hai thứ này từng dùng chung một cờ nên gỡ khóa trạm là menu tự hiện ra theo, sai ý đồ.
 const canSeeMenu = computed(() => authStore.isAdmin);
+
+/**
+ * Tài khoản đứng trạm cân (cannho -> WS-SMALL-*, canto -> WS-LARGE-01). Nhận diện theo TRẠM
+ * GẮN VỚI TÀI KHOẢN (`users.operation_client_id`, xem ScaleOperatorUsersSeeder), KHÔNG theo
+ * route đang mở: yêu cầu là "ở tài khoản cân nhỏ/cân to", nên thợ có đi sang màn khác thì
+ * thanh trên vẫn giữ nguyên nếp thu gọn, không nhảy ra nhảy vào theo từng trang.
+ *
+ * Trạm hiện tại (`currentWorkstation`) cố ý không tính ở đây — nó đổi được bằng tay và bằng
+ * suy đoán theo IP, lấy nó làm căn cứ thì tài khoản back-office ghé trạm cân cũng bị thu gọn.
+ */
+const isScaleAccount = computed(() => {
+  if (authStore.isAdmin) return false;
+  const ws = authStore.user?.workstation;
+  if (!ws) return false;
+  const route = ws.default_route || ws.default_screen || '';
+  if (route === '/weighing-station-v2' || route === '/weighing-station-large') return true;
+  const caps = ws.capability_codes || [];
+  return caps.includes('SMALL_SCALE') || caps.includes('LARGE_SCALE');
+});
+
+/**
+ * Mặc định của tài khoản trạm cân là THU GỌN; bấm "▾ Thanh trên" một lần thì máy đó nhớ luôn.
+ * Tài khoản khác không bao giờ bị thu gọn, kể cả khi máy còn lưu lựa chọn 'hide' của ca trước.
+ */
+const topbarCollapsed = computed(() => isScaleAccount.value && topbarPref.value !== 'show');
 
 const mobileOpen = ref(false);
 
@@ -730,6 +776,52 @@ const handleLogout = () => {
   justify-content: space-between;
   padding: 0 24px;
   z-index: 90;
+}
+
+/* Dải mỏng thay chỗ topbar khi thu gọn — 24px so với 70px của topbar đầy đủ. Vẫn là một
+   khối trong luồng bố cục (không phải nút nổi) nên nội dung bên dưới không bị che. */
+.topbar-collapsed {
+  height: 24px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px;
+  background-color: var(--bg-topbar);
+  border-bottom: 1px solid var(--border-divider);
+  z-index: 90;
+}
+
+.topbar-toggle-btn {
+  height: 18px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-full);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-divider);
+  color: var(--text-body);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.topbar-toggle-btn:hover {
+  background-color: var(--bg-card-hover);
+  color: var(--text-title);
+}
+
+/* Mã trạm là thứ DUY NHẤT giữ lại trên dải mỏng: cân sai trạm là dữ liệu ghi sai chỗ, đó là
+   thông tin không được phép biến mất cùng thanh trên. */
+.collapsed-ws {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .topbar-left {

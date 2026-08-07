@@ -3212,3 +3212,33 @@ nhieu cua so chong nhau va buoc tu do chon nham (log ghi ro moi luot no chon cua
 
 Kiem chung lai: `dotnet test` 54 pass / 0 fail, da build 3 MSI len **4.6.0.0**. Van CHUA chay thu
 tren may tram co ung dung pha mau that.
+
+---
+
+### 133. Tai khoan tram can: thanh tren (topbar) MAC DINH THU GON, co nut bat lai (2026-08-08)
+
+**Yeu cau:** *"http://localhost:3001/weighing-station-v2 toi muon o tai khoan can nho hoac can to thi
+layout phia ben tren se mac dinh la an va co nut de an hien thi de tiet kiem k gian"*.
+
+**Da lam** (frontend, khong dong backend):
+- `services/layout.ts`: them `topbarPref` (`show` / `hide` / null) + `setTopbarPref()`, nho trong
+  `localStorage[df_topbar_pref]`. Tach han khoi `isFullscreen` co san: `isFullscreen` la trang thai
+  TUC THOI cua phien xem (cac trang tu dat lai luc mount/unmount, FullscreenButton con keo theo ca
+  Fullscreen API cua trinh duyet), con cai nay la nep LAU DAI cua may tram, song qua F5.
+- `AppLayout.vue`:
+  - `isScaleAccount` — nhan dien theo TRAM GAN VOI TAI KHOAN (`authStore.user.workstation`:
+    `default_route` la 1 trong 2 man can, hoac capability `SMALL_SCALE`/`LARGE_SCALE`), khong theo
+    route dang mo. Yeu cau la "o tai khoan can", nen di sang man khac van giu nep thu gon.
+    KHONG dung `currentWorkstation` lam can cu: no doi duoc bang tay va bang suy doan theo IP, lay no
+    thi tai khoan back-office ghe tram can cung bi thu gon oan.
+  - `topbarCollapsed = isScaleAccount && topbarPref !== show` -> mac dinh AN voi cannho/canto, tai
+    khoan khac khong bao gio bi anh huong ke ca khi may con luu `hide` cua ca truoc.
+  - Thay cho topbar 70px la dai mong 24px (`.topbar-collapsed`) gom nut "Thanh tren" + MA TRAM.
+    CO Y khong dung nut noi `position: fixed`: goc phai tren man can la cum CLEAR/SAVE/NEXT, goc trai
+    tren la o quet COLOR — nut noi o dau cung che mat mot thu bam hang ngay. Giu lai ma tram tren dai
+    mong vi can sai tram = ghi du lieu sai cho, khong duoc phep bien mat cung thanh tren.
+  - Trong topbar day du them nut thu gon lai (chi tai khoan tram can thay).
+
+**Kiem chung:** `npx vue-tsc --noEmit` exit 0. **CHUA xem bang mat tren trinh duyet** — can dang nhap
+`cannho` / `canto` mo `/weighing-station-v2` xac nhan: vao la thanh tren da thu gon, bam "Thanh tren"
+thi hien lai day du (co nut Dang xuat), bam nut thu gon lai, F5 van nho lua chon.
