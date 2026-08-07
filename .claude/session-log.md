@@ -3028,3 +3028,29 @@ cau doi ngang hai man tu muc 127).
 - `vue-tsc --noEmit` exit 0; `vite build` OK; `scripts/check-weigh-slip.mjs` 8 pass / 0 fail.
 - **CHUA thu tren trinh duyet va CHUA in thu tren may in that.** Can nguoi dung bam F11 roi bam
   SAVE: phai VAN o toan man hinh, va hop thoai in van hien ra binh thuong.
+
+**F. Bo sung: van mat F11 — thu pham CUOI CUNG la HOP THOAI IN cua trinh duyet (2026-08-07)**
+
+Bo cua so in (muc C/D) roi ma bam SAVE VAN van khoi F11. Nguyen nhan con lai: **hop thoai in cua
+Chrome/Edge**. No la giao dien cap TRINH DUYET, muon hien ra thi cua so phai roi che do toan man
+hinh. Trang web khong co cach nao can thiep — khong phai loi cua code.
+
+Da **do thuc te** bang Edge tren may dev (script trong scratchpad: trang goi `fetch('truoc')` ->
+`window.print()` -> `fetch('sau')`; hop thoai chan JS thi 'sau' khong bao gio toi):
+- Chay thuong        -> chi nhan duoc "truoc"          -> print() BI CHAN, co hop thoai.
+- Them `--kiosk-printing` -> nhan du "truoc" + "sau"   -> print() KHONG chan, in thang.
+
+=> Cach duy nhat het mat F11 la **bo hop thoai in**, tuc mo trinh duyet bang `--kiosk-printing`.
+Them file `tools/mo-man-can.bat` de mo man can dung co do.
+
+Hai dieu kien bat buoc, ghi ro trong file bat:
+1. May in TEM phai la **may in mac dinh** cua Windows tren may tram (`--kiosk-printing` luon in ra
+   may in mac dinh, dung cai dat mac dinh cua driver, khong hoi ai).
+2. Phai co `--user-data-dir` rieng. Neu Chrome dang mo san bang profile thuong thi lenh moi chi mo
+   them mot TAB trong tien trinh cu va **moi co bi bo qua**.
+
+Loi kem theo: in tro thanh TUC THI, dung nhu ban Excel VBA (`Sheet.PrintOut` cung in thang khong
+hoi) — do bo duoc mot buoc bam tay moi lan luu me.
+
+Con lai (chua lam): neu sau nay muon bo han trinh duyet khoi duong in thi phai in qua Local Agent
+(ADR-002), viec do lon hon nhieu va chua can thiet.
