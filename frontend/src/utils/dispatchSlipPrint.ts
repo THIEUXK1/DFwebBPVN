@@ -19,6 +19,10 @@
  * Các lệch có chủ ý TRƯỚC ĐÂY (2026-07-22 → 07-31: gộp ô Màu+Mã hàng, kéo tem tràn hết
  * 70mm, phóng to QR, in đậm toàn bộ, viền 3 dot, dòng trống xen giữa các trường QR) ĐÃ BỊ
  * GỠ theo yêu cầu 2026-08-05 "tem in ra ở web giống hệt VBA 100%".
+ *
+ * Lệch có chủ ý còn HIỆU LỰC: bảng cân 9 dòng để 14pt IN ĐẬM thay cho 12pt thường của sheet
+ * (yêu cầu 2026-08-07, xem `GRID_FONT_PT`/`GRID_BOLD`). Ngoài mục đó, mọi thay đổi vẫn phải
+ * đối chiếu lại workbook.
  */
 import QRCode from 'qrcode';
 
@@ -201,6 +205,18 @@ function cell(r: Rect, text: string, st: CellStyle = {}): string {
   ].filter(Boolean).join(';');
   return `<div style="${style}">${esc(text)}</div>`;
 }
+
+/**
+ * Cỡ chữ + độ đậm bảng cân 9 dòng (B/C/D rack-mã-KL thuốc nhuộm, F/G/H rack-mã-KL chất trợ).
+ *
+ * LỆCH CÓ CHỦ Ý so với sheet gốc (sheet để 12pt, chữ thường) theo yêu cầu vận hành
+ * 2026-08-07: mã màu và số cân in ra quá nhỏ và nhạt, khó đọc dưới ánh sáng nhà xưởng.
+ * Chặn trên là bề rộng cột C (51pt) — mã dài nhất kiểu "R2011A" ở Calibri 14pt ĐẬM chiếm
+ * ~46pt kể cả padding; đẩy quá cỡ này là mã bị cắt cụt vì ô để `white-space:nowrap;
+ * overflow:hidden`. Chiều cao dòng 25.9pt còn dư nên không cần đụng tới ROW_PT.
+ */
+const GRID_FONT_PT = 14;
+const GRID_BOLD = true;
 
 /* ===================================================================================
  * 2. PORT `Mod_printslip.PrintSlip_70x100` (DF028) — TÁCH DÒNG, ROUTING, PAYLOAD QR
@@ -466,12 +482,12 @@ export async function buildDispatchSlipHtml(data: DispatchSlipData): Promise<str
     const ch = chemLines[i];
     for (const col of ['B', 'C', 'D', 'F', 'G', 'H']) lines.box(rect(col, row, col, row), boxAll);
     lines.box(rect('E', row, 'E', row), { l: true, r: true });
-    html += cell(rect('B', row, 'B', row), d?.rack ?? '', { fontPt: 12, align: 'left' });
-    html += cell(rect('C', row, 'C', row), d?.code ?? '', { fontPt: 12, align: 'left' });
-    html += cell(rect('D', row, 'D', row), d?.weight ?? '', { fontPt: 12, align: row <= 8 ? 'right' : 'left' });
-    html += cell(rect('F', row, 'F', row), ch?.rack ?? '', { fontPt: 12, align: row <= 9 ? 'center' : 'left' });
-    html += cell(rect('G', row, 'G', row), ch?.code ?? '', { fontPt: 12, align: 'left' });
-    html += cell(rect('H', row, 'H', row), ch?.weight ?? '', { fontPt: 12, align: 'right' });
+    html += cell(rect('B', row, 'B', row), d?.rack ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: 'left' });
+    html += cell(rect('C', row, 'C', row), d?.code ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: 'left' });
+    html += cell(rect('D', row, 'D', row), d?.weight ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: row <= 8 ? 'right' : 'left' });
+    html += cell(rect('F', row, 'F', row), ch?.rack ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: row <= 9 ? 'center' : 'left' });
+    html += cell(rect('G', row, 'G', row), ch?.code ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: 'left' });
+    html += cell(rect('H', row, 'H', row), ch?.weight ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: 'right' });
   }
 
   // Dòng 14: 2 tiêu đề QR (12pt đậm, căn giữa, CHỈ có viền trên).
@@ -542,7 +558,7 @@ export async function buildDispatchSlipHtml(data: DispatchSlipData): Promise<str
   <div class="slip"><div class="sheet">${lines.toString()}${html}</div></div>
 
   <p class="footnote">
-    Lô: ${esc(data.batchId || '')} — In qua trình duyệt (không qua TSPL/Local Agent). Bố cục, cỡ chữ và nội dung QR port 1:1 từ sheet DF_WEIGHING_SLIP + Mod_printslip của "3.DF028 formulas - PRINTER LANDSCAPE - jit qr sending - 15l special.xlsm"; khổ giấy ${PAPER_W_MM}×${PAPER_H_MM}mm, ép vừa 1 trang ở ${Math.round(FIT_SCALE * 100)}%. Khu vực kho/QR chế độ tự tính lại tại đây, có thể lệch nếu cấu hình routing thay đổi giữa lúc in và lúc xác nhận chính thức.
+    Lô: ${esc(data.batchId || '')} — In qua trình duyệt (không qua TSPL/Local Agent). Bố cục và nội dung QR port 1:1 từ sheet DF_WEIGHING_SLIP + Mod_printslip của "3.DF028 formulas - PRINTER LANDSCAPE - jit qr sending - 15l special.xlsm"; khổ giấy ${PAPER_W_MM}×${PAPER_H_MM}mm, ép vừa 1 trang ở ${Math.round(FIT_SCALE * 100)}%. Khu vực kho/QR chế độ tự tính lại tại đây, có thể lệch nếu cấu hình routing thay đổi giữa lúc in và lúc xác nhận chính thức.
   </p>
 
   <script>
