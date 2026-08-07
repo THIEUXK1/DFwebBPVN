@@ -157,7 +157,15 @@
      mat cong cua ban CanTo cai cung may.
      Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode, nen may dang chay 4.0/4.1
      chi can cai de len la xong. -->
-<?define PackageVersion = "4.2.0.0"?>
+
+<!-- 4.3.0.0 (07/08/2026) — va SendTextToApp: bo sung 2 lenh DoEvents cua ban VBA goc.
+     Doi chieu lai nguon that (giai nen vbaProject.bin cua "5.Semiauto- lockmove SEND OVER6 -
+     delta-stable-final-221.xlsm") thay ModAPI_mouse.SendTextToApp co DoEvents GIUA ClickAt va
+     SendKeys "^v", va them mot cai sau do nua. Ban port bo mat ca hai -> Agent ban Ctrl+V vai
+     micro-giay sau cu click, luc app dich chua kip doi tieu diem, ma rack roi vao o dang focus
+     truoc do hoac mat han. Thay bang nghi 60ms (Rack:PasteDelayMs).
+     Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode. -->
+<?define PackageVersion = "4.3.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.ProductLabel))"
