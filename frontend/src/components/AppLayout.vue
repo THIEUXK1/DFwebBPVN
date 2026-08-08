@@ -377,8 +377,9 @@ const isScaleAccount = computed(() => {
 });
 
 /**
- * Mặc định của tài khoản trạm cân là THU GỌN; bấm "▾ Thanh trên" một lần thì máy đó nhớ luôn.
- * Tài khoản khác không bao giờ bị thu gọn, kể cả khi máy còn lưu lựa chọn 'hide' của ca trước.
+ * Tài khoản trạm cân LUÔN vào ở trạng thái thu gọn. Bấm "▾ Thanh trên" chỉ mở tạm trong phiên
+ * xem hiện tại — F5 là về nếp thu gọn (xem topbarPref, không còn ghi nhớ).
+ * Tài khoản khác không bao giờ bị thu gọn.
  */
 const topbarCollapsed = computed(() => isScaleAccount.value && topbarPref.value !== 'show');
 

@@ -6,28 +6,27 @@ import { ref } from 'vue';
 export const isFullscreen = ref(false);
 
 /**
- * Lựa chọn "thanh trên cùng (topbar) hiện hay ẩn" của các tài khoản đứng trạm cân
- * (cannho / canto — yêu cầu 08/08/2026). Hai màn cân chiếm gần trọn màn hình nên 70px
- * topbar là 70px không dùng tới; mặc định của các tài khoản đó là ẩn, chỉ chừa một dải
- * mỏng có nút bật lại (xem AppLayout.vue).
+ * Thanh trên cùng (topbar) đang hiện hay ẩn, cho các tài khoản đứng trạm cân (cannho / canto).
+ * Hai màn cân chiếm gần trọn màn hình nên 70px topbar là 70px không dùng tới; mặc định của các
+ * tài khoản đó là ẩn, chỉ chừa một dải mỏng có nút bật lại (xem AppLayout.vue).
  *
- * KHÁC `isFullscreen` ở chỗ đây là lựa chọn LÂU DÀI của máy trạm (nhớ qua F5, qua phiên),
- * còn `isFullscreen` là trạng thái tức thời của phiên xem hiện tại và bị các trang tự đặt
- * lại khi mount/unmount.
+ * KHÔNG GHI NHỚ, và đó là chủ ý (yêu cầu 08/08/2026: "auto được ẩn, hiện thì F5 lại ẩn"). Bản
+ * đầu (08/08/2026 sáng) lưu vào localStorage `df_topbar_pref`; hệ quả là thợ bấm "▾ Thanh trên"
+ * một lần để xem tên trạm rồi quên bấm lại, và máy đó mất 70px vĩnh viễn cho tới khi có người
+ * nhớ ra. Nay để trong bộ nhớ phiên: bật lên xem xong, F5 là tự về nếp ẩn.
  *
- * `null` = chưa ai bấm gì -> dùng mặc định theo loại tài khoản. Chỉ có ý nghĩa với tài
- * khoản trạm cân; tài khoản khác luôn thấy topbar như cũ.
+ * Khoá `df_topbar_pref` cũ trên các máy đã chạy bản trước nay không còn ai đọc — để đó vô hại.
+ *
+ * KHÁC `isFullscreen` ở chỗ `isFullscreen` bị chính các trang tự đặt lại khi mount/unmount, còn
+ * cờ này chỉ đổi khi thợ bấm nút.
+ *
+ * `null` = chưa ai bấm gì -> dùng mặc định theo loại tài khoản. Chỉ có ý nghĩa với tài khoản
+ * trạm cân; tài khoản khác luôn thấy topbar như cũ.
  */
 export type TopbarPref = 'show' | 'hide';
 
-const TOPBAR_PREF_KEY = 'df_topbar_pref';
-
-const savedTopbarPref = localStorage.getItem(TOPBAR_PREF_KEY);
-export const topbarPref = ref<TopbarPref | null>(
-  savedTopbarPref === 'show' || savedTopbarPref === 'hide' ? savedTopbarPref : null
-);
+export const topbarPref = ref<TopbarPref | null>(null);
 
 export function setTopbarPref(pref: TopbarPref) {
   topbarPref.value = pref;
-  localStorage.setItem(TOPBAR_PREF_KEY, pref);
 }
