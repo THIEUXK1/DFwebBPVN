@@ -178,6 +178,7 @@
 
       <!-- ===== BẢNG 9 DÒNG ===== -->
       <VbaRackGrid
+        class="ws2-grid"
         :items="jobItems"
         :current-index="currentIndex"
         :captured-weights="capturedWeights"
@@ -1589,6 +1590,18 @@ onUnmounted(() => {
   border: 1px solid #d5dbe6;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(15, 30, 55, 0.08);
+}
+
+/* Bảng 9 dòng ăn HẾT phần cao còn lại sau băng trên / dải RAW / dòng gợi ý — xem VbaRackGrid.
+   `min-height: 0` bắt buộc, nếu không thì trên màn thấp bảng không chịu co và tràn ra ngoài.
+
+   Trần 700px (~76px/dòng): không có nó thì trên màn 4K ở mức phóng 100% mỗi dòng cao hơn 200px,
+   bảng thành 4 dòng chữ khổng lồ. Chạm trần rồi thì phần thừa nằm dưới đáy trang, NGOÀI khung
+   bảng — chấp nhận được, hơn là một mảng trắng nằm bên trong khung. */
+.ws2-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 700px;
 }
 
 /* ===== Băng trên ===== */

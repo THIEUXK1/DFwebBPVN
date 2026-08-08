@@ -131,6 +131,14 @@ function processStyle(idx: number): Record<string, string> {
   border-radius: 10px;
   overflow: hidden;
   background: #fff;
+  /* Cột dọc để 9 dòng CHIA ĐỀU phần cao còn lại của màn hình thay vì đóng cứng 53px/dòng
+     (07/08/2026). Trước đây bảng cao đúng 509px bất kể màn hình: màn cao thì thừa một mảng trống
+     dưới đáy, màn thấp (hoặc phóng to 150%+) thì tràn ra ngoài và phải cuộn.
+     `min-height: 0` là BẮT BUỘC: mặc định flex item không co xuống dưới kích thước nội dung, nên
+     thiếu dòng này thì trên màn thấp bảng vẫn tràn y như cũ. */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   /* Bảng luôn nền sáng như form VBA gốc, không đổi theo theme tối — thợ đã quen bảng trắng
      chữ đen, đổi sang nền tối làm mất cảm nhận màu vàng/xanh/đỏ vốn là tín hiệu chính. */
   color: #0d1520;
@@ -141,7 +149,11 @@ function processStyle(idx: number): Record<string, string> {
   display: grid;
   /* Tỉ lệ đúng bản gốc: 12 | 48 | 330 | 312 | 360 (pt) */
   grid-template-columns: 34px 4.4% 30.6% 28.9% 33.4%;
-  height: 53px; /* 39.75pt */
+  /* 9 dòng chia đều chỗ còn lại. `flex-basis: 0` (không phải auto) để chia theo phần bằng nhau
+     chứ không theo nội dung — dòng có ô nhập RACK cao hơn dòng trống là lệch ngay.
+     44px là sàn: dưới mức đó thì đeo găng bấm không trúng dòng nữa, thà để trang cuộn. */
+  flex: 1 1 0;
+  min-height: 44px;
   border-bottom: 1px solid #e3e7ee;
   transition: background 0.12s ease;
 }
@@ -151,11 +163,14 @@ function processStyle(idx: number): Record<string, string> {
 }
 
 .vba-head {
-  height: 30px;
+  /* Hàng tiêu đề KHÔNG co giãn — nó chỉ là nhãn, mọi px thừa phải về cho 9 dòng dữ liệu.
+     Phải ghi cả `flex` lẫn `min-height` vì phần tử này mang luôn class .vba-row ở trên. */
+  flex: 0 0 30px;
+  min-height: 30px;
   background: #eef1f6;
   border-bottom: 1px solid #c9d1dd;
   font-weight: 800;
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: 0.7px;
   color: #56617a;
 }
@@ -164,25 +179,32 @@ function processStyle(idx: number): Record<string, string> {
   display: flex;
   align-items: center;
   padding: 0 10px;
+  font-size: inherit; /* nhãn giữ 13px, không đi theo chiều cao dòng như ô dữ liệu */
 }
 
 .cell-no {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: clamp(12px, calc(1.6vh / var(--df-zoom, 1)), 18px);
   font-weight: 800;
   color: #8a94a8;
   background: #f5f7fa;
   border-right: 1px solid #e3e7ee;
 }
 
+/* Cỡ chữ đi theo chiều cao màn hình, không đóng cứng: dòng đã cao lên theo màn thì chữ 18px cố
+   định trông lọt thỏm giữa ô.
+   PHẢI chia cho `--df-zoom`: `zoom` ở .ws2-root nhân mọi chiều dài bên trong, kể cả 1vh — không
+   chia thì bấm A+ hai lần là chữ vọt lên gấp rưỡi trong khi ô chỉ to bằng đúng hệ số phóng.
+   clamp() giữ hai đầu: không bao giờ nhỏ hơn 15px (đứng cách 1-2m còn đọc được) và không lớn hơn
+   22px (quá đó thì mã DYE dài bị cắt cụt vì cột có bề rộng cố định). */
 .cell {
   display: flex;
   align-items: center;
   padding: 0 10px;
   border-right: 1px solid #e3e7ee;
-  font-size: 18px;
+  font-size: clamp(15px, calc(2vh / var(--df-zoom, 1)), 22px);
   font-weight: 700;
   overflow: hidden;
   white-space: nowrap;
@@ -209,8 +231,9 @@ function processStyle(idx: number): Record<string, string> {
   color: #56617a;
 }
 
+/* Số cân thực tế — to hơn các cột khác vì đây là con số thợ đọc để biết đã đủ hay chưa. */
 .cell-process {
-  font-size: 24px;
+  font-size: clamp(19px, calc(2.6vh / var(--df-zoom, 1)), 30px);
   font-weight: 800;
 }
 
@@ -239,10 +262,14 @@ function processStyle(idx: number): Record<string, string> {
 
 .vba-input {
   width: 100%;
-  height: 38px;
+  /* Theo chiều cao dòng thay vì 38px cố định — dòng co giãn rồi thì ô nhập cũng phải theo, nếu
+     không thì trên màn cao nó thành một khe hẹp lọt giữa dòng. */
+  height: 72%;
+  min-height: 30px;
+  max-height: 52px;
   border: 1px solid #c2cad8;
   border-radius: 6px;
-  font-size: 18px;
+  font-size: clamp(15px, calc(2vh / var(--df-zoom, 1)), 22px);
   font-weight: 700;
   text-align: center;
   font-family: inherit;
