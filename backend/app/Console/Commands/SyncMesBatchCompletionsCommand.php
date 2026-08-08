@@ -71,19 +71,20 @@ class SyncMesBatchCompletionsCommand extends Command
                 continue;
             }
 
-            $mesId = trim((string) ($row['id'] ?? ''));
+            $batchNo = $this->str($row['batchNo'] ?? null, 64);
+            $lineNo = $this->str($row['lineNo'] ?? null, 32) ?? '1';
             $endTime = $this->parseVnTime($row['endTime'] ?? null, $tz);
 
-            // Không có mes_id (khoá upsert) hoặc thiếu endTime (lý do tồn tại) thì bỏ.
-            if ($mesId === '' || $endTime === null) {
+            // Khoá tự nhiên = batchNo + lineNo (field `id` của MES luôn rỗng); thiếu batchNo
+            // hoặc thiếu endTime (lý do tồn tại của bảng) thì bỏ.
+            if ($batchNo === null || $endTime === null) {
                 $skippedNoKey++;
                 continue;
             }
 
-            $payload[$mesId] = [
-                'mes_id' => $mesId,
-                'batch_no' => $this->str($row['batchNo'] ?? null, 64),
-                'line_no' => $this->str($row['lineNo'] ?? null, 32),
+            $payload[$batchNo . '|' . $lineNo] = [
+                'batch_no' => $batchNo,
+                'line_no' => $lineNo,
                 'machine_code' => MachineCodeNormalizer::normalize($machineRaw),
                 'machine_no_raw' => $this->str($machineRaw, 32),
                 'color_code' => $this->str($row['colorCode'] ?? null, 100),
@@ -95,6 +96,9 @@ class SyncMesBatchCompletionsCommand extends Command
                 'shift' => $this->str($row['clShift'] ?? null, 16),
                 'manu_step' => $this->str($row['manuStep'] ?? null, 32),
                 'status' => $this->str($row['status'] ?? '60', 16),
+                // Nguyên cả dòng MES (JSONB) — phục vụ popup "xem toàn bộ thông tin mẻ".
+                // upsert() bỏ qua cast của model nên phải tự json_encode ở đây.
+                'raw' => json_encode($row, JSON_UNESCAPED_UNICODE),
                 'source' => 'MES_EBATCHLINE',
                 'synced_at' => $now,
                 'created_at' => $now,
@@ -131,15 +135,15 @@ class SyncMesBatchCompletionsCommand extends Command
             return self::SUCCESS;
         }
 
-        // upsert theo mes_id (unique) — chạy lại nhiều lần không sinh trùng.
+        // upsert theo (batch_no, line_no) — chạy lại nhiều lần không sinh trùng.
         foreach (array_chunk(array_values($payload), 500) as $chunk) {
             MesBatchCompletion::upsert(
                 $chunk,
-                ['mes_id'],
+                ['batch_no', 'line_no'],
                 [
-                    'batch_no', 'line_no', 'machine_code', 'machine_no_raw', 'color_code',
+                    'machine_code', 'machine_no_raw', 'color_code',
                     'article_code', 'order_ucode', 'begin_time', 'end_time', 'end_by_name',
-                    'shift', 'manu_step', 'status', 'source', 'synced_at', 'updated_at',
+                    'shift', 'manu_step', 'status', 'raw', 'source', 'synced_at', 'updated_at',
                 ]
             );
         }

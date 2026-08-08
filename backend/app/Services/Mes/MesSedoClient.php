@@ -71,9 +71,15 @@ class MesSedoClient
         $jar = new CookieJar();
         $this->login($jar, $profile);
 
-        // Bối cảnh nhà máy/org — thiếu thì batchView có thể trả "未找到工厂，请添加权限！".
+        // Bối cảnh nhà máy/org BẮT BUỘC — thiếu thì batchView trả "未找到工厂，请添加权限！"
+        // (xác nhận 2026-08-07: cùng account, có factoryCode='BPVN' -> 200/200 dòng VD đều
+        // có endTime; để rỗng -> lỗi factory). Ưu tiên giá trị cấu hình; nếu trống thì tự
+        // hỏi MES đúng như trang thật làm (rbase/factoryPeople/getByCode -> rows[0]).
         $batchCfg = $this->config['batch'] ?? [];
         $factoryCode = (string) ($batchCfg['factory_code'] ?? '');
+        if ($factoryCode === '') {
+            $factoryCode = $this->resolveFactoryCode($jar, $profile['base_url']);
+        }
         $orgFilterValue = $batchCfg['org_filter_value'] ?? null;
 
         $all = [];
@@ -160,6 +166,26 @@ class MesSedoClient
             'password' => $c['password'] ?? null,
             'login_path' => $defaultLogin,
         ];
+    }
+
+    /**
+     * Nhà máy mặc định của tài khoản (getByCode trả các nhà máy user thuộc về; trang thật
+     * dùng phần tử đầu). Trả '' nếu không lấy được — khi đó batchView sẽ báo lỗi factory rõ
+     * ràng để người vận hành biết cần cấu hình MES_BATCH_FACTORY_CODE.
+     */
+    private function resolveFactoryCode(CookieJar $jar, string $baseUrl): string
+    {
+        try {
+            $data = $this->postJson('rbase/factoryPeople/getByCode', $jar, '{}', $baseUrl);
+        } catch (RuntimeException) {
+            return '';
+        }
+
+        $rows = $data['rows'] ?? null;
+
+        return is_array($rows) && isset($rows[0]['factoryCode'])
+            ? (string) $rows[0]['factoryCode']
+            : '';
     }
 
     /** @param array{base_url: string, username: ?string, password: ?string, login_path: string} $profile */

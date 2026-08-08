@@ -60,6 +60,9 @@ Route::get('/public/bpdb-machines-gantt', [BpdbMachineController::class, 'gantt'
 // Cùng trang Gantt public ở trên: tổng số mẻ 1 mã màu-mã hàng đã chạy từ đầu tới nay,
 // gọi riêng khi bấm vào 1 thanh (query quét toàn lịch sử, không nhét vào /gantt).
 Route::get('/public/bpdb-machines-gantt/lot-total', [BpdbMachineController::class, 'lotTotal']);
+// Cùng trang Gantt public: toàn bộ thông tin mẻ trong MES (khách, đơn/MO, công thức, SL/khối
+// lượng, người+giờ, ngày giao, ghi chú SX...) — gọi khi bấm vào 1 thanh đã ghép được với MES.
+Route::get('/public/bpdb-machines-gantt/mes-batch', [BpdbMachineController::class, 'mesBatch']);
 
 // Public — 2 màn hình "Gọi hóa chất cổ điển" (/chemical-call/classic và
 // /chemical-call/pending-classic), theo yêu cầu 2026-08-04: mở màn hình treo xưởng không
@@ -281,6 +284,7 @@ Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
         Route::get('/admin/bpdb/machines/status', [BpdbMachineController::class, 'status']);
         Route::get('/admin/bpdb/machines/status-summary', [BpdbMachineController::class, 'statusSummary']);
         Route::get('/admin/bpdb/machines/gantt', [BpdbMachineController::class, 'gantt']);
+        Route::get('/admin/bpdb/machines/gantt/mes-batch', [BpdbMachineController::class, 'mesBatch']);
         Route::get('/admin/bpdb/machines/{machineCode}/status', [BpdbMachineController::class, 'show']);
         Route::get('/admin/bpdb/machines/{machineCode}/timeline', [BpdbMachineController::class, 'timeline']);
 

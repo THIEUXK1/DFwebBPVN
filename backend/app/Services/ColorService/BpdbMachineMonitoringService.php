@@ -50,12 +50,6 @@ class BpdbMachineMonitoringService
     // ngưỡng "stale" mặc định 60s của envelope nên không làm dữ liệu bị coi là cũ.
     private const GANTT_CACHE_TTL = 15;
 
-    // Cửa sổ ghép giờ kết thúc MES với thanh Gantt: một thanh (task pha thuốc, mốc
-    // WorkStartTime) khớp với mẻ MES cùng máy+màu+mã hàng có beginTime gần nhất trong ±12h.
-    // Cùng (máy, màu, mã hàng) hiếm khi chạy 2 lần trong 12h nên cửa sổ rộng vẫn không nhầm;
-    // rộng để dung sai lệch giữa mốc pha (BPDB) và mốc bắt đầu nhuộm (MES).
-    private const MES_MATCH_WINDOW_MINUTES = 720;
-
     // Máy KHÔNG vẽ trên biểu đồ Gantt (yêu cầu 2026-08-05: ẩn VD001). Lọc ở ĐÂY chứ không
     // lọc ở getMachineRegistry(): danh mục máy còn dùng chung cho màn hình trạng thái máy và
     // cho phần đếm "Số lần đánh mẫu theo máy" — ẩn ở danh mục sẽ làm mất luôn cả những chỗ
@@ -323,16 +317,21 @@ class BpdbMachineMonitoringService
                 [$color, $productCode] = $this->splitColorProductFromTitle($row['TaskTitle']);
                 $startCarbon = Carbon::parse($row['WorkStartTime'], 'Asia/Ho_Chi_Minh');
                 $machineCodeNorm = MachineCodeNormalizer::normalize($machineIdToCode[$row['Machine']] ?? '');
-                $mesEnd = $this->matchMesEnd($mesIndex, $machineCodeNorm, $color, $productCode, $startCarbon);
+                $mesMatch = $this->matchMesBatch($mesIndex, $machineCodeNorm, $color, $productCode, $startCarbon);
 
                 $bpdbUncompleted = empty($row['FinishTime']) && $status !== 99 && !$isDeleted;
+                $mesBatchNo = null;
+                $mesLineNo = null;
 
-                if ($mesEnd !== null && $mesEnd->gt($startCarbon)) {
+                if ($mesMatch !== null && $mesMatch['end']->gt($startCarbon)) {
                     // MES xác nhận mẻ đã kết thúc -> dùng giờ THẬT, hết "ảo". Kể cả task BPDB
                     // còn treo (thiếu FinishTime) cũng được đóng đúng thời điểm nhuộm xong.
-                    $end = $mesEnd;
+                    $end = $mesMatch['end'];
                     $uncompleted = false;
                     $endSource = 'MES';
+                    // Khóa mẻ MES để frontend tra toàn bộ thông tin khi bấm vào thanh.
+                    $mesBatchNo = $mesMatch['batchNo'];
+                    $mesLineNo = $mesMatch['lineNo'];
                 } elseif ($bpdbUncompleted) {
                     // Không có bằng chứng kết thúc từ cả MES lẫn BPDB -> vẫn coi đang chạy (vẽ
                     // tới now()); ẩn nếu treo quá ngưỡng (giữ nguyên hành vi cũ).
@@ -366,6 +365,10 @@ class BpdbMachineMonitoringService
                     // Nguồn của giờ kết thúc đang vẽ: MES (thật) | BPDB (giờ pha, ước tính) |
                     // BPDB_RUNNING (chưa xong, đang vẽ tới hiện tại).
                     'endSource' => $endSource,
+                    // Khóa mẻ MES đã ghép (null nếu chưa ghép được) — frontend dùng để gọi
+                    // endpoint lấy toàn bộ thông tin mẻ khi bấm vào thanh.
+                    'mesBatchNo' => $mesBatchNo,
+                    'mesLineNo' => $mesLineNo,
                     'errorMessage' => $row['ErrorMsg'] ?: null,
                     'start' => $startCarbon->toIso8601String(),
                     'end' => $end->toIso8601String(),
@@ -496,6 +499,31 @@ class BpdbMachineMonitoringService
         });
     }
 
+    /**
+     * Toàn bộ thông tin mẻ trong MES (từ cache mes_batch_completions) theo batchNo+lineNo —
+     * phục vụ popup khi bấm vào thanh Gantt. Trả cả `raw` (nguyên dòng MES) để hiển thị mọi
+     * trường, kèm `syncedAt` để biết dữ liệu cũ tới đâu. null nếu không có bản ghi.
+     *
+     * @return array{batchNo: string, lineNo: ?string, syncedAt: ?string, raw: mixed}|null
+     */
+    public function getMesBatchDetail(string $batchNo, string $lineNo): ?array
+    {
+        $rec = MesBatchCompletion::where('batch_no', $batchNo)
+            ->where('line_no', $lineNo)
+            ->first();
+
+        if ($rec === null) {
+            return null;
+        }
+
+        return [
+            'batchNo' => $rec->batch_no,
+            'lineNo' => $rec->line_no,
+            'syncedAt' => $rec->synced_at?->toIso8601String(),
+            'raw' => $rec->raw,
+        ];
+    }
+
     /** @return array{0: ?string, 1: ?string} [color, productCode] — null nếu không tách được. */
     private function splitColorProductFromTitle(?string $title): array
     {
@@ -528,12 +556,16 @@ class BpdbMachineMonitoringService
         }
 
         try {
+            // Lấy các mẻ có khoảng [begin,end] GIAO với cửa sổ Gantt — mẻ VD có thể kéo dài
+            // nhiều ngày nên beginTime có thể nằm xa trước fromDt; lọc theo begin_time hẹp sẽ
+            // bỏ sót. Điều kiện giao: begin <= toDt AND end >= fromDt (nới nhẹ 1 ngày).
             $rows = MesBatchCompletion::query()
                 ->whereIn('machine_code', $normCodes)
                 ->whereNotNull('end_time')
                 ->whereNotNull('begin_time')
-                ->whereBetween('begin_time', [$fromDt->copy()->subDay(), $toDt->copy()->addDay()])
-                ->get(['machine_code', 'color_code', 'article_code', 'begin_time', 'end_time']);
+                ->where('begin_time', '<=', $toDt->copy()->addDay())
+                ->where('end_time', '>=', $fromDt->copy()->subDay())
+                ->get(['batch_no', 'line_no', 'machine_code', 'color_code', 'article_code', 'begin_time', 'end_time']);
         } catch (\Throwable $e) {
             Log::warning('BpdbMachineMonitoringService: không đọc được mes_batch_completions, bỏ ghép giờ kết thúc thật', [
                 'error' => $e->getMessage(),
@@ -544,39 +576,68 @@ class BpdbMachineMonitoringService
 
         $index = [];
         foreach ($rows as $r) {
-            $key = $r->machine_code . '|' . trim((string) $r->color_code) . '|' . trim((string) $r->article_code);
-            // begin_time/end_time đã được model cast sang Carbon.
-            $index[$key][] = ['begin' => $r->begin_time, 'end' => $r->end_time];
+            $key = $this->lotKey($r->machine_code, $r->color_code, $r->article_code);
+            // begin_time/end_time đã được model cast sang Carbon. Kèm batch_no/line_no để
+            // frontend tra lại toàn bộ thông tin mẻ khi người dùng bấm vào thanh.
+            $index[$key][] = [
+                'begin' => $r->begin_time,
+                'end' => $r->end_time,
+                'batchNo' => $r->batch_no,
+                'lineNo' => $r->line_no,
+            ];
         }
 
         return $index;
     }
 
     /**
-     * Tìm giờ kết thúc MES khớp một thanh Gantt: cùng máy+màu+mã hàng, beginTime MES gần
-     * WorkStartTime nhất trong cửa sổ cho phép. Trả null nếu thiếu khoá hoặc không có ứng
-     * viên nào đủ gần (khi đó thanh giữ nguyên cách tính cũ).
-     *
-     * @param  array<string, array<int, array{begin: Carbon, end: Carbon}>>  $index
+     * Khoá ghép LOT giữa BPDB và MES — hai nguồn KHÔNG lưu mã hàng/mã màu y hệt (đối soát
+     * 2026-08-07):
+     *   - Mã hàng: BPDB (TaskTitle) chỉ giữ phần GỐC, còn MES `artCode` có thêm hậu tố
+     *     "/nn/x" (vd BPDB "LR5A356" == MES "LR5A356/21/E") -> cắt tại '/' đầu.
+     *   - Mã màu: BPDB BỎ dấu '+' mà MES có (vd BPDB "B118958" == MES "B+118958") -> bỏ '+'
+     *     trước khi so. So sau chuẩn hoá phủ 105/113 mẻ khớp mã hàng; các ca còn lệch màu là
+     *     LÔ KHÁC (cùng máy+mã hàng, màu khác) nên loại đúng, không ghép nhầm.
      */
-    private function matchMesEnd(array $index, string $machineCodeNorm, ?string $color, ?string $product, Carbon $start): ?Carbon
+    private function lotKey(string $machineNorm, ?string $color, ?string $article): string
+    {
+        $colorKey = strtoupper(str_replace('+', '', trim((string) $color)));
+        $articleBase = strtoupper(trim(explode('/', (string) $article)[0]));
+
+        return $machineNorm . '|' . $colorKey . '|' . $articleBase;
+    }
+
+    /**
+     * Tìm giờ kết thúc MES cho một thanh Gantt (task pha thuốc BPDB tại mốc WorkStartTime).
+     * Luật ghép đúng (đối soát 2026-08-07): task pha xảy ra TRONG lúc mẻ đang nhuộm, nên
+     * mốc pha phải NẰM TRONG khoảng [beginTime, endTime] của mẻ MES cùng lot — KHÔNG so
+     * "beginTime gần nhau" vì MES beginTime lệch mốc pha nhiều ngày (mẻ VD kéo dài, vd bắt
+     * đầu 31/07 kết thúc 08/08). Nếu nhiều mẻ cùng lot bao trùm mốc pha, lấy mẻ có endTime
+     * SỚM NHẤT bao trùm (khít với lần chạy đó). Trả null -> thanh giữ cách tính cũ (mẻ nhiều
+     * khả năng còn đang chạy, MES chưa có status=60).
+     *
+     * @param  array<string, array<int, array{begin: ?Carbon, end: Carbon, batchNo: ?string, lineNo: ?string}>>  $index
+     * @return array{end: Carbon, batchNo: ?string, lineNo: ?string}|null  Bản ghi MES khớp, hoặc null.
+     */
+    private function matchMesBatch(array $index, string $machineCodeNorm, ?string $color, ?string $product, Carbon $start): ?array
     {
         if ($machineCodeNorm === '' || $color === null || $product === null) {
             return null;
         }
 
-        $candidates = $index[$machineCodeNorm . '|' . trim($color) . '|' . trim($product)] ?? null;
+        $candidates = $index[$this->lotKey($machineCodeNorm, $color, $product)] ?? null;
         if (!$candidates) {
             return null;
         }
 
         $best = null;
-        $bestDiff = null;
         foreach ($candidates as $c) {
-            $diff = abs($start->diffInMinutes($c['begin'], false));
-            if ($diff <= self::MES_MATCH_WINDOW_MINUTES && ($bestDiff === null || $diff < $bestDiff)) {
-                $bestDiff = $diff;
-                $best = $c['end'];
+            // Chỉ nhận mẻ có beginTime thật và bao trùm mốc pha: begin <= start <= end.
+            if ($c['begin'] === null || $c['begin']->gt($start) || $c['end']->lt($start)) {
+                continue;
+            }
+            if ($best === null || $c['end']->lt($best['end'])) {
+                $best = $c;
             }
         }
 

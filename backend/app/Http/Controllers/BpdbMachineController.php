@@ -108,6 +108,33 @@ class BpdbMachineController extends Controller
     }
 
     /**
+     * Toàn bộ thông tin mẻ trong MES (khách, đơn/MO, công thức, SL/khối lượng, người+giờ,
+     * ngày giao, ghi chú SX...) — gọi khi bấm vào 1 thanh Gantt đã ghép được với MES.
+     * Đọc từ cache mes_batch_completions (đồng bộ định kỳ), không gọi thẳng MES lúc render.
+     */
+    public function mesBatch(Request $request, BpdbMachineMonitoringService $service)
+    {
+        $batchNo = trim((string) $request->query('batchNo', ''));
+        $lineNo = trim((string) $request->query('lineNo', '1'));
+
+        if ($batchNo === '') {
+            return response()->json(['error' => 'BATCH_REQUIRED'], 422);
+        }
+
+        $detail = $service->getMesBatchDetail($batchNo, $lineNo === '' ? '1' : $lineNo);
+        if ($detail === null) {
+            return response()->json(['error' => 'MES_BATCH_NOT_FOUND'], 404);
+        }
+
+        return response()->json([
+            'data' => $detail,
+            'source' => 'MES',
+            'readOnly' => true,
+            'syncedAt' => $detail['syncedAt'],
+        ]);
+    }
+
+    /**
      * Envelope chung (mục 9): lastSyncedAt/dataAgeSeconds/source/readOnly/stale.
      * Ngưỡng "cũ" cấu hình qua feature_flags (Admin sửa được), mặc định 60 giây.
      */

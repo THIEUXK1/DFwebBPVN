@@ -13,7 +13,6 @@ class MesBatchCompletion extends Model
     protected $table = 'mes_batch_completions';
 
     protected $fillable = [
-        'mes_id',
         'batch_no',
         'line_no',
         'machine_code',
@@ -29,11 +28,13 @@ class MesBatchCompletion extends Model
         'status',
         'source',
         'synced_at',
+        'raw',
     ];
 
     protected $casts = [
         'begin_time' => 'datetime',
         'end_time' => 'datetime',
         'synced_at' => 'datetime',
+        'raw' => 'array',
     ];
 }

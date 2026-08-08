@@ -80,7 +80,7 @@
       <div ref="timelineEl" class="gantt-canvas"></div>
       <p v-if="!loading && totalRecords === 0" class="gantt-empty">Không có task nào khớp trong khoảng ngày/tên máy đã chọn.</p>
     </div>
-    <p class="footnote">Tổng số thanh hiển thị: <strong>{{ totalRecords }}</strong> · viền đỏ nhấp nháy = mẻ đang chạy, chưa kết thúc · mẻ đang chạy luôn vẽ bên PHẢI vạch giờ hiện tại, mẻ đã xong dồn về bên TRÁI · các mẻ đã xong liên tiếp trùng mã màu - mã hàng được gộp thành 1 thanh</p>
+    <p class="footnote">Tổng số thanh hiển thị: <strong>{{ totalRecords }}</strong> · viền đỏ nhấp nháy = mẻ đang chạy, chưa kết thúc · viền xanh dương nhấp nháy = mẻ đã ghép được giờ kết thúc THẬT từ MES (bấm xem thông tin mẻ) · mẻ đang chạy luôn vẽ bên PHẢI vạch giờ hiện tại, mẻ đã xong dồn về bên TRÁI · các mẻ đã xong liên tiếp trùng mã màu - mã hàng được gộp thành 1 thanh</p>
 
     <!-- Đồng hồ nổi góc trên trái — chỉ hiện khi toàn màn hình (che mất đồng hồ hệ điều hành). -->
     <div v-show="isBrowserFullscreen" class="fs-clock">
@@ -174,6 +174,49 @@
           <dd class="text-error">{{ detailPopup.errorMessage }}</dd>
         </template>
       </dl>
+      <div v-if="detailPopup.mesBatchNo" class="gantt-detail-note">→ Thông tin đầy đủ từ MES ở bảng bên phải</div>
+    </div>
+
+    <!-- Bảng thông tin mẻ MES cố định bên PHẢI (yêu cầu 2026-08-08) — rộng rãi, cuộn được,
+         hiện khi bấm vào thanh đã ghép với MES. Tách khỏi popup nhỏ để đủ chỗ xem đầy đủ. -->
+    <div v-if="mesPanelOpen && detailPopup?.mesBatchNo" class="gantt-mes-panel">
+      <div class="gantt-mes-panel-head">
+        <div class="gantt-mes-panel-title">
+          Thông tin mẻ (MES)
+          <span class="gantt-mes-panel-batch">{{ detailPopup.mesBatchNo }}</span>
+        </div>
+        <button type="button" class="gantt-detail-close" aria-label="Đóng" @click="mesPanelOpen = false">✕</button>
+      </div>
+      <div class="gantt-mes-panel-body">
+        <template v-if="mesBatch?.loading">
+          <div class="gantt-detail-note">Đang tải từ MES…</div>
+        </template>
+        <template v-else-if="mesBatch?.failed">
+          <div class="gantt-detail-note">Không tải được thông tin mẻ (chưa đồng bộ?)</div>
+        </template>
+        <template v-else-if="mesBatch?.raw">
+          <table class="gantt-mes-table">
+            <tbody>
+              <tr v-for="row in mesFieldRows" :key="row.label">
+                <th>{{ row.label }}</th>
+                <td>{{ row.value }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <details v-if="mesFieldRowsRest.length" class="gantt-mes-all">
+            <summary>Tất cả trường ({{ mesFieldRowsRest.length }})</summary>
+            <table class="gantt-mes-table">
+              <tbody>
+                <tr v-for="row in mesFieldRowsRest" :key="row.label">
+                  <th>{{ row.label }}</th>
+                  <td>{{ row.value }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </details>
+          <div v-if="mesBatch.syncedAt" class="gantt-detail-note">Đồng bộ MES lúc {{ formatTime(mesBatch.syncedAt) }}</div>
+        </template>
+      </div>
     </div>
   </div>
   </component>
@@ -466,6 +509,9 @@ interface GanttDetail {
   endText: string;
   /** Nguồn giờ kết thúc: 'MES' (thật) | 'BPDB' (ước tính giờ pha) | 'BPDB_RUNNING' (đang chạy). */
   endSource: string;
+  /** Khóa mẻ MES đã ghép (null nếu chưa ghép) — dùng để tải toàn bộ thông tin mẻ khi bấm. */
+  mesBatchNo: string | null;
+  mesLineNo: string | null;
   errorMessage: string | null;
   barColor: string;
   /** Số mẻ đã xong liên tiếp giống nhau được gộp chung vào thanh này (1 = chưa gộp). */
@@ -489,6 +535,8 @@ const buildDetail = (item: any, realEnd: Date, barColor: string): GanttDetail =>
     startText: formatTime(item.start),
     endText: item.uncompleted ? 'Chưa kết thúc' : formatTime(realEnd.toISOString()),
     endSource: item.endSource ?? 'BPDB',
+    mesBatchNo: item.mesBatchNo ?? null,
+    mesLineNo: item.mesLineNo != null ? String(item.mesLineNo) : null,
     errorMessage: item.errorMessage || null,
     barColor,
     mergedCount: 1,
@@ -503,6 +551,8 @@ const itemDetails = new Map<string, GanttDetail>();
 
 const detailPopup = ref<GanttDetail | null>(null);
 const detailPopupStyle = ref('');
+// Bảng thông tin mẻ MES bên phải — mở khi bấm vào thanh đã ghép MES, đóng bằng nút ✕ riêng.
+const mesPanelOpen = ref(false);
 
 /** Tổng số mẻ của 1 mã màu - mã hàng đã chạy từ đầu tới nay (API riêng, xem loadLotTotal). */
 interface LotTotal {
@@ -554,9 +604,113 @@ const loadLotTotal = async (detail: GanttDetail) => {
   }
 };
 
+// ---- Toàn bộ thông tin mẻ trong MES (bấm vào thanh đã ghép MES) ----
+// Danh sách trường ưu tiên hiển thị (nhãn tiếng Việt), theo đúng tên field của MES eBatchLine.
+// Field không có trong dữ liệu sẽ tự bỏ qua. Phần còn lại xem trong "Tất cả trường".
+const MES_FIELDS: { key: string; label: string }[] = [
+  { key: 'batchNo', label: 'Số mẻ' },
+  { key: 'batchState', label: 'Trạng thái mẻ' },
+  { key: 'colorCode', label: 'Mã màu' },
+  { key: 'artCode', label: 'Mã hàng' },
+  { key: 'rootArt', label: 'Mã hàng gốc' },
+  { key: 'custCode', label: 'Khách' },
+  { key: 'endCustCode', label: 'Khách cuối' },
+  { key: 'orderUcode', label: 'Phiếu phối màu' },
+  { key: 'moCode', label: 'MO' },
+  { key: 'pfmPfno', label: 'Số công thức' },
+  { key: 'machineNo', label: 'Máy' },
+  { key: 'oldMachineNo', label: 'Máy trước' },
+  { key: 'batchTypeName', label: 'Loại mẻ' },
+  { key: 'batchNum', label: 'SL kế hoạch (m)' },
+  { key: 'clNum', label: 'SL nhuộm (m)' },
+  { key: 'clWet', label: 'KL nhuộm (kg)' },
+  { key: 'clShift', label: 'Ca' },
+  { key: 'beginTime', label: 'Bắt đầu' },
+  { key: 'beginByName', label: 'Người bắt đầu' },
+  { key: 'getTime', label: 'Nhận' },
+  { key: 'getByName', label: 'Người nhận' },
+  { key: 'endTime', label: 'Kết thúc' },
+  { key: 'endByName', label: 'Người kết thúc' },
+  { key: 'pmcDateStr', label: 'Ngày giao' },
+  { key: 'priorityRemark', label: 'Ưu tiên' },
+  { key: 'techRemark', label: 'Ghi chú kỹ thuật' },
+  { key: 'remark', label: 'Ghi chú sản xuất' },
+];
+
+interface MesBatch {
+  /** "{batchNo}|{lineNo}" — bỏ qua phản hồi đến muộn khi đã bấm sang mẻ khác. */
+  key: string;
+  raw: Record<string, any> | null;
+  syncedAt: string | null;
+  loading: boolean;
+  failed: boolean;
+}
+const mesBatch = ref<MesBatch | null>(null);
+const mesBatchCache = new Map<string, { raw: Record<string, any>; syncedAt: string | null }>();
+
+/** Các cặp nhãn→giá trị ưu tiên (chỉ trường có dữ liệu), theo thứ tự MES_FIELDS. */
+const mesFieldRows = computed(() => {
+  const raw = mesBatch.value?.raw;
+  if (!raw) return [] as { label: string; value: string }[];
+  const out: { label: string; value: string }[] = [];
+  for (const f of MES_FIELDS) {
+    const v = raw[f.key];
+    if (v !== null && v !== undefined && String(v).trim() !== '' && String(v).trim() !== '0') {
+      out.push({ label: f.label, value: String(v) });
+    }
+  }
+  return out;
+});
+
+/** Toàn bộ trường còn lại (không nằm trong danh sách ưu tiên, có dữ liệu) cho phần "xem tất cả". */
+const mesFieldRowsRest = computed(() => {
+  const raw = mesBatch.value?.raw;
+  if (!raw) return [] as { label: string; value: string }[];
+  const shown = new Set(MES_FIELDS.map((f) => f.key));
+  const out: { label: string; value: string }[] = [];
+  for (const k of Object.keys(raw)) {
+    if (shown.has(k)) continue;
+    const v = raw[k];
+    if (v !== null && v !== undefined && String(v).trim() !== '' && String(v).trim() !== '0') {
+      out.push({ label: k, value: String(v) });
+    }
+  }
+  return out;
+});
+
+const loadMesBatch = async (detail: GanttDetail) => {
+  if (!detail.mesBatchNo) {
+    mesBatch.value = null;
+    return;
+  }
+  const lineNo = detail.mesLineNo ?? '1';
+  const key = `${detail.mesBatchNo}|${lineNo}`;
+  const cached = mesBatchCache.get(key);
+  if (cached) {
+    mesBatch.value = { key, ...cached, loading: false, failed: false };
+    return;
+  }
+  mesBatch.value = { key, raw: null, syncedAt: null, loading: true, failed: false };
+  try {
+    const res = await axios.get('/api/public/bpdb-machines-gantt/mes-batch', {
+      params: { batchNo: detail.mesBatchNo, lineNo },
+    });
+    const raw = res.data?.data?.raw ?? null;
+    const syncedAt = res.data?.data?.syncedAt ?? null;
+    if (raw) mesBatchCache.set(key, { raw, syncedAt });
+    if (mesBatch.value?.key !== key) return;
+    mesBatch.value = { key, raw, syncedAt, loading: false, failed: raw === null };
+  } catch {
+    if (mesBatch.value?.key !== key) return;
+    mesBatch.value = { key, raw: null, syncedAt: null, loading: false, failed: true };
+  }
+};
+
 const closeDetailPopup = () => {
   detailPopup.value = null;
   lotTotal.value = null;
+  mesBatch.value = null;
+  mesPanelOpen.value = false;
 };
 
 // Ước lượng khổ popup để kẹp trong khung nhìn — chỉ dùng cho phép tính vị trí, kích thước
@@ -577,6 +731,9 @@ const openDetailPopup = (id: string, pageX: number, pageY: number) => {
   detailPopupStyle.value = `left: ${left}px; top: ${top}px;`;
   detailPopup.value = detail;
   loadLotTotal(detail);
+  loadMesBatch(detail);
+  // Mở/đóng bảng MES bên phải theo việc mẻ có ghép được MES hay không.
+  mesPanelOpen.value = !!detail.mesBatchNo;
 };
 
 // Bấm ra ngoài popup thì đóng. Bỏ qua thao tác bấm bên trong vùng biểu đồ — sự kiện 'click'
@@ -586,6 +743,7 @@ const closeDetailOnOutsideClick = (event: MouseEvent) => {
   const target = event.target as HTMLElement | null;
   if (!target) return;
   if (target.closest('.gantt-detail-popup')) return;
+  if (target.closest('.gantt-mes-panel')) return;
   if (timelineEl.value?.contains(target)) return;
   closeDetailPopup();
 };
@@ -635,7 +793,10 @@ const fetchGantt = async () => {
       group: it.group,
       start,
       end: displayEnd,
-      className: it.uncompleted ? 'gantt-item-running' : '',
+      // Đang chạy = viền đỏ nhấp nháy; đã ghép được giờ kết thúc THẬT từ MES = viền xanh
+      // dương nhấp nháy (yêu cầu 2026-08-08). Hai trạng thái loại trừ nhau (mẻ ghép MES
+      // luôn uncompleted=false).
+      className: it.uncompleted ? 'gantt-item-running' : (it.endSource === 'MES' ? 'gantt-item-mes' : ''),
       style: `background-color: ${color}; color: ${textColor};`,
       // Nền màu đặt luôn trên nhãn (thẻ) chứ không chỉ trên thanh ngoài — nhãn nay bị cắt gọn
       // trong lòng thanh (xem CSS .gantt-item-label), tô cùng màu để không lộ vệt nền khác
@@ -884,6 +1045,8 @@ const applyMachineFilter = () => {
       // Cùng id thì gần như luôn cùng mã, nhưng vẫn kiểm tra khoá: nếu khác (hoặc lần trước
       // đếm hụt do BPDB rớt) thì đếm lại, còn trùng thì lấy ngay từ lotTotalCache.
       if (lotTotal.value?.key !== lotKeyOf(fresh)) loadLotTotal(fresh);
+      const mesKey = fresh.mesBatchNo ? `${fresh.mesBatchNo}|${fresh.mesLineNo ?? '1'}` : '';
+      if ((mesBatch.value?.key ?? '') !== mesKey) loadMesBatch(fresh);
     }
   }
 
@@ -1587,6 +1750,9 @@ onUnmounted(() => {
   box-shadow: 0 12px 30px rgba(0,0,0,0.28);
   font-size: 0.8rem;
   line-height: 1.5;
+  /* Thông tin MES có thể nhiều dòng — cho cả popup cuộn thay vì tràn khỏi khung nhìn. */
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
 }
 .gantt-detail-close {
   position: absolute;
@@ -1640,6 +1806,83 @@ onUnmounted(() => {
   color: var(--text-secondary, #6b7280);
   font-size: 0.72rem;
 }
+.gantt-mes-block {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-card, #e2e8f0);
+}
+.gantt-mes-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.gantt-mes-all {
+  margin-top: 6px;
+}
+.gantt-mes-all summary {
+  cursor: pointer;
+  color: var(--text-secondary, #6b7280);
+  font-size: 0.74rem;
+  margin-bottom: 4px;
+}
+/* Bảng thông tin mẻ MES cố định bên phải màn hình. */
+.gantt-mes-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: 400px;
+  max-width: 92vw;
+  z-index: 3050;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card, #fff);
+  color: var(--text-title, #111827);
+  border-left: 1px solid var(--border-card, #e2e8f0);
+  box-shadow: -12px 0 30px rgba(0,0,0,0.22);
+  font-size: 0.82rem;
+}
+.gantt-mes-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-card, #e2e8f0);
+}
+.gantt-mes-panel-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.gantt-mes-panel-batch {
+  margin-left: 8px;
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+}
+.gantt-mes-panel-body {
+  padding: 10px 14px 20px;
+  overflow-y: auto;
+}
+.gantt-mes-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.gantt-mes-table th,
+.gantt-mes-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-card, #eef2f7);
+}
+.gantt-mes-table th {
+  width: 40%;
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  white-space: normal;
+}
+.gantt-mes-table td {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
 /* Danh sách máy có thể dài (1 mã chạy trên chục máy) — cho cuộn trong ô thay vì đẩy popup
    cao quá khung nhìn, vì vị trí popup đã chốt lúc bấm (xem openDetailPopup). */
 .gantt-detail-machines {
@@ -1662,6 +1905,15 @@ onUnmounted(() => {
 @keyframes ganttPulse {
   from { box-shadow: 0 0 2px rgba(239,68,68,0.3); opacity: 0.8; }
   to { box-shadow: 0 0 14px rgba(239,68,68,0.9); opacity: 1; }
+}
+/* Mẻ đã ghép được giờ kết thúc THẬT từ MES — viền xanh dương nhấp nháy (yêu cầu 2026-08-08). */
+:deep(.gantt-item-mes) {
+  border: 2px solid #2563eb !important;
+  animation: ganttPulseMes 0.9s infinite alternate ease-in-out;
+}
+@keyframes ganttPulseMes {
+  from { box-shadow: 0 0 2px rgba(37,99,235,0.3); opacity: 0.85; }
+  to { box-shadow: 0 0 14px rgba(37,99,235,0.9); opacity: 1; }
 }
 :deep(.gantt-blink) { color: #f43f5e; font-weight: 700; }
 

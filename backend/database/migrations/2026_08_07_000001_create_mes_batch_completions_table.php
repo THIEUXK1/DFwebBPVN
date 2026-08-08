@@ -13,8 +13,10 @@
 // để BpdbMachineMonitoringService ghép vào từng thanh Gantt theo máy + mã màu + mã hàng +
 // thời điểm gần nhau.
 //
-// Khoá chống trùng: mes_id (khoá tự nhiên của dòng eBatchLine bên MES) — đồng bộ lại
-// nhiều lần chỉ upsert, không sinh trùng (idempotency, xem database-safety.md mục 4).
+// Khoá chống trùng: (batch_no, line_no). Trường `id` của eBatchLine LUÔN rỗng trên phản
+// hồi batchView (xác nhận 2026-08-07) nên không dùng được; khoá tự nhiên thật là số mẻ +
+// số dây (line). Đồng bộ lại nhiều lần chỉ upsert, không sinh trùng (idempotency, xem
+// database-safety.md mục 4).
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -27,11 +29,10 @@ return new class extends Migration
         Schema::create('mes_batch_completions', function (Blueprint $table) {
             $table->bigIncrements('id');
 
-            // id gốc của dòng eBatchLine bên MES — khoá upsert idempotent.
-            $table->string('mes_id', 64);
-
-            $table->string('batch_no', 64)->nullable();
-            $table->string('line_no', 32)->nullable();
+            // Khoá tự nhiên MES: số mẻ + số dây (line). batchView trả field `id` rỗng nên
+            // không dùng được — xem ghi chú đầu file.
+            $table->string('batch_no', 64);
+            $table->string('line_no', 32)->default('1');
 
             // Mã máy CHUẨN HOÁ (bỏ số 0 thừa: VD05/VD005 -> VD5) để khớp mã máy BPDB
             // (DyeMachines.MachineNo) vốn có thể pad số khác MES. Xem MachineCodeNormalizer.
@@ -56,7 +57,7 @@ return new class extends Migration
             $table->timestampTz('synced_at')->nullable();
             $table->timestamps();
 
-            $table->unique('mes_id');
+            $table->unique(['batch_no', 'line_no'], 'mes_bc_batch_line_uq');
             // Khoá ghép của Gantt: máy + mã màu + mã hàng, lọc/xếp theo begin_time.
             $table->index(['machine_code', 'color_code', 'article_code', 'begin_time'], 'mes_bc_match_idx');
             $table->index('end_time');
