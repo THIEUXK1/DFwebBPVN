@@ -1574,10 +1574,12 @@ onUnmounted(() => {
   /* Chia cho mức phóng: `zoom` nhân mọi chiều dài bên trong, để nguyên 100vh là nền cao hơn màn
      hình đúng bằng hệ số phóng và trang luôn có thanh cuộn dọc thừa. */
   min-height: calc(100vh / var(--df-zoom, 1));
-  padding: 14px;
+  /* Lề và khoảng cách bóp lại (07/08/2026, yêu cầu "đẩy thông tin ở trên cao lên"): mỗi px tiết
+     kiệm ở đây là một px BẢNG 9 DÒNG được đẩy lên — mà bảng mới là thứ thợ nhìn cả ca. */
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
 
@@ -1601,28 +1603,30 @@ onUnmounted(() => {
 .ws2-fields {
   display: grid;
   grid-template-columns: 168px 116px;
-  gap: 10px 12px;
-  padding: 14px;
+  gap: 8px 10px;
+  padding: 10px;
   align-content: space-evenly;
 }
 
 .fld label {
   display: block;
-  font-size: 10px;
+  /* 10px là cỡ chữ đọc-được-nếu-ngồi-gần, mà thợ đứng cách màn hình 1-2m. Nới lên 12px và bù lại
+     bằng chỗ tiết kiệm được ở nút bấm — xem .vba-btn.big. */
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.7px;
   color: #7b8598;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
 }
 
 .vba-txt {
   width: 168px;
-  height: 46px;
+  height: 44px;
   border: 1px solid #c2cad8;
   border-radius: 8px;
   background: #f7f9fc;
   color: #0d1520;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 700;
   padding: 0 10px;
   font-family: inherit;
@@ -1666,7 +1670,7 @@ onUnmounted(() => {
 /* delta_rawline — ô số lớn nhất trên form (288×113pt gốc) */
 .ws2-delta {
   width: 400px;
-  min-height: 158px;
+  min-height: 132px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1681,7 +1685,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 7px 14px;
+  padding: 5px 12px;
   background: #f1f4f9;
   border-bottom: 1px solid #e3e7ee;
   transition: background 0.15s ease;
@@ -1693,19 +1697,19 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 14px 12px;
+  gap: 4px;
+  padding: 6px 12px 8px;
 }
 
 .delta-caption {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.7px;
   color: #56617a;
 }
 
 .delta-target {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: #2c3648;
@@ -1784,7 +1788,7 @@ onUnmounted(() => {
 .ws2-buttons {
   display: grid;
   grid-template-columns: 208px 208px 192px;
-  gap: 10px;
+  gap: 8px;
   align-content: start;
 }
 
@@ -1821,9 +1825,13 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
+/* Chiều cao nút là thứ QUYẾT ĐỊNH bảng 9 dòng nằm cao hay thấp: cả băng trên bị kéo bằng chiều
+   cao khối nút (align-items: stretch), nên hạ 152 -> 104 là bảng lên đúng 48px + phần nút nhỏ.
+   104px vẫn gấp đôi ngưỡng bấm-bằng-găng-tay thông thường (~48px), nên không mất tính bấm được —
+   thứ duy nhất mất là khoảng trắng. Đừng hạ dưới ~90px. */
 .vba-btn.big {
-  height: 152px;
-  font-size: 32px;
+  height: 104px;
+  font-size: 30px;
 }
 
 /* SAVE — hành động chốt cả mẻ, xanh lá đặc để không thể bấm nhầm sang CLEAR ngay bên cạnh. */
@@ -1863,14 +1871,14 @@ onUnmounted(() => {
 }
 
 .vba-btn.sm {
-  height: 80px;
-  font-size: 16px;
+  height: 58px;
+  font-size: 18px;
 }
 
-/* CLOSE trải hết cột thứ 3 để không lệch lưới */
+/* CLOSE trải hết cột thứ 3 để không lệch lưới — cùng chiều cao .sm để hàng 2 không lệch. */
 .vba-btn.wide {
-  height: 62px;
-  font-size: 16px;
+  height: 58px;
+  font-size: 18px;
 }
 
 .vba-btn.tiny {
@@ -1884,9 +1892,12 @@ onUnmounted(() => {
 .ws2-rawline {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  padding: 7px 12px;
+  /* Cho phép xuống dòng: dải này chứa cả cảnh báo dài ("MẤT KẾT NỐI MÁY CHỦ…"). Không cho xuống
+     dòng thì hoặc nó ép cả dải cao lên, hoặc đẩy nút A−/A+ và ô giả lập tràn khỏi màn. */
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 14px;
+  padding: 5px 10px;
   background: #fff;
   border: 1px solid #d5dbe6;
   border-radius: 10px;
@@ -1894,7 +1905,7 @@ onUnmounted(() => {
 
 .raw-label {
   font-weight: 800;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.7px;
   color: #7b8598;
 }
@@ -1903,12 +1914,12 @@ onUnmounted(() => {
   font-family: ui-monospace, 'Cascadia Mono', 'Consolas', 'Courier New', monospace;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  font-size: 16px;
+  font-size: 18px;
   min-width: 92px;
   border: 1px solid #dde2ea;
   border-radius: 6px;
   background: #f7f9fc;
-  padding: 3px 10px;
+  padding: 2px 10px;
   text-align: right;
 }
 
