@@ -191,7 +191,21 @@
      cua so chong nhau va buoc tu do chon nham.
      Khong xac dinh duoc cua so dich van BAO HONG kem ly do cu the tren man can, khong ban mu.
      Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode. -->
-<?define PackageVersion = "4.6.0.0"?>
+<!-- 4.7.0.0 (08/08/2026) — ban IN/OUT CHAY NGAM O KHAY HE THONG (nhu WeChat).
+     Yeu cau nguoi dung: "du tat X thi van chay ngam". Ban IN/OUT bat buoc chay trong phien nguoi
+     dung nen no hien ra la mot cua so console tren thanh tac vu — tho thay cua so la de bam X, va
+     the la nut IN/OUT chet cam cho toi khi co nguoi biet duong bat lai bang Start Menu.
+     KHONG the bat su kien bam X cua cua so console (cua so do thuoc conhost.exe, va CTRL_CLOSE_EVENT
+     chi cho don dep chu khong huy duoc lenh dong), nen lam nguoc lai: vao la AN han cua so, Agent
+     nam o khay he thong; bam dup xem nhat ky, chuot phai de an/hien hoac Thoat han (co hoi lai).
+     Luc cua so nhat ky hien thi nut X cua no bi go khoi menu he thong (xam di) — lo tay bam cung
+     khong tat mat Agent. Kem theo: chan chay TRUNG BAN (Mutex theo phien) vi khong con cua so tren
+     thanh tac vu thi rat de bam shortcut lan hai vi tuong chua chay, ma hai ban la hai vong lay
+     lenh rack tranh nhau mot hang doi.
+     Bat bang Tray:Enabled trong appsettings — CHI ban IN/OUT co; hai ban chay service khong doi gi
+     (session 0 khong co thanh tac vu de hien bieu tuong).
+     Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode. -->
+<?define PackageVersion = "4.7.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.ProductLabel))"
@@ -247,9 +261,11 @@
          Scope=perMachine nen StartupFolder/ProgramMenuFolder tro toi thu muc ALL USERS —
          ai dang nhap may nay cung co Agent chay, khong phai cai lai theo tung tai khoan.
 
-         Show="minimized": DFAgent la ung dung console, de cua so hien binh thuong thi no che
-         mat man hinh can. Thu nho thi tho van thay no dang song tren thanh tac vu — va do
-         cung la cach de nhat de biet Agent con chay hay da bi tat.
+         Show="minimized": tu 4.7.0.0 Agent tu AN han cua so console ngay khi khoi dong roi nam
+         o khay he thong (Tray:Enabled, xem TrayIcon.cs), nen thuoc tinh nay chi con y nghia
+         trong khoang vai phan giay dau tien truoc khi TrayIcon kip chay — de "minimized" cho
+         khoang do khong loe cua so ra giua man hinh. Dat Tray:StartHidden=false trong
+         appsettings thi day lai la trang thai cuoi cung cua cua so nhat ky.
 
          KeyPath la mot khoa registry chu khong phai shortcut: shortcut khong quang cao
          (non-advertised) khong lam KeyPath cho component perMachine duoc. -->

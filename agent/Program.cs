@@ -1,15 +1,59 @@
 using System;
+using System.Threading;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.WindowsServices;
 
 namespace DFAgent;
 
 public class Program
 {
+    /// <summary>
+    /// Giữ suốt đời tiến trình — thả ra sớm là chỗ chặn chạy trùng bên dưới mất tác dụng.
+    /// </summary>
+    private static Mutex? _khoaMotBan;
+
     public static void Main(string[] args)
     {
+        if (!ChiMotBanChay()) return;
+
         CreateHostBuilder(args).Build().Run();
+    }
+
+    /// <summary>
+    /// CHỈ áp cho bản chạy trong phiên người dùng (Tray:Enabled — bản Can to IN/OUT).
+    ///
+    /// Từ khi Agent nằm ở khay hệ thống thay vì thanh tác vụ, thợ không còn thấy nó trên thanh
+    /// tác vụ nữa nên rất dễ bấm lại shortcut Start Menu vì tưởng chưa chạy. Hai bản cùng chạy là
+    /// hai vòng lấy lệnh rack tranh nhau một hàng đợi: cùng một lệnh IN/OUT có thể bị bắn hai lần
+    /// sang hệ pha màu, hoặc bản này ack trong khi bản kia đang bắn dở.
+    ///
+    /// Dùng không gian tên "Local\" (theo phiên đăng nhập) chứ không phải "Global\": tài khoản
+    /// thường không có quyền SeCreateGlobalPrivilege nên tạo tên Global sẽ bị từ chối, mà bản này
+    /// chạy bằng chính tài khoản của thợ.
+    ///
+    /// Windows Service KHÔNG đi qua đây: Service Control Manager vốn đã không cho chạy hai bản
+    /// cùng tên, và service không có ai để hiện hộp thoại.
+    /// </summary>
+    private static bool ChiMotBanChay()
+    {
+        if (WindowsServiceHelpers.IsWindowsService()) return true;
+
+        bool khay;
+        try { khay = CauHinhSom().GetValue("Tray:Enabled", false); }
+        catch { return true; }   // cấu hình hỏng thì để host báo lỗi tử tế, đừng chặn ở đây
+        if (!khay) return true;
+
+        string ten = ResolveServiceName();
+        _khoaMotBan = new Mutex(initiallyOwned: true, name: $"Local\\DFAgent-{ten}", out bool laBanDauTien);
+        if (laBanDauTien) return true;
+
+        TrayIcon.NhacNguoiDung(
+            "DF Local Agent đã chạy sẵn trên máy này rồi.\n\n" +
+            "Xem biểu tượng ở khay hệ thống, góc phải dưới màn hình (có thể phải bấm mũi tên ˄ để hiện các biểu tượng ẩn).",
+            $"DF Local Agent ({ten})");
+        return false;
     }
 
     public static IHostBuilder CreateHostBuilder(string[] args) =>
@@ -46,6 +90,15 @@ public class Program
                     return opts;
                 });
                 services.AddSingleton<RackSender>();
+                // Khay hệ thống — chỉ bản chạy trong phiên người dùng (Can to IN/OUT) bật, xem
+                // TrayIcon. Mặc định tắt nên hai bản chạy service không đổi hành vi.
+                services.AddSingleton(sp =>
+                {
+                    var opts = new TrayOptions();
+                    hostContext.Configuration.GetSection("Tray").Bind(opts);
+                    return opts;
+                });
+                services.AddHostedService<TrayIcon>();
                 // Bản chụp số cân dùng chung giữa vòng đọc và đường cục bộ (ADR-013). Singleton
                 // là bắt buộc: hai hosted service dưới đây phải nhìn vào ĐÚNG một ô nhớ.
                 services.AddSingleton<ScaleSnapshot>();
@@ -71,12 +124,7 @@ public class Program
     {
         try
         {
-            string? name = new ConfigurationBuilder()
-                .SetBasePath(AppContext.BaseDirectory)
-                .AddJsonFile("appsettings.json", optional: true)
-                .Build()
-                .GetValue<string>("Service:Name");
-
+            string? name = CauHinhSom().GetValue<string>("Service:Name");
             return string.IsNullOrWhiteSpace(name) ? "DFAgent" : name.Trim();
         }
         catch
@@ -86,4 +134,16 @@ public class Program
             return "DFAgent";
         }
     }
+
+    private static IConfigurationRoot? _cauHinhSom;
+
+    /// <summary>
+    /// appsettings.json đọc TRƯỚC khi dựng host — cần cho tên service (UseWindowsService phải
+    /// biết tên trước khi build) và cho việc chặn chạy trùng bản. Đọc một lần rồi giữ lại.
+    /// </summary>
+    private static IConfigurationRoot CauHinhSom()
+        => _cauHinhSom ??= new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: true)
+            .Build();
 }

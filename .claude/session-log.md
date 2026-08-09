@@ -3242,3 +3242,56 @@ layout phia ben tren se mac dinh la an va co nut de an hien thi de tiet kiem k g
 **Kiem chung:** `npx vue-tsc --noEmit` exit 0. **CHUA xem bang mat tren trinh duyet** — can dang nhap
 `cannho` / `canto` mo `/weighing-station-v2` xac nhan: vao la thanh tren da thu gon, bam "Thanh tren"
 thi hien lai day du (co nut Dang xuat), bam nut thu gon lai, F5 van nho lua chon.
+
+---
+
+### 134. Ban IN/OUT (Can to) CHAY NGAM O KHAY HE THONG nhu WeChat — Agent 4.7.0.0 (2026-08-08)
+
+**Yeu cau:** *"DF Agent — Can to (IN/OUT) toi muon la loai ra du tat x thi van la chay ngam o nhu wechat ay"*.
+
+**Trieu chung goc:** ban IN/OUT bat buoc chay TRONG PHIEN NGUOI DUNG (session 0 isolation, xem ghi
+chu RunMode dau DFAgentSetup.wxs) nen no hien ra la mot cua so console tren thanh tac vu. Tho thay
+cua so la de bam X -> nut IN/OUT cua /weighing-station-large chet cam cho toi khi co nguoi biet
+duong bat lai bang shortcut Start Menu.
+
+**KHONG lam duoc kieu "bat su kien bam X roi an di":** cua so console thuoc ve conhost.exe chu khong
+phai tien trinh nay (khong subclass duoc tu ngoai tien trinh), con SetConsoleCtrlHandler /
+CTRL_CLOSE_EVENT chi cho DON DEP chu KHONG huy duoc lenh dong — ham xu ly chay xong la Windows giet
+tien trinh. Nen lam nguoc lai, va cung dung kieu WeChat hon:
+
+**Da lam** — `agent/TrayIcon.cs` (moi) + `agent/Program.cs`:
+1. Vao la AN HAN cua so console, Agent nam o khay he thong: bam dup xem nhat ky, chuot phai de
+   an/hien hoac "Thoat han" (co hoi lai vi day la menu rat de bam nham).
+2. Luc cua so nhat ky dang hien thi nut X cua no bi GO khoi menu he thong (GetSystemMenu +
+   DeleteMenu SC_CLOSE) — lo tay bam cung khong tat mat Agent.
+3. Chi dung/an console khi console do la CUA RIENG Agent (`GetConsoleProcessList` tra ve 1). Chay
+   `dotnet run` tu cmd/Terminal thi console la cua cmd — an di la giau mat cua so cua chinh nguoi
+   dang go lenh, va go luon nut X cua ho.
+4. Nghe thong diep `TaskbarCreated`: Explorer khoi dong lai la moi bieu tuong khay bien mat; khong
+   them lai thi Agent van chay nhung khong con duong nao vao, trong y het da tat.
+5. CHAN CHAY TRUNG BAN (Mutex `Local\DFAgent-<Service:Name>`, chi khi Tray:Enabled): tu khi khong
+   con cua so tren thanh tac vu, rat de bam shortcut lan hai vi tuong chua chay — ma hai ban la hai
+   vong lay lenh rack tranh nhau mot hang doi. Bam lan hai chi hien hop thoai nhac.
+
+**Tu viet P/Invoke, KHONG dung WinForms NotifyIcon:** NotifyIcon keo theo `net8.0-windows` +
+UseWindowsForms, ma ban publish self-contained dung CHUNG cho ca ba bo cai — hai bo doc can (chay
+service, khong bao gio co giao dien) cung phai ganh them Windows Desktop runtime. Shell_NotifyIcon
+tran khong them mot byte phu thuoc nao (MSI van 28.1 MB nhu truoc).
+
+**Pham vi:** `Tray:Enabled` mac dinh FALSE, chi bat trong `appsettings.large-inout.json`. Code con
+tu chan them bang `WindowsServiceHelpers.IsWindowsService()` — session 0 khong co thanh tac vu de
+hien bieu tuong, va MessageBox mo o do la hop thoai khong ai thay de bam.
+
+**Kiem chung:**
+- `dotnet build -c Release` sach (0 warning), `dotnet test` 54 pass / 0 fail (may dev khong cai
+  runtime .NET 8 nen phai dat `DOTNET_ROLL_FORWARD=LatestMajor`).
+- Chay THAT ban Release trong thu muc rieng o scratchpad (cau hinh cach ly: backend tro
+  127.0.0.1:59999, Rack tat, Local tat — khong cham gi toi may chu that): Agent song sau 8 giay va
+  in dung dong `Khay he thong: Agent chay ngam o goc phai duoi...`. Dong log nay CHI in sau khi
+  Shell_NotifyIcon(NIM_ADD) tra ve true, tuc bieu tuong da vao khay that.
+- Da build lai 3 MSI len **4.7.0.0** va copy sang `backend/public/downloads/`.
+- **CHUA thu bang tay tren may tram that:** can cai `DFAgentSetup-CanTo-InOut.msi` moi roi kiem tra
+  4 viec — (a) cai xong bam shortcut Start Menu: khong hien cua so nao, co bieu tuong o goc phai
+  duoi kem bong thong bao; (b) chuot phai > Hien cua so nhat ky: cua so hien ra va nut X cua no xam;
+  (c) bam shortcut lan hai: hien hop thoai "da chay san"; (d) chuot phai > Thoat han: hoi lai, dong
+  y thi bieu tuong bien mat va nut IN/OUT tren man can bao "Agent CHUA lay lenh".

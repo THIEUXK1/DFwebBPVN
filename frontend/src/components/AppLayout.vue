@@ -336,7 +336,7 @@ const agentInstallers = [
   {
     kind: 'large-inout',
     label: 'DF Agent — Cân to (IN/OUT)',
-    title: 'Cài THÊM trên máy trạm CÂN TO để hai nút IN/OUT gửi được mã rack sang hệ pha màu (khối SEND OVER 6). Bộ này KHÔNG cài service mà chạy trong phiên đăng nhập của thợ — bắt buộc phải vậy thì mới điều khiển được chuột như Excel VBA cũ. Sau khi cài phải hiệu chỉnh lại toạ độ trong appsettings.json của máy đó.',
+    title: 'Cài THÊM trên máy trạm CÂN TO để hai nút IN/OUT gửi được mã rack sang hệ pha màu (khối SEND OVER 6). Bộ này KHÔNG cài service mà chạy trong phiên đăng nhập của thợ — bắt buộc phải vậy thì mới điều khiển được chuột như Excel VBA cũ. Từ 4.7.0.0 nó chạy ngầm ở khay hệ thống (góc phải dưới) như WeChat: không còn cửa sổ để bấm nhầm ✕; chuột phải vào biểu tượng để xem nhật ký hoặc thoát. Sau khi cài phải hiệu chỉnh lại toạ độ trong appsettings.json của máy đó.',
   },
 ].map(bo => ({ ...bo, url: `http://${window.location.hostname}:8500/downloads/agent-launcher/${bo.kind}` }));
 
