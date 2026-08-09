@@ -5,7 +5,7 @@
          theo toạ độ/kích thước thật đọc từ chính file .xlsm. Cả khung được thu/phóng bằng MỘT
          phép transform: scale() nên tỉ lệ giữa các control, cỡ chữ, độ dày viền không bao giờ
          lệch so với bản VBA dù màn hình to nhỏ thế nào. -->
-    <div class="stage-wrap" ref="wrapRef">
+    <div class="stage-wrap" :class="{ zoomed: heSoPhong > 1 }" ref="wrapRef">
       <!-- Lớp đệm mang ĐÚNG kích thước SAU khi thu/phóng. `transform: scale()` không đổi ô layout
            của phần tử, nên thiếu lớp này thì lúc phóng to > 1 mặt form tràn ra ngoài vùng cuộn và
            bị cắt mất mép. -->
@@ -108,10 +108,11 @@
       </div>
     </div>
 
-    <!-- ===== DẢI THÔNG TIN CỦA RIÊNG BẢN WEB =====
+    <!-- ===== CỘT THÔNG TIN CỦA RIÊNG BẢN WEB =====
          Cố ý nằm NGOÀI khung form: bản VBA không có mấy thứ này (mất tín hiệu cân, hàng đợi gửi
          mẻ, giả lập, thông báo lỗi) nhưng bỏ đi thì thợ không có cách nào biết máy đang hỏng gì.
-         Để ngoài khung thì phần form vẫn giống hệt bản gốc. -->
+         Để ngoài khung thì phần form vẫn giống hệt bản gốc.
+         Đứng ở MÉ PHẢI (yêu cầu 09/08/2026) — lý do chọn bên phải xem ghi chú ở `.wsl-root`. -->
     <div class="webbar" :class="{ alarm: statusMsg?.bad }">
       <span class="wb-ws">
         <!-- `signalLost` (3s) chứ không phải `signalLive` (1.5s): ngưỡng chặt là CỔNG AN TOÀN
@@ -134,6 +135,24 @@
       <button v-if="queueCount > 0" class="wb-queue" :class="{ stuck: stuckCount > 0 }" @click="showQueue = true">
         {{ stuckCount > 0 ? '✕' : '⏳' }} {{ queueCount }} mẻ chờ gửi
       </button>
+
+      <!-- Cỡ hiển thị — để ngay trong dải thao tác chứ không giấu vào một trang cài đặt: thợ đeo
+           găng, đổi ca là đổi người, phải chỉnh được tại chỗ. Máy này nhớ lựa chọn.
+           100% = VỪA KHÍT khung đang có, tức mặc định đã là to nhất mà vẫn thấy trọn mặt form.
+           Các nấc trên 100% cố ý cho tràn và phải cuộn — dành cho người đứng xa cần chữ to hơn
+           là cần nhìn thấy cả form cùng lúc. -->
+      <span class="zoom-ctl">
+        <button class="wb-btn" :disabled="heSoPhong <= MUC_PHONG[0]" title="Thu nhỏ" @click="doiCoManHinh(-1)">A−</button>
+        <button class="zoom-val" title="Về vừa màn hình (100%)" @click="datMucPhong(1)">
+          {{ Math.round(heSoPhong * 100) }}%
+        </button>
+        <button
+          class="wb-btn"
+          :disabled="heSoPhong >= MUC_PHONG[MUC_PHONG.length - 1]"
+          title="Phóng to — trên 100% thì mặt form tràn khung, cuộn để xem hết"
+          @click="doiCoManHinh(1)"
+        >A+</button>
+      </span>
 
       <!-- Đứng TRƯỚC ô thông báo chứ không phải sau: `.wb-msg` là phần tử duy nhất co giãn, nên
            để sau nó thì mỗi lần có thông báo dài là cụm giả lập bị đẩy ra sát rìa phải, có màn
@@ -365,9 +384,56 @@ const wrapRef = ref<HTMLElement | null>(null);
 const scale = ref(1);
 const rootH = ref<number | null>(null);
 let ro: ResizeObserver | null = null;
+let roKhung: ResizeObserver | null = null;
+
+/**
+ * Lớp đặt trên `<body>` để gỡ padding 24px của `.content-container` trong AppLayout — xem khối
+ * `<style>` KHÔNG scoped ở cuối file.
+ *
+ * Chỉ tồn tại trong lúc màn này đang mở, nên không rò sang trang khác.
+ */
+const LOP_TRAN_VIEN = 'df-man-can-tran-vien';
 
 /** Lề của `.stage-wrap` (padding 8px mỗi bên) — clientWidth/Height đã tính cả padding. */
 const WRAP_PAD = 16;
+
+/* ============================================================================
+ * CỠ HIỂN THỊ
+ *
+ * Màn này KHÔNG phóng bằng `zoom` như /weighing-station-v2. Bên đó bố cục chảy theo dòng nên
+ * `zoom` tính lại layout thật; bên này mặt form là khổ CỐ ĐỊNH 979x728 đã được `transform:
+ * scale()` thu cho vừa khung — đặt thêm `zoom` lên trên thì `fitStage` đo được khung "to ra"
+ * đúng bấy nhiêu lần rồi thu nhỏ lại y chừng đó, tức bấm A+ không thấy gì đổi.
+ *
+ * Nên ở đây hệ số của thợ NHÂN VÀO chính tỉ lệ vừa khung: 100% = vừa khít, các nấc trên là cố ý
+ * cho tràn ra ngoài và cuộn (xem `.stage-wrap.zoomed`).
+ *
+ * Không đặt cứng một con số vì mỗi trạm một cỡ màn hình và khoảng cách đứng khác nhau — đoán sai
+ * thì hoặc chữ vẫn bé, hoặc phải cuộn mới thấy hết 9 dòng.
+ */
+const MUC_PHONG = [1, 1.15, 1.3, 1.5, 1.75];
+const KHOA_MUC_PHONG = 'wslarge.co-hien-thi';
+const heSoPhong = ref(napMucPhong());
+
+function napMucPhong(): number {
+  const v = Number(localStorage.getItem(KHOA_MUC_PHONG));
+  // Mặc định 100% (vừa khít) chứ không phải 125% như màn cân nhỏ: bên đó 100% là khổ gốc của
+  // form nên nhỏ thật, còn ở đây 100% đã là mức lớn nhất mà vẫn thấy trọn mặt form.
+  return MUC_PHONG.includes(v) ? v : 1;
+}
+
+function datMucPhong(muc: number) {
+  heSoPhong.value = muc;
+  localStorage.setItem(KHOA_MUC_PHONG, String(muc));
+  // Đo lại SAU khi lớp `zoomed` đã được áp: lớp đó bật `overflow: auto`, mà thanh cuộn hiện lên
+  // là `clientWidth` hụt đi vài chục px — tính trước thì ra tỉ lệ của khung cũ.
+  nextTick(fitStage);
+}
+
+function doiCoManHinh(buoc: number) {
+  const dangO = MUC_PHONG.indexOf(heSoPhong.value);
+  datMucPhong(MUC_PHONG[Math.min(MUC_PHONG.length - 1, Math.max(0, (dangO < 0 ? 0 : dangO) + buoc))]);
+}
 
 /**
  * Chiều cao màn hình PHẢI đo, không được đặt cứng `100vh`.
@@ -384,18 +450,29 @@ function fitRoot() {
   const top = el.getBoundingClientRect().top;
   const parent = el.parentElement;
   const padBottom = parent ? parseFloat(getComputedStyle(parent).paddingBottom) || 0 : 0;
-  rootH.value = Math.max(320, Math.floor(window.innerHeight - top - padBottom));
+  const cao = Math.max(320, Math.floor(window.innerHeight - top - padBottom));
+  // Chỉ ghi khi thực sự lệch: hàm này còn được gọi từ ResizeObserver đặt trên khung CHA, mà gán
+  // lại cùng một giá trị vẫn đủ để trình duyệt bắn thêm một vòng đo nữa.
+  if (rootH.value === null || Math.abs(rootH.value - cao) > 1) rootH.value = cao;
+}
+
+/** Tỉ lệ để mặt form vừa khít khung — đây chính là mốc "100%" trên nút A−/A+. */
+function tiLeVuaKhung(): number | null {
+  const el = wrapRef.value;
+  if (!el) return null;
+  const w = el.clientWidth - WRAP_PAD;
+  const h = el.clientHeight - WRAP_PAD;
+  if (w <= 0 || h <= 0) return null;
+  return Math.min(w / STAGE_W, h / STAGE_H);
 }
 
 function fitStage() {
-  const el = wrapRef.value;
-  if (!el) return;
-  const w = el.clientWidth - WRAP_PAD;
-  const h = el.clientHeight - WRAP_PAD;
-  if (w <= 0 || h <= 0) return;
-  // Chặn trên 2.0: toạ độ form là số cố định, phóng quá to thì chỉ còn vài control chiếm cả màn
-  // hình chứ không đọc được thêm gì.
-  scale.value = Math.max(0.3, Math.min(w / STAGE_W, h / STAGE_H, 2));
+  const vua = tiLeVuaKhung();
+  if (vua === null) return;
+  // Chặn trên 3.0: toạ độ form là số cố định, phóng quá to thì chỉ còn vài control chiếm cả màn
+  // hình chứ không đọc được thêm gì. Trước đây chặn 2.0 — đủ cho lúc chỉ có thu-cho-vừa, nhưng
+  // nấc 175% chồng lên một khung đã vừa 1.3x thì đụng trần và hai nấc cuối thành vô nghĩa.
+  scale.value = Math.max(0.3, Math.min(vua * heSoPhong.value, 3));
 }
 
 function fitAll() {
@@ -523,8 +600,8 @@ const rackBatchText = computed(() => rackBatch1.value.filter(Boolean).join(' · 
  *
  * Trước đây mỗi thông báo là một thẻ <p> riêng nằm dưới cùng, hiện lên là đẩy `.stage-wrap` hụt
  * đi ~30px, `fitStage` tính lại `scale` và cả mặt form co lại rồi phình ra mỗi lần có/hết thông
- * báo — thợ đang nhìn số cân thì màn hình nhấp nháy đổi cỡ. Đưa vào dải trạng thái (chiều cao
- * CỐ ĐỊNH) thì mặt form không bao giờ đổi cỡ nữa.
+ * báo — thợ đang nhìn số cân thì màn hình nhấp nháy đổi cỡ. Đưa vào cột trạng thái (BỀ NGANG cố
+ * định, thông báo dài thì xuống dòng trong cột) thì mặt form không bao giờ đổi cỡ nữa.
  *
  * Thứ tự ưu tiên giữ đúng như chuỗi v-if/v-else-if cũ.
  */
@@ -877,7 +954,7 @@ const handleBarcodeScan = async (token: string) => {
     if (!parsed) {
       scannerService.playBeep(600, 400);
       scanning.value = false;
-      await baoTin('Không đọc được mã QR này — kiểm tra lại đầu đọc hoặc mã tem.');
+      await baoTin('Mã quét thiếu COLOR hoặc CODE nên không mở được mẻ — kiểm tra lại đầu đọc hoặc mã tem. (Thiếu MACHINE/LV thì vẫn nạp được, để trống ô đó.)');
       nextTick(() => scanInputRef.value?.focus());
       return;
     }
@@ -1391,6 +1468,10 @@ function onClose() {
 }
 
 onMounted(() => {
+  // Không dùng F11 thì phần lớn chỗ bị mất là padding của khung nội dung, không phải thanh trên.
+  // Gỡ nó ra là mặt form tự lớn thêm mà thợ không phải bấm gì (yêu cầu 09/08/2026).
+  document.body.classList.add(LOP_TRAN_VIEN);
+
   // 'LARGE': hỏi backend "trạm CÂN TO của máy này là trạm nào?" — máy cài cả 2 bộ Agent có 2
   // trạm cùng lúc, không nói rõ là nhận nhầm trạm cân nhỏ.
   adoptLocalWorkstation('LARGE').then((doi) => {
@@ -1411,6 +1492,17 @@ onMounted(() => {
     ro = new ResizeObserver(fitStage);
     ro.observe(wrapRef.value);
   }
+
+  // Khung CHA (`.content-container` của AppLayout) đổi cỡ mà cửa sổ thì không: bật/tắt thanh trên
+  // bằng nút "▾ Thanh trên", hiện/ẩn sidebar, vào/ra Toàn màn hình. Không nghe ở đây thì `resize`
+  // không bắn và mặt form giữ nguyên cỡ cũ cho tới lần F5 kế — đúng cảnh hay gặp khi KHÔNG dùng
+  // F11, vì lúc đó thanh trên là thứ thợ bật tắt suốt.
+  const khung = rootRef.value?.parentElement;
+  if (typeof ResizeObserver !== 'undefined' && khung) {
+    roKhung = new ResizeObserver(fitAll);
+    roKhung.observe(khung);
+  }
+
   window.addEventListener('resize', fitAll);
 
   // txt_COLOR.SetFocus của UserForm_Activate
@@ -1421,6 +1513,8 @@ onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange);
   window.removeEventListener('resize', fitAll);
   ro?.disconnect();
+  roKhung?.disconnect();
+  document.body.classList.remove(LOP_TRAN_VIEN);
   tatTuDay();
 });
 </script>
@@ -1440,10 +1534,18 @@ onUnmounted(() => {
 
 /* Chiều cao do JS đo và gán inline (xem fitRoot) — TUYỆT ĐỐI không đặt `min-height: 100vh` ở
    đây: màn hình này nằm trong AppLayout nên 100vh luôn dài hơn chỗ thật sự còn lại. */
+/*
+ * Dải thông tin nằm BÊN PHẢI, không nằm dưới đáy (yêu cầu 09/08/2026).
+ *
+ * Không chỉ là chỗ đứng cho đẹp: mặt form tỉ lệ 979x728 (1.35) trên màn 16:9 (1.78) LUÔN bị chặn
+ * theo chiều cao, tức mỗi pixel dọc lấy được đổi thẳng thành cỡ chữ, còn chỗ thừa theo chiều
+ * ngang thì không dùng vào việc gì. Đưa dải sang phải là trả lại 34px dọc và tiêu tốn phần bề
+ * ngang vốn đang bỏ không.
+ */
 .wsl-root {
   height: 100%;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   overflow: hidden;              /* mọi thứ phải vừa MỘT khung hình, không có thanh cuộn */
   border-radius: 12px;
   background:
@@ -1462,6 +1564,21 @@ onUnmounted(() => {
   overflow: hidden;
   padding: 8px;
 }
+
+/*
+ * Các nấc trên 100% cố ý để mặt form TRÀN khỏi khung — đổi lại là phải cuộn mới thấy hết.
+ *
+ * `display: block` chứ không giữ flex: một flex item bị căn giữa mà lớn hơn khung thì phần tràn
+ * bị cắt ở MÉP TRÊN và MÉP TRÁI, và không có cách nào cuộn tới được (`safe center` chưa dùng
+ * được vì bản build còn hạ mục tiêu xuống Chrome đời cũ). Khối thường + `margin: 0 auto` thì
+ * căn ngang vẫn giữa, còn chiều dọc bắt đầu từ mép trên và cuộn được bình thường.
+ */
+.stage-wrap.zoomed {
+  display: block;
+  overflow: auto;
+}
+
+.stage-wrap.zoomed .stage-fit { margin: 0 auto; }
 
 /* Mặt form: khổ CỐ ĐỊNH bằng đúng form VBA, chỉ thu/phóng bằng transform nên mọi tỉ lệ bên
    trong không đổi. 979 x 728 px = 734.26 x 546.01 pt. */
@@ -1689,72 +1806,88 @@ input.vv-text:focus {
 .vv-btn.in { background: #0f7f9c; color: #fff; }
 
 /* ===== Dải thông tin của riêng bản web (NGOÀI khung form) ===== */
-/* Chiều cao CỐ ĐỊNH là điểm mấu chốt: `.stage-wrap` là flex:1 nên mọi thay đổi chiều cao ở dải
-   này đều làm `fitStage` tính lại `scale` và cả mặt form co/phình theo. Vì thế ở đây KHÔNG được
-   `flex-wrap: wrap` (xuống dòng là cao gấp đôi) và mọi phần tử ẩn/hiện đều phải nằm gọn một
-   hàng. Phần tử duy nhất được co giãn là `.wb-msg`. */
+/*
+ * Cột dọc sát mép phải. BỀ NGANG cố định là điểm mấu chốt: `.stage-wrap` là flex:1 nên mọi thay
+ * đổi bề ngang ở đây đều làm `fitStage` tính lại `scale` và cả mặt form co/phình theo. Vì thế
+ * chiều ngang không bao giờ được co giãn theo nội dung — chữ dài thì XUỐNG DÒNG trong cột, việc
+ * mà bản nằm ngang trước đây không làm được (xuống dòng là cao gấp đôi, mặt form thụt ngay).
+ *
+ * 208px: vừa đủ cho mã trạm dài nhất đang có (WS-LARGE-ZP-IT003) trên một dòng.
+ */
 .webbar {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: nowrap;
-  flex: 0 0 34px;
-  height: 34px;
-  overflow: hidden;
-  padding: 0 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+  flex: 0 0 208px;
+  width: 208px;
+  /* Chừa chỗ cho nút "⛶ Toàn màn hình" nổi cố định ở góc phải dưới — không có nó thì nút đè lên
+     đúng ô thông báo lỗi, thứ bắt buộc phải đọc được. */
+  padding: 12px 12px 52px;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: rgba(12, 16, 26, 0.72);
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
   color: #c9d1e2;
   font-family: 'Inter', 'Segoe UI', sans-serif;
   font-size: 12px;
   transition: background 0.15s ease;
 }
 
-/* Có lỗi thì đổi màu CẢ dải — nổi hơn hẳn một dòng chữ đỏ, mà không tốn thêm chiều cao nào. */
+/* Có lỗi thì đổi màu CẢ cột — nổi hơn hẳn một dòng chữ đỏ, mà không tốn thêm chỗ nào. */
 .webbar.alarm {
   background: #4d1f1a;
-  border-top-color: #e2564a;
+  border-left-color: #e2564a;
   color: #ffc9c3;
 }
 
-.webbar > * { flex: 0 0 auto; white-space: nowrap; }
+.webbar > * { flex: 0 0 auto; min-width: 0; }
 
-/* Phần tử co giãn duy nhất. `min-width: 0` là bắt buộc, thiếu nó thì flex item không chịu hẹp
-   hơn nội dung và chữ dài vẫn đẩy các nút bên phải văng khỏi dải. */
+/* Đẩy xuống đáy cột: thông báo là thứ hiện/ẩn liên tục, để nó trôi ngay dưới các mục cố định thì
+   mỗi lần có/hết thông báo là cả cụm bên trên nhảy vị trí. Neo ở đáy thì không gì xê dịch. */
 .wb-msg {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin-top: auto;
+  padding-top: 8px;
   font-weight: 700;
+  /* Có cả chiều cao để mà xuống dòng — không cắt bằng ellipsis nữa, đọc trọn lý do ngay tại chỗ
+     thay vì phải rê chuột xem tooltip. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 .wb-msg.bad { color: #ffd9d4; }
 
-.wb-ws { display: flex; align-items: center; gap: 6px; font-weight: 700; }
-.wb-dot { width: 9px; height: 9px; border-radius: 50%; background: #7a8296; }
+.wb-ws { display: flex; align-items: center; gap: 6px; font-weight: 700; overflow-wrap: anywhere; }
+.wb-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: #7a8296; }
 .wb-dot.on { background: #35c46a; }
 .wb-dot.off { background: #e2564a; }
 
-.wb-pill { padding: 2px 8px; border-radius: 999px; background: #3c455c; font-weight: 700; }
+.wb-pill {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #3c455c;
+  font-weight: 700;
+  text-align: center;
+}
 .wb-pill.ok { background: #1e5c36; color: #b9f2ce; }
 .wb-pill.wait { background: #5c4a17; color: #ffe6a3; }
 
 .wb-tare { opacity: 0.85; }
 
-/* Danh sách 6 mã rack có thể rất dài — cho phép nó hẹp lại và cắt bớt, chứ đừng đẩy nút COPY
-   hay ô giả lập ra khỏi dải. */
+/* Cột dọc có bề ngang cố định nên danh sách 6 mã rack được XUỐNG DÒNG cho hiện đủ — bản nằm
+   ngang trước đây phải cắt bằng ellipsis, mà cắt đúng cái danh sách sắp bắn sang hệ pha màu là
+   thứ tệ nhất để giấu. */
 .wb-rack {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding: 2px 8px;
+  gap: 6px 8px;
+  padding: 5px 8px;
   border-radius: 6px;
   background: #3c455c;
   font-weight: 700;
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
 }
 
 .wb-btn {
@@ -1788,17 +1921,66 @@ input.vv-text:focus {
 /* KHÔNG `margin-left: auto`: margin auto hút hết khoảng trống còn lại TRƯỚC khi flex-grow được
    chia, nên nó sẽ đẩy cụm giả lập sang phải và bóp `.wb-msg` về đúng bề rộng chữ. Từ khi cụm này
    đứng trước ô thông báo, chỗ trống phải để dành cho `.wb-msg` co giãn. */
+/* Cỡ hiển thị — xem ghi chú dài ở phần script (MUC_PHONG). */
+.zoom-ctl { display: flex; align-items: center; justify-content: space-between; gap: 5px; }
+
+/* Con số vừa là nhãn vừa là nút "về vừa màn hình": thợ bấm quá tay lên 175% rồi phải bấm A− bốn
+   lần mới về được là thừa, mà thêm hẳn một nút RESET nữa thì dải này đã chật sẵn. */
+.zoom-val {
+  min-width: 46px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.zoom-val:hover { border-color: #6a7490; }
+
 .wb-sim { display: flex; align-items: center; gap: 5px; }
 
 .wb-siminput {
-  width: 90px;
-  height: 24px;
+  width: 100%;
+  height: 26px;
   border: 1px solid #6a7490;
   border-radius: 5px;
   background: #1f2534;
   color: #eef1f7;
   padding: 0 8px;
   font-weight: 700;
+}
+
+/*
+ * Màn hẹp (tablet dựng đứng, cửa sổ chia đôi): trả dải về ĐÁY.
+ *
+ * Cột phải chỉ có lãi khi màn rộng hơn tỉ lệ của mặt form — lúc đó nó tiêu vào phần bề ngang đang
+ * bỏ không. Dưới ngưỡng này thì mặt form đã bị chặn theo chiều NGANG, cắt thêm 208px bề ngang là
+ * mặt form nhỏ đi thật, đúng ngược với mục đích.
+ */
+@media (max-width: 1000px) {
+  .wsl-root { flex-direction: column; }
+
+  .webbar {
+    flex: 0 0 auto;
+    width: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 10px;
+    padding: 6px 12px;
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+  }
+
+  .webbar.alarm { border-top-color: #e2564a; }
+
+  .wb-msg { margin-top: 0; padding-top: 0; flex: 1 1 100%; }
+  .wb-siminput { width: 90px; }
+  .zoom-ctl { justify-content: flex-start; }
 }
 
 /* ===== Bảng hàng đợi ===== */
@@ -1834,4 +2016,24 @@ input.vv-text:focus {
 .queue-act { text-align: right; }
 .queue-foot { display: flex; justify-content: flex-end; margin-top: 10px; }
 .queue-modal .wb-btn { background: #4a5470; }
+</style>
+
+<!--
+  KHÔNG `scoped`: quy tắc này phải với tới `.content-container` của AppLayout — phần tử CHA của
+  màn hình này, nằm ngoài tầm của style scoped.
+
+  Vì sao gỡ padding: không dùng F11 thì mặt form bị bó trong khung nội dung có sẵn padding 24px
+  mỗi bên. Mà form là khổ cố định tỉ lệ 979x728, luôn bị chặn theo CHIỀU CAO — nên 48px dọc đó
+  đổi thẳng thành ~6% cỡ chữ trên toàn bộ mặt form, không mất đi đâu cả.
+
+  Ràng buộc bằng lớp trên `<body>` do chính màn này gắn/gỡ (xem LOP_TRAN_VIEN), nên các trang khác
+  giữ nguyên padding của chúng.
+-->
+<style>
+body.df-man-can-tran-vien .content-container {
+  padding: 0;
+  /* Mặt form đã tự thu cho vừa khung nên không bao giờ cần cuộn ở tầng này; để `auto` thì lúc đo
+     hụt một hai pixel là hiện một thanh cuộn dọc mảnh, và thanh đó lại ăn bớt bề ngang. */
+  overflow: hidden;
+}
 </style>

@@ -154,16 +154,17 @@ class ScannerController extends Controller
         // thẳng từ dữ liệu đọc được trên tem QR rồi cho cân tiếp. Nhánh cân tự do (không
         // tra công thức/dung sai) nằm trong handleOrderScan() khi không tìm thấy Recipe.
         if (! $batch) {
-            $machine = Machine::firstOrCreate(
-                ['code' => $parsed['machine']],
-                ['name' => $parsed['machine']]
-            );
+            // Tem thiếu ô MACHINE: KHÔNG tạo máy mã rỗng — xem ghi chú cùng việc này trong
+            // weighFromQr(). `machine_id` nullable nên để trống là hợp lệ.
+            $machine = $parsed['machine'] !== ''
+                ? Machine::firstOrCreate(['code' => $parsed['machine']], ['name' => $parsed['machine']])
+                : null;
 
             $batch = ProductionBatch::create([
                 'legacy_batch_id' => 'ADHOC-'.$parsed['color'].'-'.$parsed['code'].'-'.now()->format('YmdHis'),
                 'color' => $parsed['color'],
                 'product_code' => $parsed['code'],
-                'machine_id' => $machine->id,
+                'machine_id' => $machine?->id,
                 'level_code' => $parsed['level'] !== '' ? $parsed['level'] : null,
                 'cloth_weight' => 0,
                 'status' => 'NEW',
@@ -317,16 +318,21 @@ class ScannerController extends Controller
                 ->first();
 
             if (! $batch) {
-                $machine = Machine::firstOrCreate(
-                    ['code' => $parsed['machine']],
-                    ['name' => $parsed['machine']]
-                );
+                // Tem THIẾU ô MACHINE vẫn nạp được ở màn cân (đúng VBA: `txt_color_AfterUpdate`
+                // điền được ô nào hay ô đó, chỉ thoát khi chuỗi rỗng) — nhưng khi đó TUYỆT ĐỐI
+                // không firstOrCreate máy với mã rỗng: nó đẻ ra một bản ghi máy "" trong danh mục
+                // và mọi tem thiếu máy về sau đều dính chung vào đúng bản ghi rác đó.
+                // `machine_id` nullable nên để trống là hợp lệ; các chỗ đọc đều đã null-safe
+                // ('N/A' / 'VD-COMMON').
+                $machine = $parsed['machine'] !== ''
+                    ? Machine::firstOrCreate(['code' => $parsed['machine']], ['name' => $parsed['machine']])
+                    : null;
 
                 $batch = ProductionBatch::create([
                     'legacy_batch_id' => 'ADHOC-'.$parsed['color'].'-'.$parsed['code'].'-'.now()->format('YmdHis'),
                     'color' => $parsed['color'],
                     'product_code' => $parsed['code'],
-                    'machine_id' => $machine->id,
+                    'machine_id' => $machine?->id,
                     'level_code' => $parsed['level'] !== '' ? $parsed['level'] : null,
                     'cloth_weight' => 0,
                     'status' => 'NEW',

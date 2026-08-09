@@ -784,7 +784,7 @@ const handleBarcodeScan = async (token: string) => {
     if (!parsed) {
       scannerService.playBeep(600, 400);
       scanning.value = false;
-      await baoTin('Không đọc được mã QR này — kiểm tra lại đầu đọc hoặc mã tem.');
+      await baoTin('Mã quét thiếu COLOR hoặc CODE nên không mở được mẻ — kiểm tra lại đầu đọc hoặc mã tem. (Thiếu MACHINE/LV thì vẫn nạp được, để trống ô đó.)');
       nextTick(() => scanInputRef.value?.focus());
       return;
     }

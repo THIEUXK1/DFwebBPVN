@@ -43,7 +43,7 @@ await build({
   bundle: false,
   logLevel: 'silent',
 });
-const { parseDyeQr } = await import(pathToFileURL(outFile).href);
+const { parseDyeQr, docQrMeNhuom } = await import(pathToFileURL(outFile).href);
 
 // --- Bản server: gọi thẳng QrPayloadService ---
 const phpScript = `
@@ -106,6 +106,34 @@ if (idempotentOk) {
 } else {
   fail++;
 }
+
+// --- Cửa nhận/từ chối của màn cân (docQrMeNhuom) ---
+// Tách riêng khỏi phần đối chiếu parse ở trên: parse thì hai bên phải GIỐNG NHAU, còn đây là
+// quyết định "chuỗi này có phải mẻ nhuộm để nạp thẳng lên màn không".
+//
+// Ngưỡng phải là color+code, KHÔNG phải đủ 4 ô: VBA `txt_color_AfterUpdate` chỉ thoát khi chuỗi
+// rỗng, tem thiếu MACHINE/LV vẫn nạp và điền được ô nào hay ô đó. Sàn color+code là ngưỡng THẬT
+// của cả đường đi — `ScannerController::weighFromQr` cần cả hai mới tìm/tạo được lô lúc SAVE.
+const CUA_NHAN = [
+  ['tem đủ 4 ô + dòng rack', '#RED-P123-VD10-220-R1-DYE001-1.5', true],
+  ['thiếu LV (3 ô) — VBA vẫn nạp', '#RED-P123-VD10', true],
+  ['chỉ color+code — VBA vẫn nạp', '#RED-P123', true],
+  ['thiếu MACHINE, có LV ở sai chỗ (gạch rỗng bị bỏ)', '#RED-P123--220', true],
+  ['chỉ có color — server không tìm/tạo được lô', '#RED', false],
+  ['chuỗi rỗng', '', false],
+  ['token nội bộ phải đi đường server', 'DF:ORDER:8f1c2d3e', false],
+];
+
+CUA_NHAN.forEach(([ten, raw, mongDoi]) => {
+  const nhan = docQrMeNhuom(raw) !== null;
+  if (nhan === mongDoi) {
+    pass++;
+    console.log(`  PASS  [cua nhan] ${ten} -> ${nhan ? 'nhan' : 'tu choi'}`);
+  } else {
+    fail++;
+    console.log(`  FAIL  [cua nhan] ${ten}: mong doi ${mongDoi ? 'nhan' : 'tu choi'}, thuc te ${nhan ? 'nhan' : 'tu choi'}`);
+  }
+});
 
 rmSync(outDir, { recursive: true, force: true });
 console.log(`\nKet qua: ${pass} pass, ${fail} fail`);

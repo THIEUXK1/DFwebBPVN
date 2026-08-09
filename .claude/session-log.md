@@ -3332,3 +3332,102 @@ dung mo /qr-printer bam thu.
   chi la code chet. **Muon khoi phuc thi lay lai tu git** (commit truoc 09/08/2026) — 2 endpoint
   backend `scale-measurements/checker` va `machine-dispatches/history` KHONG dong toi, van con.
 - Sau chinh: `npx vue-tsc --noEmit` exit 0. Van CHUA nhin bang mat tren trinh duyet.
+
+---
+
+### 136. /weighing-station-large: to ra khi KHONG dung F11 + nac A-/A+ nhu /weighing-station-v2 (2026-08-09)
+
+**Yeu cau:** *"toi se k dung f11, nen la toi muon giao dien to ra va tu thich nghi va co the chinh
+kich co nhu /weighing-station-v2"*.
+
+**Vi sao man nay nho khi khong F11:** mat form la kho CO DINH 979x728px, `fitStage` thu cho vua
+khung nen no luon bi chan theo CHIEU CAO. Khung do lai nam trong `.content-container` cua AppLayout
+(`padding: 24px`), cong them thanh tren -> 48px doc bi mat doi thang thanh ~6% co chu tren TOAN BO
+mat form.
+
+**KHONG dung `zoom` nhu V2.** Ben V2 bo cuc chay theo dong nen `zoom` tinh lai layout that. Ben nay
+`zoom` se lam `fitStage` do duoc khung "to ra" dung bay nhieu lan roi thu nho lai y chung do -> bam
+A+ khong thay gi doi. Nen he so cua tho NHAN VAO chinh ti le vua khung.
+
+**Da lam** (`frontend/src/views/WeighingStationLarge.vue`):
+1. **Go padding khung cha** — lop `df-man-can-tran-vien` dat tren `<body>` luc mount, go luc
+   unmount; quy tac nam trong mot khoi `<style>` **KHONG scoped** o cuoi file (style scoped khong
+   voi toi phan tu CHA). Kem `overflow: hidden` de khong hien thanh cuon doc mong khi do hut 1-2px.
+2. **Nac A-/A+** trong dai `.webbar`: `MUC_PHONG = [1, 1.15, 1.3, 1.5, 1.75]`, nho o localStorage
+   `wslarge.co-hien-thi`, **mac dinh 1** (khac V2 mac dinh 1.25 — o day 100% da la vua khit khung,
+   khong phai kho goc cua form). Con so % vua la nhan vua la nut bam ve 100%.
+3. `fitStage` tach lam 2: `tiLeVuaKhung()` (= moc 100%) va `fitStage()` = `vua * heSoPhong`. Tran
+   tren nang **2.0 -> 3.0**, neu khong thi nac 1.5/1.75 chong len mot khung von da 1.3x se dung
+   tran va thanh vo nghia.
+4. `.stage-wrap.zoomed` (chi khi >100%): `display: block; overflow: auto` — CO Y cho tran va cuon.
+   Khong giu flex vi flex item bi can giua ma lon hon khung thi phan tran bi cat o MEP TREN/TRAI va
+   khong cuon toi duoc (`safe center` chua dung duoc, build con ha muc tieu xuong Chrome doi cu).
+5. **ResizeObserver thu hai dat tren khung CHA** -> bat/tat thanh tren (nut "▾ Thanh tren"), an/hien
+   sidebar, vao/ra Toan man hinh deu lam mat form do lai. Truoc do chi nghe `resize` cua cua so, ma
+   nhung thao tac do KHONG doi kich thuoc cua so -> mat form giu nguyen co cu toi lan F5 ke. Day dung
+   la canh hay gap khi khong dung F11.
+6. `fitRoot` them chot "chi ghi khi lech > 1px" — chong vong do lap vo tan giua observer va viec gan
+   lai chieu cao.
+
+**Kiem chung:** `npm run build` (vite) exit 0. **CHUA nhin bang mat tren trinh duyet.**
+
+**Chua dong toi:** `/weighing-station-v2` giu nguyen co che `zoom` cua no — hai man hai kieu bo cuc
+khac han nhau, gop lam mot la sai o ca hai.
+
+**Chinh tiep trong cung phien:** *"cai nay toi muon de no o me ben phai"* (dai thong tin: ma tram,
+MAT TIN HIEU, LO 1 + COPY, A-/A+, gia lap, thong bao loi).
+
+Dua `.webbar` tu DAY sang **cot doc sat mep PHAI**, rong co dinh 208px (`.wsl-root` doi
+`flex-direction: column` -> `row`). Khong chi la doi cho: mat form ti le 979x728 (1.35) tren man
+16:9 (1.78) LUON bi chan theo chieu cao, nen 34px doc lay lai duoc doi thang thanh co chu, con cho
+thua theo chieu ngang von khong dung vao viec gi. Do 1920x1080: fit 1.349 -> 1.395.
+
+Keo theo trong cung do:
+- `.wb-msg` neo o **day cot** (`margin-top: auto`) va duoc **xuong dong** thay vi cat ellipsis —
+  doc tron ly do ngay tai cho, khong phai re chuot xem tooltip. Neo day de moi lan co/het thong bao
+  khong lam ca cum ben tren nhay vi tri.
+- `.wb-rack` cho **wrap**: 6 ma rack hien du. Ban nam ngang truoc day phai cat bot, ma cat dung cai
+  danh sach sap ban sang he pha mau la thu te nhat de giau.
+- `.webbar` co `padding-bottom: 52px` chua cho nut "⛶ Toan man hinh" (position: fixed, right/bottom
+  16px) — khong co thi nut de dung len o thong bao loi.
+- **`@media (max-width: 1000px)` tra dai ve DAY**: duoi nguong do mat form da bi chan theo chieu
+  NGANG, cat them 208px be ngang la mat form nho di that, dung nguoc muc dich.
+
+`npm run build` exit 0. **Van CHUA nhin bang mat tren trinh duyet.**
+
+---
+
+### 135. Man can tu choi tem ma VBA van nhan: bo dieu kien "phai du 4 o dau" (2026-08-09)
+
+**Cau hoi cua nguoi dung:** *"cho quet QR hien tai da giong voi 5.Semiauto- lockmove SEND OVER6 -
+delta-stable-final-221.xlsm chua, khi quet xong QR lieu co day dung vi tri nhu trong form VBA?"* —
+sau khi doi chieu thi con dung MOT cho lech, va nguoi dung yeu cau: *"de giong VBA duoc k"*.
+
+**Doi chieu tan goc (khong doan):** giai nen `vbaProject.bin` cua chinh workbook do de doc nguyen van
+`txt_color_AfterUpdate`, `CleanLeadingGarbage` (Mod_delta_raw 243-261), `BuildRackBatch`/
+`FireRackBatch`, `btn_Out_Click`. May dev khong co Python/oletools nen tu viet bo giai nen (CFB +
+MS-OVBA RLE) — script luu o scratchpad, dung lai duoc cho workbook khac. Ket qua: 6 buoc lam sach
+chuoi, thu tu 4 o dau (COLOR / **CODE** / **MACHINE** / LV) va vong lap 9 bo ba deu KHOP.
+
+**Cho lech duy nhat:** `docQrMeNhuom` doi ca 4 o dau khac rong moi nhan; VBA thi chi co dung mot cua
+thoat `If s = "" Then GoTo SafeExit` — tem 3 o (lo chua gan may, LV trong) VBA van nap va dien duoc
+o nao hay o do, con web day nham sang nhanh token "DF:ORDER:<uuid>" roi bao "khong doc duoc ma QR".
+Dung lop loi da gap voi dau "#" o dau chuoi (commit f2fddd7).
+
+**Da sua:**
+- `frontend/src/utils/qrDyeParser.ts` — nguong nhan ha xuong `color` + `code`, bo yeu cau
+  machine/level. KHONG ha xuong "chuoi khac rong" nhu VBA: `ScannerController::weighFromQr` can ca
+  color lan code moi tim/tao duoc lo san xuat luc SAVE (422 neu thieu). Nhan vao roi chan o SAVE —
+  sau khi tho da can xong ca me — te hon han noi ngay luc quet.
+- Hai man `/weighing-station-v2` va `/weighing-station-large`: thong bao noi dung nguyen nhan that
+  ("thieu COLOR hoac CODE"), kem cau "thieu MACHINE/LV thi van nap duoc".
+- `backend/.../ScannerController.php` (CA HAI cho: `scanRawDyeQr` va `weighFromQr`) — tem thieu o
+  MACHINE thi KHONG `firstOrCreate` may voi ma rong nua; `machine_id` nullable nen de trong. Neu
+  khong, moi tem thieu may deu dinh chung vao mot ban ghi may "" trong danh muc. Cac cho doc deu da
+  null-safe san ('N/A' / 'VD-COMMON').
+
+**Kiem chung:** `node frontend/scripts/check-qr-parser.mjs` -> **21 pass / 0 fail** (14 ca cu doi
+chieu JS vs PHP + 7 ca MOI cho cua nhan: tem 3 o va tem chi color+code phai NHAN, chi co color /
+chuoi rong / token DF: phai TU CHOI). `npx vue-tsc --noEmit` exit 0, `php -l` sach.
+**CHUA quet bang may quet that** tren man hinh — va **KHONG chay `php artisan test`** o may nay
+(bo test se DROP SCHEMA app tren DB production vi .env tro 10.0.60.209).

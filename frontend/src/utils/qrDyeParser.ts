@@ -63,17 +63,27 @@ export function cleanLeadingGarbage(raw: string): string {
  * nhầm ký tự, quét được thêm một ký tự lạ đứng trước) đều bị đẩy nhầm sang endpoint dành cho
  * token "DF:ORDER:<uuid>" rồi báo sai định dạng, trong khi form VBA vẫn nạp đơn bình thường.
  *
- * Cách nhận biết nay dựa vào CẤU TRÚC, đúng như VBA: cứ có đủ 4 ô đầu (color-code-machine-level)
- * là payload mẻ nhuộm. Riêng token nội bộ "DF:..." được tách ra trước — nó phải hỏi server mới
- * biết cân gì.
+ * Cách nhận biết nay dựa vào CẤU TRÚC, đúng như VBA. Riêng token nội bộ "DF:..." được tách ra
+ * trước — nó phải hỏi server mới biết cân gì.
  *
  * KHÔNG đòi phải có dòng rack nào: VBA điền được bao nhiêu ô thì điền, không có dòng nào thì để
  * lưới trống và thợ vẫn cân tay được trên đúng màn đó.
+ *
+ * ===== NGƯỠNG CHẤP NHẬN: color + code, KHÔNG đòi machine/level (09/08/2026) =====
+ * Bản trước đòi đủ CẢ BỐN ô đầu, trong khi `txt_color_AfterUpdate` của VBA chỉ có đúng một cửa
+ * thoát: `If s = "" Then GoTo SafeExit`. Tem nào chỉ có 3 ô (lô chưa gán máy, LV để trống) thì
+ * form VBA vẫn nạp và điền được ô nào hay ô đó, còn web thì đẩy nhầm sang nhánh token
+ * "DF:ORDER:<uuid>" rồi báo "không đọc được" — đúng lớp lỗi đã gặp với dấu "#" ở đầu chuỗi.
+ *
+ * Giữ lại đúng một sàn `color` + `code` vì đó là NGƯỠNG THẬT của cả đường đi, không phải để cho
+ * chặt: `ScannerController::weighFromQr` cần cả hai mới tìm/tạo được lô sản xuất lúc SAVE
+ * (`if ($parsed['color'] === '' || $parsed['code'] === '')` -> 422). Nhận vào để rồi chặn ở SAVE
+ * — sau khi thợ đã cân xong cả mẻ — tệ hơn hẳn việc nói ngay lúc quét.
  */
 export function docQrMeNhuom(raw: string): ParsedDyeQr | null {
   if (/^DF:/i.test(raw.trim())) return null;
   const p = parseDyeQr(raw);
-  if (p.color === '' || p.code === '' || p.machine === '' || p.level === '') return null;
+  if (p.color === '' || p.code === '') return null;
   return p;
 }
 
