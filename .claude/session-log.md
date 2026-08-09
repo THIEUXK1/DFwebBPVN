@@ -3295,3 +3295,40 @@ hien bieu tuong, va MessageBox mo o do la hop thoai khong ai thay de bam.
   duoi kem bong thong bao; (b) chuot phai > Hien cua so nhat ky: cua so hien ra va nut X cua no xam;
   (c) bam shortcut lan hai: hien hop thoai "da chay san"; (d) chuot phai > Thoat han: hoi lai, dong
   y thi bieu tuong bien mat va nut IN/OUT tren man can bao "Agent CHUA lay lenh".
+
+
+---
+
+### 135. /qr-printer: them nut CLEAR WEIGHT cho khoi HOA CHAT (2026-08-09)
+
+Nguoi dung chi vao o TRONG duoi nut SEND (khoanh do tren anh chup man hinh xuong) va yeu cau mot
+nut xoa nhanh toan bo cot WEIGHT de dien lai tu dau.
+
+**Nguyen nhan co khoang trong do:** UserForm `scaleform` goc chi co MOT nut `btn_clearWeight`
+(toa do 246/90, phuc vu 9 o WEIGHT cua khoi THUOC NHUOM). Khoi HOA CHAT khong co nut tuong ung —
+thao tac vien phai xoa tay tung o.
+
+**Da lam** (`frontend/src/views/QrPrinterForm.vue`, BO SUNG ngoai ban VBA goc):
+- Nut `CLEAR WEIGHT` thu hai tai `box(390, 66, 126, 24)` — canh phai trung mep phai nut SEND
+  (516pt), nam gon trong khoang 66..90pt nen KHONG de len 3 nhan tieu de cot o 102pt (khoi hoa
+  chat co nhan `chem CODE` chiem 402..450 nen khong the dat cung cao do 90pt nhu nut ben DYE).
+- `handleClearChemWeight()`: chi xoa cot `weight` cua 9 dong `chem`, GIU nguyen RACK va ma —
+  quet lai tem khong can thiet. Xoa xong focus o WEIGHT dong 1 khoi hoa chat (`focusCell(0, 5)`),
+  doi xung voi `handleClearWeight()` cua khoi thuoc nhuom.
+- Mau nut dung lai `c-activecaption` giong nut cu de thao tac vien nhan ra cung mot loai.
+
+**Kiem chung:** `npx vue-tsc --noEmit` exit 0. **CHUA nhin bang mat tren trinh duyet** — can nguoi
+dung mo /qr-printer bam thu.
+
+**Chinh tiep trong cung phien (yeu cau: "nut ben phai sat nhu nut ben trai, va bo nut check di"):**
+- Nut moi doi ve **96×24pt** dung bang nut ben trai, dat tai `box(486, 66, 96, 24)` — canh phai
+  sat mep 582pt (mep phai cot WEIGHT hoa chat), doi xung voi nut trai sat mep 342pt cua khoi
+  thuoc nhuom. Van phai de o 66pt chu khong phai 90pt: khoi hoa chat co nhan `WEIGHT` nam o
+  504..540pt, dat 90pt la de len nhan. Cham day nut `print` (ket thuc dung 66pt), khong chong.
+- **Da go nut `check`** (`box(522, 66, 60, 30)`) va keo theo toan bo hop thoai `checkform`
+  (DATABASE CHECKER) + 5 ham `checkCleanString` / `splitCheckScan` / `clearCheckForm` / `runCheck`
+  / `runCheckTimeSent` + `fmtDateTime` + `checkFit` + 4 lop CSS chi no dung (`.vba-f8`,
+  `.vba-f1425`, `.vba-f1575`, `.vba-result`). Bo nut la mat duong duy nhat mo hop thoai, giu lai
+  chi la code chet. **Muon khoi phuc thi lay lai tu git** (commit truoc 09/08/2026) — 2 endpoint
+  backend `scale-measurements/checker` va `machine-dispatches/history` KHONG dong toi, van con.
+- Sau chinh: `npx vue-tsc --noEmit` exit 0. Van CHUA nhin bang mat tren trinh duyet.

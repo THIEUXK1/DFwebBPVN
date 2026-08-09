@@ -62,10 +62,18 @@
           <button class="vba-btn vba-f12 c-scrollbar" :style="box(522, 36, 60, 30)" :disabled="printing" @click="handlePrint">print</button>
 
           <input v-model="header.lv" class="vba-text vba-f162" :style="box(6, 72, 48, 25.2)" :readonly="headerLocked" title="txt_LV" />
-          <button class="vba-btn vba-f12 c-scrollbar" :style="box(522, 66, 60, 30)" @click="checkFormOpen = true">check</button>
 
           <!-- btn_clearWeight — chỉ có ở bản gốc repo: xoá 9 ô WEIGHT rồi focus ô WEIGHT dòng 1. -->
           <button class="vba-btn vba-f12 c-activecaption" :style="box(246, 90, 96, 24)" @click="handleClearWeight">CLEAR WEIGHT</button>
+
+          <!-- BỔ SUNG ngoài bản VBA gốc (yêu cầu 09/08/2026): bản gốc chỉ có nút xoá cột WEIGHT
+               của khối thuốc nhuộm, khối hoá chất phải xoá tay từng ô.
+               Cùng cỡ 96×24pt với nút bên trái và cũng canh phải sát mép phải khối của nó
+               (486..582 = mép phải cột WEIGHT hoá chất), y như nút trái sát mép 342 của khối
+               thuốc nhuộm. Nằm ở 66pt chứ không phải 90pt như nút trái: ở 90pt nó sẽ đè nhãn
+               `WEIGHT` (504..540pt) — khối hoá chất có nhãn nằm sát mép phải, khối thuốc nhuộm
+               thì không. Chỗ này trống được là nhờ đã bỏ nút `check`. -->
+          <button class="vba-btn vba-f12 c-activecaption" :style="box(486, 66, 96, 24)" @click="handleClearChemWeight">CLEAR WEIGHT</button>
 
           <!-- ============ Tiêu đề 2 bảng (T = 102pt) ============ -->
           <label class="vba-label" :style="box(12, 102, 30, 12)">RACK</label>
@@ -172,27 +180,6 @@
             >{{ t }}</div>
           </div>
           <button class="vba-btn vba-f2625 c-btnface" :style="box(18, 186, 126, 54)" @click="confirmTank">OK</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ============ checkform — DATABASE CHECKER ============ -->
-    <div v-if="checkFormOpen" class="vba-modal-backdrop" @click.self="checkFormOpen = false">
-      <div class="vba-modal-fit" :style="checkFit.fit" @click.self="checkFormOpen = false">
-        <div class="vba-form vba-modal c-btnface" :style="checkFit.form">
-          <label class="vba-label c-btnface vba-f8" :style="box(6, 6, 30, 12)">COLOR</label>
-          <input v-model="check.color" class="vba-text vba-f8" :style="box(36, 6, 72, 25)" @change="splitCheckScan" />
-          <label class="vba-label c-btnface vba-f8" :style="box(12, 36, 24, 12)">CODE</label>
-          <input v-model="check.code" class="vba-text vba-f8" :style="box(36, 36, 72, 25)" />
-          <label class="vba-label c-btnface vba-f8" :style="box(120, 6, 72, 24)">RANGE OF TIME</label>
-          <input v-model="check.days" class="vba-text vba-f8" :style="box(198, 6, 72, 25)" title="txt27 — số ngày trở về trước" />
-
-          <button class="vba-btn vba-f1425 c-btnface" :style="box(120, 36, 72, 24)" @click="checkFormOpen = false">CLOSE</button>
-          <button class="vba-btn vba-f1425 c-btnface" :style="box(198, 36, 72, 24)" @click="clearCheckForm">CLEAR</button>
-          <button class="vba-btn vba-f1575 c-btnface" :style="box(276, 6, 150, 54)" :disabled="checking" @click="runCheck">CHECK</button>
-          <button class="vba-btn vba-f1425 c-btnface" :style="box(276, 66, 150, 24)" :disabled="checking" @click="runCheckTimeSent">check time sent</button>
-
-          <textarea v-model="check.result" readonly class="vba-text vba-f8 vba-result" :style="box(12, 93.7, 414, 552)"></textarea>
         </div>
       </div>
     </div>
@@ -515,6 +502,15 @@ function handleClearWeight(): void {
   nextTick(() => focusCell(0, 2));
 }
 
+/**
+ * Bản đối xứng cho khối HOÁ CHẤT (không có trong VBA gốc). Chỉ đụng cột WEIGHT — RACK và mã giữ
+ * nguyên để nhập lại khối lượng từ dòng 1 mà không phải quét lại tem.
+ */
+function handleClearChemWeight(): void {
+  for (const row of chem) row.weight = '';
+  nextTick(() => focusCell(0, 5));
+}
+
 /** `btnClose_Click` — bản gốc Unload form và hiện lại Excel; ở web tương đương xoá trắng phiên. */
 function handleClose(): void {
   handleClear();
@@ -699,137 +695,14 @@ function confirmTank(): void {
 }
 
 /* ===================================================================================
- * checkform — DATABASE CHECKER
+ * checkform — DATABASE CHECKER: ĐÃ GỠ theo yêu cầu 09/08/2026
+ *
+ * Bản gốc có nút `check` (522/66) mở hộp thoại tra `tblRECORD` / `tbl_sentlog`. Người dùng yêu
+ * cầu bỏ nút này, nên toàn bộ hộp thoại + 5 hàm phục vụ nó (`checkCleanString`, `splitCheckScan`,
+ * `clearCheckForm`, `runCheck`, `runCheckTimeSent`) cũng bị gỡ theo — không còn đường nào mở ra
+ * thì giữ lại chỉ là code chết. Cần khôi phục thì lấy lại từ git (commit trước 09/08/2026);
+ * 2 endpoint backend `scale-measurements/checker` và `machine-dispatches/history` vẫn còn nguyên.
  * =================================================================================== */
-
-const checkFormOpen = ref(false);
-const checking = ref(false);
-const check = reactive({ color: '', code: '', days: '', result: '' });
-
-/** `checkform.CleanString` — giữ A-Z/a-z/0-9 và `+ - . ,` (KHÁC hàm cùng tên ở Mod_put_rawtoform). */
-function checkCleanString(s: string): string {
-  let out = '';
-  for (const c of String(s ?? '')) {
-    const code = c.charCodeAt(0);
-    if ((code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)) out += c;
-    else if (c === '+' || c === '-' || c === '.' || c === ',') out += c;
-  }
-  return out;
-}
-
-/** `txtCOLOR_AfterUpdate` — quét thẳng vào ô COLOR rồi tách phần tử 0/1 ra COLOR/CODE. */
-function splitCheckScan(): void {
-  const s = checkCleanString(check.color.trim());
-  if (s === '') return;
-  const p = s.split('-');
-  check.color = p[0];
-  check.code = p.length >= 2 ? p[1] : '';
-}
-
-function clearCheckForm(): void {
-  check.color = '';
-  check.code = '';
-  check.days = '';
-  check.result = '';
-}
-
-/**
- * `btnCheck_Click` — bản gốc `SELECT DISTINCT batchID FROM tblRECORD WHERE COLOR=? AND CODE=?
- * [AND TIME >= today-N]` rồi loop từng lô lấy chi tiết RACK/DYECODE/WEIGHT/PROCESS. Web dùng
- * endpoint đã port sẵn (`ScaleMeasurementController::checker`); ở đây chỉ dựng lại đúng khối
- * văn bản phân cách bằng Tab mà txtRESULT hiển thị.
- */
-async function runCheck(): Promise<void> {
-  check.result = '';
-  const c = check.color.trim();
-  const d = check.code.trim();
-  if (c === '' || d === '') {
-    check.result = 'VUI LONG NHAP COLOR VA CODE';
-    return;
-  }
-  if (check.days.trim() !== '') {
-    if (!/^-?\d+$/.test(check.days.trim())) {
-      check.result = 'SO NGAY PHAI LA SO NGUYEN';
-      return;
-    }
-    if (parseInt(check.days.trim(), 10) < 0) {
-      check.result = 'SO NGAY KHONG HOP LE';
-      return;
-    }
-  }
-
-  checking.value = true;
-  try {
-    const params: Record<string, string> = { color: c, code: d };
-    if (check.days.trim() !== '') params.days_back = String(parseInt(check.days.trim(), 10));
-    const res = await axios.get(`${API}/scale-measurements/checker`, { params });
-    const batches = res.data.data || [];
-    if (!batches.length) {
-      check.result = 'KHONG CO DU LIEU';
-      return;
-    }
-    let s = '';
-    for (const b of batches) {
-      s += [b.batch_id, b.color, b.product_code, b.machine_code, b.level_code,
-            fmtDateTime(b.measured_at), ''].join('\t') + '\n';
-      for (const it of b.items || []) {
-        s += [it.rack_code, it.dye_code, it.weight, it.process_code, '', '', it.process_status].join('\t') + '\n';
-      }
-      s += '\n';
-    }
-    check.result = s;
-  } catch (error: any) {
-    check.result = error.response?.data?.message || 'Loi khi tra cuu.';
-  } finally {
-    checking.value = false;
-  }
-}
-
-/**
- * `btnCheck2_Click` — `SELECT TIME1, TIME3 FROM tbl_sentlog WHERE COLOR=? AND CODE=? ORDER BY
- * TIME3`. Web: `tbl_sentlog` ↔ lịch sử gửi máy (`machine-dispatches/history`), TIME1 = lúc tạo,
- * TIME3 = lúc gửi/xác nhận.
- */
-async function runCheckTimeSent(): Promise<void> {
-  check.result = '';
-  const c = check.color.trim();
-  const d = check.code.trim();
-  if (c === '' || d === '') {
-    check.result = 'VUI LONG NHAP COLOR VA CODE';
-    return;
-  }
-
-  checking.value = true;
-  try {
-    const res = await axios.get(`${API}/machine-dispatches/history`);
-    const all = Array.isArray(res.data) ? res.data : (res.data.data ?? []);
-    const rows = all.filter((r: any) => {
-      const b = r.production_batch ?? r.batch ?? r;
-      return String(b.color ?? '').trim() === c && String(b.product_code ?? '').trim() === d;
-    });
-    if (!rows.length) {
-      check.result = 'KHONG CO DU LIEU';
-      return;
-    }
-    rows.sort((a: any, b: any) => new Date(a.sent_at ?? a.updated_at ?? 0).getTime() - new Date(b.sent_at ?? b.updated_at ?? 0).getTime());
-    check.result = rows
-      .map((r: any) => `${fmtDateTime(r.created_at)}\t${fmtDateTime(r.sent_at ?? r.confirmed_at ?? r.updated_at)}`)
-      .join('\n');
-  } catch (error: any) {
-    check.result = error.response?.data?.message || 'Loi khi tra cuu.';
-  } finally {
-    checking.value = false;
-  }
-}
-
-/** `Format$(..., "dd\mm\yyyy HH:nn:ss")` — chính bản gốc dùng "\" chứ không phải "/". */
-function fmtDateTime(v: any): string {
-  if (!v) return '';
-  const dt = new Date(v);
-  if (Number.isNaN(dt.getTime())) return String(v);
-  const p2 = (n: number) => String(n).padStart(2, '0');
-  return `${p2(dt.getDate())}\\${p2(dt.getMonth() + 1)}\\${dt.getFullYear()} ${p2(dt.getHours())}:${p2(dt.getMinutes())}:${p2(dt.getSeconds())}`;
-}
 
 /* ===================================================================================
  * Thu/phóng — dùng chung cách làm với ProductionBatchesGrid
@@ -888,7 +761,6 @@ function modalFit(wPt: number, hPt: number) {
 // Kích thước 3 form phụ = ClientWidth/ClientHeight chia 20.
 const machineFit = computed(() => modalFit(120.75, 573.75)); // formselect1: 2415 × 11475
 const tankFit = computed(() => modalFit(158.25, 246));       // Formselect2: 3165 × 4920
-const checkFit = computed(() => modalFit(441, 659.25));      // checkform:   8820 × 13185
 
 function fitAll(): void {
   fitRoot();
@@ -1041,11 +913,8 @@ onUnmounted(() => {
    Mọi ô đều TextAlign = fmTextAlignLeft và canh giữa theo chiều dọc như TextBox 1 dòng của
    MSForms. Arial Narrow là font gốc — dự phòng sang họ condensed khác nếu máy không có, KHÔNG
    thay bằng Arial thường vì chữ rộng hơn và 36pt sẽ tràn khỏi ô. */
-.vba-f8    { font: 8pt Tahoma, 'MS Sans Serif', sans-serif; }
 .vba-f12   { font: 12pt Tahoma, 'MS Sans Serif', sans-serif; }
 .vba-f162  { font: 16.2pt Tahoma, 'MS Sans Serif', sans-serif; }
-.vba-f1425 { font: bold 14.25pt Tahoma, 'MS Sans Serif', sans-serif; }
-.vba-f1575 { font: bold 15.75pt Tahoma, 'MS Sans Serif', sans-serif; }
 .vba-f2625 { font: 26.25pt Tahoma, 'MS Sans Serif', sans-serif; }
 .vba-f36   { font: 36pt Tahoma, 'MS Sans Serif', sans-serif; }
 
@@ -1105,14 +974,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   font: 7.8pt Tahoma, 'MS Sans Serif', sans-serif;
-}
-
-/* txtRESULT — TextBox MultiLine, Locked */
-.vba-result {
-  resize: none;
-  overflow: auto;
-  white-space: pre;
-  line-height: 1.25;
 }
 
 /* ListBox của 2 form chọn. Mỗi lựa chọn là một dòng riêng: `<option>` của select gốc không nhận
