@@ -1,5 +1,31 @@
 <template>
   <div class="wh-page">
+    <!-- Thống kê cân trùng: mỗi thẻ = "có bao nhiêu ĐƠN bị cân đúng N lần", trong đó hai vòng chỉ
+         được coi là cùng một đơn khi trùng CẢ Màu, Mã hàng và toàn bộ dòng công thức (xem
+         khoaTrung). Đếm trên toàn bộ cửa sổ dữ liệu đang xem, KHÔNG đếm trên kết quả đã lọc — nếu
+         đếm theo kết quả lọc thì con số nhảy loạn theo từng ký tự gõ, mất ý nghĩa cảnh báo. -->
+    <div v-if="!loading && !errorMsg && allRounds.length > 0" class="wh-stats">
+      <button
+        v-for="g in freqGroups"
+        :key="g.freq"
+        type="button"
+        class="wh-stat"
+        :class="[freqLevel(g.freq), { active: freqFilter === g.freq }]"
+        :aria-pressed="freqFilter === g.freq"
+        :title="`Lọc các vòng cân của đơn (Màu + Mã hàng + công thức giống hệt) cân ${g.freq} lần`"
+        @click="toggleFreq(g.freq)"
+      >
+        <span class="wh-stat-num">{{ g.products }}</span>
+        <span class="wh-stat-lbl">đơn cân <strong>{{ g.freq }} lần</strong></span>
+      </button>
+      <p v-if="freqGroups.length === 0" class="wh-stat-none">
+        Không có đơn nào bị cân trùng trong {{ allRounds.length }} vòng đang xem.
+      </p>
+      <p v-else class="wh-stat-none">
+        Trùng = giống cả Màu, Mã hàng và toàn bộ RACK / DYE CODE / WEIGHT.
+      </p>
+    </div>
+
     <div class="wh-bar">
       <div class="wh-field">
         <label>Từ ngày</label>
@@ -42,7 +68,11 @@
       </p>
 
       <p v-if="filtered.length === 0" class="wh-msg">
-        <template v-if="search.trim()">
+        <template v-if="freqFilter !== null">
+          Không có vòng cân nào của đơn cân {{ freqFilter }} lần khớp điều kiện còn lại —
+          <button class="wh-link" @click="toggleFreq(freqFilter)">bỏ lọc tần suất</button>.
+        </template>
+        <template v-else-if="search.trim()">
           Không có vòng cân nào khớp “{{ search }}” trong {{ allRounds.length }} vòng đã tải —
           thử nút <strong>🔎 Tìm trên toàn bộ lịch sử</strong> ở trên.
         </template>
@@ -180,6 +210,8 @@ const reprintingId = ref<string | null>(null);
 const filters = reactive({ from: '', to: '' });
 /** Ô tìm nhanh — chỉ lọc trong `allRounds`, không bao giờ chạm mạng. */
 const search = ref('');
+/** Đang lọc theo tần suất cân của mã hàng (null = không lọc). Xem `freqGroups`. */
+const freqFilter = ref<number | null>(null);
 const page = ref(1);
 
 /**
@@ -197,15 +229,107 @@ function ganChuoiTim(job: any) {
     job.batch?.machine?.code,
     job.batch?.level_code,
   ].filter(Boolean).join(' ').toLowerCase();
+  // Khóa trùng cũng tính sẵn tại đây: nó phải duyệt và sắp xếp cả danh sách dòng công thức, để
+  // trong computed thì mỗi ký tự gõ vào ô tìm là tính lại cho toàn bộ cửa sổ dữ liệu.
+  job.__key = khoaTrung(job);
   return job;
 }
 
+/**
+ * Chuẩn hóa một con số để đem so bằng chuỗi: "1.50" và "1.5" phải ra cùng một khóa.
+ *
+ * So khớp CHÍNH XÁC, không nới sai số: đây là định mức công thức (planned_weight) chứ không phải
+ * số cân thực tế — sai số định mức bột màu quy định là 0.0. Lệch dù một chữ số nghĩa là hai đơn
+ * công thức khác nhau, không được coi là trùng.
+ */
+function soChuan(v: any): string {
+  const n = Number(v);
+  return Number.isFinite(n) ? String(n) : '';
+}
+
+/**
+ * Khóa nhận dạng "trùng nhau": Màu + Mã hàng + TOÀN BỘ nội dung công thức (mọi dòng RACK /
+ * DYE CODE / WEIGHT mục tiêu).
+ *
+ * Thiếu tầng nào cũng báo động giả:
+ * - Chỉ mã hàng: cùng một mã nhuộm hai màu khác nhau là hai công việc riêng biệt.
+ * - Chỉ màu + mã hàng: cùng màu cùng mã nhưng đơn công thức đã sửa (đổi rack, đổi thuốc, đổi
+ *   định mức) thì lần cân sau là việc MỚI, không phải cân lại việc cũ.
+ *
+ * Trả về null khi thiếu dữ liệu để đối chiếu — không đủ căn cứ khẳng định trùng thì không đếm,
+ * chứ không dồn vào một nhóm "—" giả.
+ */
+function khoaTrung(job: any): string | null {
+  const color = job.batch?.color;
+  const code = job.batch?.product_code;
+  if (!color || !code) return null;
+
+  const items = job.items || [];
+  if (items.length === 0) return null;
+
+  // Sắp xếp trước khi nối: cùng một công thức nhập theo thứ tự dòng khác nhau vẫn phải ra cùng
+  // một khóa — thứ tự dòng không phải là thứ làm nên khác biệt.
+  const congThuc = items
+    .map((it: any) => `${it.rack_code || ''}~${it.material_code || ''}~${soChuan(it.planned_weight)}`)
+    .sort()
+    .join(';');
+
+  return `${color}~${code}~${congThuc}`;
+}
+
+/**
+ * Số vòng cân của từng đơn (theo khóa `__key`) trong cửa sổ đang xem.
+ *
+ * Đếm trên `allRounds` chứ không phải `filtered`: đây là nguồn của cả con số trên thẻ lẫn điều
+ * kiện lọc, nếu đếm trên dữ liệu đã lọc thì bấm vào thẻ "3 lần" xong tần suất tự đổi thành 3/3 và
+ * bảng tự co lại vòng vòng.
+ */
+const productFreq = computed(() => {
+  const m = new Map<string, number>();
+  for (const job of allRounds.value) {
+    if (!job.__key) continue;
+    m.set(job.__key, (m.get(job.__key) || 0) + 1);
+  }
+  return m;
+});
+
+/** Mỗi phần tử = một thẻ thống kê: có `products` đơn bị cân đúng `freq` lần. */
+const freqGroups = computed(() => {
+  const byFreq = new Map<number, number>();
+  for (const n of productFreq.value.values()) {
+    if (n < 2) continue; // Cân 1 lần là bình thường, không phải thứ cần đánh động.
+    byFreq.set(n, (byFreq.get(n) || 0) + 1);
+  }
+  return [...byFreq.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([freq, products]) => ({ freq, products }));
+});
+
+/** Thang màu cảnh báo: 2 lần còn chấp nhận được, 3 lần đáng ngờ, từ 4 lần là đỏ. */
+function freqLevel(freq: number): string {
+  if (freq >= 4) return 'lv-danger';
+  if (freq === 3) return 'lv-warn';
+  return 'lv-mild';
+}
+
+function toggleFreq(freq: number) {
+  freqFilter.value = freqFilter.value === freq ? null : freq;
+  page.value = 1;
+}
+
 const filtered = computed(() => {
+  let rows = allRounds.value;
+
+  if (freqFilter.value !== null) {
+    const f = freqFilter.value;
+    rows = rows.filter((job) => !!job.__key && productFreq.value.get(job.__key) === f);
+  }
+
   const q = search.value.trim().toLowerCase();
-  if (!q) return allRounds.value;
+  if (!q) return rows;
   // Nhiều từ = phải khớp TẤT CẢ, để gõ "đỏ VD10" lọc được đúng cả máy lẫn màu.
   const tokens = q.split(/\s+/);
-  return allRounds.value.filter((job) => tokens.every((t) => (job.__hay || '').includes(t)));
+  return rows.filter((job) => tokens.every((t) => (job.__hay || '').includes(t)));
 });
 
 const lastPage = computed(() => Math.max(1, Math.ceil(filtered.value.length / PER_PAGE)));
@@ -251,6 +375,9 @@ async function load(q = '') {
   loading.value = true;
   errorMsg.value = '';
   expanded.value = null;
+  // Cửa sổ dữ liệu đổi thì tần suất tính lại từ đầu — giữ lại lựa chọn cũ sẽ thành lọc theo một
+  // con số không còn thẻ nào tương ứng trên màn hình.
+  freqFilter.value = null;
   try {
     const res = await axios.get('/api/weighing-jobs/history', {
       params: {
@@ -332,6 +459,97 @@ onMounted(() => load());
 <style scoped>
 .wh-page {
   padding: 16px;
+}
+
+.wh-stats {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.wh-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--border-color, #c9c9c9);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: box-shadow 0.12s, transform 0.12s, background 0.12s;
+}
+
+.wh-stat:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+  transform: translateY(-1px);
+}
+
+.wh-stat-num {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.wh-stat-lbl {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.wh-stat.lv-mild {
+  background: rgba(10, 92, 255, 0.08);
+  border-color: rgba(10, 92, 255, 0.35);
+}
+.wh-stat.lv-mild .wh-stat-num {
+  color: #0a5cff;
+}
+
+.wh-stat.lv-warn {
+  background: rgba(250, 173, 20, 0.14);
+  border-color: rgba(250, 173, 20, 0.5);
+}
+.wh-stat.lv-warn .wh-stat-num {
+  color: #b06f00;
+}
+
+.wh-stat.lv-danger {
+  background: rgba(212, 0, 0, 0.12);
+  border-color: rgba(212, 0, 0, 0.45);
+}
+.wh-stat.lv-danger .wh-stat-num {
+  color: #d40000;
+}
+
+/* Đang lọc theo thẻ nào phải nhìn ra ngay từ xa — viền đậm + nền đặc, không chỉ đổi sắc nhẹ. */
+.wh-stat.active {
+  border-width: 2px;
+  padding: 7px 13px;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.wh-stat.lv-mild.active {
+  background: rgba(10, 92, 255, 0.2);
+  border-color: #0a5cff;
+}
+
+.wh-stat.lv-warn.active {
+  background: rgba(250, 173, 20, 0.32);
+  border-color: #b06f00;
+}
+
+.wh-stat.lv-danger.active {
+  background: rgba(212, 0, 0, 0.24);
+  border-color: #d40000;
+}
+
+.wh-stat-none {
+  margin: 0;
+  align-self: center;
+  font-size: 12px;
+  opacity: 0.6;
 }
 
 .wh-bar {
@@ -558,6 +776,21 @@ onMounted(() => load());
 @media (prefers-color-scheme: dark) {
   .wh-detail-row td {
     background: rgba(255, 255, 255, 0.04);
+  }
+  .wh-stat.lv-mild .wh-stat-num {
+    color: #7fb0ff;
+  }
+  .wh-stat.lv-warn .wh-stat-num {
+    color: #ffc857;
+  }
+  .wh-stat.lv-danger .wh-stat-num {
+    color: #ff9d9d;
+  }
+  .wh-stat.lv-warn.active {
+    border-color: #ffc857;
+  }
+  .wh-stat.lv-danger.active {
+    border-color: #ff9d9d;
   }
   .tag.ok {
     background: rgba(20, 128, 60, 0.25);
