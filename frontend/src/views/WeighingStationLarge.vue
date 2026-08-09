@@ -240,7 +240,7 @@ import { scannerService } from '../services/scanner';
 import { isFullscreen } from '../services/layout';
 import { useScaleFeed } from '../composables/useScaleFeed';
 import { inPhieuTrongTrang } from '../utils/slipPrint';
-import { parseDyeQr, MAX_RACK_LINES, type ParsedDyeQr } from '../utils/qrDyeParser';
+import { parseDyeQr, docQrMeNhuom, MAX_RACK_LINES, type ParsedDyeQr } from '../utils/qrDyeParser';
 import { processTone, processBackground } from '../utils/processColor';
 import { buildSlipHtml, processStatus, nowSlipTimestamp, MANUAL_MATERIAL_CODE } from '../utils/weighSlip';
 import { guiRackSangAgent, RACK_BATCH_SIZE } from '../services/rackDispatch';
@@ -871,9 +871,10 @@ const handleBarcodeScan = async (token: string) => {
 
   // QUÉT KHÔNG CHẠM MẠNG: chuỗi QR đã chứa đủ rack/dye/weight của cả mẻ. Cả mẻ chỉ đi mạng đúng
   // MỘT lần lúc bấm SAVE — cũng chính là cách VBA gốc làm (btnSave_Click mới INSERT).
-  if (token.startsWith('#')) {
-    const parsed = parseDyeQr(token);
-    if (parsed.color === '' || parsed.code === '' || parsed.rack_lines.length === 0) {
+  // Định tuyến theo CẤU TRÚC chuỗi, không theo ký tự "#" đứng đầu — xem docQrMeNhuom().
+  if (!/^DF:/i.test(token)) {
+    const parsed = docQrMeNhuom(token);
+    if (!parsed) {
       scannerService.playBeep(600, 400);
       scanning.value = false;
       await baoTin('Không đọc được mã QR này — kiểm tra lại đầu đọc hoặc mã tem.');

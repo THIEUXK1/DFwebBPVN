@@ -306,7 +306,7 @@ import { scannerService } from '../services/scanner';
 import { isFullscreen } from '../services/layout';
 import { useScaleFeed } from '../composables/useScaleFeed';
 import { inPhieuTrongTrang } from '../utils/slipPrint';
-import { parseDyeQr, MAX_RACK_LINES, type ParsedDyeQr } from '../utils/qrDyeParser';
+import { parseDyeQr, docQrMeNhuom, MAX_RACK_LINES, type ParsedDyeQr } from '../utils/qrDyeParser';
 import { processTone } from '../utils/processColor';
 import { buildSlipHtml, processStatus, nowSlipTimestamp, MANUAL_MATERIAL_CODE } from '../utils/weighSlip';
 import {
@@ -762,9 +762,10 @@ const handleBarcodeScan = async (token: string) => {
   scanning.value = true;
   // Bíp NGAY khi nhận mã, không đợi server — thao tác viên biết máy quét đã ăn.
   scannerService.playBeep(1200, 80);
-  // Cùng cách định tuyến với bản cũ: QR thật từ trạm in luôn bắt đầu bằng "#", token giả lập
-  // dạng "DF:ORDER:<uuid>" đi endpoint khác.
-  const isRealVbaQr = token.startsWith('#');
+  // Định tuyến theo CẤU TRÚC chuỗi, KHÔNG theo ký tự "#" đứng đầu (07/08/2026) — VBA không hề
+  // đòi "#", xem docQrMeNhuom(). Con tem thiếu "#" trước đây bị đẩy nhầm sang endpoint dành cho
+  // token "DF:ORDER:<uuid>" rồi báo sai định dạng.
+  const isRealVbaQr = !/^DF:/i.test(token);
   const url = isRealVbaQr ? '/api/scanner/scan-dye-qr' : '/api/scanner/scan';
   const payload = isRealVbaQr
     ? { raw_qr: token, workstation_code: currentWorkstation.value.code }
@@ -779,8 +780,8 @@ const handleBarcodeScan = async (token: string) => {
   // "đơn này cũng đang được cân ở máy khác" nữa. Đổi lại, quét không tốn vòng mạng nào và
   // không bao giờ sinh vòng cân mồ côi khi thợ quét nhầm rồi bỏ đi.
   if (isRealVbaQr) {
-    const parsed = parseDyeQr(token);
-    if (parsed.color === '' || parsed.code === '' || parsed.rack_lines.length === 0) {
+    const parsed = docQrMeNhuom(token);
+    if (!parsed) {
       scannerService.playBeep(600, 400);
       scanning.value = false;
       await baoTin('Không đọc được mã QR này — kiểm tra lại đầu đọc hoặc mã tem.');

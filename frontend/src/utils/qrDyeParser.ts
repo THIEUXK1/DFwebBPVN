@@ -32,10 +32,54 @@ export interface ParsedDyeQr {
   rack_lines: DyeRackLine[];
 }
 
+/**
+ * `CleanLeadingGarbage` — port ĐÚNG NGUYÊN VĂN `Mod_delta_raw.bas` dòng 243-261 của workbook
+ * cân to `5.Semiauto- lockmove SEND OVER6 - delta-stable-final-221.xlsm`:
+ *
+ *     For i = 1 To Len(s)
+ *         If Mid$(s, i, 1) Like "[A-Za-z0-9]" Then CleanLeadingGarbage = Mid$(s, i): Exit Function
+ *
+ * Tức là bỏ MỌI ký tự đầu chuỗi cho tới chữ/số đầu tiên — không riêng gì "#".
+ *
+ * Bản cũ ở đây chỉ `replace(/^#+/, '')`. Máy quét kiểu bàn phím rất hay gõ ra một ký tự lạ trước
+ * nội dung (bố cục bàn phím không phải US thì chính "#" là ký tự bị gõ nhầm nhiều nhất), và VBA
+ * chạy được với những chuỗi đó suốt bao năm chính là NHỜ hàm này. Đã đo: 3/13 trường hợp thử
+ * VBA nhận mà web từ chối đều rơi vào đây (07/08/2026).
+ */
+export function cleanLeadingGarbage(raw: string): string {
+  const s = raw.trim();
+  for (let i = 0; i < s.length; i++) {
+    if (/[A-Za-z0-9]/.test(s[i])) return s.slice(i);
+  }
+  return s;
+}
+
+/**
+ * Đọc chuỗi quét được NẾU nó là payload mẻ nhuộm; trả `null` nếu không phải.
+ *
+ * Có hàm này để cả ba màn cân định tuyến GIỐNG HỆT nhau. Trước 07/08/2026 mỗi màn tự viết
+ * `token.startsWith('#')` — và đó chính là chỗ hỏng: VBA KHÔNG hề đòi "#", nó chỉ gọi
+ * `CleanLeadingGarbage` rồi tách chuỗi. Con tem nào tới tay web mà thiếu "#" ở đầu (máy quét gõ
+ * nhầm ký tự, quét được thêm một ký tự lạ đứng trước) đều bị đẩy nhầm sang endpoint dành cho
+ * token "DF:ORDER:<uuid>" rồi báo sai định dạng, trong khi form VBA vẫn nạp đơn bình thường.
+ *
+ * Cách nhận biết nay dựa vào CẤU TRÚC, đúng như VBA: cứ có đủ 4 ô đầu (color-code-machine-level)
+ * là payload mẻ nhuộm. Riêng token nội bộ "DF:..." được tách ra trước — nó phải hỏi server mới
+ * biết cân gì.
+ *
+ * KHÔNG đòi phải có dòng rack nào: VBA điền được bao nhiêu ô thì điền, không có dòng nào thì để
+ * lưới trống và thợ vẫn cân tay được trên đúng màn đó.
+ */
+export function docQrMeNhuom(raw: string): ParsedDyeQr | null {
+  if (/^DF:/i.test(raw.trim())) return null;
+  const p = parseDyeQr(raw);
+  if (p.color === '' || p.code === '' || p.machine === '' || p.level === '') return null;
+  return p;
+}
+
 export function parseDyeQr(raw: string): ParsedDyeQr {
-  // CleanLeadingGarbage (VBA): QR sinh ra luôn có "#" đứng đầu. Dấu phẩy đổi thành chấm vì
-  // cân/máy in có thể xuất số theo locale khác.
-  let s = raw.trim().replace(/^#+/, '').replace(/,/g, '.');
+  // Dấu phẩy đổi thành chấm vì cân/máy in có thể xuất số theo locale khác.
+  let s = cleanLeadingGarbage(raw).replace(/,/g, '.');
 
   // Bỏ mọi cụm "-dye-" (không phân biệt hoa thường), đúng vòng while của bản PHP.
   let pos = s.toLowerCase().indexOf('-dye-');
@@ -57,14 +101,18 @@ export function parseDyeQr(raw: string): ParsedDyeQr {
     .map((p) => p.trim())
     .filter((p) => p !== '');
 
+  // Vòng lặp bám ĐÚNG `For i = 1 To 9` của VBA: gán rack rồi mới kiểm còn phần tử không, gán dye
+  // rồi lại kiểm, mới tới weight. Nhờ vậy bộ ba CUỐI bị thiếu vẫn tạo ra một dòng (rack có, dye
+  // và weight rỗng) — bản cũ ở đây đòi đủ cả ba nên chuỗi kết thúc giữa chừng bị mất hẳn dòng
+  // cuối, mà VBA thì vẫn điền được txt_rack cho dòng đó.
   const rackLines: DyeRackLine[] = [];
-  for (let i = 4; i + 2 < parts.length + 1 && rackLines.length < MAX_RACK_LINES; i += 3) {
-    if (parts[i] === undefined) break;
-    rackLines.push({
-      rack: parts[i],
-      dye: parts[i + 1] ?? '',
-      weight: parts[i + 2] ?? '',
-    });
+  let idx = 4;
+  for (let i = 0; i < MAX_RACK_LINES; i++) {
+    if (idx > parts.length - 1) break;
+    const line: DyeRackLine = { rack: parts[idx++], dye: '', weight: '' };
+    if (idx <= parts.length - 1) line.dye = parts[idx++];
+    if (idx <= parts.length - 1) line.weight = parts[idx++];
+    rackLines.push(line);
   }
 
   return {

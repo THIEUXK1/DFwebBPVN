@@ -122,10 +122,22 @@ class QrPayloadService
      */
     public function parseDyeScan(string $rawScanned): array
     {
+        // CleanLeadingGarbage (VBA, Mod_delta_raw.bas 243-261): bỏ MỌI ký tự đầu chuỗi cho tới
+        // chữ/số đầu tiên, KHÔNG riêng gì "#".
+        //
+        // Bản cũ là `ltrim($s, "#")` — chỉ đúng với QR do chính hệ này in ra. Máy quét kiểu bàn
+        // phím hay gõ thêm một ký tự lạ đứng trước nội dung (bố cục bàn phím không phải US thì
+        // chính "#" là ký tự bị gõ nhầm nhiều nhất), và VBA chạy được với những chuỗi đó chính
+        // là nhờ hàm này (đo lại 07/08/2026).
+        //
+        // Chú ý ca biên: chuỗi KHÔNG có chữ/số nào ("#", "---") thì VBA trả về NGUYÊN chuỗi chứ
+        // không trả rỗng (vòng For chạy hết mà không Exit Function, rơi xuống
+        // `CleanLeadingGarbage = s`). Vì vậy KHÔNG dùng `preg_replace('/^[^A-Za-z0-9]+/', ...)`
+        // — nó trả rỗng và làm lệch với bản JS.
         $s = trim($rawScanned);
-        // CleanLeadingGarbage (VBA) — QR do QrPayloadService sinh luôn có "#" đứng đầu
-        // (xem buildDyePayload); bỏ ký tự không phải chữ/số ở đầu chuỗi trước khi tách.
-        $s = ltrim($s, "#");
+        if (preg_match('/[A-Za-z0-9]/', $s, $m, PREG_OFFSET_CAPTURE) === 1) {
+            $s = substr($s, $m[0][1]);
+        }
         $s = str_replace(',', '.', $s);
 
         $sLower = strtolower($s);
@@ -143,7 +155,7 @@ class QrPayloadService
             return ['color' => '', 'code' => '', 'machine' => '', 'level' => '', 'rack_lines' => []];
         }
 
-        $parts = array_values(array_filter(explode('-', $s), fn ($p) => trim($p) !== ''));
+        $parts = array_values(array_filter(array_map('trim', explode('-', $s)), fn ($p) => $p !== ''));
 
         $result = [
             'color' => $parts[0] ?? '',
@@ -153,12 +165,16 @@ class QrPayloadService
             'rack_lines' => [],
         ];
 
+        // Bám ĐÚNG `For i = 1 To 9` của VBA: gán rack rồi mới kiểm còn phần tử không, gán dye rồi
+        // lại kiểm, mới tới weight. Bộ ba CUỐI bị thiếu vẫn tạo ra một dòng (rack có, dye/weight
+        // rỗng) — bản cũ đòi đủ cả ba nên mất hẳn dòng cuối, trong khi VBA vẫn điền txt_rack.
+        $n = count($parts);
         $idx = 4;
-        for ($i = 0; $i < 9 && $idx + 2 < count($parts) + 1; $i++) {
-            if (!isset($parts[$idx])) break;
+        for ($i = 0; $i < 9; $i++) {
+            if ($idx > $n - 1) break;
             $rack = $parts[$idx++];
-            $dye = $parts[$idx++] ?? '';
-            $weight = $parts[$idx++] ?? '';
+            $dye = $idx <= $n - 1 ? $parts[$idx++] : '';
+            $weight = $idx <= $n - 1 ? $parts[$idx++] : '';
             $result['rack_lines'][] = ['rack' => $rack, 'dye' => $dye, 'weight' => $weight];
         }
 
