@@ -1,9 +1,9 @@
 <template>
   <div class="wh-page">
     <!-- Thống kê cân trùng: mỗi thẻ = "có bao nhiêu ĐƠN bị cân đúng N lần", trong đó hai vòng chỉ
-         được coi là cùng một đơn khi trùng CẢ Màu, Mã hàng và toàn bộ dòng công thức (xem
-         khoaTrung). Đếm trên toàn bộ cửa sổ dữ liệu đang xem, KHÔNG đếm trên kết quả đã lọc — nếu
-         đếm theo kết quả lọc thì con số nhảy loạn theo từng ký tự gõ, mất ý nghĩa cảnh báo. -->
+         là cùng một đơn khi trùng cả 4 trường Màu + Mã hàng + Máy + LV (xem khoaTrung). Đếm trên
+         toàn bộ cửa sổ dữ liệu đang xem, KHÔNG đếm trên kết quả đã lọc — nếu đếm theo kết quả lọc
+         thì con số nhảy loạn theo từng ký tự gõ, mất ý nghĩa cảnh báo. -->
     <div v-if="!loading && !errorMsg && allRounds.length > 0" class="wh-stats">
       <button
         v-for="g in freqGroups"
@@ -12,7 +12,7 @@
         class="wh-stat"
         :class="[freqLevel(g.freq), { active: freqFilter === g.freq }]"
         :aria-pressed="freqFilter === g.freq"
-        :title="`Lọc các vòng cân của đơn (Màu + Mã hàng + công thức giống hệt) cân ${g.freq} lần`"
+        :title="`Lọc các vòng cân của đơn (trùng Màu + Mã hàng + Máy + LV) cân ${g.freq} lần`"
         @click="toggleFreq(g.freq)"
       >
         <span class="wh-stat-num">{{ g.products }}</span>
@@ -22,7 +22,7 @@
         Không có đơn nào bị cân trùng trong {{ allRounds.length }} vòng đang xem.
       </p>
       <p v-else class="wh-stat-none">
-        Trùng = giống cả Màu, Mã hàng và toàn bộ RACK / DYE CODE / WEIGHT.
+        Trùng = giống cả 4: Màu, Mã hàng, Máy, LV.
       </p>
     </div>
 
@@ -67,6 +67,14 @@
         <button class="wh-link" @click="resetFilters">quay lại danh sách gần nhất</button>
       </p>
 
+      <!-- Đang lọc theo thẻ: bảng KHÔNG còn xếp thuần theo thời gian nữa mà xếp theo cụm trùng.
+           Phải nói ra, nếu không người dùng sẽ tưởng cột thời gian bị sai thứ tự. -->
+      <p v-if="freqFilter !== null && filtered.length > 0" class="wh-msg group-note">
+        Đang xem <strong>{{ groupCount }} đơn</strong> bị cân {{ freqFilter }} lần
+        ({{ filtered.length }} vòng) — các vòng của cùng một đơn được xếp liền nhau, mỗi cụm một
+        nền riêng. <button class="wh-link" @click="toggleFreq(freqFilter)">Bỏ lọc</button>
+      </p>
+
       <p v-if="filtered.length === 0" class="wh-msg">
         <template v-if="freqFilter !== null">
           Không có vòng cân nào của đơn cân {{ freqFilter }} lần khớp điều kiện còn lại —
@@ -95,9 +103,18 @@
         </tr>
       </thead>
       <tbody>
-        <template v-for="job in paged" :key="job.id">
-          <tr class="wh-row" :class="{ open: expanded === job.id }" @click="toggle(job.id)">
-            <td class="c-time">{{ formatTime(job.completed_at) }}</td>
+        <template v-for="{ job, band, first, seq, size } in paged" :key="job.id">
+          <tr
+            class="wh-row"
+            :class="[band, { open: expanded === job.id, 'grp-start': first }]"
+            @click="toggle(job.id)"
+          >
+            <td class="c-time">
+              <!-- Số thứ tự trong cụm: nhìn là biết ngay đây là lần cân thứ mấy của cùng một đơn,
+                   không phải đếm dòng bằng mắt. -->
+              <span v-if="band" class="grp-seq">{{ seq }}/{{ size }}</span>
+              {{ formatTime(job.completed_at) }}
+            </td>
             <td class="strong">{{ job.batch?.color || '—' }}</td>
             <td>{{ job.batch?.product_code || '—' }}</td>
             <td>{{ job.batch?.machine?.code || '—' }}</td>
@@ -119,7 +136,7 @@
             </td>
           </tr>
 
-          <tr v-if="expanded === job.id" :key="job.id + '-d'" class="wh-detail-row">
+          <tr v-if="expanded === job.id" :key="job.id + '-d'" class="wh-detail-row" :class="band">
             <td colspan="9">
               <table class="wh-detail">
                 <thead>
@@ -229,52 +246,32 @@ function ganChuoiTim(job: any) {
     job.batch?.machine?.code,
     job.batch?.level_code,
   ].filter(Boolean).join(' ').toLowerCase();
-  // Khóa trùng cũng tính sẵn tại đây: nó phải duyệt và sắp xếp cả danh sách dòng công thức, để
-  // trong computed thì mỗi ký tự gõ vào ô tìm là tính lại cho toàn bộ cửa sổ dữ liệu.
+  // Khóa trùng tính sẵn luôn tại đây, cùng lý do với `__hay` ở trên: để trong computed thì mỗi
+  // ký tự gõ vào ô tìm là tính lại cho toàn bộ cửa sổ dữ liệu.
   job.__key = khoaTrung(job);
   return job;
 }
 
 /**
- * Chuẩn hóa một con số để đem so bằng chuỗi: "1.50" và "1.5" phải ra cùng một khóa.
+ * Khóa nhận dạng "trùng nhau": ĐÚNG 4 TRƯỜNG Màu + Mã hàng + Máy + LV — cũng chính là 4 cột
+ * người dùng nhìn thấy trên bảng.
  *
- * So khớp CHÍNH XÁC, không nới sai số: đây là định mức công thức (planned_weight) chứ không phải
- * số cân thực tế — sai số định mức bột màu quy định là 0.0. Lệch dù một chữ số nghĩa là hai đơn
- * công thức khác nhau, không được coi là trùng.
- */
-function soChuan(v: any): string {
-  const n = Number(v);
-  return Number.isFinite(n) ? String(n) : '';
-}
-
-/**
- * Khóa nhận dạng "trùng nhau": Màu + Mã hàng + TOÀN BỘ nội dung công thức (mọi dòng RACK /
- * DYE CODE / WEIGHT mục tiêu).
+ * Trùng cả 4 nghĩa là cùng một việc đã bị cân đi cân lại. Khác một trường bất kỳ (khác máy, khác
+ * LV) là một việc riêng, không tính trùng.
  *
- * Thiếu tầng nào cũng báo động giả:
- * - Chỉ mã hàng: cùng một mã nhuộm hai màu khác nhau là hai công việc riêng biệt.
- * - Chỉ màu + mã hàng: cùng màu cùng mã nhưng đơn công thức đã sửa (đổi rack, đổi thuốc, đổi
- *   định mức) thì lần cân sau là việc MỚI, không phải cân lại việc cũ.
- *
- * Trả về null khi thiếu dữ liệu để đối chiếu — không đủ căn cứ khẳng định trùng thì không đếm,
- * chứ không dồn vào một nhóm "—" giả.
+ * Trả về null khi thiếu Màu hoặc Mã hàng — không có định danh thì không đủ căn cứ khẳng định
+ * trùng, bỏ qua chứ không dồn vào một nhóm "—" giả. Riêng Máy và LV nếu trống thì coi chính cái
+ * trống đó là một giá trị: hai vòng cùng màu cùng mã cùng bỏ trống LV vẫn là trùng nhau.
  */
 function khoaTrung(job: any): string | null {
   const color = job.batch?.color;
   const code = job.batch?.product_code;
   if (!color || !code) return null;
 
-  const items = job.items || [];
-  if (items.length === 0) return null;
+  const machine = job.batch?.machine?.code || '';
+  const lv = job.batch?.level_code || '';
 
-  // Sắp xếp trước khi nối: cùng một công thức nhập theo thứ tự dòng khác nhau vẫn phải ra cùng
-  // một khóa — thứ tự dòng không phải là thứ làm nên khác biệt.
-  const congThuc = items
-    .map((it: any) => `${it.rack_code || ''}~${it.material_code || ''}~${soChuan(it.planned_weight)}`)
-    .sort()
-    .join(';');
-
-  return `${color}~${code}~${congThuc}`;
+  return `${color}~${code}~${machine}~${lv}`;
 }
 
 /**
@@ -332,8 +329,80 @@ const filtered = computed(() => {
   return rows.filter((job) => tokens.every((t) => (job.__hay || '').includes(t)));
 });
 
-const lastPage = computed(() => Math.max(1, Math.ceil(filtered.value.length / PER_PAGE)));
-const paged = computed(() => filtered.value.slice((page.value - 1) * PER_PAGE, page.value * PER_PAGE));
+/**
+ * Xếp lại các vòng đã lọc thành từng CỤM TRÙNG rồi mới đưa ra bảng.
+ *
+ * Danh sách gốc xếp theo thời gian, nên hai vòng của cùng một đơn có thể cách nhau vài chục dòng —
+ * đúng thứ người dùng đang cần so lại thì nằm xa nhau nhất. Khi đã bấm vào thẻ tần suất thì mục
+ * đích không còn là xem theo dòng thời gian nữa mà là đối chiếu từng cụm, nên ở chế độ đó đổi
+ * luôn cách xếp (và có dòng chú thích trên bảng nói rõ điều này).
+ *
+ * Thứ tự cụm bám theo thứ tự xuất hiện trong danh sách gốc (Map giữ thứ tự chèn), tức cụm có vòng
+ * mới nhất đứng trước — không đảo lộn cảm giác "mới nhất ở trên". Trong mỗi cụm cũng vẫn là mới
+ * trước cũ sau.
+ *
+ * `band` là tên lớp nền luân phiên để hai cụm cạnh nhau không dính vào nhau về mặt thị giác;
+ * chuỗi rỗng nghĩa là không ở chế độ gom cụm.
+ */
+type DongBang = { job: any; band: string; first: boolean; seq: number; size: number };
+
+const grouped = computed<DongBang[]>(() => {
+  if (freqFilter.value === null) {
+    return filtered.value.map((job) => ({ job, band: '', first: false, seq: 0, size: 0 }));
+  }
+
+  const cum = new Map<string, any[]>();
+  for (const job of filtered.value) {
+    const g = cum.get(job.__key);
+    if (g) g.push(job);
+    else cum.set(job.__key, [job]);
+  }
+
+  const out: DongBang[] = [];
+  let i = 0;
+  for (const g of cum.values()) {
+    const band = i % 2 === 0 ? 'grp-a' : 'grp-b';
+    g.forEach((job, k) => out.push({ job, band, first: k === 0, seq: k + 1, size: g.length }));
+    i++;
+  }
+  return out;
+});
+
+/** Số ĐƠN (không phải số vòng) đang hiện — dùng cho dòng chú thích trên bảng. */
+const groupCount = computed(() => {
+  if (freqFilter.value === null) return 0;
+  return new Set(filtered.value.map((job) => job.__key)).size;
+});
+
+/**
+ * Chia trang. Ở chế độ gom cụm thì cắt theo RANH GIỚI CỤM chứ không cắt cứng mỗi PER_PAGE dòng:
+ * một cụm bị xé đúng chỗ chuyển trang là mất sạch ý nghĩa của việc xếp liền nhau — người dùng
+ * thấy 2 vòng ở cuối trang này, 2 vòng còn lại ở đầu trang sau, không đối chiếu được gì.
+ * Đổi lại, trang ở chế độ này có thể dài hơn PER_PAGE một chút (tối đa là dư một cụm).
+ */
+const pages = computed<DongBang[][]>(() => {
+  const rows = grouped.value;
+  const out: DongBang[][] = [];
+
+  if (freqFilter.value === null) {
+    for (let i = 0; i < rows.length; i += PER_PAGE) out.push(rows.slice(i, i + PER_PAGE));
+    return out.length ? out : [[]];
+  }
+
+  let cur: DongBang[] = [];
+  for (const r of rows) {
+    if (r.first && cur.length >= PER_PAGE) {
+      out.push(cur);
+      cur = [];
+    }
+    cur.push(r);
+  }
+  if (cur.length) out.push(cur);
+  return out.length ? out : [[]];
+});
+
+const lastPage = computed(() => pages.value.length);
+const paged = computed(() => pages.value[page.value - 1] || []);
 
 // Lọc lại làm số trang co lại — đang đứng ở trang 5 mà chỉ còn 2 trang thì bảng trống trơn.
 watch(filtered, () => {
@@ -649,6 +718,54 @@ onMounted(() => load());
   background: rgba(10, 92, 255, 0.07);
 }
 
+/* Nền luân phiên theo CỤM (không phải theo dòng chẵn/lẻ): mắt phải nhận ra ranh giới cụm ngay
+   cả khi hai cụm cạnh nhau có cùng số dòng. */
+.wh-table tbody tr.grp-a td {
+  background: rgba(10, 92, 255, 0.05);
+}
+
+.wh-table tbody tr.grp-b td {
+  background: rgba(120, 120, 120, 0.09);
+}
+
+/* Nền cụm nằm trên <td>, mà hiệu ứng hover của .wh-row lại nằm trên <tr> — td vẽ đè lên tr nên
+   không nhắc lại ở đây thì cả hàng banded sẽ mất phản hồi hover/mở. */
+.wh-table tbody tr.wh-row.grp-a:hover td,
+.wh-table tbody tr.wh-row.grp-b:hover td,
+.wh-table tbody tr.wh-row.grp-a.open td,
+.wh-table tbody tr.wh-row.grp-b.open td {
+  background: rgba(10, 92, 255, 0.18);
+}
+
+/* Vạch mở đầu mỗi cụm — đường kẻ đậm chạy hết chiều ngang bảng. */
+.wh-table tbody tr.grp-start td {
+  border-top: 2px solid var(--border-color, #b9b9b9);
+}
+
+.grp-seq {
+  display: inline-block;
+  min-width: 30px;
+  margin-right: 8px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.1);
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.wh-msg.group-note {
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  text-align: left;
+  border-radius: 6px;
+  background: rgba(10, 92, 255, 0.08);
+  border: 1px solid rgba(10, 92, 255, 0.3);
+  opacity: 1;
+  font-size: 13px;
+}
+
 .c-num {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -791,6 +908,15 @@ onMounted(() => load());
   }
   .wh-stat.lv-danger.active {
     border-color: #ff9d9d;
+  }
+  .wh-table tbody tr.grp-a td {
+    background: rgba(90, 150, 255, 0.12);
+  }
+  .wh-table tbody tr.grp-b td {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .grp-seq {
+    background: rgba(255, 255, 255, 0.16);
   }
   .tag.ok {
     background: rgba(20, 128, 60, 0.25);
