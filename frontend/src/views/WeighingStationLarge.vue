@@ -113,7 +113,30 @@
          mẻ, giả lập, thông báo lỗi) nhưng bỏ đi thì thợ không có cách nào biết máy đang hỏng gì.
          Để ngoài khung thì phần form vẫn giống hệt bản gốc.
          Đứng ở MÉ PHẢI (yêu cầu 09/08/2026) — lý do chọn bên phải xem ghi chú ở `.wsl-root`. -->
-    <div class="webbar" :class="{ alarm: statusMsg?.bad }">
+    <!-- Cột đang THU GỌN: chỉ còn một dải mỏng có nút bật lại (mặc định của mọi máy trạm, yêu cầu
+         09/08/2026 — cột này chiếm 208px của mặt form mà phần lớn thời gian không ai nhìn).
+         Vẫn là khối TRONG luồng bố cục chứ không phải nút nổi: mặt form được `fitStage` đo theo
+         bề rộng còn lại, nên thu gọn xong form tự phóng to ra chiếm chỗ, còn nút nổi thì vừa che
+         mất một góc form vừa không trả lại được chỗ đó.
+         KHÔNG nuốt mất tín hiệu hỏng: có sự cố thì chính nút này chuyển đỏ và nhấp nháy — thợ vẫn
+         biết có chuyện để mà bấm xem, đó là lý do cả cột này được dựng ra từ đầu. -->
+    <div v-if="!hienWebbar" class="webbar-collapsed" :class="{ alarm: coSuCo }">
+      <button
+        class="wb-toggle"
+        :title="coSuCo
+          ? (statusMsg?.text || 'Có mẻ chưa gửi được lên máy chủ') + ' — bấm để xem chi tiết'
+          : 'Hiện cột thông tin (trạm, hàng đợi, cỡ chữ, giả lập)'"
+        @click="datHienWebbar(true)"
+      >
+        <span class="wb-toggle-icon">{{ coSuCo ? '❗' : '‹' }}</span>
+        <span class="wb-toggle-label">{{ coSuCo ? 'SỰ CỐ' : 'THÔNG TIN' }}</span>
+      </button>
+    </div>
+
+    <div v-else class="webbar" :class="{ alarm: statusMsg?.bad }">
+      <button class="wb-hide" title="Thu gọn cột này cho rộng mặt form" @click="datHienWebbar(false)">
+        THU GỌN ›
+      </button>
       <span class="wb-ws">
         <!-- `signalLost` (3s) chứ không phải `signalLive` (1.5s): ngưỡng chặt là CỔNG AN TOÀN
              cho việc chốt bì/lưu số, dùng nó để bật đèn báo thì đèn nhấp nháy mỗi lần số về trễ
@@ -429,6 +452,35 @@ function datMucPhong(muc: number) {
   // là `clientWidth` hụt đi vài chục px — tính trước thì ra tỉ lệ của khung cũ.
   nextTick(fitStage);
 }
+
+/**
+ * Cột thông tin bên phải (trạm, hàng đợi, cỡ chữ, giả lập, thông báo) — MẶC ĐỊNH THU GỌN.
+ *
+ * Cột này rộng 208px và phần lớn thời gian không ai nhìn tới; thu gọn đi thì `fitStage` có thêm
+ * chừng đó bề ngang để phóng mặt form. Máy nào bật ra thì máy đó nhớ (localStorage), giống cách
+ * `KHOA_MUC_PHONG` nhớ cỡ hiển thị — hai thợ hai ca có thể thích khác nhau.
+ *
+ * Không đụng tới `isFullscreen` dùng chung: đó là việc ẩn sidebar/thanh trên của cả app, còn đây
+ * là một cột của riêng màn này.
+ */
+const KHOA_HIEN_WEBBAR = 'wslarge.hien-cot-thong-tin';
+const hienWebbar = ref(localStorage.getItem(KHOA_HIEN_WEBBAR) === '1');
+
+function datHienWebbar(hien: boolean) {
+  hienWebbar.value = hien;
+  localStorage.setItem(KHOA_HIEN_WEBBAR, hien ? '1' : '0');
+  // Bề rộng khung mặt form vừa đổi — đo lại ngay, đừng đợi ResizeObserver bắn ở nhịp sau.
+  nextTick(fitStage);
+}
+
+/**
+ * Có chuyện cần thợ biết ngay: lỗi thao tác, mất tín hiệu cân, mất kết nối máy chủ (đều nằm trong
+ * `statusMsg.bad`), hoặc có mẻ nằm kẹt trong hàng đợi chưa gửi được.
+ *
+ * Dùng để nút thu gọn tự chuyển đỏ. CỐ Ý không tự bung cả cột ra: bung ra là mặt form co lại giữa
+ * lúc thợ đang cân, mà mất kết nối máy chủ thì lặp lại liên tục ở xưởng.
+ */
+const coSuCo = computed(() => !!statusMsg.value?.bad || stuckCount.value > 0);
 
 function doiCoManHinh(buoc: number) {
   const dangO = MUC_PHONG.indexOf(heSoPhong.value);
@@ -1814,6 +1866,81 @@ input.vv-text:focus {
  *
  * 208px: vừa đủ cho mã trạm dài nhất đang có (WS-LARGE-ZP-IT003) trên một dòng.
  */
+/* Dải mỏng thay chỗ cột thông tin khi thu gọn — 26px so với 208px. */
+.webbar-collapsed {
+  flex: 0 0 26px;
+  width: 26px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 10px;
+  background: rgba(12, 16, 26, 0.72);
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.wb-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 2px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #c9d1e2;
+  font: 600 10px/1 'Inter', 'Segoe UI', sans-serif;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.wb-toggle:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.wb-toggle-icon { font-size: 12px; }
+
+/* Chữ dọc để nhét vừa dải 26px mà vẫn đọc được — không dùng ảnh/icon rời. */
+.wb-toggle-label {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+}
+
+/* Có sự cố: dải mỏng tự đỏ và nhấp nháy. Đây là thứ giữ cho việc thu gọn KHÔNG nuốt mất tín
+   hiệu hỏng — thợ vẫn thấy có chuyện, chỉ là phải bấm mới xem được chi tiết. */
+.webbar-collapsed.alarm {
+  background: rgba(120, 20, 24, 0.85);
+  border-left-color: #ff5f57;
+}
+
+.webbar-collapsed.alarm .wb-toggle {
+  border-color: #ff5f57;
+  background: rgba(255, 95, 87, 0.18);
+  color: #ffd9d7;
+  animation: wb-alarm 1.1s ease-in-out infinite;
+}
+
+@keyframes wb-alarm {
+  50% { background: rgba(255, 95, 87, 0.45); color: #fff; }
+}
+
+.wb-hide {
+  align-self: flex-end;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #9fb0c9;
+  font: 600 10px/1 'Inter', 'Segoe UI', sans-serif;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.wb-hide:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
 .webbar {
   display: flex;
   flex-direction: column;

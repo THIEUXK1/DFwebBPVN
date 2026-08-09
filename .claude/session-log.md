@@ -3431,3 +3431,31 @@ chieu JS vs PHP + 7 ca MOI cho cua nhan: tem 3 o va tem chi color+code phai NHAN
 chuoi rong / token DF: phai TU CHOI). `npx vue-tsc --noEmit` exit 0, `php -l` sach.
 **CHUA quet bang may quet that** tren man hinh — va **KHONG chay `php artisan test`** o may nay
 (bo test se DROP SCHEMA app tren DB production vi .env tro 10.0.60.209).
+
+---
+
+### 136. /weighing-station-large: cot thong tin ben phai MAC DINH THU GON (2026-08-09)
+
+**Yeu cau:** *"toi muon mac dinh la an di va co nut de hien thi ra neu can dung"* — noi ve cot ben
+phai (ma tram, o ON DINH, "LO 1: ... COPY", A-/100%/A+, gia lap, dong thong bao).
+
+**Da lam** (`WeighingStationLarge.vue`):
+- `hienWebbar` + `datHienWebbar()`, nho trong `localStorage['wslarge.hien-cot-thong-tin']`, MAC DINH
+  an. Cung kieu voi `KHOA_MUC_PHONG` (co hien thi) — may nao dat sao thi may do nho.
+- Thu gon roi thi thay bang dai mong **26px** (thay cho 208px) co nut "THONG TIN" chu doc. Van la
+  khoi TRONG luong bo cuc chu khong phai nut noi: `fitStage` do be rong con lai de phong mat form,
+  nen thu gon xong form TU TO RA chiem cho — nut noi thi vua che mot goc form vua khong tra lai
+  duoc cho do. Doi trang thai xong goi `nextTick(fitStage)` de do lai ngay.
+- **Khong nuot mat tin hieu hong:** `coSuCo` = `statusMsg.bad` (loi thao tac / mat tin hieu can /
+  mat ket noi may chu) hoac con me ket trong hang doi -> dai mong TU DOI DO va nhap nhay, nut ghi
+  "SU CO", tooltip la nguyen van thong bao. CO Y khong tu bung ca cot ra: bung ra la mat form co
+  lai ngay giua luc tho dang can, ma mat ket noi may chu thi lap lai lien tuc o xuong.
+- Trong cot day them nut "THU GON >" de an lai.
+
+**Kiem chung:** `npx vue-tsc --noEmit` exit 0. **CHUA xem bang mat tren trinh duyet** — can mo
+`/weighing-station-large` kiem tra: vao la chi con dai mong ben phai va mat form to hon truoc; bam
+"THONG TIN" thi cot hien lai day du; rut mang cho mat ket noi thi dai mong phai do + nhap nhay; F5
+van nho lua chon.
+
+**Chua ap cho `/weighing-station-v2`** — man cân nhỏ khong co cot nay (thong tin nam trong dai
+`ws2-rawline` ngang duoi form), la bo cuc khac han nen khong sua lay.
