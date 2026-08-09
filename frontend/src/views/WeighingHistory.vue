@@ -52,6 +52,57 @@
       </button>
     </div>
 
+    <!-- Lọc theo từng CỘT — cũng chạy thuần trên cửa sổ đã tải như ô tìm nhanh, gõ/chọn tới đâu
+         bảng đổi tới đó. Màu và Mã hàng để ô gõ kèm gợi ý (datalist) vì số giá trị nhiều; Máy và
+         LV để ô chọn vì tập giá trị hữu hạn, chọn nhanh hơn gõ. -->
+    <div class="wh-bar wh-cols">
+      <div class="wh-field">
+        <label>Màu</label>
+        <input type="text" v-model="col.color" list="wh-colors" placeholder="Tất cả" />
+        <datalist id="wh-colors">
+          <option v-for="o in colorOptions" :key="o" :value="o" />
+        </datalist>
+      </div>
+      <div class="wh-field">
+        <label>Mã hàng</label>
+        <input type="text" v-model="col.product" list="wh-products" placeholder="Tất cả" />
+        <datalist id="wh-products">
+          <option v-for="o in productOptions" :key="o" :value="o" />
+        </datalist>
+      </div>
+      <div class="wh-field">
+        <label>Máy</label>
+        <select v-model="col.machine">
+          <option value="">— Tất cả máy —</option>
+          <option v-for="o in machineOptions" :key="o" :value="o">{{ o }}</option>
+        </select>
+      </div>
+      <div class="wh-field">
+        <label>LV</label>
+        <select v-model="col.lv">
+          <option value="">— Tất cả LV —</option>
+          <option v-for="o in lvOptions" :key="o" :value="o">{{ o }}</option>
+        </select>
+      </div>
+      <div class="wh-field">
+        <label>Kết quả</label>
+        <select v-model="col.result">
+          <option value="">— Tất cả —</option>
+          <option value="BAD">Có dòng KHÔNG ĐẠT</option>
+          <option value="OK">Toàn bộ ĐẠT</option>
+        </select>
+      </div>
+      <div class="wh-field">
+        <label>Mỗi trang</label>
+        <select v-model.number="pageSize">
+          <option :value="20">20</option>
+          <option :value="50">50</option>
+          <option :value="100">100</option>
+          <option :value="0">Tất cả</option>
+        </select>
+      </div>
+    </div>
+
     <p v-if="loading" class="wh-msg">Đang tải…</p>
     <p v-else-if="errorMsg" class="wh-msg err">{{ errorMsg }}</p>
 
@@ -178,11 +229,24 @@
     <!-- Phân trang thuần JS trên dữ liệu đã tải — đổi trang không gọi server, không có trạng thái
          chờ nào cả. -->
     <div v-if="!loading && !errorMsg && filtered.length > 0" class="wh-pager">
-      <button class="wh-btn ghost" :disabled="page <= 1" @click="page -= 1">← Trước</button>
-      <span>
-        Trang {{ page }} / {{ lastPage }} — {{ filtered.length }} vòng cân<template v-if="search"> khớp</template>
+      <span class="wh-pager-info">
+        Hiển thị <strong>{{ pageStart + 1 }}–{{ pageStart + paged.length }}</strong> /
+        {{ filtered.length }} vòng cân<template v-if="hasRowFilter"> khớp</template>
       </span>
-      <button class="wh-btn ghost" :disabled="page >= lastPage" @click="page += 1">Sau →</button>
+      <div class="wh-pager-ctrl">
+        <button class="wh-btn ghost" :disabled="page <= 1" @click="page = 1" title="Trang đầu">«</button>
+        <button class="wh-btn ghost" :disabled="page <= 1" @click="page -= 1">‹ Trước</button>
+        <button
+          v-for="p in pageWindow"
+          :key="p"
+          class="wh-btn ghost wh-pg-num"
+          :class="{ active: p === page }"
+          @click="page = p"
+        >{{ p }}</button>
+        <button class="wh-btn ghost" :disabled="page >= lastPage" @click="page += 1">Sau ›</button>
+        <button class="wh-btn ghost" :disabled="page >= lastPage" @click="page = lastPage" title="Trang cuối">»</button>
+        <span class="wh-pager-total">Trang {{ page }}/{{ lastPage }}</span>
+      </div>
     </div>
   </div>
 </template>
@@ -211,7 +275,6 @@ import { inPhieuTrongTrang } from '../utils/slipPrint';
  * và có nút tìm thẳng trên server — tuyệt đối không im lặng cắt bớt rồi để người dùng tưởng là
  * không có dữ liệu.
  */
-const PER_PAGE = 20;
 const WINDOW_LIMIT = 200;
 
 const allRounds = ref<any[]>([]);
@@ -229,7 +292,17 @@ const filters = reactive({ from: '', to: '' });
 const search = ref('');
 /** Đang lọc theo tần suất cân của mã hàng (null = không lọc). Xem `freqGroups`. */
 const freqFilter = ref<number | null>(null);
+
+/**
+ * Lọc theo từng cột. Cũng chỉ chạm `allRounds`, không gọi server — cùng lý do với ô tìm nhanh.
+ * `color`/`product` so khớp CHỨA (gõ một phần là ra), `machine`/`lv` so khớp ĐÚNG BẰNG vì lấy
+ * thẳng từ danh sách giá trị có thật nên không có chuyện gõ nhầm nửa chừng.
+ */
+const col = reactive({ color: '', product: '', machine: '', lv: '', result: '' });
+
 const page = ref(1);
+/** 0 = không chia trang (xem tất cả). */
+const pageSize = ref(20);
 
 /**
  * Gộp các trường thao tác viên hay gõ vào một chuỗi thường để so khớp.
@@ -314,6 +387,29 @@ function toggleFreq(freq: number) {
   page.value = 1;
 }
 
+/**
+ * Danh sách giá trị cho các ô lọc theo cột — lấy từ chính cửa sổ dữ liệu đang xem, không phải từ
+ * danh mục master: đưa ra lựa chọn không có dòng nào tương ứng chỉ tổ làm người dùng chọn xong
+ * thấy bảng trống.
+ */
+function uniqSorted(vals: any[]): string[] {
+  const set = new Set(vals.map((v) => String(v ?? '').trim()).filter(Boolean));
+  return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+}
+
+const colorOptions = computed(() => uniqSorted(allRounds.value.map((j) => j.batch?.color)));
+const productOptions = computed(() => uniqSorted(allRounds.value.map((j) => j.batch?.product_code)));
+const machineOptions = computed(() => uniqSorted(allRounds.value.map((j) => j.batch?.machine?.code)));
+const lvOptions = computed(() => uniqSorted(allRounds.value.map((j) => j.batch?.level_code)));
+
+/** Có đang lọc dòng nào không — dùng cho chữ "khớp" ở thanh phân trang. */
+const hasRowFilter = computed(
+  () =>
+    !!search.value.trim() ||
+    freqFilter.value !== null ||
+    !!col.color || !!col.product || !!col.machine || !!col.lv || !!col.result
+);
+
 const filtered = computed(() => {
   let rows = allRounds.value;
 
@@ -321,6 +417,20 @@ const filtered = computed(() => {
     const f = freqFilter.value;
     rows = rows.filter((job) => !!job.__key && productFreq.value.get(job.__key) === f);
   }
+
+  const color = col.color.trim().toLowerCase();
+  if (color) rows = rows.filter((job) => String(job.batch?.color ?? '').toLowerCase().includes(color));
+
+  const product = col.product.trim().toLowerCase();
+  if (product) {
+    rows = rows.filter((job) => String(job.batch?.product_code ?? '').toLowerCase().includes(product));
+  }
+
+  if (col.machine) rows = rows.filter((job) => (job.batch?.machine?.code ?? '') === col.machine);
+  if (col.lv) rows = rows.filter((job) => (job.batch?.level_code ?? '') === col.lv);
+
+  if (col.result === 'BAD') rows = rows.filter((job) => Number(job.rejected_count) > 0);
+  else if (col.result === 'OK') rows = rows.filter((job) => Number(job.rejected_count) === 0);
 
   const q = search.value.trim().toLowerCase();
   if (!q) return rows;
@@ -375,23 +485,26 @@ const groupCount = computed(() => {
 });
 
 /**
- * Chia trang. Ở chế độ gom cụm thì cắt theo RANH GIỚI CỤM chứ không cắt cứng mỗi PER_PAGE dòng:
+ * Chia trang. Ở chế độ gom cụm thì cắt theo RANH GIỚI CỤM chứ không cắt cứng mỗi `pageSize` dòng:
  * một cụm bị xé đúng chỗ chuyển trang là mất sạch ý nghĩa của việc xếp liền nhau — người dùng
  * thấy 2 vòng ở cuối trang này, 2 vòng còn lại ở đầu trang sau, không đối chiếu được gì.
- * Đổi lại, trang ở chế độ này có thể dài hơn PER_PAGE một chút (tối đa là dư một cụm).
+ * Đổi lại, trang ở chế độ này có thể dài hơn `pageSize` một chút (tối đa là dư một cụm).
  */
 const pages = computed<DongBang[][]>(() => {
   const rows = grouped.value;
+  const size = pageSize.value;
   const out: DongBang[][] = [];
 
+  if (size === 0) return [rows];
+
   if (freqFilter.value === null) {
-    for (let i = 0; i < rows.length; i += PER_PAGE) out.push(rows.slice(i, i + PER_PAGE));
+    for (let i = 0; i < rows.length; i += size) out.push(rows.slice(i, i + size));
     return out.length ? out : [[]];
   }
 
   let cur: DongBang[] = [];
   for (const r of rows) {
-    if (r.first && cur.length >= PER_PAGE) {
+    if (r.first && cur.length >= size) {
       out.push(cur);
       cur = [];
     }
@@ -404,9 +517,32 @@ const pages = computed<DongBang[][]>(() => {
 const lastPage = computed(() => pages.value.length);
 const paged = computed(() => pages.value[page.value - 1] || []);
 
+/**
+ * Số dòng đứng trước trang hiện tại. Cộng dồn chiều dài các trang trước chứ KHÔNG lấy
+ * `(page-1) * pageSize`: ở chế độ gom cụm các trang dài ngắn khác nhau, nhân ra sẽ lệch.
+ */
+const pageStart = computed(() =>
+  pages.value.slice(0, page.value - 1).reduce((n, p) => n + p.length, 0)
+);
+
+/** Tối đa 7 nút số quanh trang hiện tại, để thanh phân trang không dài vô tận. */
+const pageWindow = computed(() => {
+  const total = lastPage.value;
+  const span = Math.min(7, total);
+  let start = Math.max(1, page.value - Math.floor(span / 2));
+  start = Math.min(start, total - span + 1);
+  return Array.from({ length: span }, (_, i) => start + i);
+});
+
 // Lọc lại làm số trang co lại — đang đứng ở trang 5 mà chỉ còn 2 trang thì bảng trống trơn.
 watch(filtered, () => {
   if (page.value > lastPage.value) page.value = 1;
+});
+
+// Đổi bộ lọc cột hay số dòng mỗi trang thì về trang 1: giữ nguyên trang cũ hầu như luôn rơi ra
+// ngoài kết quả mới.
+watch([() => col.color, () => col.product, () => col.machine, () => col.lv, () => col.result, pageSize], () => {
+  page.value = 1;
 });
 
 function fmt(v: any): string {
@@ -445,8 +581,10 @@ async function load(q = '') {
   errorMsg.value = '';
   expanded.value = null;
   // Cửa sổ dữ liệu đổi thì tần suất tính lại từ đầu — giữ lại lựa chọn cũ sẽ thành lọc theo một
-  // con số không còn thẻ nào tương ứng trên màn hình.
+  // con số không còn thẻ nào tương ứng trên màn hình. Bộ lọc cột cũng vậy: mã máy/LV vừa chọn có
+  // thể không còn dòng nào trong cửa sổ mới, người dùng chỉ thấy bảng trống mà không rõ vì sao.
   freqFilter.value = null;
+  clearColFilters();
   try {
     const res = await axios.get('/api/weighing-jobs/history', {
       params: {
@@ -481,10 +619,19 @@ function searchOnServer() {
   if (q) load(q);
 }
 
+function clearColFilters() {
+  col.color = '';
+  col.product = '';
+  col.machine = '';
+  col.lv = '';
+  col.result = '';
+}
+
 function resetFilters() {
   filters.from = '';
   filters.to = '';
   search.value = '';
+  clearColFilters();
   load();
 }
 
@@ -646,7 +793,8 @@ onMounted(() => load());
   opacity: 0.75;
 }
 
-.wh-field input {
+.wh-field input,
+.wh-field select {
   height: 36px;
   padding: 0 10px;
   border: 1px solid var(--border-color, #c9c9c9);
@@ -654,6 +802,12 @@ onMounted(() => load());
   background: var(--input-bg, #fff);
   color: inherit;
   font-size: 14px;
+}
+
+/* Hàng lọc theo cột: mỗi ô co giãn nhưng không hẹp tới mức không đọc được giá trị đang chọn. */
+.wh-cols .wh-field {
+  flex: 1;
+  min-width: 130px;
 }
 
 .wh-btn {
@@ -676,6 +830,45 @@ onMounted(() => load());
 .wh-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.wh-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+.wh-pager-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wh-pager-ctrl .wh-btn {
+  height: 32px;
+  padding: 0 12px;
+}
+
+.wh-pg-num {
+  min-width: 32px;
+  padding: 0 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wh-pg-num.active {
+  background: #0a5cff;
+  border-color: #0a5cff;
+  color: #fff;
+}
+
+.wh-pager-total {
+  margin-left: 4px;
+  opacity: 0.75;
 }
 
 .wh-msg {
