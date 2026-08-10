@@ -3487,6 +3487,45 @@ co .NET 3.1/9/10, khong co runtime 8.0). Them 3 test moi: `LaDongSoCan_LoaiDungD
 **Bump `PackageVersion` 4.7.0.0 -> 4.8.0.0** trong `DFAgentSetup.wxs`. **PHAI build lai MSI va cai
 de len tren may tram can to** — sua nay nam trong Agent, deploy web KHONG dong toi.
 
+**Da build va giao 3 MSI 4.8.0.0** (`agent/installer/build.ps1`, WiX 5.0.2) sang
+`C:\Users\v240298\Downloads\BoCaiCan` + `backend/public/downloads/`. Da xac minh ProductVersion
+ben trong tung file MSI = 4.8.0.0.
+
+---
+
+### 139. "Quet QR o 10.0.60.209:3001 chua tu day nhu localhost" — quet CHET IM LANG khi chua nhan tram (2026-08-09)
+
+**Da loai tru truoc:** may chu KHONG he chay code cu. Fetch thang module tu dev server
+(`http://10.0.60.209:3001/src/views/WeighingStationLarge.vue`) thay du `batPhimLacRaNgoai`,
+`boiDenOQuet`, `docOQuet`, `veOQuet`, `heSoPhong`, va ham cu `onScanEnter` DA BIEN MAT. Server
+dang o dung commit `ea56c92`, dist build luc 09:29.
+
+**Phat hien ve ha tang (dang ghi nho, khac voi memory dang co):** tren CS-SERVER co HAI frontend.
+- **3002** = `DFWeb-Frontend` scheduled task -> `C:\DFwebBPVN\tools\run-frontend.bat` chay
+  `npm run preview` (phuc vu `dist` DA BUILD). Day moi la cai ma buoc `npm run build` trong quy
+  trinh deploy phuc vu.
+- **3001** = mot **Vite DEV server** (index.html tra ve co `/@vite/client` + `/src/main.ts`),
+  KHONG do task nao quan ly. No transform thang tu `C:\DFwebBPVN\frontend\src` nen chi can
+  `git pull` la tuoi, khong can build.
+Nguoi dung dang dung 3001.
+
+**Nguyen nhan that:** `handleBarcodeScan` mo dau bang `if (!currentWorkstation.value) return;` —
+**thoat IM LANG**. Chua nhan duoc tram thi cu quet chet ngay tai dong do: khong bip, khong chu,
+khong gi ca — ma ban than may quet van keu "bip" cua no, nen tho dinh ninh la da quet xong. Trinh
+duyet nhan tram bang `adoptLocalWorkstation('LARGE')` luc mo man (hoi backend "tram CAN TO o IP nay
+la tram nao"), backend chi tra loi duoc neu Agent "Can to" da bao danh (60 giay/lan) — may vua cai
+lai Agent 4.8.0.0 xong roi mo man ngay la rot dung vao khe nay.
+
+**Da sua:** thay `return` bang bip loi + hop thoai noi ro "may nay CHUA nhan duoc tram can nao",
+chi cho tho nhin cot ben phai (dang hien "chua gan tram") va bao kiem tra service DFAgentLarge.
+
+**CO Y khong tu goi lai `adoptLocalWorkstation` theo chu ky:** cau tra loi cua backend co the DOI
+(theo IP), goi lai giua chung mot me can co the tu doi tram duoi chan tho. Muon co thi phai la
+quyet dinh rieng.
+
+`npm run build` exit 0. `/weighing-station-v2` dinh y het loi thoat im lang nay — van chua sua,
+cho xac nhan.
+
 ---
 
 ### 135. Man can tu choi tem ma VBA van nhan: bo dieu kien "phai du 4 o dau" (2026-08-09)

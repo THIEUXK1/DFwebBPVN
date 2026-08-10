@@ -1076,7 +1076,33 @@ function cancelAbandonedJob(jobId: string) {
 }
 
 const handleBarcodeScan = async (token: string) => {
-  if (!currentWorkstation.value) return;
+  /*
+   * TUYỆT ĐỐI không thoát im lặng ở đây.
+   *
+   * Chưa nhận được trạm thì cú quét chết ngay tại dòng này: không bíp, không chữ, không gì cả —
+   * mà bản thân cái máy quét vẫn kêu "bíp" của nó, nên thợ đinh ninh là đã quét xong và cứ đứng
+   * quét lại. Đây là cách hỏng KHÓ ĐOÁN NHẤT trên màn này: mọi thứ khác trên màn hình vẫn chạy
+   * bình thường.
+   *
+   * Trình duyệt nhận trạm bằng `adoptLocalWorkstation('LARGE')` lúc mở màn — nó hỏi backend "trạm
+   * CÂN TO ở địa chỉ IP này là trạm nào?", và backend chỉ trả lời được nếu Agent "Cân to" đã báo
+   * danh (60 giây một lần). Máy vừa cài lại Agent, Agent chưa kịp báo danh, hoặc service không
+   * chạy đều rơi vào cảnh này.
+   */
+  if (!currentWorkstation.value) {
+    scannerService.playBeep(600, 400);
+    await baoTin(
+      'Máy này CHƯA nhận được trạm cân nào nên chưa quét được.\n'
+      + '\n'
+      + 'Xem cột bên phải: đang hiện "chưa gán trạm" thay vì mã trạm.\n'
+      + '\n'
+      + 'Kiểm tra Agent "Cân to" (service DFAgentLarge) còn chạy trên chính máy này không, đợi '
+      + 'khoảng một phút cho nó báo danh, rồi tải lại trang.'
+    );
+    nextTick(veOQuet);
+    return;
+  }
+
   scanning.value = true;
   scannerService.playBeep(1200, 80); // bíp NGAY khi nhận mã, không đợi server
 
