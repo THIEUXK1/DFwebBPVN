@@ -214,19 +214,21 @@ function cell(r: Rect, text: string, st: CellStyle = {}): string {
  *
  * LỆCH CÓ CHỦ Ý so với sheet gốc (sheet để 12pt, chữ thường) theo yêu cầu vận hành
  * 2026-08-07: mã màu và số cân in ra quá nhỏ và nhạt, khó đọc dưới ánh sáng nhà xưởng.
- * Chặn trên là bề rộng cột mã (nay 75pt, xem `GRID_*_W_PT`) — mã dài nhất kiểu "R2011A" ở
- * Calibri 14pt ĐẬM chiếm ~46pt kể cả padding; đẩy quá cỡ này là mã bị cắt cụt vì ô để
- * `white-space:nowrap; overflow:hidden`. Chiều cao dòng 25.9pt còn dư nên không cần đụng
- * tới ROW_PT.
+ * Chặn trên là bề rộng cột (xem `GRID_*_W_PT`): mã dài nhất kiểu "R2011A" ở Calibri 14pt
+ * ĐẬM chiếm ~46pt và số cân 7 chữ số kiểu "1234.567" chiếm ~57pt, đều tính cả padding; đẩy
+ * quá cỡ này là chữ bị cắt cụt vì ô để `white-space:nowrap; overflow:hidden`. Chiều cao
+ * dòng 25.9pt còn dư nên không cần đụng tới ROW_PT.
  */
 const GRID_FONT_PT = 14;
 const GRID_BOLD = true;
 
 /**
  * Bề rộng 3 cột (rack | mã | khối lượng) của RIÊNG bảng cân 9 dòng — LỆCH CÓ CHỦ Ý so với
- * bề rộng cột sheet (yêu cầu 2026-08-10): cột rack thực tế chỉ hiện số tối đa 3 chữ số
- * (~25pt kể cả padding ở 14pt đậm) trong khi sheet dành cho nó 58.5pt/51.75pt, còn cột mã
- * và cột khối lượng thì bị cắt cụt.
+ * bề rộng cột sheet (yêu cầu 2026-08-10). Chia theo đúng nhu cầu thật của từng cột ở 14pt
+ * đậm, KHÔNG theo sheet:
+ *  - rack: chỉ hiện số tối đa 3 chữ số → cần ~25pt (sheet dành cho nó 58.5pt/51.75pt).
+ *  - mã: dài nhất kiểu "R2011A" → cần ~46pt.
+ *  - khối lượng: TO NHẤT, số cân có lúc lên 7 chữ số kiểu "1234.567" → cần ~57pt.
  *
  * Vì sao tách riêng thay vì sửa thẳng `COL_PT`: các cột B..H còn được dùng bởi những ô CỐ
  * ĐỊNH ở dòng trên — nhãn "DF_WEIGHING_SLIP" 12pt đậm nằm trong vùng gộp B1:C1 (cần ~105pt)
@@ -237,8 +239,8 @@ const GRID_BOLD = true;
  * TỔNG MỖI BẢNG PHẢI GIỮ NGUYÊN (B+C+D = 147.75pt, F+G+H = 141.75pt) để mép ngoài của bảng
  * vẫn trùng khít với cột đệm E và với các khung QR ở dưới.
  */
-const GRID_DYE_W_PT = [28.5, 75, 44.25];
-const GRID_CHEM_W_PT = [28.5, 75, 38.25];
+const GRID_DYE_W_PT = [28.5, 54, 65.25];
+const GRID_CHEM_W_PT = [28.5, 52.5, 60.75];
 
 /** Hình chữ nhật (mm) của ô thứ `idx` trong một bảng cân bắt đầu từ cột `startCol`. */
 function gridRect(startCol: string, widths: number[], idx: number, row: number): Rect {

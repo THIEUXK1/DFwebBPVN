@@ -3656,3 +3656,56 @@ trung 2 giay khong do duoc vi tho bam NEXT muon hon 2 giay.
 quet that** — can thu tren may tram: quet 1 tem roi bam NEXT (phai KHONG con hop thoai loi), quet
 hai tem cung ma mau lien nhau roi bam NEXT (phai KHONG bi xoa trang so da can), va quet mot tem hong
 (phai VAN bao loi, co kem chuoi doc duoc).
+
+---
+
+### 138. /weighing-station-large: sua duoc MUC TIEU o cot WEIGHT truoc khi bam NEXT (2026-08-10)
+
+**Yeu cau:** *"o o cot WEIGHT co the sua gia tri o do truoc khi an next lan dau, co the dung ban phim
+ao ben phai de sua luon"*.
+
+**Da lam — Frontend** (`WeighingStationLarge.vue`):
+- O cot WEIGHT tu `<div>` thanh `<input>`; sua duoc khi `currentIndex === -1` (CHUA bam NEXT lan nao)
+  VA dong do co vat tu trong don VA chua COMPLETED. Bam NEXT xong o nhan lai lop `.ro`, tro ve chi
+  doc — doi muc tieu giua me thi nhung o da can xong bi cham diem theo mot thuoc khac.
+- **Ban phim ao gõ duoc vao cot WEIGHT.** `lastInputIdx` (chi nho SO DONG, vi ban goc chi go duoc o
+  RACK) doi thanh `oNhap = { idx, cot: 'rack' | 'weight' }`.
+- **Khong co phim dau chấm** (hang `NUMPAD` la ban sao form that: btn_0..btn_9 + DEL, khong tu them
+  nut moi), nen phim ao go theo loi CAN/MAY TINH TIEN: moi chu so day dan tu hang xu len (5 -> 0.05,
+  52 -> 0.52, 523 -> 5.23). Bam phim dau tien la GO LAI TU DAU chu khong noi vao so cu. DEL xoa mot
+  chu so cua chinh so dang thay (12.34 -> 1.23). Ban phim may tinh van go tu do duoc, ke ca dau chấm.
+- `nhapMucTieu` giu NGUYEN VAN chuoi dang go (khong co no thi vua go dau chấm la bi viet lai thanh
+  "12.00" ngay duoi ngon tay); roi o thi ve dang chuan 2 so thap phan.
+- Sua xong o nao thi o do **to vang** (`.sua`) + tooltip ghi so goc in tren tem. Muc tieu moi keo theo
+  dung sai ±1% tinh lai (`TOLERANCE_RATIO`, tach hang thay vi 0.01 rai rac).
+- Muc tieu sua tay duoc luu trong session (`mucTieuSua`, khoa theo `sequence_no`) va ap lai sau F5 —
+  me quet QR duoc DUNG LAI tu chuoi tem luc khoi phuc nen khong giu rieng la so vua sua am tham quay
+  ve so cua tem.
+- SAVE gui kem `planned_weight` CHI cho dong thuc su khac tem.
+
+**Da lam — Backend** (`ScannerController::weighFromQr` + `apMucTieuSuaTay()` moi):
+- Nhan `rows.*.planned_weight` (nullable numeric min:0), ap vao item **TRUOC** `recordMany` (vi
+  `process_status` DAT/KHONG DAT tinh tu `planned_weight`), tinh lai dung sai ±1%, bo qua dong da
+  COMPLETED va bo qua lech <= 0.000001.
+- **Vi sao BUOC phai co phan backend nay:** server dung lai me tu chinh chuoi tem/cong thuc nen muc
+  tieu duoi DB luon la so GOC. Phieu in ra thi dung du lieu TREN MAN. Khong ap so moi vao item thi
+  cung mot me co hai muc tieu — to phieu trong tay tho mot dang, DB va bao cao dung sai/tieu hao mot
+  neo, khong ai biet ben nao dung.
+- Ghi **Audit Log** `WEIGHING_TARGET_OVERRIDE` (before/after JSONB day du, kem workstation_code +
+  client_ip) cho moi lan luu co dong bi sua — day la doi dinh muc can ngay tai xuong.
+- **CHUA doi ly do + tai khoan QA/QC phe duyet** nhu luong override dung sai: man can to chay mot
+  minh ngoai xuong, chan lai cho phe duyet la chan ca day chuyen. **Can nghiep vu xac nhan** co siet
+  lai khong (them o ly do o man hinh roi gui kem).
+
+**Pham vi CHUA lam (co y):** dong TRONG khong sua duoc muc tieu — me can tay (`luuCanTay`) van luu
+`planned_weight = 0`, va tem it dong hon 9 thi cac dong con lai khong co item nao duoi server de gan
+muc tieu vao. Neu can go muc tieu cho can tay thi phai sua ca `luuCanTay` + cach `process_status` xu
+ly ma moi `CANTAY` — noi truoc de khong am tham mo rong.
+
+**Kiem chung:** `npx vue-tsc --noEmit` exit 0, `npx vite build` thanh cong, `php -l` sach (pint bao
+4 fixer nhung da doi chieu ban HEAD: y nguyen truoc khi sua, khong phai do thay doi nay). **KHONG
+chay `php artisan test`** o may nay (bo test se DROP SCHEMA app tren DB production).
+**CHUA thu bang tay tren trinh duyet** — can kiem: (1) quet me roi sua o WEIGHT bang ban phim ao,
+so hien dung kieu day tu hang xu; (2) bam NEXT roi thu sua lai -> phai khong sua duoc; (3) F5 giua
+luc do -> so sua tay con nguyen, o van vang; (4) SAVE -> phieu in va DB cung mot muc tieu, co dong
+audit `WEIGHING_TARGET_OVERRIDE`.

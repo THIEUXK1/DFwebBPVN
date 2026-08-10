@@ -64,8 +64,13 @@ class WeighingJobController extends Controller
             'limit' => 'nullable|integer|min:1|max:'.self::HISTORY_MAX_ROWS,
         ]);
 
-        $query = WeighingJob::with(['batch.machine', 'items'])
-            ->where('status', 'COMPLETED');
+        // `operationClient` (không phải `workstation`): bản model nhẹ, không có $appends — xem chú
+        // thích ở WeighingJob::operationClient(). Chỉ lấy đúng các cột cần để suy ra cân to/cân nhỏ.
+        $query = WeighingJob::with([
+            'batch.machine',
+            'items',
+            'operationClient:id,code,name,default_capability,workstation_type,type',
+        ])->where('status', 'COMPLETED');
 
         if ($from = $request->input('from')) {
             $query->where('completed_at', '>=', Carbon::parse($from)->startOfDay());
@@ -118,6 +123,14 @@ class WeighingJobController extends Controller
             $job->setAttribute('total_items', $items->count());
             $job->setAttribute('accepted_count', $items->where('process_status', 'ACCEPTED')->count());
             $job->setAttribute('rejected_count', $items->where('process_status', 'REJECTED')->count());
+
+            // Cân to hay cân nhỏ — suy ở server để web và báo cáo dùng chung một định nghĩa.
+            $ws = $job->operationClient;
+            $job->setAttribute('scale_kind', self::suyLoaiCan($ws));
+            $job->setAttribute('workstation_code', $ws?->code);
+            $job->setAttribute('workstation_name', $ws?->name);
+            // Trả 3 trường phẳng ở trên là đủ; đính cả bản ghi trạm vào JSON chỉ làm phình payload.
+            $job->unsetRelation('operationClient');
         });
 
         return response()->json([
@@ -130,6 +143,47 @@ class WeighingJobController extends Controller
                 'limit' => $limit,
             ],
         ]);
+    }
+
+    /**
+     * Vòng cân này cân ở CÂN TO hay CÂN NHỎ.
+     *
+     * Không có cột nào trên `weighing_jobs` ghi thẳng điều này (`workstation_type` là 'DYE_WEIGHING'
+     * cho cả hai loại), nên phải suy từ chính cái trạm đã cân ra nó:
+     *   1. `default_capability` — thứ Agent tự khai lúc đăng ký trạm (SMALL_SCALE / LARGE_SCALE,
+     *      xem AgentAuth::handle), đáng tin nhất vì cũng chính là thứ quyết định trạm được vào màn
+     *      /weighing-station-large hay /weighing-station-v2.
+     *   2. Tiền tố mã trạm — 2 bộ cài Agent cố tình sinh 2 tiền tố khác nhau (`WS-LARGE-` cho cân
+     *      to, `WS-SCALE-` cho cân nhỏ, xem agent/installer/appsettings.large.json). Dùng làm lối
+     *      thoát cho các trạm cũ tạo ra trước khi có capability, hoặc trạm khai tay thiếu trường.
+     *
+     * Trả null khi không đủ căn cứ (trạm đã bị xóa, hoặc trạm AUTO_REGISTERED chung chung) — màn
+     * hình hiện "—" chứ KHÔNG mặc định gán bừa vào cân nhỏ: đoán sai ở đây là làm hỏng đúng cái
+     * việc đối soát mà cột này sinh ra để phục vụ.
+     */
+    private static function suyLoaiCan(?OperationClient $ws): ?string
+    {
+        if (! $ws) {
+            return null;
+        }
+
+        $cap = strtoupper((string) ($ws->default_capability ?: $ws->workstation_type ?: $ws->type));
+        if (str_contains($cap, 'LARGE')) {
+            return 'LARGE';
+        }
+        if (str_contains($cap, 'SMALL')) {
+            return 'SMALL';
+        }
+
+        $code = strtoupper((string) $ws->code);
+        if (str_starts_with($code, 'WS-LARGE')) {
+            return 'LARGE';
+        }
+        if (str_starts_with($code, 'WS-SCALE') || str_contains($code, 'WEIGH-SCALE')) {
+            return 'SMALL';
+        }
+
+        return null;
     }
 
     /**

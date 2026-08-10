@@ -62,6 +62,19 @@ class WeighingJob extends Model
         return $this->belongsTo(Workstation::class, 'assigned_operation_client_id');
     }
 
+    /**
+     * Cùng một bản ghi trạm như workstation(), nhưng qua model KHÔNG có $appends.
+     *
+     * Bắt buộc phải có bản "nhẹ" này cho các chỗ nạp hàng loạt (Lịch sử cân nạp 200 vòng/lượt):
+     * Workstation append 4 thuộc tính ảo, mỗi cái là 1-2 truy vấn chạy lúc serialize ra JSON —
+     * eager-load 200 dòng qua workstation() là ~800 truy vấn phụ, trong khi ở đây chỉ cần vài cột
+     * thật để biết đó là cân to hay cân nhỏ.
+     */
+    public function operationClient()
+    {
+        return $this->belongsTo(OperationClient::class, 'assigned_operation_client_id');
+    }
+
     public function getAssignedWorkstationIdAttribute()
     {
         return $this->assigned_operation_client_id;

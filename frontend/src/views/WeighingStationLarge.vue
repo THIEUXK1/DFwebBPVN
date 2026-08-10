@@ -26,16 +26,30 @@
             :class="rowCls(i - 1)"
             :style="box(rackBox(i - 1))"
             :value="rackAt(i - 1)"
-            @focus="lastInputIdx = i - 1"
+            @focus="oNhap = { idx: i - 1, cot: 'rack' }"
             @input="onUpdateRack(i - 1, ($event.target as HTMLInputElement).value)"
             @click.stop
           />
           <div class="vv-text ro dye" :class="rowCls(i - 1)" :style="box(dyeBox(i - 1))">
             {{ jobItems[i - 1]?.material_code || '' }}
           </div>
-          <div class="vv-text ro num plan" :class="rowCls(i - 1)" :style="box(weightBox(i - 1))">
-            {{ plannedText(i - 1) }}
-          </div>
+          <!-- WEIGHT = mục tiêu cân. Sửa được nhưng CHỈ trước khi bấm NEXT lần đầu (yêu cầu người
+               dùng 10/08/2026): bấm NEXT là bắt đầu chốt bì và cân theo mục tiêu, đổi mục tiêu
+               giữa mẻ thì những ô đã cân xong bị đánh giá theo một thước khác. Sửa xong ô nào thì ô
+               đó đổi màu (`.sua`) — số trên phiếu in và số dưới DB sẽ khác tem, phải nhìn ra ngay. -->
+          <input
+            class="vv-text num plan"
+            :class="[rowCls(i - 1), { ro: !suaDuocMucTieu(i - 1), sua: daSuaMucTieu(i - 1) }]"
+            :style="box(weightBox(i - 1))"
+            :value="plannedText(i - 1)"
+            :readonly="!suaDuocMucTieu(i - 1)"
+            :title="tipMucTieu(i - 1)"
+            inputmode="decimal"
+            @focus="oNhap = { idx: i - 1, cot: 'weight' }; phienAo = null"
+            @input="onNhapMucTieu(i - 1, $event)"
+            @blur="ketThucNhapMucTieu"
+            @click.stop
+          />
           <!-- txt_PROCESS: vừa hiện số cân vừa là đèn dung sai — trong VBA màu nền ô này CHÍNH LÀ
                trạng thái nghiệp vụ (btnSave_Click đọc ngược BackColor ra ACCEPTED/REJECTED). -->
           <div
@@ -571,8 +585,40 @@ const capturedWeights = ref<Record<number, number>>({});
 const capturedTare = ref<Record<number, { tare: number | null; gross: number }>>({});
 /** Mã RACK gõ tay cho dòng KHÔNG có vật tư trong đơn. */
 const manualRacks = ref<Record<number, string>>({});
-/** `LastInputBox` của VBA — bàn phím số chỉ gõ vào ô RACK, đúng bản gốc. */
-const lastInputIdx = ref<number | null>(null);
+/**
+ * `LastInputBox` của VBA — ô vừa gõ, để bàn phím số bên phải biết gõ vào đâu.
+ *
+ * Bản gốc chỉ nhớ SỐ DÒNG vì bàn phím số chỉ gõ được vào ô RACK. Nay cột WEIGHT cũng sửa được nên
+ * phải nhớ cả CỘT, không thì bấm số sau khi vừa sửa mục tiêu lại nhảy vào ô rack cùng dòng.
+ */
+const oNhap = ref<{ idx: number; cot: 'rack' | 'weight' } | null>(null);
+
+/**
+ * Mục tiêu gốc in trên tem, chốt lại lúc nạp mẻ — để biết dòng nào đã bị sửa và sửa từ số nào.
+ * Giữ riêng thay vì so với `parseDyeQr` lần nữa: dòng có công thức duyệt thì mục tiêu tới từ server
+ * chứ không từ tem.
+ */
+const mucTieuGoc = ref<Record<number, number | null>>({});
+
+/**
+ * Ô mục tiêu đang gõ dở bằng bàn phím máy tính — giữ NGUYÊN VĂN chuỗi đang gõ.
+ *
+ * Cần trạng thái riêng vì `plannedText()` luôn định dạng 2 chữ số thập phân: không có nó thì vừa
+ * gõ dấu chấm là bị viết lại thành "12.00" ngay dưới ngón tay, không ai gõ nổi "12.5".
+ */
+const nhapMucTieu = ref<{ idx: number; text: string } | null>(null);
+
+/**
+ * Phiên gõ BÀN PHÍM ẢO cho ô mục tiêu: chuỗi chữ số thô, giá trị = chuỗi / 100.
+ *
+ * Bàn phím số của form gốc KHÔNG có phím dấu chấm (btn_0..btn_9 + DEL, xem hằng `NUMPAD` — toạ độ
+ * là bản sao form thật, không tự thêm nút mới), mà mục tiêu thuốc nhuộm luôn có phần thập phân.
+ * Nên phím ảo gõ theo lối CÂN/MÁY TÍNH TIỀN: mỗi số đẩy dần từ hàng xu lên (5 -> 0.05, 52 -> 0.52,
+ * 523 -> 5.23). Không cần dấu chấm, và số hiện ngay trong ô nên gõ quá/thiếu là thấy liền.
+ * Bấm phím đầu tiên là GÕ LẠI TỪ ĐẦU chứ không nối vào số cũ — sửa mục tiêu là thay số, không phải
+ * thêm chữ số vào số của tem.
+ */
+const phienAo = ref<{ idx: number; so: string } | null>(null);
 
 const jobItems = computed(() => activeJob.value?.items || []);
 
@@ -587,10 +633,103 @@ const currentTarget = computed<number | null>(() => {
 
 /* ===== Hiển thị lưới ===== */
 
+/**
+ * Dung sai ±1% mục tiêu — đúng `ScannerController::TOLERANCE_RATIO` và gốc VBA
+ * `Mod_UI_processcolor.CheckRange`. Lệch với server là màu đèn lúc cân khác kết quả chốt lúc lưu.
+ */
+const TOLERANCE_RATIO = 0.01;
+
 function plannedText(i: number): string {
+  if (nhapMucTieu.value?.idx === i) return nhapMucTieu.value.text;
   const v = jobItems.value[i]?.planned_weight;
   if (v === null || v === undefined || v === '') return '';
   return Number(v).toFixed(2);
+}
+
+/* ===== Sửa mục tiêu (cột WEIGHT) — chỉ TRƯỚC khi bấm NEXT lần đầu ===== */
+
+/** Sai lệch coi như "vẫn là số của tem" — cùng ngưỡng đối soát ±0.000001 của dự án. */
+const NGUONG_LECH_MUC_TIEU = 0.000001;
+
+/** Nhiều nhất 7 chữ số thô cho mục tiêu = 99999.99 — quá thừa cho mọi mẻ, và chặn tràn ô. */
+const MAX_SO_MUC_TIEU = 7;
+
+/**
+ * Dòng nào sửa được mục tiêu: phải CÓ vật tư trong đơn và CHƯA bấm NEXT lần nào.
+ *
+ * Dòng trống (mẻ cân tay, hoặc tem ít dòng hơn 9) để nguyên không sửa được: dưới server không có
+ * item nào để mà gắn mục tiêu vào (`weighFromQr` cố ý không tự chế thêm vật tư ngoài đơn), gõ được
+ * mà không lưu được thì tệ hơn là không cho gõ.
+ */
+function suaDuocMucTieu(i: number): boolean {
+  const item = jobItems.value[i];
+  return currentIndex.value === -1 && !saving.value && !!item && item.status !== 'COMPLETED';
+}
+
+function daSuaMucTieu(i: number): boolean {
+  if (!(i in mucTieuGoc.value)) return false;
+  const goc = mucTieuGoc.value[i];
+  const nay = jobItems.value[i]?.planned_weight ?? null;
+  if (goc === null || nay === null) return goc !== nay;
+  return Math.abs(Number(nay) - Number(goc)) > NGUONG_LECH_MUC_TIEU;
+}
+
+function tipMucTieu(i: number): string {
+  if (daSuaMucTieu(i)) {
+    const goc = mucTieuGoc.value[i];
+    return `Mục tiêu đã sửa tay. Số in trên tem: ${goc === null ? '(trống)' : Number(goc).toFixed(2)}`;
+  }
+  if (suaDuocMucTieu(i)) return 'Sửa được mục tiêu tới khi bấm NEXT lần đầu (bàn phím số bên phải gõ được vào đây).';
+  if (currentIndex.value !== -1) return 'Đã bắt đầu cân — không sửa mục tiêu giữa mẻ nữa. Bấm CLEAR rồi quét lại nếu cần đổi.';
+  return '';
+}
+
+/** Ghi mục tiêu mới vào dòng `i`. `null` = để trống ô đó (đúng VBA: dòng không có WEIGHT thì không lưu). */
+function datMucTieu(i: number, val: number | null) {
+  const item = jobItems.value[i];
+  if (!item) return;
+  item.planned_weight = val;
+  // Dung sai phải đi theo mục tiêu MỚI, nếu không đèn ĐẠT/KHÔNG ĐẠT lúc cân vẫn đo theo dải ±1%
+  // của số cũ — server cũng tính lại đúng như vậy (ScannerController::weighFromQr).
+  const t = Number(val) || 0;
+  item.tolerance_minus = t * TOLERANCE_RATIO;
+  item.tolerance_plus = t * TOLERANCE_RATIO;
+  saveSession();
+}
+
+function onNhapMucTieu(i: number, e: Event) {
+  if (!suaDuocMucTieu(i)) return;
+  const el = e.target as HTMLInputElement;
+  // Cân/tem có thể xuất số theo locale khác -> nhận cả dấu phẩy, đúng như qrDyeParser.
+  // Cắt độ dài: ô này có thể ăn nguyên một cú quét nếu thợ sửa mục tiêu rồi quên bấm ra ngoài
+  // (đúng lớp rủi ro của ô RACK). Cắt xuống 9 ký tự thì thứ còn lại là một con số vô lý, được tô
+  // vàng như mọi mục tiêu sửa tay — thấy ngay, thay vì một chuỗi dài 30 chữ số trông như lỗi máy.
+  const sach = el.value.replace(/,/g, '.').replace(/[^0-9.]/g, '').slice(0, MAX_SO_MUC_TIEU + 2);
+  // Ràng buộc `:value` chỉ ghi lại DOM khi giá trị vnode đổi; ký tự bị lọc bỏ ở đây không làm nó
+  // đổi, nên phải tự đặt lại — không thì chữ lạ vẫn nằm trong ô.
+  if (el.value !== sach) el.value = sach;
+
+  phienAo.value = null;
+  nhapMucTieu.value = { idx: i, text: sach };
+
+  const n = Number(sach);
+  datMucTieu(i, sach === '' || !Number.isFinite(n) ? null : n);
+}
+
+/** Rời ô: bỏ bản nháp nguyên văn để ô hiển thị lại dạng chuẩn 2 số thập phân. */
+function ketThucNhapMucTieu() {
+  nhapMucTieu.value = null;
+}
+
+/** Các dòng có mục tiêu KHÁC tem, dạng `{ sequence_no: mục tiêu mới }` — để lưu phiên và gửi server. */
+function mucTieuDaSua(): Record<number, number | null> {
+  const ra: Record<number, number | null> = {};
+  jobItems.value.forEach((it: any, i: number) => {
+    if (!daSuaMucTieu(i)) return;
+    const v = it?.planned_weight;
+    ra[it?.sequence_no ?? i + 1] = v === null || v === undefined || v === '' ? null : Number(v);
+  });
+  return ra;
 }
 
 /** Ô đang cân lấy số sống; ô khác lấy giá trị đã chốt (hoặc số đã lưu khi khôi phục job). */
@@ -781,16 +920,42 @@ function resetRackBatches() {
  * ========================================================================== */
 
 function numClick(d: string) {
-  const i = lastInputIdx.value;
-  if (i === null) return;
-  onUpdateRack(i, rackAt(i) + d);
+  const o = oNhap.value;
+  if (!o) return;
+
+  if (o.cot === 'weight') {
+    if (!suaDuocMucTieu(o.idx)) return;
+    const cu = phienAo.value?.idx === o.idx ? phienAo.value.so : '';
+    const so = (cu + d).replace(/^0+(?=\d)/, '').slice(0, MAX_SO_MUC_TIEU);
+    phienAo.value = { idx: o.idx, so };
+    nhapMucTieu.value = null; // rời chế độ gõ nguyên văn: từ đây ô hiện số đã quy đổi
+    datMucTieu(o.idx, Number(so) / 100);
+    return;
+  }
+
+  onUpdateRack(o.idx, rackAt(o.idx) + d);
 }
 
 function numDel() {
-  const i = lastInputIdx.value;
-  if (i === null) return;
-  const cur = rackAt(i);
-  if (cur.length > 0) onUpdateRack(i, cur.slice(0, -1));
+  const o = oNhap.value;
+  if (!o) return;
+
+  if (o.cot === 'weight') {
+    if (!suaDuocMucTieu(o.idx)) return;
+    // Chưa gõ phím ảo nào thì lấy chính số đang hiện làm điểm bắt đầu (12.34 -> "1234"), nhờ vậy
+    // DEL luôn có nghĩa "xoá một chữ số của số đang thấy", không phải "xoá hết rồi làm lại".
+    const dangCo = phienAo.value?.idx === o.idx
+      ? phienAo.value.so
+      : String(Math.round((Number(jobItems.value[o.idx]?.planned_weight) || 0) * 100));
+    const so = dangCo.replace(/^0+(?=\d)/, '').slice(0, -1);
+    phienAo.value = { idx: o.idx, so };
+    nhapMucTieu.value = null;
+    datMucTieu(o.idx, so === '' ? null : Number(so) / 100);
+    return;
+  }
+
+  const cur = rackAt(o.idx);
+  if (cur.length > 0) onUpdateRack(o.idx, cur.slice(0, -1));
 }
 
 /* ============================================================================
@@ -864,6 +1029,9 @@ function saveSession() {
       rackBatch1: rackBatch1.value,
       rackBatch2: rackBatch2.value,
       rackLoaded: rackLoaded.value,
+      // Mục tiêu sửa tay phải sống qua F5: mẻ quét QR được DỰNG LẠI từ chuỗi tem lúc khôi phục
+      // (restoreSession), nên không giữ riêng thì số vừa sửa âm thầm quay về số của tem.
+      mucTieuSua: mucTieuDaSua(),
     }));
   } catch {
     // Hết dung lượng / chế độ riêng tư: mất khả năng khôi phục thôi, không làm hỏng luồng cân.
@@ -872,6 +1040,20 @@ function saveSession() {
 
 function clearSession() {
   localStorage.removeItem(SESSION_KEY);
+}
+
+/**
+ * Áp lại mục tiêu sửa tay sau F5. Ánh xạ theo `sequence_no` chứ không theo chỉ số dòng: mẻ khôi
+ * phục từ server có thể xếp dòng khác thứ tự đã lưu.
+ */
+function apLaiMucTieuSua(daSua: any) {
+  if (!daSua || typeof daSua !== 'object') return;
+  jobItems.value.forEach((it: any, i: number) => {
+    const seq = it?.sequence_no ?? i + 1;
+    if (!(seq in daSua)) return;
+    const v = daSua[seq];
+    datMucTieu(i, v === null || v === undefined ? null : Number(v));
+  });
 }
 
 function khoiPhucGiaLap(saved: any) {
@@ -900,6 +1082,7 @@ async function restoreSession() {
     capturedWeights.value = saved.capturedWeights || {};
     capturedTare.value = saved.capturedTare || {};
     manualRacks.value = saved.manualRacks || {};
+    apLaiMucTieuSua(saved.mucTieuSua);
     khoiPhucGiaLap(saved);
     if (Array.isArray(saved.rackBatch1)) rackBatch1.value = saved.rackBatch1;
     if (Array.isArray(saved.rackBatch2)) rackBatch2.value = saved.rackBatch2;
@@ -941,6 +1124,7 @@ async function restoreSession() {
     }
     activeJob.value = job;
     activeBatch.value = res.data.data.batch;
+    chotMucTieuGoc(); // trước khi áp lại số sửa tay, không thì chính số sửa lại bị coi là "số của tem"
     napChung();
   } catch {
     clearSession();
@@ -1174,6 +1358,7 @@ const handleBarcodeScan = async (token: string) => {
       }
       activeJob.value = data.job;
       activeBatch.value = data.batch;
+      chotMucTieuGoc();
       currentIndex.value = -1;
       capturedWeights.value = {};
       capturedTare.value = {};
@@ -1209,8 +1394,8 @@ function buildLocalJob(rawQr: string, parsed: ParsedDyeQr) {
         material_code: line.dye,
         material: { code: line.dye, name: line.dye },
         planned_weight: target,
-        tolerance_minus: target * 0.01,
-        tolerance_plus: target * 0.01,
+        tolerance_minus: target * TOLERANCE_RATIO,
+        tolerance_plus: target * TOLERANCE_RATIO,
         status: 'PENDING',
       };
     }),
@@ -1221,6 +1406,17 @@ function buildLocalJob(rawQr: string, parsed: ParsedDyeQr) {
     level_code: parsed.level,
     machine: { code: parsed.machine },
   };
+  chotMucTieuGoc();
+}
+
+/** Chốt lại mục tiêu ĐANG có của từng dòng làm "số của tem" để về sau biết dòng nào bị sửa tay. */
+function chotMucTieuGoc() {
+  const goc: Record<number, number | null> = {};
+  jobItems.value.forEach((it: any, i: number) => {
+    const v = it?.planned_weight;
+    goc[i] = v === null || v === undefined || v === '' ? null : Number(v);
+  });
+  mucTieuGoc.value = goc;
 }
 
 function applyLocalJob(rawQr: string, parsed: ParsedDyeQr) {
@@ -1231,6 +1427,8 @@ function applyLocalJob(rawQr: string, parsed: ParsedDyeQr) {
   capturedWeights.value = {};
   capturedTare.value = {};
   manualRacks.value = {};
+  nhapMucTieu.value = null;
+  phienAo.value = null;
   resetTareForNewSlot();
 
   // Gom lô rack NGAY khi nạp đơn: mã rack đã có sẵn trong QR nên bấm OUT được luôn.
@@ -1322,7 +1520,10 @@ async function onClear(skipConfirm = false, alreadySaved = false) {
   capturedTare.value = {};
   manualRacks.value = {};
   currentIndex.value = -1;
-  lastInputIdx.value = null;
+  oNhap.value = null;
+  mucTieuGoc.value = {};
+  nhapMucTieu.value = null;
+  phienAo.value = null;
   errorMsg.value = '';
   activeJob.value = null;
   activeBatch.value = null;
@@ -1389,6 +1590,11 @@ async function onSave() {
             rack_code: item.rack_code || null,
             tare_weight: meta?.tare ?? null,
             gross_weight: meta?.gross ?? null,
+            // Mục tiêu sửa tay PHẢI đi lên server: server dựng lại mẻ từ chính chuỗi tem, nên
+            // không gửi thì nó chấm ĐẠT/KHÔNG ĐẠT theo số của tem trong khi phiếu in trong tay thợ
+            // ghi số đã sửa — hai bản ghi cùng một mẻ mà lệch nhau, không ai biết bên nào đúng.
+            // Chỉ gửi dòng THỰC SỰ khác tem; server ghi Audit Log cho từng dòng như vậy.
+            ...(daSuaMucTieu(idx) ? { planned_weight: item.planned_weight } : {}),
           };
         })
         .filter(Boolean);
@@ -1889,6 +2095,24 @@ input.vv-text:focus {
 .vv-text.rack { text-align: center; padding: 0 2px; }
 .vv-text.dye { letter-spacing: 0.01em; }
 .vv-text.plan { color: #56617a; font-weight: 600; }
+
+/* Mục tiêu sửa được (chưa bấm NEXT): tô nhẹ để thợ thấy đây là ô GÕ ĐƯỢC, không phải số chỉ để đọc
+   như DYE CODE ngay bên cạnh. Bấm NEXT xong ô nhận lại lớp `.ro` và trở về hình dáng cũ. */
+.vv-text.plan:not(.ro) {
+  color: #0d1520;
+  cursor: text;
+  border-color: #b9c4d6;
+  border-style: dashed;
+}
+
+/* Mục tiêu KHÁC số in trên tem — số này sẽ theo lên phiếu in và xuống DB, phải nhìn ra ngay từ xa. */
+.vv-text.plan.sua {
+  background: #fff3d6;
+  border-color: #d99b00;
+  border-style: solid;
+  color: #7a4f00;
+  font-weight: 800;
+}
 
 .vv-text.proc {
   cursor: pointer;

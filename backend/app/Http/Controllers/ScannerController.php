@@ -266,6 +266,12 @@ class ScannerController extends Controller
             'rows.*.gross_weight' => 'sometimes|nullable|numeric',
             // Chỉ cân tay mới gửi lên: dòng của mẻ QR lấy rack từ chính tem, không nhận từ client.
             'rows.*.rack_code' => 'sometimes|nullable|string|max:50',
+            // MỤC TIÊU SỬA TAY tại màn cân to (cột WEIGHT, chỉ sửa được trước khi bấm NEXT lần
+            // đầu — xem WeighingStationLarge.vue). Client CHỈ gửi khoá này cho dòng thực sự khác số
+            // in trên tem. Phải nhận và ghi xuống, không được bỏ qua: mặc định server dựng lại mẻ
+            // từ chính chuỗi tem, nên bỏ qua là chấm ĐẠT/KHÔNG ĐẠT theo một mục tiêu khác với mục
+            // tiêu đã in trên phiếu trong tay thợ.
+            'rows.*.planned_weight' => 'sometimes|nullable|numeric|min:0',
         ]);
 
         // Cùng hàng rào với weighItem/weighBatch: client có thể gọi thẳng API, không phụ thuộc UI.
@@ -366,6 +372,11 @@ class ScannerController extends Controller
             // Ghép số cân vào item theo sequence_no. Dòng client gửi mà job không có (QR nhiều
             // dòng hơn công thức) thì bỏ qua — không tự chế thêm vật tư ngoài công thức.
             $bySeq = collect($request->input('rows'))->keyBy('sequence_no');
+
+            // Mục tiêu sửa tay: áp TRƯỚC recordMany, vì process_status (ĐẠT/KHÔNG ĐẠT) tính từ
+            // planned_weight — áp sau là chấm điểm theo mục tiêu cũ rồi mới đổi mục tiêu.
+            $this->apMucTieuSuaTay($items, $bySeq, $request);
+
             $rows = collect();
             foreach ($items as $item) {
                 $row = $bySeq->get($item->sequence_no);
@@ -408,6 +419,99 @@ class ScannerController extends Controller
                 ],
             ]);
         });
+    }
+
+    /**
+     * Áp mục tiêu cân do thợ SỬA TAY trên màn cân to (cột WEIGHT) vào các item của vòng cân.
+     *
+     * Vì sao phải có đường này: mặc định server dựng lại mẻ từ chính chuỗi tem (`rack_lines`) hoặc
+     * từ công thức duyệt, nên mục tiêu dưới DB luôn là số GỐC. Thợ sửa mục tiêu trên màn thì phiếu
+     * in ra (dựng từ dữ liệu trên màn) mang số MỚI. Không áp số mới vào item thì cùng một mẻ có hai
+     * mục tiêu khác nhau — tờ phiếu một đằng, DB và mọi báo cáo dung sai/tiêu hao một nẻo.
+     *
+     * Chỉ đụng vào dòng CHƯA cân xong: dòng đã COMPLETED ở lần lưu trước đã được chấm ĐẠT/KHÔNG ĐẠT
+     * theo mục tiêu lúc đó, đổi mục tiêu bây giờ là viết lại lịch sử.
+     *
+     * Mỗi dòng bị sửa ghi MỘT Audit Log (append-only, before/after JSONB đầy đủ) — đây là hành động
+     * đổi định mức cân ngay tại xưởng, thuộc nhóm phải lưu vết theo CLAUDE.md mục 5.
+     * CHƯA đòi lý do + tài khoản QA/QC phê duyệt như luồng override dung sai: màn cân to chạy một
+     * mình ngoài xưởng, chặn lại chờ phê duyệt là chặn cả dây chuyền. Nếu nghiệp vụ muốn siết, thêm
+     * ô lý do ở màn hình rồi gửi kèm vào đây.
+     *
+     * @param  \Illuminate\Support\Collection<int, WeighingJobItem>  $items
+     * @param  \Illuminate\Support\Collection  $bySeq  rows của client, keyBy('sequence_no')
+     */
+    private function apMucTieuSuaTay($items, $bySeq, Request $request): void
+    {
+        $daSua = [];
+
+        foreach ($items as $item) {
+            $row = $bySeq->get($item->sequence_no);
+            if ($row === null || ! array_key_exists('planned_weight', $row)) {
+                continue;
+            }
+            if ($item->status === 'COMPLETED') {
+                continue;
+            }
+
+            $moi = $row['planned_weight'] === null ? null : (float) $row['planned_weight'];
+            $cu = $item->planned_weight === null ? null : (float) $item->planned_weight;
+
+            // Cùng ngưỡng đối soát ±0.000001 của dự án (CLAUDE.md mục 4) — chênh nhau ở chữ số thứ
+            // bảy chỉ là làm tròn float dọc đường, không phải thợ sửa.
+            if ($moi !== null && $cu !== null && abs($moi - $cu) <= 0.000001) {
+                continue;
+            }
+            if ($moi === null && $cu === null) {
+                continue;
+            }
+
+            // Cột planned_weight NOT NULL: "để trống ô WEIGHT" xuống DB là 0, và dòng đó cũng không
+            // có số cân nào gửi lên nên bị chấm KHÔNG ĐẠT — đúng như VBA btnSave_Click xử lý ô
+            // PROCESS trống.
+            $item->planned_weight = $moi ?? 0;
+            $item->tolerance_minus = $item->planned_weight * self::TOLERANCE_RATIO;
+            $item->tolerance_plus = $item->planned_weight * self::TOLERANCE_RATIO;
+            $item->save();
+
+            $daSua[] = [
+                'item_id' => $item->id,
+                'sequence_no' => $item->sequence_no,
+                'material_code' => $item->material_code,
+                'planned_weight_cu' => $cu,
+                'planned_weight_moi' => (float) $item->planned_weight,
+            ];
+        }
+
+        if (! $daSua) {
+            return;
+        }
+
+        AuditLog::create([
+            'user_id' => auth()->id(),
+            'action' => 'WEIGHING_TARGET_OVERRIDE',
+            'entity_type' => 'WeighingJob',
+            'entity_id' => $items->first()->weighing_job_id,
+            'before_data' => [
+                'items' => array_map(fn ($d) => [
+                    'item_id' => $d['item_id'],
+                    'sequence_no' => $d['sequence_no'],
+                    'material_code' => $d['material_code'],
+                    'planned_weight' => $d['planned_weight_cu'],
+                ], $daSua),
+            ],
+            'after_data' => [
+                'source' => 'weighing-station-large',
+                'workstation_code' => $request->input('workstation_code'),
+                'items' => array_map(fn ($d) => [
+                    'item_id' => $d['item_id'],
+                    'sequence_no' => $d['sequence_no'],
+                    'material_code' => $d['material_code'],
+                    'planned_weight' => $d['planned_weight_moi'],
+                ], $daSua),
+            ],
+            'client_ip' => $request->ip(),
+        ]);
     }
 
     /**

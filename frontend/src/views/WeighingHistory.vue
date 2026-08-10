@@ -85,6 +85,15 @@
         </select>
       </div>
       <div class="wh-field">
+        <label>Cân</label>
+        <select v-model="col.scale">
+          <option value="">— Cả 2 cân —</option>
+          <option value="LARGE">Cân to</option>
+          <option value="SMALL">Cân nhỏ</option>
+          <option value="NONE">Không rõ</option>
+        </select>
+      </div>
+      <div class="wh-field">
         <label>Kết quả</label>
         <select v-model="col.result">
           <option value="">— Tất cả —</option>
@@ -143,6 +152,7 @@
       <thead>
         <tr>
           <th class="c-time">Thời điểm cân</th>
+          <th class="c-scale">Cân</th>
           <th>Màu</th>
           <th>Mã hàng</th>
           <th>Máy</th>
@@ -166,6 +176,15 @@
               <span v-if="band" class="grp-seq">{{ seq }}/{{ size }}</span>
               {{ formatTime(job.completed_at) }}
             </td>
+            <!-- Mã trạm để ở `title`: cột phải đọc được từ xa nên chỉ để đúng hai chữ TO/NHỎ,
+                 còn "cân ở máy nào" là thứ chỉ cần khi soi kỹ một dòng. -->
+            <td class="c-scale">
+              <span
+                class="scale-tag"
+                :class="scaleClass(job)"
+                :title="job.workstation_code ? `Trạm ${job.workstation_code}` : 'Không xác định được trạm đã cân'"
+              >{{ scaleLabel(job) }}</span>
+            </td>
             <td class="strong">{{ job.batch?.color || '—' }}</td>
             <td>{{ job.batch?.product_code || '—' }}</td>
             <td>{{ job.batch?.machine?.code || '—' }}</td>
@@ -188,7 +207,7 @@
           </tr>
 
           <tr v-if="expanded === job.id" :key="job.id + '-d'" class="wh-detail-row" :class="band">
-            <td colspan="9">
+            <td colspan="10">
               <table class="wh-detail">
                 <thead>
                   <tr>
@@ -298,7 +317,7 @@ const freqFilter = ref<number | null>(null);
  * `color`/`product` so khớp CHỨA (gõ một phần là ra), `machine`/`lv` so khớp ĐÚNG BẰNG vì lấy
  * thẳng từ danh sách giá trị có thật nên không có chuyện gõ nhầm nửa chừng.
  */
-const col = reactive({ color: '', product: '', machine: '', lv: '', result: '' });
+const col = reactive({ color: '', product: '', machine: '', lv: '', result: '', scale: '' });
 
 const page = ref(1);
 /** 0 = không chia trang (xem tất cả). */
@@ -318,6 +337,10 @@ function ganChuoiTim(job: any) {
     job.batch?.legacy_batch_id,
     job.batch?.machine?.code,
     job.batch?.level_code,
+    // Gõ thẳng "cân to" / "cân nhỏ" vào ô tìm nhanh cũng ra — không bắt người dùng nhớ rằng
+    // muốn lọc theo loại cân thì phải xuống ô chọn riêng ở hàng dưới.
+    job.workstation_code,
+    job.scale_kind === 'LARGE' ? 'cân to canto' : job.scale_kind === 'SMALL' ? 'cân nhỏ cannho' : '',
   ].filter(Boolean).join(' ').toLowerCase();
   // Khóa trùng tính sẵn luôn tại đây, cùng lý do với `__hay` ở trên: để trong computed thì mỗi
   // ký tự gõ vào ô tìm là tính lại cho toàn bộ cửa sổ dữ liệu.
@@ -407,8 +430,24 @@ const hasRowFilter = computed(
   () =>
     !!search.value.trim() ||
     freqFilter.value !== null ||
-    !!col.color || !!col.product || !!col.machine || !!col.lv || !!col.result
+    !!col.color || !!col.product || !!col.machine || !!col.lv || !!col.result || !!col.scale
 );
+
+/**
+ * Nhãn hai chữ cho cột Cân. `scale_kind` do server suy ra từ trạm đã cân (xem
+ * WeighingJobController::suyLoaiCan) — null nghĩa là không đủ căn cứ, hiện "—" chứ không đoán bừa.
+ */
+function scaleLabel(job: any): string {
+  if (job.scale_kind === 'LARGE') return 'TO';
+  if (job.scale_kind === 'SMALL') return 'NHỎ';
+  return '—';
+}
+
+function scaleClass(job: any): string {
+  if (job.scale_kind === 'LARGE') return 'sc-large';
+  if (job.scale_kind === 'SMALL') return 'sc-small';
+  return 'sc-unknown';
+}
 
 const filtered = computed(() => {
   let rows = allRounds.value;
@@ -425,6 +464,11 @@ const filtered = computed(() => {
   if (product) {
     rows = rows.filter((job) => String(job.batch?.product_code ?? '').toLowerCase().includes(product));
   }
+
+  // 'NONE' = các vòng không suy ra được trạm nào (trạm đã xóa / trạm đăng ký thiếu capability) —
+  // để chọn được vì đó chính là nhóm cần đi tra lại, không được lẫn vào bên nào.
+  if (col.scale === 'NONE') rows = rows.filter((job) => !job.scale_kind);
+  else if (col.scale) rows = rows.filter((job) => job.scale_kind === col.scale);
 
   if (col.machine) rows = rows.filter((job) => (job.batch?.machine?.code ?? '') === col.machine);
   if (col.lv) rows = rows.filter((job) => (job.batch?.level_code ?? '') === col.lv);
@@ -541,7 +585,7 @@ watch(filtered, () => {
 
 // Đổi bộ lọc cột hay số dòng mỗi trang thì về trang 1: giữ nguyên trang cũ hầu như luôn rơi ra
 // ngoài kết quả mới.
-watch([() => col.color, () => col.product, () => col.machine, () => col.lv, () => col.result, pageSize], () => {
+watch([() => col.color, () => col.product, () => col.machine, () => col.lv, () => col.result, () => col.scale, pageSize], () => {
   page.value = 1;
 });
 
@@ -625,6 +669,7 @@ function clearColFilters() {
   col.machine = '';
   col.lv = '';
   col.result = '';
+  col.scale = '';
 }
 
 function resetFilters() {
@@ -968,6 +1013,40 @@ onMounted(() => load());
   white-space: nowrap;
 }
 
+/* Cột Cân: cố định hẹp, nhãn chỉ 2 chữ nên không cần chỗ co giãn. */
+.c-scale {
+  width: 62px;
+  white-space: nowrap;
+}
+
+.scale-tag {
+  display: inline-block;
+  min-width: 42px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-align: center;
+}
+
+/* Hai loại cân phải khác nhau cả về MÀU lẫn CHỮ — nếu chỉ khác chữ thì lướt mắt qua bảng dài
+   không tách được cụm nào của cân nào. */
+.scale-tag.sc-large {
+  background: #e2e0ff;
+  color: #3b2fb8;
+}
+
+.scale-tag.sc-small {
+  background: #d9eefb;
+  color: #0b5f8a;
+}
+
+.scale-tag.sc-unknown {
+  background: rgba(0, 0, 0, 0.08);
+  opacity: 0.7;
+}
+
 .c-act {
   width: 72px;
   text-align: right;
@@ -1110,6 +1189,17 @@ onMounted(() => load());
   }
   .grp-seq {
     background: rgba(255, 255, 255, 0.16);
+  }
+  .scale-tag.sc-large {
+    background: rgba(120, 108, 255, 0.28);
+    color: #cfc9ff;
+  }
+  .scale-tag.sc-small {
+    background: rgba(40, 140, 200, 0.28);
+    color: #bfe4f7;
+  }
+  .scale-tag.sc-unknown {
+    background: rgba(255, 255, 255, 0.12);
   }
   .tag.ok {
     background: rgba(20, 128, 60, 0.25);
