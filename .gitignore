@@ -6,3 +6,7 @@ obj/
 database.zip
 agent/publish/
 agent/publish_release/
+
+# Credential MES cho dong bo batch-completions — chi ton tai tren server
+# (C:\web\tools\mes-batch-creds.bat). Chan luon truong hop lo dat vao repo.
+tools/mes-batch-creds.bat

@@ -19,8 +19,11 @@ use Throwable;
  * Chỉ giữ các mẻ chạy trên MÁY VD (machineNo bắt đầu 'VD') — đúng phạm vi Gantt đang vẽ;
  * lọc theo tiền tố nên KHÔNG phụ thuộc BPDB (MES chết/BPDB chết độc lập nhau).
  *
- * Chạy định kỳ (đăng ký cùng chỗ với mes:sync-color-swatches). Cửa sổ đồng bộ mặc định
- * lùi 3 ngày theo endTime để bắt kịp mẻ vừa kết thúc mà không phải quét lại toàn bộ.
+ * Chạy định kỳ trên CS-SERVER qua Scheduled Task DFWeb-MesSync (mỗi 15 phút) ->
+ * tools/mes-sync-batch.bat -> lệnh này; đăng ký bằng tools/register-mes-sync-task.ps1.
+ * Credential MES nạp từ C:\web\tools\mes-batch-creds.bat (ngoài repo, ngoài .env).
+ * Cửa sổ đồng bộ mặc định lùi 3 ngày theo endTime để bắt kịp mẻ vừa kết thúc mà không
+ * phải quét lại toàn bộ.
  */
 class SyncMesBatchCompletionsCommand extends Command
 {
