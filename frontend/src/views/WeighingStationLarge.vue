@@ -63,7 +63,7 @@
         <!-- Cột nút bên phải -->
         <button class="vv-btn key" :style="box(C.btn_del)" @click="numDel">DEL</button>
         <button class="vv-btn ghost" :style="box(C.btnPrint)" @click="printSlip()">PRINT</button>
-        <button class="vv-btn ghost" :style="box(C.btnCheck)" @click="showChecker = true">CHECK</button>
+        <button class="vv-btn ghost" :style="box(C.btnCheck)" @click="moLichSuCan">CHECK</button>
 
         <button
           v-for="k in NUMPAD"
@@ -249,8 +249,6 @@
       </div>
     </div>
 
-    <WeighingCheckerModal :show="showChecker" @close="showChecker = false" />
-
     <!-- z-index 40: dưới lớp phủ bảng hàng đợi (.queue-overlay = 60) -->
     <!-- Hộp thoại thay alert/confirm — xem composables/useHopThoai.ts. Không dùng hộp thoại gốc
          vì Chrome đá màn hình khỏi F11 mỗi lần nó bật lên. -->
@@ -289,7 +287,6 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
-import WeighingCheckerModal from '../components/weighing/WeighingCheckerModal.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
 import HopThoaiVba from '../components/HopThoaiVba.vue';
 import { useHopThoai } from '../composables/useHopThoai';
@@ -571,7 +568,6 @@ const {
 
 const activeJob = ref<any | null>(null);
 const activeBatch = ref<any | null>(null);
-const showChecker = ref(false);
 const showQueue = ref(false);
 const queueItems = ref<ReturnType<typeof danhSachChoGui>>([]);
 const saving = ref(false);
@@ -1266,7 +1262,7 @@ function docOQuet() {
  */
 function batPhimLacRaNgoai(e: KeyboardEvent) {
   if (e.ctrlKey || e.altKey || e.metaKey || e.key.length !== 1) return;
-  if (scanning.value || showQueue.value || showChecker.value || thoai.value.hien) return;
+  if (scanning.value || showQueue.value || thoai.value.hien) return;
 
   const dangO = document.activeElement as HTMLElement | null;
   if (dangO && (dangO.tagName === 'INPUT' || dangO.tagName === 'TEXTAREA' || dangO.isContentEditable)) return;
@@ -1835,6 +1831,26 @@ const printSlip = async () => {
     await baoTin(err.response?.data?.message || 'Không thể in phiếu cân.');
   }
 };
+
+/**
+ * Nút CHECK — mở LỊCH SỬ CÂN (`/weighing-history`) sang một TAB MỚI, giống hệt nút CHECK của
+ * `/weighing-station-v2`.
+ *
+ * Tab mới chứ không phải điều hướng: màn này đang giữ nguyên cả mẻ dở lẫn số đã cân chưa lưu
+ * (`capturedWeights` chỉ nằm trong RAM), rời trang là mất sạch. Mở tab riêng thì thợ tra cứu xong
+ * đóng tab là quay lại đúng chỗ đang đứng, F11 của màn cân cũng không bị phá.
+ *
+ * Tài khoản trạm bị khoá công đoạn nên `/weighing-history` phải nằm trong `MAN_PHU_TRO` của
+ * `router/index.ts` cho `/weighing-station-large` — thiếu là tab mới bị đá ngược về màn cân ngay
+ * lúc mở.
+ *
+ * Trước 10/08/2026 nút này mở hộp "Tra cứu bán thành phẩm" (`WeighingCheckerModal`, tra theo
+ * COLOR+CODE, KHÔNG có nút in lại). Component đó vẫn còn nguyên trong repo, chỉ không còn chỗ gọi
+ * ở màn này.
+ */
+function moLichSuCan() {
+  window.open('/weighing-history', '_blank');
+}
 
 /* ===== HÀNG ĐỢI GỬI MẺ ===== */
 
