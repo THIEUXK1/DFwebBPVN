@@ -1008,10 +1008,21 @@ function boiDenOQuet(e: Event) {
   (e.target as HTMLInputElement).select();
 }
 
-/** Trả tiêu điểm về ô quét và bôi đen sẵn — dùng sau mỗi lần quét/xoá/lưu. */
+/**
+ * Trả tiêu điểm về ô quét và bôi đen sẵn — dùng sau mỗi lần quét/xoá/lưu.
+ *
+ * Kèm việc ÉP nội dung ô về đúng thứ nó phải hiển thị (mã màu của mẻ đang mở, y như ràng buộc
+ * `:value` trên thẻ input) thay vì trông chờ Vue tự làm. Vue chỉ ghi lại `el.value` khi mã màu
+ * MỚI khác mã màu CŨ; quét hai con tem cùng mã màu liền nhau thì nó bỏ qua, và ô vẫn còn nguyên
+ * chuỗi QR dài của cú quét vừa rồi. Chuỗi đó nằm đó là một cú "quét lại chính nó" chờ sẵn: hễ ô
+ * mất tiêu điểm sau 2 giây (chốt chống trùng hết hiệu lực) là `change` nạp lại mẻ và xoá trắng
+ * những số đã cân. Ép ở đây để nội dung ô luôn là thứ ta tự đặt vào, nhờ vậy `docOQuet` phân
+ * biệt được đâu là cú quét thật.
+ */
 function veOQuet() {
   const o = scanInputRef.value;
   if (!o) return;
+  o.value = activeBatch.value?.color ?? '';
   o.focus();
   o.select();
 }
@@ -1030,6 +1041,20 @@ function veOQuet() {
 function docOQuet() {
   const token = (scanInputRef.value?.value ?? '').trim();
   if (!token || scanning.value) return;
+
+  /*
+   * Ô này VỪA bắt phím máy quét VỪA hiển thị mã màu của mẻ đang mở. Nghe `change` để đỡ máy quét
+   * hậu tố Tab (xem khối chú thích trên) kéo theo một hệ quả: trình duyệt cũng bắn `change` khi ô
+   * MẤT TIÊU ĐIỂM — mà bấm NEXT, bấm bàn phím số, bấm vào ô RACK đều làm ô mất tiêu điểm. Lúc đó
+   * nội dung ô không còn là chuỗi QR nữa, nó là mã màu ta vừa đổ vào để hiện lên (ví dụ "DF9002").
+   * Chuỗi một đoạn ấy không có CODE nên `docQrMeNhuom` trả null, và thợ vừa quét xong đã ăn ngay
+   * câu "Mã quét thiếu COLOR hoặc CODE" dù cú quét hoàn toàn tốt.
+   *
+   * Thoát im lặng ở đây KHÔNG làm mất cú quét nào: mã màu đang hiện là thứ CHÍNH TA đặt vào ô,
+   * không phải thứ máy quét bắn ra. Cú quét thật luôn ghi đè nội dung ô (`boiDenOQuet` bôi đen sẵn,
+   * `batPhimLacRaNgoai` kéo phím lạc về đây) nên chuỗi đọc được luôn khác mã màu.
+   */
+  if (token === (activeBatch.value?.color ?? '').trim()) return;
 
   const gio = Date.now();
   if (token === tokenCuoi && gio - mocTokenCuoi < 2000) return;
@@ -1114,7 +1139,14 @@ const handleBarcodeScan = async (token: string) => {
     if (!parsed) {
       scannerService.playBeep(600, 400);
       scanning.value = false;
-      await baoTin('Mã quét thiếu COLOR hoặc CODE nên không mở được mẻ — kiểm tra lại đầu đọc hoặc mã tem. (Thiếu MACHINE/LV thì vẫn nạp được, để trống ô đó.)');
+      // Kèm luôn chuỗi đọc được: ô quét bị đặt lại về mã màu ngay sau đây nên đây là chỗ DUY NHẤT
+      // thợ/kỹ thuật còn thấy máy quét thực sự bắn ra cái gì.
+      await baoTin(
+        'Mã quét thiếu COLOR hoặc CODE nên không mở được mẻ — kiểm tra lại đầu đọc hoặc mã tem. '
+        + '(Thiếu MACHINE/LV thì vẫn nạp được, để trống ô đó.)\n'
+        + '\n'
+        + `Chuỗi đọc được: ${token.slice(0, 80)}${token.length > 80 ? '…' : ''}`
+      );
       nextTick(veOQuet);
       return;
     }
@@ -1302,10 +1334,7 @@ async function onClear(skipConfirm = false, alreadySaved = false) {
   // Bỏ luôn chốt chống-quét-hai-lần: sau CLEAR thì quét lại đúng con tem vừa xoá là thao tác
   // hợp lệ (xoá nhầm rồi làm lại), không được bắt thợ chờ hết 2 giây.
   tokenCuoi = '';
-  nextTick(() => {
-    if (scanInputRef.value) scanInputRef.value.value = '';
-    veOQuet();
-  });
+  nextTick(veOQuet); // veOQuet tự đặt lại nội dung ô = mã màu đang hiện, sau CLEAR là chuỗi rỗng
 }
 
 /** Các dòng sẽ lưu cho mẻ CÂN TAY (không quét đơn nào). */

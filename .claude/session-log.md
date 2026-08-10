@@ -3528,6 +3528,40 @@ cho xac nhan.
 
 ---
 
+### 140. CS-SERVER: ban BUILD chiem cong 3001, tat han Vite dev server bat tay (2026-08-09)
+
+**Nguoi dung chon:** *"toi muon 3001 la chay chinh"* (thay vi doi `mo-man-can.bat` sang 3002).
+
+**Truoc khi doi:**
+- `3001` = `node vite.js --host 0.0.0.0 --port 3001`, PID 463000, **CreationDate 28/07/2026 14:27**
+  — bat TAY, chay lien tuc 13 ngay, khong thuoc scheduled task nao, va phuc vu code CU HON DIA.
+- `3002` = `DFWeb-Frontend` -> `C:\DFwebBPVN\tools\run-frontend.bat` -> `npm run preview` tren
+  `dist`.
+- `tools/mo-man-can.bat` (shortcut tho dung) ghi cung `http://10.0.60.209:3001` -> ca xuong dang
+  vao con dev server do.
+
+**Da lam:**
+1. Sao luu `run-frontend.bat` -> `run-frontend.bat.bak-20260810` tren server.
+2. `Stop-ScheduledTask DFWeb-Frontend`, scp file `run-frontend.bat` moi len.
+3. `Start-ScheduledTask` — vong lap dau file tu `taskkill` cai dang giu 3001 (chinh la dev server
+   463000) roi bat preview len do.
+
+**File moi khac ban cu 3 cho:** kill theo cong `:3001` thay vi `:3002`; `--port 3001`; va them
+**`--strictPort`** — khong co no thi Vite thay 3001 ban se AM THAM nhay sang cong khac, may tram
+go dung dia chi cu se gap trang chet ma khong ai hieu vi sao.
+
+**Da xac minh sau khi doi:** 3001 tra `index.html` 1733 byte co `/assets/index-OSdRa2UN.js`
+(ban build, khong con `/@vite/client`); chunk `WeighingStationLarge-Bqyeu4vg.js` co
+`DFAgentLarge` + `wslarge.co-hien-thi` (= commit 7fee831, moi nhat); route sau
+`/weighing-station-large` tra dung index (SPA fallback OK); 3002 khong con ai nghe; backend 8500
+tra 422 cho payload rac (song). Da grep ca repo: **khong co code nao tham chieu cong 3002**.
+
+**CON NO:** `run-frontend.bat` van **KHONG nam trong repo** (chi ton tai tren server). Da bao
+nguoi dung; muon dua vao repo thi phai xoa ban untracked tren server TRUOC khi pull, neu khong
+`git pull` se tu choi ghi de file untracked.
+
+---
+
 ### 135. Man can tu choi tem ma VBA van nhan: bo dieu kien "phai du 4 o dau" (2026-08-09)
 
 **Cau hoi cua nguoi dung:** *"cho quet QR hien tai da giong voi 5.Semiauto- lockmove SEND OVER6 -
@@ -3590,3 +3624,35 @@ van nho lua chon.
 
 **Chua ap cho `/weighing-station-v2`** — man cân nhỏ khong co cot nay (thong tin nam trong dai
 `ws2-rawline` ngang duoi form), la bo cuc khac han nen khong sua lay.
+
+---
+
+### 137. /weighing-station-large: bam NEXT sau khi quet OK bi bao "thieu COLOR hoac CODE" (2026-08-10)
+
+**Trieu chung:** quet QR nap me BINH THUONG (bang 9 dong hien ra dung), nhung vua bam NEXT la nhay
+hop thoai *"Ma quet thieu COLOR hoac CODE nen khong mo duoc me..."* — trong khi cu quet khong he loi.
+
+**Nguyen nhan:** o `txt_COLOR` VUA la o bat phim may quet VUA la o hien ma mau
+(`:value="activeBatch?.color"`). Tu muc 135 no nghe them `@change` de do may quet hau to Tab; ma
+trinh duyet cung ban `change` khi o MAT TIEU DIEM — bam NEXT (hay ban phim so, hay o RACK) la mat
+tieu diem. Luc do noi dung o khong con la chuoi QR nua, Vue da thay bang dung ma mau ("DF9002...").
+Chuoi MOT doan do khong co CODE -> `docQrMeNhuom()` tra `null` -> dung nhanh bao loi. Chot chong
+trung 2 giay khong do duoc vi tho bam NEXT muon hon 2 giay.
+
+**Da lam** (`WeighingStationLarge.vue`, chi man CAN TO — `/weighing-station-v2` chi nghe
+`keyup.enter` nen khong co loi nay):
+- `docOQuet()`: thoat som khi chuoi doc duoc DUNG BANG ma mau dang hien (`activeBatch.color`) — do
+  la thu CHINH TA dat vao o de hien thi, khong phai thu may quet ban ra. Khong mat cu quet nao vi
+  cu quet that luon ghi de noi dung o (`boiDenOQuet` boi den san, `batPhimLacRaNgoai` keo phim lac ve).
+- `veOQuet()`: EP `o.value = activeBatch.color ?? ''` moi lan tra tieu diem. Vue chi ghi lai
+  `el.value` khi ma mau MOI khac ma mau CU, nen quet HAI con tem CUNG MA MAU lien nhau thi o con
+  nguyen chuoi QR dai — do la mot cu "quet lai chinh no" cho san: het 2 giay, o mat tieu diem la
+  `change` NAP LAI me va XOA TRANG nhung so da can. Ep o day de noi dung o luon xac dinh.
+- Thong bao loi kem luon `Chuoi doc duoc: <80 ky tu dau>` — vi o quet bi dat lai ngay sau do, day la
+  cho duy nhat con thay may quet thuc su ban ra cai gi.
+- `onClear()` bo dong tu xoa `scanInputRef.value.value` (veOQuet lo viec do roi).
+
+**Kiem chung:** `npx vue-tsc --noEmit` exit 0, `npx vite build` thanh cong. **CHUA quet bang may
+quet that** — can thu tren may tram: quet 1 tem roi bam NEXT (phai KHONG con hop thoai loi), quet
+hai tem cung ma mau lien nhau roi bam NEXT (phai KHONG bi xoa trang so da can), va quet mot tem hong
+(phai VAN bao loi, co kem chuoi doc duoc).
