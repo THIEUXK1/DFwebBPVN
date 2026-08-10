@@ -47,6 +47,9 @@ export interface DispatchSlipData {
  * Bề rộng cột B..H quy từ thuộc tính `width` trong sheet2.xml sang pixel theo công thức
  * OOXML (`Trunc(((256*w + Trunc(128/MDW))/256) * MDW)`, MDW = 7px với Calibri 11), rồi
  * đổi px → pt (× 0.75): B=78px, C=68, D=51, E=11, F=69, G=76, H=44 (tổng 397px = 297.75pt).
+ *
+ * GIỮ NGUYÊN theo sheet gốc. Riêng bảng cân 9 dòng (5..13) chia cột theo `GRID_*_W_PT` bên
+ * dưới, KHÔNG theo bảng này.
  */
 const COL_PT: Record<string, number> = { B: 58.5, C: 51, D: 38.25, E: 8.25, F: 51.75, G: 57, H: 33 };
 const COL_ORDER = ['B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -211,12 +214,38 @@ function cell(r: Rect, text: string, st: CellStyle = {}): string {
  *
  * LỆCH CÓ CHỦ Ý so với sheet gốc (sheet để 12pt, chữ thường) theo yêu cầu vận hành
  * 2026-08-07: mã màu và số cân in ra quá nhỏ và nhạt, khó đọc dưới ánh sáng nhà xưởng.
- * Chặn trên là bề rộng cột C (51pt) — mã dài nhất kiểu "R2011A" ở Calibri 14pt ĐẬM chiếm
- * ~46pt kể cả padding; đẩy quá cỡ này là mã bị cắt cụt vì ô để `white-space:nowrap;
- * overflow:hidden`. Chiều cao dòng 25.9pt còn dư nên không cần đụng tới ROW_PT.
+ * Chặn trên là bề rộng cột mã (nay 75pt, xem `GRID_*_W_PT`) — mã dài nhất kiểu "R2011A" ở
+ * Calibri 14pt ĐẬM chiếm ~46pt kể cả padding; đẩy quá cỡ này là mã bị cắt cụt vì ô để
+ * `white-space:nowrap; overflow:hidden`. Chiều cao dòng 25.9pt còn dư nên không cần đụng
+ * tới ROW_PT.
  */
 const GRID_FONT_PT = 14;
 const GRID_BOLD = true;
+
+/**
+ * Bề rộng 3 cột (rack | mã | khối lượng) của RIÊNG bảng cân 9 dòng — LỆCH CÓ CHỦ Ý so với
+ * bề rộng cột sheet (yêu cầu 2026-08-10): cột rack thực tế chỉ hiện số tối đa 3 chữ số
+ * (~25pt kể cả padding ở 14pt đậm) trong khi sheet dành cho nó 58.5pt/51.75pt, còn cột mã
+ * và cột khối lượng thì bị cắt cụt.
+ *
+ * Vì sao tách riêng thay vì sửa thẳng `COL_PT`: các cột B..H còn được dùng bởi những ô CỐ
+ * ĐỊNH ở dòng trên — nhãn "DF_WEIGHING_SLIP" 12pt đậm nằm trong vùng gộp B1:C1 (cần ~105pt)
+ * và mã máy "VD10" 20pt đậm nằm ở ô F3 (cần ~51pt). Thu cột trong `COL_PT` là cắt cụt hai ô
+ * đó, trong khi yêu cầu là "chỉ 2 cột 1 nhỏ lại, các thứ khác giữ nguyên". Đánh đổi: đường
+ * kẻ dọc của bảng cân không còn thẳng hàng với đường kẻ của dòng 3-4 phía trên.
+ *
+ * TỔNG MỖI BẢNG PHẢI GIỮ NGUYÊN (B+C+D = 147.75pt, F+G+H = 141.75pt) để mép ngoài của bảng
+ * vẫn trùng khít với cột đệm E và với các khung QR ở dưới.
+ */
+const GRID_DYE_W_PT = [28.5, 75, 44.25];
+const GRID_CHEM_W_PT = [28.5, 75, 38.25];
+
+/** Hình chữ nhật (mm) của ô thứ `idx` trong một bảng cân bắt đầu từ cột `startCol`. */
+function gridRect(startCol: string, widths: number[], idx: number, row: number): Rect {
+  let x = colLeftPt(startCol);
+  for (let i = 0; i < idx; i++) x += widths[i];
+  return { left: mm(x), top: mm(rowTopPt(row)), width: mm(widths[idx]), height: mm(ROW_PT[row - 1]) };
+}
 
 /* ===================================================================================
  * 2. PORT `Mod_printslip.PrintSlip_70x100` (DF028) — TÁCH DÒNG, ROUTING, PAYLOAD QR
@@ -480,14 +509,16 @@ export async function buildDispatchSlipHtml(data: DispatchSlipData): Promise<str
     const row = 5 + i;
     const d = dyeLines[i];
     const ch = chemLines[i];
-    for (const col of ['B', 'C', 'D', 'F', 'G', 'H']) lines.box(rect(col, row, col, row), boxAll);
+    const dye = [0, 1, 2].map(k => gridRect('B', GRID_DYE_W_PT, k, row));
+    const chem = [0, 1, 2].map(k => gridRect('F', GRID_CHEM_W_PT, k, row));
+    for (const r of [...dye, ...chem]) lines.box(r, boxAll);
     lines.box(rect('E', row, 'E', row), { l: true, r: true });
-    html += cell(rect('B', row, 'B', row), d?.rack ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: 'left' });
-    html += cell(rect('C', row, 'C', row), d?.code ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: 'left' });
-    html += cell(rect('D', row, 'D', row), d?.weight ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: row <= 8 ? 'right' : 'left' });
-    html += cell(rect('F', row, 'F', row), ch?.rack ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: row <= 9 ? 'center' : 'left' });
-    html += cell(rect('G', row, 'G', row), ch?.code ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: 'left' });
-    html += cell(rect('H', row, 'H', row), ch?.weight ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: 'right' });
+    html += cell(dye[0], d?.rack ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: 'left' });
+    html += cell(dye[1], d?.code ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: 'left' });
+    html += cell(dye[2], d?.weight ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: row <= 8 ? 'right' : 'left' });
+    html += cell(chem[0], ch?.rack ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: row <= 9 ? 'center' : 'left' });
+    html += cell(chem[1], ch?.code ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: 'left' });
+    html += cell(chem[2], ch?.weight ?? '', { fontPt: GRID_FONT_PT, bold: GRID_BOLD, align: 'right' });
   }
 
   // Dòng 14: 2 tiêu đề QR (12pt đậm, căn giữa, CHỈ có viền trên).
