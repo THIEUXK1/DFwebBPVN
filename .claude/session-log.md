@@ -3397,6 +3397,98 @@ Keo theo trong cung do:
 
 ---
 
+### 137. May quet o MAY TRAM: "moi lan quet lai ra 1 cai khac, va con k dung o" (2026-08-09)
+
+**Trieu chung nguoi dung bao:** tren may DEV thi binh thuong; tren MAY TRAM, cung con tem cung may
+quet do, **Excel quet binh thuong** con web thi moi lan quet ra mot ket qua khac va roi vao khong
+dung o. Viec Excel chay tot tren CHINH may do loai bo kha nang may quet cau hinh sai — loi nam o web.
+
+**3 loi that trong `frontend/src/views/WeighingStationLarge.vue`:**
+
+1. **O quet khong bao gio duoc xoa/boi den -> cu quet sau NOI THEM vao cu.** O nay vua hien thi ma
+   mau (`:value` do `activeBatch.color` vao, dung nhu txt_COLOR ban goc) vua la o bat phim. Quet me
+   1 xong o hien "DF9001", tieu diem tra ve o do voi con tro o CUOI. Quet me 2 -> DOM value thanh
+   `DF9001#DF9002-LG2509-...` -> `parseDyeQr` tra color = "DF9001#DF9002". Sai mot kieu KHAC NHAU
+   moi lan vi con tuy me truoc la me nao => **dung triêu chung "moi lan ra 1 cai khac"**.
+   *Sua:* `@focus="boiDenOQuet"` + helper `veOQuet()` (focus + select) thay cho moi cho goi
+   `scanInputRef.value?.focus()`.
+
+2. **Chi nghe `@keyup.enter`, khong nghe `change` -> may quet hau to TAB thi hong.** VBA
+   `txt_color_AfterUpdate` chay khi o MAT TIEU DIEM, tuc an ca Tab lan Enter. Web chi bat Enter, nen
+   may quet cau hinh hau to Tab (chay hoan hao ben Excel): chuoi nam im trong o quet, Tab day tieu
+   diem sang phan tu ke = **o RACK dong 1**, cu quet SAU do nguyen chuoi vao o rack do roi Tab tiep
+   sang rack dong 2... => **dung trieu chung "khong dung o"**.
+   *Sua:* them `@change="docOQuet"`. Kem chot chong chay hai lan (`tokenCuoi` + cua so 2 giay, bang
+   `DUPLICATE_WINDOW_MS` cua services/scanner) vi Enter trong o text lam Chrome ban CA HAI su kien.
+
+3. **Bam bat ky nut nao la tieu diem roi khoi o quet, cu quet ke tiep mat hang.** Trinh duyet chuyen
+   tieu diem sang chinh cai nut vua bam (NEXT, ban phim so, OUT/IN, CLEAR) — form VBA khong co canh
+   nay vi UserForm om tron ban phim cua cua so.
+   *Sua:* `batPhimLacRaNgoai()` nghe `keydown` o `document` voi `capture: true` (chay TRUOC bo dem
+   may quet toan cuc trong `services/scanner.ts`, von cung nghe keydown tang window): co ky tu go ra
+   ma tieu diem KHONG nam trong o nhap nao thi keo ve o quet ngay tu ky tu dau. Tu chen ky tu dau
+   roi `preventDefault` chu khong trong cho trinh duyet chen ho sau khi doi tieu diem — hanh vi do
+   khac nhau giua cac trinh duyet, ma mat dung ky tu dau cua ma mau thi chuoi van "doc duoc", chi la
+   sai, kieu sai im lang te nhat. Khong dung toi o RACK / o gia lap / luc dang mo hop thoai-bang.
+
+**`npm run build` exit 0. CHUA thu bang may quet that tren may tram** — can nguoi dung xac nhan.
+
+**`/weighing-station-v2` DINH Y HET CA 3 LOI** (cung mot khuon: `:value` binding + chi
+`@keyup.enter` + khong co bat phim cap man hinh). CO Y chua sua vi nguoi dung chi hoi ve man can to
+— can xac nhan truoc khi dong vao man dang chay san xuat.
+
+---
+
+### 138. CAN TO: so can nhap nhay "dung roi ve 0", NEXT chot bi luc duoc luc khong (Agent 4.8.0.0) — 2026-08-09
+
+**Nguyen nhan goc — log THAT cua may tram** (nguoi dung gui, quyet dinh moi thu):
+
+```
+US,+000466.6  g
+0000000
+US,+000486.7  g
+0000000
+```
+
+Cai can to phat **XEN KE** mot dong so that roi mot dong `0000000`. `ReadLastCompleteLine` lay
+"dong cuoi cung khong rong" nen cu mot nhip trung so that, mot nhip trung `0000000` — ma chuoi do
+`CleanWeight` parse ra **0.0 hoan toan hop le**. Day la kha nang (a) trong 3 gia thuyet muc truoc.
+
+**Hai loi, sua ca hai** (`agent/ScaleReader.cs`):
+
+1. **`LaDongSoCan()` — bo qua dong TOAN CHU SO khi chon dong cuoi** (dung o ca nhanh doc file
+   PuTTY lan nhanh doc cong COM). Dieu kien dat HEP NHAT co the: mot khung can that luon co it nhat
+   mot ky tu khong phai chu so — dau `,`, dau +/-, dau thap phan, hoac chu (ST/US, "g"/"kg"). Ca 2
+   dinh dang dang chay o xuong deu thoa (`US,+000466.6  g` va `12,ST,GS,+000010.5g`). CO Y khong
+   doi phai co dau "," hay dau +/-: doi chat hon thi gap mot con can xuat dinh dang khac la man
+   hinh chet cam hoan toan, te hon han so voi nhieu.
+
+2. **`StableFilter` phai nhan TOKEN SO, khong phai ca dong tho** — day la loi PORT SAI, doc lap voi
+   chuyen nhieu o tren. VBA `PushRawToForm` goi `StableFilter(rawNum)` voi `rawNum` da qua
+   `CleanScaleRaw` + `ExtractLastNumber`, tuc chi con CON SO. Ban .NET dua nguyen `rawInput` vao.
+   Dong cua can to mang co trang thai ST/US o dau va co nay **nhay lien tuc ngay ca khi con so dung
+   yen**:
+
+   ```
+   US,-008359.3  g
+   ST,-008359.3  g      <- cung mot so, chuoi khac -> bo dem reset
+   ```
+
+   Hau qua: can dung yen roi ma Agent van bao "chua on dinh", nen bam NEXT khong chot duoc bi. So
+   tren token thi hai dong tren la mot, dung nhu VBA.
+   **KHONG** doc co ST/US de suy ra on dinh du cai can noi san: VBA khong dung no, doi dinh nghia
+   "on dinh" la doi luon thoi diem chot bi — phai la quyet dinh rieng co nguoi xac nhan.
+
+**Kiem chung:** `dotnet test` — **63/63 PASS** (chay voi `DOTNET_ROLL_FORWARD=Major` vi may dev chi
+co .NET 3.1/9/10, khong co runtime 8.0). Them 3 test moi: `LaDongSoCan_LoaiDungDongNhieuToanChuSo`
+(Theory 7 ca), `ReadWeightWithStability_DoiCoST_US_NhungSoKhongDoi_VanOnDinh`,
+`LogXenKeDongNhieu_DocDungSoCuoiVaChotDuocOnDinh` (dung log that lam du lieu).
+
+**Bump `PackageVersion` 4.7.0.0 -> 4.8.0.0** trong `DFAgentSetup.wxs`. **PHAI build lai MSI va cai
+de len tren may tram can to** — sua nay nam trong Agent, deploy web KHONG dong toi.
+
+---
+
 ### 135. Man can tu choi tem ma VBA van nhan: bo dieu kien "phai du 4 o dau" (2026-08-09)
 
 **Cau hoi cua nguoi dung:** *"cho quet QR hien tai da giong voi 5.Semiauto- lockmove SEND OVER6 -

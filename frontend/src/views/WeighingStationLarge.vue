@@ -85,7 +85,9 @@
           :value="activeBatch?.color || ''"
           :placeholder="scanning ? '…' : 'quét QR'"
           :readonly="scanning"
-          @keyup.enter="onScanEnter"
+          @keyup.enter="docOQuet"
+          @change="docOQuet"
+          @focus="boiDenOQuet"
         />
         <div class="vv-text ro" :style="box(C.txt_MACHINE)">{{ activeBatch?.machine?.code || '' }}</div>
         <div class="vv-text ro field" :style="box(C.txt_CODE)">
@@ -983,10 +985,90 @@ watch([isStable, grossWeight], () => {
 const scanInputRef = ref<HTMLInputElement | null>(null);
 const scanning = ref(false);
 
-function onScanEnter() {
+/**
+ * Chuỗi vừa xử lý + mốc giờ — chốt chống chạy hai lần.
+ *
+ * Cần vì ô quét giờ nghe CẢ `keyup.enter` LẪN `change`, mà bấm Enter trong một ô text thì Chrome
+ * bắn cả hai. Cửa sổ 2 giây (bằng `DUPLICATE_WINDOW_MS` của services/scanner) nên quét lại đúng
+ * con tem đó để nạp lại mẻ vẫn được, chỉ cần cách nhau hơn 2 giây.
+ */
+let tokenCuoi = '';
+let mocTokenCuoi = 0;
+
+/**
+ * Bôi đen sẵn nội dung ô quét mỗi lần nó nhận tiêu điểm.
+ *
+ * Ô này vừa là ô HIỂN THỊ mã màu (`:value` đổ `activeBatch.color` vào, đúng như txt_COLOR của
+ * form VBA) vừa là ô BẮT phím của máy quét. Không bôi đen thì con trỏ đứng ở CUỐI chuỗi cũ, và
+ * cú quét kế tiếp NỐI THÊM vào phía sau: "DF9001" + "#DF9002-LG2509-..." -> mã màu đọc ra thành
+ * "DF9001#DF9002". Sai một kiểu khác nhau mỗi lần, vì còn tuỳ mẻ trước đó là mẻ nào — đúng
+ * triệu chứng "mỗi lần quét lại ra 1 cái khác".
+ */
+function boiDenOQuet(e: Event) {
+  (e.target as HTMLInputElement).select();
+}
+
+/** Trả tiêu điểm về ô quét và bôi đen sẵn — dùng sau mỗi lần quét/xoá/lưu. */
+function veOQuet() {
+  const o = scanInputRef.value;
+  if (!o) return;
+  o.focus();
+  o.select();
+}
+
+/**
+ * VBA `txt_color_AfterUpdate` chạy khi ô MẤT TIÊU ĐIỂM — tức cả khi máy quét bắn hậu tố Enter
+ * LẪN khi nó bắn hậu tố Tab. Bản web trước đây chỉ nghe `@keyup.enter`, nên một máy quét cấu
+ * hình hậu tố TAB (chạy hoàn hảo bên Excel, cùng máy cùng con tem) thì ở đây:
+ *
+ *   1. Chuỗi nằm im trong ô quét, KHÔNG ai đọc.
+ *   2. Tab đẩy tiêu điểm sang phần tử kế — chính là ô RACK dòng 1.
+ *   3. Cú quét SAU đổ nguyên chuỗi vào ô rack đó, rồi Tab tiếp sang rack dòng 2...
+ *
+ * Đó là "quét ra không đúng ô". Nghe thêm `change` là hết cả hai đường.
+ */
+function docOQuet() {
   const token = (scanInputRef.value?.value ?? '').trim();
   if (!token || scanning.value) return;
+
+  const gio = Date.now();
+  if (token === tokenCuoi && gio - mocTokenCuoi < 2000) return;
+  tokenCuoi = token;
+  mocTokenCuoi = gio;
+
   handleBarcodeScan(token);
+}
+
+/**
+ * Máy quét là BÀN PHÍM GIẢ: nó gõ vào bất cứ thứ gì đang giữ tiêu điểm. Bấm một nút bất kỳ trên
+ * màn hình (NEXT, bàn phím số, OUT/IN, CLEAR) là trình duyệt chuyển tiêu điểm sang chính cái nút
+ * đó, và cú quét ngay sau rơi vào nút — mất hẳn, không ai đọc, không một tiếng bíp.
+ *
+ * Form VBA không có cảnh này vì UserForm ôm trọn bàn phím của cửa sổ. Lấy lại đúng hành vi đó:
+ * hễ có ký tự gõ ra mà tiêu điểm KHÔNG nằm trong một ô nhập nào thì kéo về ô quét NGAY TỪ KÝ TỰ
+ * ĐẦU TIÊN.
+ *
+ * Tự chèn ký tự đầu rồi `preventDefault` chứ không trông chờ trình duyệt chèn hộ sau khi đổi tiêu
+ * điểm: hành vi đó khác nhau giữa các trình duyệt, mà mất đúng ký tự đầu của mã màu thì chuỗi vẫn
+ * "đọc được" — chỉ là sai, kiểu sai im lặng tệ nhất.
+ *
+ * KHÔNG đụng tới ô RACK và ô giả lập (đang gõ tay thì phải để yên), và không đụng khi có hộp
+ * thoại/bảng đang mở.
+ */
+function batPhimLacRaNgoai(e: KeyboardEvent) {
+  if (e.ctrlKey || e.altKey || e.metaKey || e.key.length !== 1) return;
+  if (scanning.value || showQueue.value || showChecker.value || thoai.value.hien) return;
+
+  const dangO = document.activeElement as HTMLElement | null;
+  if (dangO && (dangO.tagName === 'INPUT' || dangO.tagName === 'TEXTAREA' || dangO.isContentEditable)) return;
+
+  const o = scanInputRef.value;
+  if (!o) return;
+
+  e.preventDefault();
+  o.focus();
+  o.value = e.key;
+  o.setSelectionRange(1, 1);
 }
 
 function cancelAbandonedJob(jobId: string) {
@@ -1007,12 +1089,12 @@ const handleBarcodeScan = async (token: string) => {
       scannerService.playBeep(600, 400);
       scanning.value = false;
       await baoTin('Mã quét thiếu COLOR hoặc CODE nên không mở được mẻ — kiểm tra lại đầu đọc hoặc mã tem. (Thiếu MACHINE/LV thì vẫn nạp được, để trống ô đó.)');
-      nextTick(() => scanInputRef.value?.focus());
+      nextTick(veOQuet);
       return;
     }
     applyLocalJob(token, parsed);
     scanning.value = false;
-    nextTick(() => scanInputRef.value?.focus());
+    nextTick(veOQuet);
     return;
   }
 
@@ -1047,7 +1129,7 @@ const handleBarcodeScan = async (token: string) => {
     await baoTin(err.response?.data?.message || 'Không thể mở lệnh sản xuất này.');
   } finally {
     scanning.value = false;
-    nextTick(() => scanInputRef.value?.focus());
+    nextTick(veOQuet);
   }
 };
 
@@ -1191,9 +1273,12 @@ async function onClear(skipConfirm = false, alreadySaved = false) {
   resetTareForNewSlot();
   resetRackBatches(); // btnClear_Click của VBA cũng xoá rackBatch1/2 và hạ rackLoaded
   clearSession();
+  // Bỏ luôn chốt chống-quét-hai-lần: sau CLEAR thì quét lại đúng con tem vừa xoá là thao tác
+  // hợp lệ (xoá nhầm rồi làm lại), không được bắt thợ chờ hết 2 giây.
+  tokenCuoi = '';
   nextTick(() => {
     if (scanInputRef.value) scanInputRef.value.value = '';
-    scanInputRef.value?.focus();
+    veOQuet();
   });
 }
 
@@ -1533,6 +1618,9 @@ onMounted(() => {
   fetchLiveWeight();
   capNhatNhipPoll();
   document.addEventListener('visibilitychange', onVisibilityChange);
+  // `capture: true` để chạy TRƯỚC mọi thứ khác — kể cả bộ đệm máy quét toàn cục trong
+  // services/scanner.ts, vốn cũng nghe keydown ở tầng window.
+  document.addEventListener('keydown', batPhimLacRaNgoai, true);
   batTuDay();
 
   fitAll();
@@ -1558,11 +1646,12 @@ onMounted(() => {
   window.addEventListener('resize', fitAll);
 
   // txt_COLOR.SetFocus của UserForm_Activate
-  nextTick(() => scanInputRef.value?.focus());
+  nextTick(veOQuet);
 });
 
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange);
+  document.removeEventListener('keydown', batPhimLacRaNgoai, true);
   window.removeEventListener('resize', fitAll);
   ro?.disconnect();
   roKhung?.disconnect();

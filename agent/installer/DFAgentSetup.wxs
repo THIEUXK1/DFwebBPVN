@@ -205,7 +205,22 @@
      Bat bang Tray:Enabled trong appsettings — CHI ban IN/OUT co; hai ban chay service khong doi gi
      (session 0 khong co thanh tac vu de hien bieu tuong).
      Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode. -->
-<?define PackageVersion = "4.7.0.0"?>
+<!-- 4.8.0.0 (09/08/2026) — CAN TO: het nhap nhay so can, va NEXT chot duoc bi.
+     Log that cua cai can to phat XEN KE mot dong so that roi mot dong "0000000":
+         US,+000466.6  g
+         0000000
+     Agent lay "dong cuoi cung khong rong" nen cu mot nhip trung so that, mot nhip trung 0 — ma
+     "0000000" parse ra 0.0 hoan toan hop le. Hai hau qua: so can nhap nhay dung-roi-0, va
+     StableFilter khong bao gio thay 2 lan doc lien tiep giong nhau nen bam NEXT khong chot duoc bi
+     ("luc duoc, luc lay duoc la 00").
+     Sua 1: ScaleReader.LaDongSoCan() — bo qua dong TOAN CHU SO khi chon dong cuoi. Dieu kien dat
+     hep nhat co the: khung can that luon co it nhat mot ky tu khong phai chu so (dau ",", dau +/-,
+     dau thap phan, chu ST/US/g).
+     Sua 2: StableFilter nhan TOKEN SO thay vi ca dong tho — dung nhu VBA PushRawToForm goi
+     StableFilter(rawNum). Dong cua can to mang co ST/US o dau va co nay nhay lien tuc ngay ca khi
+     con so dung yen, nen so tren dong tho thi bo dem bi reset mai mai.
+     Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode. -->
+<?define PackageVersion = "4.8.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.ProductLabel))"

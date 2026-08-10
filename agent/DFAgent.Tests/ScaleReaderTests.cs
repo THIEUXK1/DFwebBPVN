@@ -79,6 +79,41 @@ public class ScaleReaderTests
     }
 
     /// <summary>
+    /// Cân to phát xen kẽ một dòng số thật rồi một dòng "0000000" (log máy trạm 09/08/2026).
+    /// Dòng toàn chữ số đó parse ra 0.0 hợp lệ, nên "dòng cuối không rỗng" cứ một nhịp trúng số
+    /// thật một nhịp trúng 0 -> số cân nhấp nháy và StableFilter không bao giờ chốt được.
+    /// </summary>
+    [Theory]
+    [InlineData("US,+000466.6  g", true)]
+    [InlineData("ST,-008359.3  g", true)]
+    [InlineData("12,ST,GS,+000010.5g", true)]
+    [InlineData("0000000", false)]
+    [InlineData("0", false)]
+    [InlineData("   ", false)]
+    [InlineData("", false)]
+    public void LaDongSoCan_LoaiDungDongNhieuToanChuSo(string line, bool mongDoi)
+    {
+        Assert.Equal(mongDoi, ScaleReader.LaDongSoCan(line));
+    }
+
+    /// <summary>
+    /// Cờ ST/US nhảy liên tục ngay cả khi con số đứng yên. StableFilter phải so trên TOKEN SỐ
+    /// (đúng VBA `StableFilter(rawNum)`), không phải trên cả dòng thô — nếu không thì cân đứng
+    /// yên rồi mà Agent vẫn báo chưa ổn định, và bấm NEXT không chốt được bì.
+    /// </summary>
+    [Fact]
+    public void ReadWeightWithStability_DoiCoST_US_NhungSoKhongDoi_VanOnDinh()
+    {
+        var reader = NewReader();
+
+        Assert.False(reader.ReadWeightWithStability("US,-008359.3  g").IsStable);
+
+        var (weight, stable) = reader.ReadWeightWithStability("ST,-008359.3  g");
+        Assert.Equal(-8359.3, weight!.Value, precision: 6);
+        Assert.True(stable);
+    }
+
+    /// <summary>
     /// TV6 (sửa 2026-07-17): chuỗi rỗng trả null chứ KHÔNG phải 0.0 — 0.0 là kết quả cân hợp
     /// lệ (cân đang rỗng thật), phải phân biệt được với "không đọc được gì".
     /// </summary>
@@ -204,6 +239,39 @@ public class ScaleReaderTests
             Assert.Equal(10.5, reader.ReadCurrentWeightWithStability().Weight!.Value, precision: 6);
         }
         finally { File.Delete(moi); File.Delete(cu); }
+    }
+
+    /// <summary>
+    /// Log THẬT của cân to (máy trạm, 09/08/2026): cứ một dòng số là một dòng "0000000".
+    ///
+    /// Hai điều phải đúng cùng lúc:
+    ///   · Đọc ra 610.8 chứ không phải 0 — dòng nhiễu bị bỏ qua khi chọn dòng cuối.
+    ///   · Hai lần đọc liên tiếp phải thành ỔN ĐỊNH, kể cả khi cờ ST/US nhảy — nếu không thì bấm
+    ///     NEXT không chốt được bì.
+    /// </summary>
+    [Fact]
+    public void LogXenKeDongNhieu_DocDungSoCuoiVaChotDuocOnDinh()
+    {
+        string path = WriteTempLog(
+            "US,+000611.3  g\r\n0000000\r\nUS,+000610.8  g\r\n0000000\r\n");
+        try
+        {
+            var reader = NewReaderWith(("Scale:Source", "PUTTY_LOG"), ("Scale:LogFilePath", path));
+
+            var lan1 = reader.ReadCurrentWeightWithStability();
+            Assert.Equal(610.8, lan1.Weight!.Value, precision: 6);
+            Assert.False(lan1.IsStable); // lần đọc đầu, chưa có gì để so
+
+            // Nhịp đọc 10ms nhanh hơn nhịp cân phát dòng mới -> đọc lại đúng dòng đó = ổn định.
+            Assert.True(reader.ReadCurrentWeightWithStability().IsStable);
+
+            // Cân đổi cờ trạng thái nhưng số không đổi -> vẫn phải là ổn định.
+            File.AppendAllText(path, "ST,+000610.8  g\r\n0000000\r\n");
+            var lan3 = reader.ReadCurrentWeightWithStability();
+            Assert.Equal(610.8, lan3.Weight!.Value, precision: 6);
+            Assert.True(lan3.IsStable);
+        }
+        finally { File.Delete(path); }
     }
 
     private static string WriteTempLog(string content)

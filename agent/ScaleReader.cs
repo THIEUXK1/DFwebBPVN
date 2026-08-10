@@ -203,7 +203,7 @@ public class ScaleReader : IDisposable
 
             foreach (string line in complete.Split('\r', '\n'))
             {
-                if (!string.IsNullOrWhiteSpace(line)) completedLines.Add(line);
+                if (LaDongSoCan(line)) completedLines.Add(line);
             }
         }
 
@@ -306,6 +306,47 @@ public class ScaleReader : IDisposable
     private static readonly char[] LineBreakChars = { '\r', '\n' };
 
     /// <summary>
+    /// Dòng này có phải một khung số cân hay không — dùng để BỎ QUA dòng nhiễu khi chọn dòng cuối.
+    ///
+    /// ===== VÌ SAO CẦN (log cân to, máy trạm, 09/08/2026) =====
+    /// Cái cân to phát XEN KẼ hai dòng: một dòng số thật rồi một dòng toàn số 0.
+    ///
+    ///     US,+000466.6  g
+    ///     0000000
+    ///     US,+000486.7  g
+    ///     0000000
+    ///
+    /// "Dòng cuối cùng không rỗng" vì thế cứ một nhịp trúng số thật, một nhịp trúng "0000000" —
+    /// mà "0000000" lại parse ra 0.0 hoàn toàn hợp lệ. Kết quả: số cân trên màn hình NHẤP NHÁY
+    /// đúng-rồi-0, và tệ hơn là `StableFilter` không bao giờ thấy hai lần đọc liên tiếp giống
+    /// nhau nên NEXT không chốt nổi bì (người dùng báo: "lúc ấn next thì lúc được, lúc lấy được
+    /// là 00").
+    ///
+    /// ===== VÌ SAO NHẬN DẠNG KIỂU NÀY =====
+    /// Điều kiện đặt HẸP nhất có thể: chỉ loại dòng TOÀN CHỮ SỐ. Một khung cân thật luôn có ít
+    /// nhất một ký tự không phải chữ số — dấu phân cách (","), dấu (+/-), dấu thập phân, hoặc
+    /// chữ (ST/US, "g"/"kg"). Cả hai định dạng đang gặp ở xưởng đều thoả:
+    ///
+    ///     US,+000466.6  g          (cân to)
+    ///     12,ST,GS,+000010.5g      (cân nhỏ)
+    ///
+    /// Cố ý KHÔNG đòi phải có dấu "," hay dấu +/- — đòi chặt hơn thì gặp một con cân xuất định
+    /// dạng khác là màn hình chết câm hoàn toàn, tệ hơn hẳn so với nhiễu.
+    /// </summary>
+    public static bool LaDongSoCan(string line)
+    {
+        string t = line.Trim();
+        if (t.Length == 0) return false;
+
+        foreach (char c in t)
+        {
+            if (c < '0' || c > '9') return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Lấy dòng cuối cùng KHÔNG RỖNG và ĐÃ KẾT THÚC của file log PuTTY.
     ///
     /// Thay cho <c>File.ReadAllLines</c> trước đây (đọc TOÀN BỘ file rồi lấy phần tử cuối). Ở
@@ -352,7 +393,7 @@ public class ScaleReader : IDisposable
         for (int i = lines.Length - 1; i >= 0; i--)
         {
             string t = lines[i].Trim();
-            if (t.Length > 0) return t;
+            if (LaDongSoCan(t)) return t;
         }
 
         return string.Empty;
@@ -376,9 +417,17 @@ public class ScaleReader : IDisposable
     /// TV6: trả null (không phải 0.0) khi không trích được số hợp lệ nào — 0.0 là 1 kết quả cân
     /// HỢP LỆ (cân đang thật sự rỗng), phải phân biệt được với "đọc lỗi/dữ liệu rác".
     /// </summary>
-    public double? CleanWeight(string rawInput)
+    public double? CleanWeight(string rawInput) => TrichSoCan(rawInput).Value;
+
+    /// <summary>
+    /// Trích số cân, trả về CẢ giá trị LẪN chuỗi token đã tách được.
+    ///
+    /// Cần token vì `StableFilter` của VBA so trên chính token đó, không phải trên dòng thô —
+    /// xem ghi chú ở <see cref="ReadWeightWithStability"/>.
+    /// </summary>
+    private static (double? Value, string Token) TrichSoCan(string rawInput)
     {
-        if (string.IsNullOrEmpty(rawInput)) return null;
+        if (string.IsNullOrEmpty(rawInput)) return (null, string.Empty);
 
         // VBA lọc whitelist [0-9+\-.,] TRƯỚC khi tách token (Mod_delta_raw.CleanScaleRaw /
         // ModRead_putty_log.CleanWeight) — nếu bỏ bước này, token cuối còn dính hậu tố đơn vị
@@ -401,10 +450,10 @@ public class ScaleReader : IDisposable
             // NumberStyles tương đương để không lệch hành vi khi token có dấu "+".
             if (double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double val))
             {
-                return val;
+                return (val, t);
             }
         }
-        return null;
+        return (null, string.Empty);
     }
 
     /// <summary>
@@ -413,10 +462,34 @@ public class ScaleReader : IDisposable
     /// hard-code stable=true. Trước đây .NET hoàn toàn không có StableFilter ở bất kỳ tầng
     /// nào (p0-c-scale-algorithm.md Mục A.4) — WeighingStation.vue gửi thẳng stable:true.
     /// </summary>
+    /// <remarks>
+    /// ===== SỬA 09/08/2026: đưa TOKEN SỐ vào StableFilter, không phải cả dòng thô =====
+    ///
+    /// VBA `ModRead_putty_log` -> `Mod_delta_raw.PushRawToForm` làm đúng thứ tự này:
+    ///
+    ///     rawNum = CleanScaleRaw(s)
+    ///     rawNum = ExtractLastNumber(rawNum)     ' <- chỉ còn CON SỐ
+    ///     filtered = StableFilter(rawNum)        ' <- so trên CON SỐ
+    ///
+    /// Bản .NET trước đây đưa `rawInput` (nguyên dòng) vào StableFilter. Với cái cân to thì đó là
+    /// sai nghiêm trọng, vì dòng của nó mang cả cờ trạng thái ST/US ở đầu và cờ này nhảy liên tục
+    /// ngay cả khi con số đứng yên:
+    ///
+    ///     US,-008359.3  g
+    ///     ST,-008359.3  g      <- cùng một số, nhưng CHUỖI khác -> bộ đếm bị reset
+    ///
+    /// Hậu quả: cân đứng yên rồi mà Agent vẫn báo "chưa ổn định", nên bấm NEXT không chốt được
+    /// bì. So trên token thì hai dòng trên là một, đúng như VBA — và cũng đúng ý nghĩa: cái đang
+    /// cần biết là SỐ có đứng yên không, chứ không phải cái nhãn trạng thái có đổi không.
+    ///
+    /// Cố ý KHÔNG đọc cờ ST/US để suy ra ổn định, dù cái cân có nói sẵn: VBA không dùng nó, và
+    /// đổi định nghĩa "ổn định" là đổi luôn thời điểm chốt bì — phải là một quyết định riêng có
+    /// người xác nhận, không phải hệ quả phụ của một lần vá lỗi.
+    /// </remarks>
     public (double? Weight, bool IsStable) ReadWeightWithStability(string rawInput)
     {
-        double? weight = CleanWeight(rawInput);
-        bool isStable = weight.HasValue && StableFilter(rawInput);
+        var (weight, token) = TrichSoCan(rawInput);
+        bool isStable = weight.HasValue && StableFilter(token);
         return (weight, isStable);
     }
 
