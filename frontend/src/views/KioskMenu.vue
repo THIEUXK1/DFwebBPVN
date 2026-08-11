@@ -3,38 +3,38 @@
     <div class="menu-header">
       <h1 class="client-title">💻 {{ clientName }}</h1>
       <div class="client-meta">
-        <span class="badge badge-location">📍 {{ location || 'Xưởng sản xuất' }}</span>
+        <span class="badge badge-location">📍 {{ location || $t('kioskMenu.defaultLocation') }}</span>
         <span class="badge badge-status" :class="statusClass">🟢 {{ clientStatus }}</span>
       </div>
-      <p class="subtitle text-muted">Vui lòng chọn chương trình làm việc dưới đây</p>
+      <p class="subtitle text-muted">{{ $t('kioskMenu.subtitle') }}</p>
     </div>
 
     <div class="menu-grid">
-      <div 
-        v-for="cap in businessCapabilities" 
-        :key="cap.code" 
-        class="menu-card" 
+      <div
+        v-for="cap in businessCapabilities"
+        :key="cap.code"
+        class="menu-card"
         @click="selectProgram(cap.code)"
       >
         <div class="card-icon">{{ getIconForCapability(cap.code) }}</div>
         <h3>{{ cap.name }}</h3>
         <p class="description">{{ getDescriptionForCapability(cap.code) }}</p>
-        <div class="card-action">🚀 Mở chương trình</div>
+        <div class="card-action">{{ $t('kioskMenu.cardActionOpen') }}</div>
       </div>
     </div>
 
     <div class="devices-footer">
-      <h4>Thiết bị đang gán tại trạm:</h4>
+      <h4>{{ $t('kioskMenu.devicesFooterTitle') }}</h4>
       <div class="devices-list">
-        <div 
-          v-for="dev in devices" 
-          :key="dev.id" 
+        <div
+          v-for="dev in devices"
+          :key="dev.id"
           class="device-badge"
           :class="dev.enabled ? 'dev-online' : 'dev-offline'"
         >
           <span class="dev-icon">{{ getIconForDeviceType(dev.device_type) }}</span>
           <span class="dev-name">{{ dev.code }}</span>
-          <span class="dev-role">({{ dev.role === 'PRIMARY_PRINTER' ? 'Máy in chính' : dev.role === 'PRIMARY_SCALE' ? 'Cân chính' : dev.role }})</span>
+          <span class="dev-role">({{ dev.role === 'PRIMARY_PRINTER' ? $t('kioskMenu.rolePrimaryPrinter') : dev.role === 'PRIMARY_SCALE' ? $t('kioskMenu.rolePrimaryScale') : dev.role }})</span>
         </div>
       </div>
     </div>
@@ -44,13 +44,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '../stores/auth';
 
 const router = useRouter();
 const authStore = useAuthStore();
+const { t } = useI18n({ useScope: 'global' });
 
 const client = computed(() => authStore.kioskClient);
-const clientName = computed(() => client.value?.name || 'Trạm Vận Hành');
+const clientName = computed(() => client.value?.name || t('kioskMenu.defaultClientName'));
 const location = computed(() => client.value?.location);
 const clientStatus = computed(() => client.value?.status || 'ONLINE');
 const statusClass = computed(() => client.value?.status === 'ACTIVE' ? 'badge-active' : 'badge-inactive');
@@ -88,13 +90,13 @@ function getIconForCapability(cap: string): string {
 
 function getDescriptionForCapability(cap: string): string {
   const desc: Record<string, string> = {
-    'CHEMICAL_CALL': 'Yêu cầu gọi hóa chất nhuộm từ bồn định lượng vào máy.',
-    'PRODUCTION_ORDER': 'Tạo đơn sản xuất mới và scan barcode lệnh từ văn phòng.',
-    'QR_LABEL_PRINTING': 'Nhận lệnh sản xuất thành phẩm và in tem nhãn QR tương ứng.',
-    'SMALL_SCALE': 'Trạm cân nhỏ dành cho cân phẩm nhuộm và hóa chất chính xác.',
-    'LARGE_SCALE': 'Trạm cân lớn dành cho cân khối lượng hóa chất công nghiệp.',
+    'CHEMICAL_CALL': t('kioskMenu.capDescChemicalCall'),
+    'PRODUCTION_ORDER': t('kioskMenu.capDescProductionOrder'),
+    'QR_LABEL_PRINTING': t('kioskMenu.capDescQrLabelPrinting'),
+    'SMALL_SCALE': t('kioskMenu.capDescSmallScale'),
+    'LARGE_SCALE': t('kioskMenu.capDescLargeScale'),
   };
-  return desc[cap] || 'Chương trình nghiệp vụ vận hành.';
+  return desc[cap] || t('kioskMenu.capDescDefault');
 }
 
 function getIconForDeviceType(type: string): string {

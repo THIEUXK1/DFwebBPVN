@@ -21,12 +21,12 @@
              :style="{ width: FORM_W + 'pt', height: FORM_H + 'pt', transform: `scale(${scale})` }">
 
           <!-- ===================== Dải header (T = 0..48pt) ===================== -->
-          <label class="vba-label" :style="box(0, 6, 72, 18)">SCAN QR</label>
+          <label class="vba-label" :style="box(0, 6, 72, 18)">{{ $t('productionBatchesGrid.labelScanQr') }}</label>
 
-          <button class="vba-btn" :style="box(132, 0, 42, 24)" @click="openMachinePicker">MACHINE</button>
-          <button class="vba-btn" :style="box(174, 0, 36, 24)" @click="openTankPicker">TANK</button>
+          <button class="vba-btn" :style="box(132, 0, 42, 24)" @click="openMachinePicker">{{ $t('productionBatchesGrid.btnMachine') }}</button>
+          <button class="vba-btn" :style="box(174, 0, 36, 24)" @click="openTankPicker">{{ $t('productionBatchesGrid.btnTank') }}</button>
           <!-- CommandButton4_Click: Me.Box7.Text = "OK" — bật cờ confirm2 để Save xong duyệt luôn. -->
-          <button class="vba-btn" :style="box(210, 0, 48.05, 24)" @click="form.box7 = 'OK'">OK</button>
+          <button class="vba-btn" :style="box(210, 0, 48.05, 24)" @click="form.box7 = 'OK'">{{ $t('productionBatchesGrid.btnOk') }}</button>
 
           <!-- Box3 (confirm1) trong bản gốc có Visible = False nên KHÔNG vẽ ra đây; nó luôn
                mang giá trị "OK" và chỉ được ghi xuống DB. -->
@@ -39,26 +39,26 @@
             class="vba-text"
             :style="box(0, 24, 72, 25.5)"
             :disabled="scanning"
-            title="Box1 — quét QR vào đây rồi Enter; hệ thống tự tách ra Box2/Box4/Box6. Sau khi tách, ô này giữ Mã màu."
+            :title="$t('productionBatchesGrid.box1Title')"
             @keyup.enter="handleScan"
           />
-          <input v-model="form.code" class="vba-text" :style="box(72, 24, 60, 25.5)" title="Box2 — Mã hàng (code)" />
+          <input v-model="form.code" class="vba-text" :style="box(72, 24, 60, 25.5)" :title="$t('productionBatchesGrid.box2Title')" />
           <!-- Box4/Box5 có Locked = True trong bản gốc: chỉ điền được qua nút MACHINE/TANK. -->
-          <input :value="form.machineCode" readonly class="vba-text" :style="box(132, 24, 42, 25.5)" title="Box4 — Máy nhuộm (chọn bằng nút MACHINE)" />
-          <input :value="form.tankCode" readonly class="vba-text" :style="box(174, 24, 36, 25.5)" title="Box5 — Thùng (chọn bằng nút TANK)" />
-          <input v-model="form.level" class="vba-text" :style="box(210, 24, 24, 25.5)" title="Box6 — Mực nước" />
-          <input v-model="form.box7" class="vba-text" :style="box(234.05, 24, 24, 25.5)" title="Box7 — confirm2; = OK thì Save xong tự PHÊ DUYỆT (cần có Thùng)" />
+          <input :value="form.machineCode" readonly class="vba-text" :style="box(132, 24, 42, 25.5)" :title="$t('productionBatchesGrid.box4Title')" />
+          <input :value="form.tankCode" readonly class="vba-text" :style="box(174, 24, 36, 25.5)" :title="$t('productionBatchesGrid.box5Title')" />
+          <input v-model="form.level" class="vba-text" :style="box(210, 24, 24, 25.5)" :title="$t('productionBatchesGrid.box6Title')" />
+          <input v-model="form.box7" class="vba-text" :style="box(234.05, 24, 24, 25.5)" :title="$t('productionBatchesGrid.box7Title')" />
 
           <input :value="form.rawQrDye" readonly class="vba-text vba-raw" :style="box(258, 0, 114, 26.4)" title="raw_qr_dye" />
           <input :value="form.rawQrChem" readonly class="vba-text vba-raw" :style="box(258, 24, 114, 26.4)" title="raw_qr_chem" />
 
           <button class="vba-btn" :style="box(378, 0, 120, 48)" :disabled="saving" @click="handleSave">
-            {{ saving ? '...' : 'SAVE' }}
+            {{ saving ? $t('productionBatchesGrid.savingEllipsis') : $t('productionBatchesGrid.btnSave') }}
           </button>
-          <button class="vba-btn" :style="box(498, 0, 60, 48)" @click="handleClear">CLEAR</button>
-          <button class="vba-btn" :style="box(558, 0, 78, 48)" :disabled="saving" @click="handleApproveFromHeader">PHE DUYET</button>
-          <button class="vba-btn" :style="box(636, 0, 72, 48)" @click="checkFormOpen = true">CHECK</button>
-          <button class="vba-btn" :style="box(708, 0, 60, 48)" @click="handleClose">CLOSE</button>
+          <button class="vba-btn" :style="box(498, 0, 60, 48)" @click="handleClear">{{ $t('productionBatchesGrid.btnClear') }}</button>
+          <button class="vba-btn" :style="box(558, 0, 78, 48)" :disabled="saving" @click="handleApproveFromHeader">{{ $t('productionBatchesGrid.btnApprove') }}</button>
+          <button class="vba-btn" :style="box(636, 0, 72, 48)" @click="checkFormOpen = true">{{ $t('productionBatchesGrid.btnCheck') }}</button>
+          <button class="vba-btn" :style="box(708, 0, 60, 48)" @click="handleClose">{{ $t('productionBatchesGrid.btnClose') }}</button>
 
           <!-- ===================== Lưới 81 ô: 3 cột × 27 dòng (T = 54..540pt) ===================== -->
           <template v-for="(slot, i) in slots" :key="'slot-' + i">
@@ -84,28 +84,28 @@
     <div v-if="subFormBatch" class="vba-modal-backdrop" @click.self="subFormBatch = null">
       <div class="vba-modal-fit" :style="subFormFit.fit" @click.self="subFormBatch = null">
       <div class="vba-form vba-modal" :style="subFormFit.form">
-        <button class="vba-btn" :style="box(0, 0, 24, 24)" title="Hủy đơn (CANCELLED)" @click="deleteFromSubForm">D</button>
-        <label class="vba-label" :style="box(48, 1.55, 30, 12)">MA DAI</label>
+        <button class="vba-btn" :style="box(0, 0, 24, 24)" :title="$t('productionBatchesGrid.subFormDeleteTitle')" @click="deleteFromSubForm">D</button>
+        <label class="vba-label" :style="box(48, 1.55, 30, 12)">{{ $t('productionBatchesGrid.labelMaDai') }}</label>
         <input :value="subFormBatch.product_code" readonly class="vba-text" :style="box(84, 0, 108, 25.5)" />
-        <label class="vba-label" :style="box(42, 31.5, 36, 12)">MA MAU</label>
+        <label class="vba-label" :style="box(42, 31.5, 36, 12)">{{ $t('productionBatchesGrid.labelMaMau') }}</label>
         <input :value="subFormBatch.color" readonly class="vba-text" :style="box(84, 31.5, 108, 25.5)" />
 
         <!-- Máy không đổi được sau khi đơn đã lưu (backend không có endpoint) -->
-        <button class="vba-btn" :style="box(12, 67.5, 72, 24)" disabled title="Không đổi được Máy sau khi đơn đã lưu">MA MAY</button>
+        <button class="vba-btn" :style="box(12, 67.5, 72, 24)" disabled :title="$t('productionBatchesGrid.maMayDisabledTitle')">{{ $t('productionBatchesGrid.btnMaMay') }}</button>
         <input :value="subFormBatch.machine?.code || ''" readonly class="vba-text" :style="box(84, 67.5, 108, 25.5)" />
 
-        <button class="vba-btn" :style="box(12, 103.5, 72, 24)" @click="openTankPickerForSubForm">MA THUNG </button>
+        <button class="vba-btn" :style="box(12, 103.5, 72, 24)" @click="openTankPickerForSubForm">{{ $t('productionBatchesGrid.btnMaThung') }}</button>
         <input :value="subFormTankCode" readonly class="vba-text" :style="box(84, 103.5, 108, 25.5)" />
 
-        <button class="vba-btn" :style="box(12, 139.5, 72, 24)" @click="subFormTankId = subFormBatch.tank_id ?? null">CLEAR</button>
+        <button class="vba-btn" :style="box(12, 139.5, 72, 24)" @click="subFormTankId = subFormBatch.tank_id ?? null">{{ $t('productionBatchesGrid.btnClear') }}</button>
         <button
           class="vba-btn"
           :style="box(102, 139.5, 90, 60)"
           :disabled="!subFormTankId || approving"
-          title="Lưu Thùng và duyệt đơn"
+          :title="$t('productionBatchesGrid.subFormApproveTitle')"
           @click="approveFromSubForm"
-        >PHE DUYET</button>
-        <button class="vba-btn" :style="box(12, 175.5, 72, 24)" @click="subFormBatch = null">CLOSE</button>
+        >{{ $t('productionBatchesGrid.btnApprove') }}</button>
+        <button class="vba-btn" :style="box(12, 175.5, 72, 24)" @click="subFormBatch = null">{{ $t('productionBatchesGrid.btnClose') }}</button>
       </div>
       </div>
     </div>
@@ -124,7 +124,7 @@
             @dblclick="machinePickerValue = m.code; confirmMachinePick()"
           >{{ m.code }}</div>
         </div>
-        <button class="vba-btn vba-btn-big" :style="box(12, machineOkTop, 132, MACHINE_OK_H)" @click="confirmMachinePick">OK</button>
+        <button class="vba-btn vba-btn-big" :style="box(12, machineOkTop, 132, MACHINE_OK_H)" @click="confirmMachinePick">{{ $t('productionBatchesGrid.btnOk') }}</button>
       </div>
       </div>
     </div>
@@ -143,7 +143,7 @@
             @dblclick="tankPickerValue = code; confirmTankPick()"
           >{{ code }}</div>
         </div>
-        <button class="vba-btn vba-btn-big" :style="box(12, 166, 132, 44)" @click="confirmTankPick">OK</button>
+        <button class="vba-btn vba-btn-big" :style="box(12, 166, 132, 44)" @click="confirmTankPick">{{ $t('productionBatchesGrid.btnOk') }}</button>
       </div>
       </div>
     </div>
@@ -152,19 +152,19 @@
     <div v-if="checkFormOpen" class="vba-modal-backdrop" @click.self="closeCheckForm">
       <div class="vba-modal-fit" :style="checkFormFit.fit" @click.self="closeCheckForm">
       <div class="vba-form vba-modal" :style="checkFormFit.form">
-        <label class="vba-label" :style="box(36, 0, 36, 12)">MA MAU</label>
+        <label class="vba-label" :style="box(36, 0, 36, 12)">{{ $t('productionBatchesGrid.labelMaMau') }}</label>
         <input
           v-model="checkColor"
           class="vba-text"
           :style="box(72, 0, 90, 25.5)"
-          title="Quét thẳng QR vào đây rồi Enter — tự tách thành MA MAU / MA DAI"
+          :title="$t('productionBatchesGrid.checkScanTitle')"
           @keyup.enter="splitCheckScan"
         />
-        <label class="vba-label" :style="box(36, 36, 30, 12)">MA DAI</label>
+        <label class="vba-label" :style="box(36, 36, 30, 12)">{{ $t('productionBatchesGrid.labelMaDai') }}</label>
         <input v-model="checkCode" class="vba-text" :style="box(72, 36, 90, 25.5)" />
-        <button class="vba-btn" :style="box(0, 66, 72, 24)" @click="checkColor = ''; checkCode = ''; checkResult = ''">CLEAR</button>
-        <button class="vba-btn" :style="box(90, 66, 72, 54)" @click="runCheck">KIEM TRA</button>
-        <button class="vba-btn" :style="box(0, 96, 72, 24)" @click="closeCheckForm">CLOSE</button>
+        <button class="vba-btn" :style="box(0, 66, 72, 24)" @click="checkColor = ''; checkCode = ''; checkResult = ''">{{ $t('productionBatchesGrid.btnClear') }}</button>
+        <button class="vba-btn" :style="box(90, 66, 72, 54)" @click="runCheck">{{ $t('productionBatchesGrid.btnKiemTra') }}</button>
+        <button class="vba-btn" :style="box(0, 96, 72, 24)" @click="closeCheckForm">{{ $t('productionBatchesGrid.btnClose') }}</button>
       </div>
       </div>
     </div>
@@ -172,7 +172,7 @@
     <!-- Luôn vẽ dải trạng thái (kể cả khi chưa có thông báo): nếu để `v-if`, lúc nó hiện/ẩn thì
          chiều cao vùng chứa mặt form đổi đột ngột và cả lưới nhảy cỡ theo. -->
     <div class="vba-statusbar">
-      <span class="vba-zoom">Vừa màn hình: {{ Math.round(scale * 100) }}%</span>
+      <span class="vba-zoom">{{ $t('productionBatchesGrid.statusZoomLabel', { percent: Math.round(scale * 100) }) }}</span>
       <span v-if="statusMsg" :class="{ 'is-error': statusIsError }">{{ statusMsg }}</span>
     </div>
 
@@ -185,6 +185,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, reactive, nextTick } from 'vue';
 import axios from 'axios';
+import { useI18n } from 'vue-i18n';
 import AppLayout from '../components/AppLayout.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
 import NavToggleButton from '../components/NavToggleButton.vue';
@@ -193,6 +194,10 @@ import { isFullscreen } from '../services/layout';
 import { useAuthStore } from '../stores/auth';
 import echo from '../services/echo';
 import { applyVbaRowLock } from '../utils/vbaRowLock';
+
+// useScope: 'global' — dùng chung 1 instance/state với i18n đăng ký ở main.ts, không tạo
+// local scope riêng cho component này (xem mẫu ở AppLayout.vue).
+const { t } = useI18n({ useScope: 'global' });
 
 // Trang công khai (requiresAuth:false) — App.vue không bọc AppLayout, trang tự bọc lấy khi
 // người xem đã đăng nhập để vẫn có menu điều hướng (mở bằng nút 3 gạch, xem NavToggleButton).
@@ -413,10 +418,10 @@ const handleScan = async () => {
     form.tankCode = '';
     scanIncomplete.value = !!d.scan_looks_incomplete;
     if (scanIncomplete.value) {
-      say('Mã quét bị rớt ký tự giữa chừng — SAVE đã bị khóa. Đưa lại phiếu MES và quét lại.', true);
+      say(t('productionBatchesGrid.msgScanIncomplete'), true);
     }
   } catch (error: any) {
-    say(error.response?.data?.message || 'Không đọc được mã quét.', true);
+    say(error.response?.data?.message || t('productionBatchesGrid.errScanRead'), true);
   } finally {
     scanning.value = false;
     nextTick(() => box1Ref.value?.focus());
@@ -439,7 +444,7 @@ const handleClear = () => {
 
 const handleClose = () => {
   handleClear();
-  say('Đã đóng phiên nhập (CLOSE) — form đã được xóa trắng.');
+  say(t('productionBatchesGrid.msgClosed'));
 };
 
 // ---------- SAVE (btnSAVE_Click) ----------
@@ -456,13 +461,13 @@ const doApprove = async (id: string) => {
 
 const saveOrder = async (confirmDuplicate: boolean): Promise<any | null> => {
   if (scanIncomplete.value) {
-    say('Không SAVE được: mã quét bị rớt ký tự. Bấm CLEAR rồi quét lại phiếu MES.', true);
+    say(t('productionBatchesGrid.errScanIncompleteSave'), true);
     return null;
   }
   const color = (box1Ref.value?.value ?? '').trim();
   const machine = currentMachine.value;
   if (!color || !form.code || !machine) {
-    say('Khong du thong tin (thiếu Màu / Mã hàng / Máy).', true);
+    say(t('productionBatchesGrid.errMissingInfo'), true);
     return null;
   }
 
@@ -482,13 +487,13 @@ const saveOrder = async (confirmDuplicate: boolean): Promise<any | null> => {
     return res.data.data;
   } catch (error: any) {
     if (error.response?.data?.status === 'DUPLICATE_WARNING') {
-      if (confirm(`${error.response.data.message}\n\nVẫn lưu?`)) {
+      if (confirm(`${error.response.data.message}\n\n${t('productionBatchesGrid.confirmStillSave')}`)) {
         saving.value = false;
         return saveOrder(true);
       }
-      say('Đã hủy lưu vì nghi trùng.', true);
+      say(t('productionBatchesGrid.msgSaveCancelled'), true);
     } else {
-      say(error.response?.data?.message || 'Có lỗi khi lưu đơn.', true);
+      say(error.response?.data?.message || t('productionBatchesGrid.errSaveGeneric'), true);
     }
     return null;
   } finally {
@@ -507,12 +512,12 @@ const handleSave = async () => {
   if (autoApprove) {
     try {
       await doApprove(batch.id);
-      say(`Đã lưu và PHÊ DUYỆT: ${batch.color} - ${batch.product_code}.`);
+      say(t('productionBatchesGrid.msgSavedApproved', { color: batch.color, code: batch.product_code }));
     } catch (error: any) {
-      say(`Đã lưu nhưng duyệt tự động thất bại: ${error.response?.data?.message || 'lỗi không xác định'}.`, true);
+      say(t('productionBatchesGrid.msgAutoApproveFailed', { error: error.response?.data?.message || t('productionBatchesGrid.errUnknownFallback') }), true);
     }
   } else {
-    say(`Đã lưu đơn (chờ duyệt): ${batch.color} - ${batch.product_code}.`);
+    say(t('productionBatchesGrid.msgSavedPending', { color: batch.color, code: batch.product_code }));
   }
   handleClear();
   fetchWaiting();
@@ -524,11 +529,11 @@ const handleApproveFromHeader = async () => {
   if (!batch) return;
   try {
     await doApprove(batch.id);
-    say(`Đã lưu và PHÊ DUYỆT: ${batch.color} - ${batch.product_code}.`);
+    say(t('productionBatchesGrid.msgSavedApproved', { color: batch.color, code: batch.product_code }));
     handleClear();
     fetchWaiting();
   } catch (error: any) {
-    say(`Đã lưu nhưng duyệt thất bại: ${error.response?.data?.message || 'lỗi không xác định'}.`, true);
+    say(t('productionBatchesGrid.msgApproveFailedHeader', { error: error.response?.data?.message || t('productionBatchesGrid.errUnknownFallback') }), true);
     fetchWaiting();
   }
 };
@@ -553,11 +558,11 @@ const approveFromSubForm = async () => {
       await axios.put(`${API}/production-batches/${batch.id}/tank`, { tank_id: subFormTankId.value });
     }
     await doApprove(batch.id);
-    say(`Đã PHÊ DUYỆT đơn ${batch.color} - ${batch.product_code}.`);
+    say(t('productionBatchesGrid.msgSubApproved', { color: batch.color, code: batch.product_code }));
     subFormBatch.value = null;
     fetchWaiting();
   } catch (error: any) {
-    say(error.response?.data?.message || 'Không thể duyệt đơn.', true);
+    say(error.response?.data?.message || t('productionBatchesGrid.errCannotApprove'), true);
   }
 };
 
@@ -565,14 +570,14 @@ const approveFromSubForm = async () => {
 const deleteFromSubForm = async () => {
   const batch = subFormBatch.value;
   if (!batch) return;
-  if (!confirm(`Hủy đơn ${batch.color} - ${batch.product_code}? Đơn sẽ chuyển sang CANCELLED.`)) return;
+  if (!confirm(t('productionBatchesGrid.confirmCancelOrder', { color: batch.color, code: batch.product_code }))) return;
   try {
     await axios.put(`${API}/production-batches/${batch.id}/status`, { status: 'CANCELLED' });
-    say(`Đã hủy đơn ${batch.color} - ${batch.product_code}.`);
+    say(t('productionBatchesGrid.msgCancelled', { color: batch.color, code: batch.product_code }));
     subFormBatch.value = null;
     fetchWaiting();
   } catch (error: any) {
-    say(error.response?.data?.message || 'Không thể hủy đơn.', true);
+    say(error.response?.data?.message || t('productionBatchesGrid.errCannotCancel'), true);
   }
 };
 
@@ -633,7 +638,7 @@ const confirmTankPick = () => {
     const tank = tanks.value.find(t => t.machine_id === machineId && t.code === tankPickerValue.value);
     subFormTankId.value = tank?.id ?? null;
     if (!tank) {
-      say(`Máy của đơn này không có thùng ${tankPickerValue.value} trong danh mục.`, true);
+      say(t('productionBatchesGrid.errNoTankForMachine', { code: tankPickerValue.value }), true);
     }
   } else {
     form.tankCode = tankPickerValue.value;
@@ -670,7 +675,7 @@ const runCheck = () => {
     b => b.color === checkColor.value.trim() && b.product_code === checkCode.value.trim()
   );
   checkResult.value = exists ? 'YES' : 'NO';
-  say(exists ? 'YES — Đơn đã tồn tại trong hàng chờ.' : 'NO — Chưa tồn tại, có thể lưu mới.');
+  say(exists ? t('productionBatchesGrid.checkResultYes') : t('productionBatchesGrid.checkResultNo'));
 };
 
 const closeCheckForm = () => {

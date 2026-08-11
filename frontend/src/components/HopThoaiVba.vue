@@ -6,10 +6,10 @@
         <!-- Nút AN TOÀN đứng trước và là nút được lấy tiêu điểm: hộp thoại này chỉ bật lên ở
              thao tác không hoàn tác được, lỡ gõ Enter phải rơi vào vế không làm gì cả. -->
         <button v-if="thoai.kieu === 'hoi'" ref="nutRef" class="vba-btn big" @click="emit('dong', false)">
-          KHÔNG
+          {{ $t('hopThoaiVba.btnNo') }}
         </button>
-        <button v-else ref="nutRef" class="vba-btn big primary" @click="emit('dong', true)">OK</button>
-        <button v-if="thoai.kieu === 'hoi'" class="vba-btn big danger" @click="emit('dong', true)">ĐỒNG Ý</button>
+        <button v-else ref="nutRef" class="vba-btn big primary" @click="emit('dong', true)">{{ $t('hopThoaiVba.btnOk') }}</button>
+        <button v-if="thoai.kieu === 'hoi'" class="vba-btn big danger" @click="emit('dong', true)">{{ $t('hopThoaiVba.btnYes') }}</button>
       </div>
     </div>
   </div>

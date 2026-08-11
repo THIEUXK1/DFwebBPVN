@@ -63,6 +63,11 @@ Route::get('/public/bpdb-machines-gantt/lot-total', [BpdbMachineController::clas
 // Cùng trang Gantt public: toàn bộ thông tin mẻ trong MES (khách, đơn/MO, công thức, SL/khối
 // lượng, người+giờ, ngày giao, ghi chú SX...) — gọi khi bấm vào 1 thanh đã ghép được với MES.
 Route::get('/public/bpdb-machines-gantt/mes-batch', [BpdbMachineController::class, 'mesBatch']);
+// Chỉ dùng bởi view TEST /bpdb-machines/gantt-test (KHÔNG dùng bởi Gantt production ở trên):
+// trình duyệt tự phát hiện 1 mẻ vừa chuyển "đang chạy" (diff newlyAppearedRunningIds) rồi gọi
+// vào đây để bắn broadcast, cho /machine-id-board nhấp nháy đỏ đúng mã máy — xem
+// BpdbMachineRunningAlert. Không ghi DB, không cần đăng nhập (cùng nhóm public đọc BPDB).
+Route::post('/public/bpdb-machines-gantt/notify-running', [BpdbMachineController::class, 'notifyRunning']);
 
 // Public — 2 màn hình "Gọi hóa chất cổ điển" (/chemical-call/classic và
 // /chemical-call/pending-classic), theo yêu cầu 2026-08-04: mở màn hình treo xưởng không

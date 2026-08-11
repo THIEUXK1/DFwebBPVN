@@ -5,15 +5,15 @@
       <div class="banner-content">
         <span class="banner-icon">🌐</span>
         <div class="banner-text">
-          <strong>CHẾ ĐỘ GIÁM SÁT TỪ XA: </strong>
-          <span v-if="remoteMode === 'VIEW_ONLY'">CHỈ XEM (VIEW_ONLY) - Các nút thao tác nghiệp vụ đã bị vô hiệu hóa.</span>
-          <span v-else>ĐIỀU KHIỂN TỪ XA (REMOTE_OPERATE) - Cho phép vận hành từ xa. Mọi thao tác sẽ được ghi Audit Log kiểm toán.</span>
+          <strong>{{ $t('weighingStation.remoteBannerLabel') }}</strong>
+          <span v-if="remoteMode === 'VIEW_ONLY'">{{ $t('weighingStation.remoteViewOnlyDesc') }}</span>
+          <span v-else>{{ $t('weighingStation.remoteOperateDesc') }}</span>
         </div>
       </div>
       <div class="banner-actions">
         <select v-model="remoteMode" class="form-select font-xs select-mode">
-          <option value="VIEW_ONLY">🔒 Chế độ Chỉ xem</option>
-          <option value="REMOTE_OPERATE">⚡ Chế độ Điều khiển</option>
+          <option value="VIEW_ONLY">{{ $t('weighingStation.remoteModeViewOnlyOption') }}</option>
+          <option value="REMOTE_OPERATE">{{ $t('weighingStation.remoteModeOperateOption') }}</option>
         </select>
       </div>
     </div>
@@ -22,23 +22,23 @@
     <div class="station-banner">
       <div class="banner-left">
         <span class="station-badge mr-2" :class="scaleTypeBadgeClass">
-          {{ isLargeScale ? '⚡ LARGE SCALE (CÂN LỚN)' : '⚖️ SMALL SCALE (CÂN NHỎ)' }}
+          {{ isLargeScale ? $t('weighingStation.largeScaleBadge') : $t('weighingStation.smallScaleBadge') }}
         </span>
-        <h2>{{ currentWorkstation ? currentWorkstation.name : 'Chưa đăng ký trạm' }}</h2>
-        <p class="text-muted font-sm">Mã trạm: <code>{{ currentWorkstation?.code }}</code> | Vị trí: {{ currentWorkstation?.location }}</p>
+        <h2>{{ currentWorkstation ? currentWorkstation.name : $t('weighingStation.noWorkstationRegistered') }}</h2>
+        <p class="text-muted font-sm">{{ $t('weighingStation.stationCodeLabel') }}<code>{{ currentWorkstation?.code }}</code>{{ $t('weighingStation.stationLocationLabel') }}{{ currentWorkstation?.location }}</p>
       </div>
       <div class="banner-right">
         <!-- Tra cứu bán thành phẩm — port scaleform.btnCheck_Click (VBA) → checkform -->
-        <button class="btn btn-secondary btn-sm mr-2" @click="showChecker = true">🔍 Tra cứu</button>
+        <button class="btn btn-secondary btn-sm mr-2" @click="showChecker = true">{{ $t('weighingStation.checkButton') }}</button>
         <!-- Scale heartbeat status -->
         <div class="dev-badge">
           <span class="dot-pulse" :class="scaleOnline ? 'dot-green' : 'dot-red'"></span>
-          <span>Cân: {{ currentWorkstation?.assigned_scale_device_id || 'Chưa gán' }}</span>
+          <span>{{ $t('weighingStation.scaleDeviceLabel') }}{{ currentWorkstation?.assigned_scale_device_id || $t('weighingStation.deviceNotAssigned') }}</span>
         </div>
         <!-- Printer status -->
         <div class="dev-badge ml-2">
           <span class="dot-pulse" :class="printerOnline ? 'dot-green' : 'dot-red'"></span>
-          <span>Máy in: {{ currentWorkstation?.assigned_printer_device_id || 'Chưa gán' }}</span>
+          <span>{{ $t('weighingStation.printerDeviceLabel') }}{{ currentWorkstation?.assigned_printer_device_id || $t('weighingStation.deviceNotAssigned') }}</span>
         </div>
       </div>
     </div>
@@ -66,12 +66,12 @@
       <div class="section card-sec flex-1">
         <div class="job-meta-header mb-4">
           <div class="meta-badge-row">
-            <span class="badge badge-blue">JOB: {{ activeJob.job_type }}</span>
-            <span class="badge badge-yellow" v-if="activeJob.status !== 'COMPLETED'">ĐANG CÂN ({{ completedItemsCount }}/{{ activeJob.items.length }})</span>
-            <span class="badge badge-green" v-else>ĐÃ HOÀN TẤT CÂN</span>
+            <span class="badge badge-blue">{{ $t('weighingStation.jobTypeLabel') }}{{ activeJob.job_type }}</span>
+            <span class="badge badge-yellow" v-if="activeJob.status !== 'COMPLETED'">{{ $t('weighingStation.weighingInProgress', { done: completedItemsCount, total: activeJob.items.length }) }}</span>
+            <span class="badge badge-green" v-else>{{ $t('weighingStation.weighingCompleted') }}</span>
             <!-- Phiếu cân tổng hợp — port scaleform.btnPrint_Click, không cần chờ job hoàn tất -->
             <button class="btn btn-secondary btn-sm ml-2" @click="printSlip" :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'">
-              🖨️ In phiếu cân
+              {{ $t('weighingStation.printSlipButton') }}
             </button>
             <!-- Thay btn_Out/btn_In của VBA (bắn RACK sang app pha màu ngoài bằng mô phỏng
                  chuột + clipboard vào toạ độ màn hình cố định) — không port được sang web và
@@ -81,9 +81,9 @@
               class="btn btn-secondary btn-sm ml-2"
               @click="printRackList"
               :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'"
-              title="In danh sách RACK, chia lô 6 rack mỗi lần đúng như VBA gửi sang app pha màu"
+              :title="$t('weighingStation.printRackListTitle')"
             >
-              🏷️ In danh sách RACK
+              {{ $t('weighingStation.printRackListButton') }}
             </button>
             <!-- Đóng đơn đang xem để quét/nạp đơn khác — KHÔNG xóa hay hủy gì dưới DB, đơn
                  vẫn giữ nguyên trạng thái đang cân dở, chỉ đưa màn hình về lại màn quét QR.
@@ -93,9 +93,9 @@
               class="btn btn-secondary btn-sm ml-2"
               @click="clearActiveJob"
               :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'"
-              title="Đơn này vẫn giữ nguyên trạng thái đang cân dở, chỉ đóng màn hình xem để quét đơn khác"
+              :title="$t('weighingStation.closeJobTitle')"
             >
-              ✕ Đóng đơn (quét đơn khác)
+              {{ $t('weighingStation.closeJobButton') }}
             </button>
             <!-- Hủy toàn bộ kết quả đã cân của mẻ này, quay lại vật tư đầu tiên — hành động
                  phá hủy dữ liệu đã lưu nên bắt buộc qua modal cảnh báo + tick xác nhận riêng
@@ -104,24 +104,24 @@
               class="btn btn-secondary btn-sm ml-2 btn-restart-warn"
               @click="showRestartModal = true"
               :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'"
-              title="Xóa toàn bộ kết quả đã cân của mẻ này, cân lại từ vật tư đầu tiên"
+              :title="$t('weighingStation.restartJobTitle')"
             >
-              🔁 Cân lại từ đầu
+              {{ $t('weighingStation.restartJobButton') }}
             </button>
           </div>
-          <h3>Mẻ nhuộm: <span class="text-glow-blue">{{ activeBatch.legacy_batch_id }}</span></h3>
+          <h3>{{ $t('weighingStation.batchLabel') }}<span class="text-glow-blue">{{ activeBatch.legacy_batch_id }}</span></h3>
 
           <div class="details-grid mt-3">
-            <div><span class="label">Mã màu:</span> <span class="val">{{ activeBatch.color }}</span></div>
-            <div><span class="label">Mã hàng:</span> <span class="val">{{ activeBatch.product_code }}</span></div>
-            <div><span class="label">Máy nhuộm:</span> <span class="machine-tag">{{ activeBatch.machine?.code || 'N/A' }}</span></div>
-            <div><span class="label">Mức nước:</span> <span class="val">{{ activeBatch.level_code || 'Mặc định' }}</span></div>
-            <div><span class="label">Khối lượng vải:</span> <span class="val bold-text">{{ activeBatch.cloth_weight }} kg</span></div>
+            <div><span class="label">{{ $t('weighingStation.colorLabel') }}</span> <span class="val">{{ activeBatch.color }}</span></div>
+            <div><span class="label">{{ $t('weighingStation.productCodeLabel') }}</span> <span class="val">{{ activeBatch.product_code }}</span></div>
+            <div><span class="label">{{ $t('weighingStation.machineLabel') }}</span> <span class="machine-tag">{{ activeBatch.machine?.code || $t('weighingStation.naFallback') }}</span></div>
+            <div><span class="label">{{ $t('weighingStation.waterLevelLabel') }}</span> <span class="val">{{ activeBatch.level_code || $t('weighingStation.defaultLevel') }}</span></div>
+            <div><span class="label">{{ $t('weighingStation.clothWeightLabel') }}</span> <span class="val bold-text">{{ activeBatch.cloth_weight }} kg</span></div>
           </div>
         </div>
 
         <div class="job-items-sec">
-          <h4>🧪 Bảng cân chi tiết (RACK / DYE CODE / WEIGHT / PROCESS):</h4>
+          <h4>{{ $t('weighingStation.detailTableTitle') }}</h4>
           <WeighingRackTable :items="activeJob.items" :active-index="activeIndex" @select="selectSeqIndex" />
         </div>
       </div>
@@ -174,6 +174,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import { currentWorkstation } from '../services/workstation';
 import { scannerService } from '../services/scanner';
@@ -192,6 +193,8 @@ import { printSlipHtml } from '../utils/slipPrint';
 
 const route = useRoute();
 const authStore = useAuthStore();
+// useScope: 'global' — dùng chung 1 instance/state với i18n đăng ký ở main.ts, không tạo scope riêng.
+const { t } = useI18n({ useScope: 'global' });
 const isImpersonating = computed(() => route.query.impersonate === 'true');
 const targetWsId = computed(() => route.query.target_ws);
 const remoteMode = ref<'VIEW_ONLY' | 'REMOTE_OPERATE'>('VIEW_ONLY');
@@ -494,7 +497,7 @@ const handleBarcodeScan = async (token: string) => {
     }
   } catch (err: any) {
     scannerService.playBeep(600, 400); // Error sound
-    alert(err.response?.data?.message || 'Không thể mở lệnh sản xuất này.');
+    alert(err.response?.data?.message || t('weighingStation.errorCannotOpenOrder'));
   }
 };
 
@@ -552,12 +555,12 @@ const statusMessage = computed(() => {
     // trống — net=0 chỉ có nghĩa "chưa thêm gì mới cho item này", không phải "chưa có gì
     // trên cân". Dùng đúng chữ để tránh hiểu lầm (phản hồi 2026-07-30).
     return grossWeight.value > 0.05
-      ? 'SẴN SÀNG (ĐÃ CÓ NỀN CÂN CỘNG DỒN) - CHƯA THÊM VẬT TƯ MỚI'
-      : 'CÂN RỖNG - ĐỢI ĐẶT VẬT TƯ';
+      ? t('weighingStation.statusReadyWithBase')
+      : t('weighingStation.statusEmptyWaiting');
   }
-  if (status === 'insufficient') return 'CHƯA ĐỦ - TIẾP TỤC THÊM VẬT TƯ';
-  if (status === 'in-range') return 'ĐẠT DUNG SAI CHO PHÉP';
-  return 'VƯỢT DUNG SAI - KIỂM TRA LẠI KHỐI LƯỢNG';
+  if (status === 'insufficient') return t('weighingStation.statusInsufficient');
+  if (status === 'in-range') return t('weighingStation.statusInRange');
+  return t('weighingStation.statusOverRange');
 });
 
 const selectSeqIndex = (idx: number) => {
@@ -590,7 +593,7 @@ const confirmWeighing = async () => {
   if (!activeIngredient.value) return;
 
   if (!currentWorkstation.value?.assigned_scale_device_id) {
-    alert('Lỗi: Máy trạm chưa được cấu hình Thiết bị Cân. Không thể thực hiện cân.');
+    alert(t('weighingStation.errorScaleNotConfigured'));
     return;
   }
 
@@ -632,7 +635,7 @@ const confirmWeighing = async () => {
       }
     }
   } catch (err: any) {
-    alert(err.response?.data?.message || 'Không thể xác nhận khối lượng cân.');
+    alert(err.response?.data?.message || t('weighingStation.errorConfirmWeighFailed'));
   }
 };
 
@@ -659,7 +662,7 @@ const printLabelViaBrowser = async () => {
   if (!lastLabelPayload.value) return;
   const win = window.open('', '_blank', 'width=780,height=560');
   if (!win) {
-    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    alert(t('weighingStation.popupBlocked'));
     return;
   }
   await printTsplViaBrowser(lastLabelPayload.value, win);
@@ -671,25 +674,25 @@ const reprintLabel = async () => {
 
   let managerPin: string | null = null;
   if (!authStore.user) {
-    managerPin = prompt('Nhập mã PIN của Giám sát (Supervisor) để in lại tem:');
+    managerPin = prompt(t('weighingStation.promptSupervisorPin'));
     if (!managerPin) {
-      alert('Cần có mã PIN Giám sát để in lại tem.');
+      alert(t('weighingStation.errorSupervisorPinRequired'));
       return;
     }
   }
 
-  const reason = prompt('Vui lòng nhập lý do in lại tem (Audit Log bắt buộc):');
+  const reason = prompt(t('weighingStation.promptReprintReason'));
   if (!reason || reason.trim().length < 5) {
-    alert('Lý do in lại tem phải có ít nhất 5 ký tự.');
+    alert(t('weighingStation.errorReprintReasonTooShort'));
     return;
   }
 
   const win = window.open('', '_blank', 'width=780,height=560');
   if (!win) {
-    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    alert(t('weighingStation.popupBlocked'));
     return;
   }
-  win.document.write('<p style="font-family:sans-serif;padding:20px;">Đang xử lý...</p>');
+  win.document.write(`<p style="font-family:sans-serif;padding:20px;">${t('weighingStation.processingText')}</p>`);
 
   try {
     // Get label ID from first item
@@ -708,7 +711,7 @@ const reprintLabel = async () => {
     await printTsplViaBrowser(lastLabelPayload.value || '', win);
   } catch (err: any) {
     win.close();
-    alert(err.response?.data?.message || 'Không thể in lại tem.');
+    alert(err.response?.data?.message || t('weighingStation.errorReprintFailed'));
   }
 };
 
@@ -724,7 +727,7 @@ const resetToScan = () => {
 // QR hoặc bấm thẻ "Đơn đang cân dở"), tiến độ + bì vẫn khôi phục đúng như restoreActiveJob.
 const clearActiveJob = () => {
   if (activeJob.value?.status !== 'COMPLETED') {
-    const ok = confirm('Đơn này vẫn đang cân dở, chưa hoàn tất. Đóng lại để quét đơn khác — đơn vẫn giữ nguyên tiến độ, có thể quay lại sau. Tiếp tục?');
+    const ok = confirm(t('weighingStation.confirmCloseUnfinishedJob'));
     if (!ok) return;
   }
   resetToScan();
@@ -752,7 +755,7 @@ const confirmRestartJob = async (reason: string) => {
       scannerService.playBeep(600, 200);
     }
   } catch (err: any) {
-    alert(err.response?.data?.message || 'Không thể cân lại từ đầu mẻ này.');
+    alert(err.response?.data?.message || t('weighingStation.errorRestartFailed'));
   } finally {
     restartSubmitting.value = false;
   }
@@ -772,10 +775,10 @@ const printSlip = async () => {
   // Chrome/Edge chặn popup vì đã mất "user gesture" gắn với cú click.
   const win = window.open('', '_blank', 'width=780,height=980');
   if (!win) {
-    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    alert(t('weighingStation.popupBlocked'));
     return;
   }
-  win.document.write('<p style="font-family:sans-serif;padding:20px;">Đang xử lý...</p>');
+  win.document.write(`<p style="font-family:sans-serif;padding:20px;">${t('weighingStation.processingText')}</p>`);
 
   try {
     const res = await axios.post(`/api/weighing-jobs/${activeJob.value.id}/print-slip`, {
@@ -786,7 +789,7 @@ const printSlip = async () => {
     await printSlipHtml(res.data?.data?.label_payload || '', win);
   } catch (err: any) {
     win.close();
-    alert(err.response?.data?.message || 'Không thể in phiếu cân.');
+    alert(err.response?.data?.message || t('weighingStation.errorPrintSlipFailed'));
   }
 };
 
@@ -822,7 +825,7 @@ const printRackList = () => {
 
   const batches = buildRackBatches();
   if (!batches.length) {
-    alert('Chưa có RACK nào để in — điền số RACK trên bảng cân trước.');
+    alert(t('weighingStation.errorNoRackToPrint'));
     return;
   }
 
@@ -830,18 +833,21 @@ const printRackList = () => {
   // Chrome/Edge chặn popup nếu window.open() chạy sau await, mất "user gesture" của cú click.
   const win = window.open('', '_blank', 'width=780,height=980');
   if (!win) {
-    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    alert(t('weighingStation.popupBlocked'));
     return;
   }
 
   const b = activeBatch.value || {};
+  const rackColRack = t('weighingStation.rackListColRack');
+  const rackColDye = t('weighingStation.rackListColDye');
+  const rackColWeight = t('weighingStation.rackListColWeight');
   const batchesHtml = batches
     .map(
       (rows, idx) => `
     <section class="batch">
-      <h2>Lô ${idx + 1} / ${batches.length}</h2>
+      <h2>${t('weighingStation.rackListBatchTitle', { current: idx + 1, total: batches.length })}</h2>
       <table>
-        <thead><tr><th>RACK</th><th>DYE CODE</th><th>WEIGHT</th></tr></thead>
+        <thead><tr><th>${rackColRack}</th><th>${rackColDye}</th><th>${rackColWeight}</th></tr></thead>
         <tbody>
           ${rows
             .map(
@@ -859,7 +865,7 @@ const printRackList = () => {
 <html lang="vi">
 <head>
 <meta charset="utf-8" />
-<title>Danh sách RACK ${b.legacy_batch_id || ''}</title>
+<title>${t('weighingStation.rackListDocTitle', { batchId: b.legacy_batch_id || '' })}</title>
 <style>
   * { box-sizing: border-box; }
   body { font-family: Arial, sans-serif; margin: 0; padding: 12mm; color: #000; }
@@ -877,12 +883,12 @@ const printRackList = () => {
 </style>
 </head>
 <body>
-  <h1>DANH SÁCH RACK — ${b.legacy_batch_id || ''}</h1>
+  <h1>${t('weighingStation.rackListHeading', { batchId: b.legacy_batch_id || '' })}</h1>
   <div class="meta">
-    <span>Màu: <strong>${b.color || ''}</strong></span>
-    <span>Mã hàng: <strong>${b.product_code || ''}</strong></span>
-    <span>Máy: <strong>${b.machine?.code || 'N/A'}</strong></span>
-    <span>Mức nước: <strong>${b.level_code || '-'}</strong></span>
+    <span>${t('weighingStation.rackListColorLabel')}<strong>${b.color || ''}</strong></span>
+    <span>${t('weighingStation.rackListProductLabel')}<strong>${b.product_code || ''}</strong></span>
+    <span>${t('weighingStation.rackListMachineLabel')}<strong>${b.machine?.code || t('weighingStation.naFallback')}</strong></span>
+    <span>${t('weighingStation.rackListWaterLevelLabel')}<strong>${b.level_code || '-'}</strong></span>
   </div>
   ${batchesHtml}
   <script>

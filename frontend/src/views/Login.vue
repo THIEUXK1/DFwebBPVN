@@ -8,20 +8,20 @@
     <div class="login-card">
       <div class="card-header">
         <div class="logo-placeholder">DF</div>
-        <h1>Hệ Thống Điều Phối & Cân Nhuộm</h1>
-        <p class="subtitle">Chuyển đổi số công đoạn nhuộm đai và pha màu tự động</p>
+        <h1>{{ $t('login.heading') }}</h1>
+        <p class="subtitle">{{ $t('login.subtitle') }}</p>
       </div>
 
       <form @submit.prevent="handleLogin" class="login-form">
         <div class="input-group">
-          <label for="username">Tên tài khoản</label>
+          <label for="username">{{ $t('login.usernameLabel') }}</label>
           <div class="input-wrapper">
             <span class="icon">👤</span>
-            <input 
-              type="text" 
-              id="username" 
-              v-model="username" 
-              placeholder="Nhập tên tài khoản..." 
+            <input
+              type="text"
+              id="username"
+              v-model="username"
+              :placeholder="$t('login.usernamePlaceholder')"
               required
               :disabled="authStore.loading"
             />
@@ -29,14 +29,14 @@
         </div>
 
         <div class="input-group">
-          <label for="password">Mật khẩu</label>
+          <label for="password">{{ $t('login.passwordLabel') }}</label>
           <div class="input-wrapper">
             <span class="icon">🔒</span>
-            <input 
-              type="password" 
-              id="password" 
-              v-model="password" 
-              placeholder="Nhập mật khẩu..." 
+            <input
+              type="password"
+              id="password"
+              v-model="password"
+              :placeholder="$t('login.passwordPlaceholder')"
               required
               :disabled="authStore.loading"
             />
@@ -50,12 +50,12 @@
 
         <button type="submit" class="submit-btn" :disabled="authStore.loading">
           <span v-if="authStore.loading" class="spinner"></span>
-          <span v-else>Đăng Nhập</span>
+          <span v-else>{{ $t('login.submitButton') }}</span>
         </button>
       </form>
 
       <div class="card-footer">
-        <p>© 2026 Nhà Máy Nhuộm DF. Bảo lưu mọi quyền.</p>
+        <p>{{ $t('login.footerCopyright') }}</p>
         <span class="version">v1.0.0-Beta</span>
       </div>
     </div>

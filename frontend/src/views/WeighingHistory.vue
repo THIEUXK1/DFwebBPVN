@@ -1,114 +1,146 @@
 <template>
   <div class="wh-page">
-    <!-- Thống kê cân trùng: mỗi thẻ = "có bao nhiêu ĐƠN bị cân đúng N lần", trong đó hai vòng chỉ
-         là cùng một đơn khi trùng cả 4 trường Màu + Mã hàng + Máy + LV (xem khoaTrung). Đếm trên
-         toàn bộ cửa sổ dữ liệu đang xem, KHÔNG đếm trên kết quả đã lọc — nếu đếm theo kết quả lọc
-         thì con số nhảy loạn theo từng ký tự gõ, mất ý nghĩa cảnh báo. -->
-    <div v-if="!loading && !errorMsg && allRounds.length > 0" class="wh-stats">
-      <button
-        v-for="g in freqGroups"
-        :key="g.freq"
-        type="button"
-        class="wh-stat"
-        :class="[freqLevel(g.freq), { active: freqFilter === g.freq }]"
-        :aria-pressed="freqFilter === g.freq"
-        :title="`Lọc các vòng cân của đơn (trùng Màu + Mã hàng + Máy + LV) cân ${g.freq} lần`"
-        @click="toggleFreq(g.freq)"
-      >
-        <span class="wh-stat-num">{{ g.products }}</span>
-        <span class="wh-stat-lbl">đơn cân <strong>{{ g.freq }} lần</strong></span>
-      </button>
-      <p v-if="freqGroups.length === 0" class="wh-stat-none">
-        Không có đơn nào bị cân trùng trong {{ allRounds.length }} vòng đang xem.
-      </p>
-      <p v-else class="wh-stat-none">
-        Trùng = giống cả 4: Màu, Mã hàng, Máy, LV.
-      </p>
-    </div>
+    <!-- Khối lọc dính lại khi cuộn (position: sticky, xem CSS .wh-filters) và tự thu gọn được. -->
+    <div class="wh-filters">
+      <div class="wh-filters-head">
+        <button
+          type="button"
+          class="wh-filters-toggle"
+          @click="filtersCollapsed = !filtersCollapsed"
+          :aria-expanded="!filtersCollapsed"
+          :title="$t('weighingHistory.filtersToggleTitle')"
+        >
+          <span class="wh-filters-toggle-icon">{{ filtersCollapsed ? '▸' : '▾' }}</span>
+          {{ $t('weighingHistory.filtersToggleLabel') }}
+        </button>
+        <!-- Chỉ hiện khi đã thu gọn: nhắc còn đang lọc gì, tránh người dùng quên mất bảng đang bị
+             thu hẹp bởi lọc trong khi đã đóng khối lọc đi cho gọn màn hình. -->
+        <span v-if="filtersCollapsed && activeFilterSummary" class="wh-filters-summary">
+          {{ activeFilterSummary }}
+        </span>
+      </div>
 
-    <div class="wh-bar">
-      <div class="wh-field">
-        <label>Từ ngày</label>
-        <input type="date" v-model="filters.from" @change="reload" />
-      </div>
-      <div class="wh-field">
-        <label>Đến ngày</label>
-        <input type="date" v-model="filters.to" @change="reload" />
-      </div>
-      <div class="wh-field wh-grow">
-        <!-- Ô này KHÔNG gọi server: lọc ngay trên cửa sổ dữ liệu đã tải, hiện kết quả theo từng
-             ký tự gõ. Muốn với ra ngoài cửa sổ đó thì có nút riêng bên cạnh. -->
-        <label>Tìm nhanh (không cần chờ)</label>
-        <input type="text" v-model="search" placeholder="Màu / mã hàng / mã lô / máy / LV…" />
-      </div>
-      <!-- Đường thoát khi thứ cần tìm nằm NGOÀI cửa sổ đã tải. Luôn hiện khi có chữ trong ô tìm,
-           không đợi tới lúc "không thấy gì": lọc ra 2 dòng cũng không có nghĩa là chỉ có 2. -->
-      <button v-if="search.trim()" class="wh-btn" @click="searchOnServer" :disabled="loading">
-        🔎 Tìm trên toàn bộ lịch sử
-      </button>
-      <button class="wh-btn ghost" @click="resetFilters" :disabled="loading">Xoá lọc</button>
-      <button class="wh-btn ghost" @click="reload" :disabled="loading" title="Tải lại dữ liệu mới nhất">
-        ⟳ Làm mới
-      </button>
-    </div>
+      <!-- Cửa sổ bị cắt: phải nói ra ngay trong khối lọc (không phải trôi theo bảng xuống dưới),
+           vì đây là lý do trực tiếp khiến bộ lọc "không tìm ra" — người dùng cần thấy nó dù đã
+           thu gọn khối lọc hay đang cuộn xuống cuối bảng. -->
+      <p v-if="truncated && !loading && !errorMsg" class="wh-msg warn">
+        ⚠ Chỉ đang xem <strong>{{ allRounds.length }} vòng cân gần nhất</strong> — còn nữa ở phía
+        trước. Thu hẹp khoảng ngày, hoặc bấm “Tìm trên toàn bộ lịch sử”.
+      </p>
 
-    <!-- Lọc theo từng CỘT — cũng chạy thuần trên cửa sổ đã tải như ô tìm nhanh, gõ/chọn tới đâu
-         bảng đổi tới đó. Màu và Mã hàng để ô gõ kèm gợi ý (datalist) vì số giá trị nhiều; Máy và
-         LV để ô chọn vì tập giá trị hữu hạn, chọn nhanh hơn gõ. -->
-    <div class="wh-bar wh-cols">
-      <div class="wh-field">
-        <label>Màu</label>
-        <input type="text" v-model="col.color" list="wh-colors" placeholder="Tất cả" />
-        <datalist id="wh-colors">
-          <option v-for="o in colorOptions" :key="o" :value="o" />
-        </datalist>
-      </div>
-      <div class="wh-field">
-        <label>Mã hàng</label>
-        <input type="text" v-model="col.product" list="wh-products" placeholder="Tất cả" />
-        <datalist id="wh-products">
-          <option v-for="o in productOptions" :key="o" :value="o" />
-        </datalist>
-      </div>
-      <div class="wh-field">
-        <label>Máy</label>
-        <select v-model="col.machine">
-          <option value="">— Tất cả máy —</option>
-          <option v-for="o in machineOptions" :key="o" :value="o">{{ o }}</option>
-        </select>
-      </div>
-      <div class="wh-field">
-        <label>LV</label>
-        <select v-model="col.lv">
-          <option value="">— Tất cả LV —</option>
-          <option v-for="o in lvOptions" :key="o" :value="o">{{ o }}</option>
-        </select>
-      </div>
-      <div class="wh-field">
-        <label>Cân</label>
-        <select v-model="col.scale">
-          <option value="">— Cả 2 cân —</option>
-          <option value="LARGE">Cân to</option>
-          <option value="SMALL">Cân nhỏ</option>
-          <option value="NONE">Không rõ</option>
-        </select>
-      </div>
-      <div class="wh-field">
-        <label>Kết quả</label>
-        <select v-model="col.result">
-          <option value="">— Tất cả —</option>
-          <option value="BAD">Có dòng KHÔNG ĐẠT</option>
-          <option value="OK">Toàn bộ ĐẠT</option>
-        </select>
-      </div>
-      <div class="wh-field">
-        <label>Mỗi trang</label>
-        <select v-model.number="pageSize">
-          <option :value="20">20</option>
-          <option :value="50">50</option>
-          <option :value="100">100</option>
-          <option :value="0">Tất cả</option>
-        </select>
+      <div v-show="!filtersCollapsed" class="wh-filters-body">
+        <!-- Thống kê cân trùng: mỗi thẻ = "có bao nhiêu ĐƠN bị cân đúng N lần", trong đó hai vòng
+             chỉ là cùng một đơn khi trùng cả 4 trường Màu + Mã hàng + Máy + LV (xem khoaTrung).
+             Đếm trên toàn bộ cửa sổ dữ liệu đang xem, KHÔNG đếm trên kết quả đã lọc — nếu đếm
+             theo kết quả lọc thì con số nhảy loạn theo từng ký tự gõ, mất ý nghĩa cảnh báo. -->
+        <div v-if="!loading && !errorMsg && allRounds.length > 0" class="wh-stats">
+          <button
+            v-for="g in freqGroups"
+            :key="g.freq"
+            type="button"
+            class="wh-stat"
+            :class="[freqLevel(g.freq), { active: freqFilter === g.freq }]"
+            :aria-pressed="freqFilter === g.freq"
+            :title="`Lọc các vòng cân của đơn (trùng Màu + Mã hàng + Máy + LV) cân ${g.freq} lần`"
+            @click="toggleFreq(g.freq)"
+          >
+            <span class="wh-stat-num">{{ g.products }}</span>
+            <span class="wh-stat-lbl">đơn cân <strong>{{ g.freq }} lần</strong></span>
+          </button>
+          <p v-if="freqGroups.length === 0" class="wh-stat-none">
+            Không có đơn nào bị cân trùng trong {{ allRounds.length }} vòng đang xem.
+          </p>
+          <p v-else class="wh-stat-none">
+            Trùng = giống cả 4: Màu, Mã hàng, Máy, LV.
+          </p>
+        </div>
+
+        <div class="wh-bar">
+          <div class="wh-field">
+            <label>Từ ngày</label>
+            <input type="date" v-model="filters.from" @change="reload" />
+          </div>
+          <div class="wh-field">
+            <label>Đến ngày</label>
+            <input type="date" v-model="filters.to" @change="reload" />
+          </div>
+          <div class="wh-field wh-grow">
+            <!-- Ô này KHÔNG gọi server: lọc ngay trên cửa sổ dữ liệu đã tải, hiện kết quả theo
+                 từng ký tự gõ. Muốn với ra ngoài cửa sổ đó thì có nút riêng bên cạnh. -->
+            <label>Tìm nhanh (không cần chờ)</label>
+            <input type="text" v-model="search" placeholder="Màu / mã hàng / mã lô / máy / LV…" />
+          </div>
+          <!-- Đường thoát khi thứ cần tìm nằm NGOÀI cửa sổ đã tải. Luôn hiện khi có chữ trong ô
+               tìm, không đợi tới lúc "không thấy gì": lọc ra 2 dòng cũng không có nghĩa là chỉ có
+               2. -->
+          <button v-if="search.trim()" class="wh-btn" @click="searchOnServer" :disabled="loading">
+            🔎 Tìm trên toàn bộ lịch sử
+          </button>
+          <button class="wh-btn ghost" @click="resetFilters" :disabled="loading">Xoá lọc</button>
+          <button class="wh-btn ghost" @click="reload" :disabled="loading" title="Tải lại dữ liệu mới nhất">
+            ⟳ Làm mới
+          </button>
+        </div>
+
+        <!-- Lọc theo từng CỘT — cũng chạy thuần trên cửa sổ đã tải như ô tìm nhanh, gõ/chọn tới
+             đâu bảng đổi tới đó. Màu và Mã hàng để ô gõ kèm gợi ý (datalist) vì số giá trị nhiều;
+             Máy và LV để ô chọn vì tập giá trị hữu hạn, chọn nhanh hơn gõ. -->
+        <div class="wh-bar wh-cols">
+          <div class="wh-field">
+            <label>Màu</label>
+            <input type="text" v-model="col.color" list="wh-colors" placeholder="Tất cả" />
+            <datalist id="wh-colors">
+              <option v-for="o in colorOptions" :key="o" :value="o" />
+            </datalist>
+          </div>
+          <div class="wh-field">
+            <label>Mã hàng</label>
+            <input type="text" v-model="col.product" list="wh-products" placeholder="Tất cả" />
+            <datalist id="wh-products">
+              <option v-for="o in productOptions" :key="o" :value="o" />
+            </datalist>
+          </div>
+          <div class="wh-field">
+            <label>Máy</label>
+            <select v-model="col.machine">
+              <option value="">— Tất cả máy —</option>
+              <option v-for="o in machineOptions" :key="o" :value="o">{{ o }}</option>
+            </select>
+          </div>
+          <div class="wh-field">
+            <label>LV</label>
+            <select v-model="col.lv">
+              <option value="">— Tất cả LV —</option>
+              <option v-for="o in lvOptions" :key="o" :value="o">{{ o }}</option>
+            </select>
+          </div>
+          <div class="wh-field">
+            <label>Cân</label>
+            <select v-model="col.scale">
+              <option value="">— Cả 2 cân —</option>
+              <option value="LARGE">Cân to</option>
+              <option value="SMALL">Cân nhỏ</option>
+              <option value="NONE">Không rõ</option>
+            </select>
+          </div>
+          <div class="wh-field">
+            <label>Kết quả</label>
+            <select v-model="col.result">
+              <option value="">— Tất cả —</option>
+              <option value="BAD">Có dòng KHÔNG ĐẠT</option>
+              <option value="OK">Toàn bộ ĐẠT</option>
+            </select>
+          </div>
+          <div class="wh-field">
+            <label>Mỗi trang</label>
+            <select v-model.number="pageSize">
+              <option :value="20">20</option>
+              <option :value="50">50</option>
+              <option :value="100">100</option>
+              <option :value="0">Tất cả</option>
+            </select>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -116,13 +148,9 @@
     <p v-else-if="errorMsg" class="wh-msg err">{{ errorMsg }}</p>
 
     <template v-else>
-      <!-- Cửa sổ bị cắt: phải nói ra. Người dùng gõ tìm mà không thấy sẽ tưởng là không có dữ
-           liệu, trong khi thực tế nó nằm ngoài số dòng vừa tải. -->
-      <p v-if="truncated" class="wh-msg warn">
-        ⚠ Chỉ đang xem <strong>{{ allRounds.length }} vòng cân gần nhất</strong> — còn nữa ở phía
-        trước. Thu hẹp khoảng ngày, hoặc bấm “Tìm trên toàn bộ lịch sử”.
-      </p>
-      <p v-else-if="serverSearch" class="wh-msg warn">
+      <!-- Cảnh báo cửa sổ bị cắt giờ nằm trong khối lọc sticky ở trên (xem "Cửa sổ bị cắt") để
+           luôn nhìn thấy khi cuộn — chỗ này chỉ còn thông báo tìm-trên-toàn-bộ-lịch-sử. -->
+      <p v-if="serverSearch" class="wh-msg warn">
         🔎 Kết quả tìm <strong>trên toàn bộ lịch sử</strong> cho “{{ serverSearch }}” —
         <button class="wh-link" @click="resetFilters">quay lại danh sách gần nhất</button>
       </p>
@@ -148,7 +176,12 @@
       </p>
     </template>
 
-    <table v-if="!loading && !errorMsg && filtered.length > 0" class="wh-table">
+    <!-- Khung riêng cho bảng: bản thân bảng cuộn BÊN TRONG khung (.wh-table-scroll) thay vì kéo
+         dài cả trang, nên phần chuyển trang ở chân khung luôn nằm trong tầm nhìn — không phải
+         cuộn hết 200 dòng mới thấy nút "Trang sau". -->
+    <div v-if="!loading && !errorMsg && filtered.length > 0" class="wh-table-card">
+    <div class="wh-table-scroll">
+    <table class="wh-table">
       <thead>
         <tr>
           <th class="c-time">Thời điểm cân</th>
@@ -244,10 +277,11 @@
         </template>
       </tbody>
     </table>
+    </div>
 
     <!-- Phân trang thuần JS trên dữ liệu đã tải — đổi trang không gọi server, không có trạng thái
-         chờ nào cả. -->
-    <div v-if="!loading && !errorMsg && filtered.length > 0" class="wh-pager">
+         chờ nào cả. Nằm NGOÀI .wh-table-scroll (chân khung, không cuộn theo bảng) nên luôn hiện. -->
+    <div class="wh-pager">
       <span class="wh-pager-info">
         Hiển thị <strong>{{ pageStart + 1 }}–{{ pageStart + paged.length }}</strong> /
         {{ filtered.length }} vòng cân<template v-if="hasRowFilter"> khớp</template>
@@ -266,6 +300,7 @@
         <button class="wh-btn ghost" :disabled="page >= lastPage" @click="page = lastPage" title="Trang cuối">»</button>
         <span class="wh-pager-total">Trang {{ page }}/{{ lastPage }}</span>
       </div>
+    </div>
     </div>
   </div>
 </template>
@@ -432,6 +467,27 @@ const hasRowFilter = computed(
     freqFilter.value !== null ||
     !!col.color || !!col.product || !!col.machine || !!col.lv || !!col.result || !!col.scale
 );
+
+/**
+ * Thu gọn khối bộ lọc (thống kê trùng + thanh ngày/tìm nhanh + lọc theo cột) — mặc định mở, người
+ * dùng tự thu gọn khi cần thêm chỗ nhìn bảng, nhất là màn hình thấp/tablet đứng ngang cân.
+ */
+const filtersCollapsed = ref(false);
+/** Đang lọc khác rỗng gì không, kể cả khoảng ngày — dùng làm tóm tắt khi đã thu gọn. */
+const activeFilterSummary = computed(() => {
+  const parts: string[] = [];
+  if (filters.from || filters.to) parts.push(`${filters.from || '…'} → ${filters.to || '…'}`);
+  if (search.value.trim()) parts.push(`tìm “${search.value.trim()}”`);
+  if (freqFilter.value !== null) parts.push(`cân ${freqFilter.value} lần`);
+  if (col.color) parts.push(`màu ${col.color}`);
+  if (col.product) parts.push(`mã ${col.product}`);
+  if (col.machine) parts.push(`máy ${col.machine}`);
+  if (col.lv) parts.push(`LV ${col.lv}`);
+  if (col.scale) parts.push('cân riêng');
+  if (col.result) parts.push(col.result === 'BAD' ? 'có KHÔNG ĐẠT' : 'toàn ĐẠT');
+  return parts.join(' · ');
+});
+
 
 /**
  * Nhãn hai chữ cho cột Cân. `scale_kind` do server suy ra từ trạm đã cân (xem
@@ -718,8 +774,72 @@ onMounted(() => load());
 </script>
 
 <style scoped>
+/* Trang chiếm đúng vùng nội dung của AppLayout (.content-container, flex item có chiều cao xác
+   định) và KHÔNG tự kéo dài: chỉ vùng bảng bên trong được cuộn. Nhờ vậy chân khung — thanh chuyển
+   trang — luôn nằm trong tầm nhìn ở mọi kích cỡ màn hình, không phụ thuộc số dòng hay chiều cao
+   khối lọc. */
 .wh-page {
   padding: 16px;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Khối lọc nằm cố định ở đầu cột flex (không cần sticky vì trang không tự cuộn). Bình thường
+   chiếm đúng chiều cao nội dung; chỉ khi màn hình quá thấp mới co lại và cho phần thân tự cuộn
+   (.wh-filters-body) — thà bộ lọc có thanh cuộn riêng còn hơn đẩy bảng và thanh chuyển trang ra
+   ngoài tầm nhìn. */
+.wh-filters {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background-color: var(--bg-main);
+}
+
+.wh-filters-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.wh-filters-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 6px;
+}
+
+.wh-filters-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-color, #c9c9c9);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wh-filters-toggle:hover {
+  background: var(--bg-card-hover);
+}
+
+.wh-filters-toggle-icon {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* Tóm tắt các lọc đang bật, chỉ hiện khi đã thu gọn — nhắc là bảng đang bị lọc chứ không phải
+   trống trơn, để khỏi tưởng nhầm mất dữ liệu. */
+.wh-filters-summary {
+  font-size: 12px;
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wh-stats {
@@ -877,13 +997,19 @@ onMounted(() => load());
   cursor: not-allowed;
 }
 
+/* Chân khung .wh-table-card: viền trên tách khỏi bảng, nền đục để không lẫn với hàng cuối phía
+   trên, và flex-shrink: 0 để không bao giờ bị co mất khi màn hình thấp — đây chính là phần phải
+   luôn nhìn thấy. */
 .wh-pager {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 14px;
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-color, #c9c9c9);
+  background: var(--bg-card);
   font-size: 13px;
 }
 
@@ -920,11 +1046,38 @@ onMounted(() => load());
   padding: 24px;
   text-align: center;
   opacity: 0.75;
+  /* Là flex item của .wh-page — không cho co, chữ bị bóp lại là mất dòng chứ không xuống dòng. */
+  flex-shrink: 0;
 }
 
 .wh-msg.err {
   color: #d40000;
   font-weight: 600;
+}
+
+/* Khung bảng: viền + bo góc, ăn hết chiều cao còn thừa của trang (flex: 1) và tự chia thành hai
+   phần — vùng cuộn ở trên, thanh chuyển trang ở dưới. min-height: 0 là bắt buộc: mặc định flex
+   item không co nhỏ hơn nội dung, thiếu nó thì bảng 200 dòng vẫn đẩy chân khung ra ngoài màn hình
+   đúng như trước khi có khung. */
+.wh-table-card {
+  flex: 1;
+  /* Sàn chiều cao: đủ cho tiêu đề + vài dòng + chân khung. Đây là thứ giữ cho thanh chuyển trang
+     không bị bóp mất khi màn hình thấp và khối lọc đang mở hết cỡ. */
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-color, #c9c9c9);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-card);
+}
+
+/* Vùng cuộn co giãn theo chỗ trống thật (không phải 60vh cố định): màn hình cao thì thấy nhiều
+   dòng hơn, màn hình thấp / khối lọc đang mở thì tự thu lại — chân khung vẫn ở nguyên chỗ. */
+.wh-table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .wh-table {
@@ -944,7 +1097,16 @@ onMounted(() => load());
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  opacity: 0.7;
+  /* Không dùng opacity ở đây: opacity làm mờ luôn background-color sticky bên dưới,
+     khiến chữ các dòng cuộn qua đè xuyên lên tiêu đề. Dùng màu chữ nhạt sẵn có thay thế. */
+  color: var(--text-muted);
+  /* Cuộn bảng mà không mất tiêu đề — nền phải đục để chữ các dòng bên dưới không đè xuyên qua
+     khi cuộn tới. top: 0 vì ancestor cuộn giờ là .wh-table-scroll (khung bảng riêng), KHÔNG
+     phải .content-container nữa — không cần bù trừ chiều cao khối lọc như trước. */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: var(--bg-main);
 }
 
 .wh-row {

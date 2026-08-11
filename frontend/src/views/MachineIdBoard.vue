@@ -24,8 +24,10 @@
           <template v-for="row in ROWS" :key="'row-' + row.waitTop">
             <template v-for="(num, i) in row.nums" :key="'m-' + num">
 
-              <!-- Nhãn tên máy (Tahoma 12 bold) -->
-              <div class="vba-label vba-machine" :style="box(blockLeft(i), row.labelTop, 60, 12)">{{ vd(num) }}</div>
+              <!-- Nhãn tên máy (Tahoma 12 bold). vba-blink: tín hiệu "mẻ vừa chạy" đẩy từ
+                   /bpdb-machines/gantt-test qua kênh Reverb bpdb-machine-alerts — xem
+                   onRunningAlert() trong script. -->
+              <div class="vba-label vba-machine" :class="{ 'vba-blink': blinkingMachines.has(num) }" :style="box(blockLeft(i), row.labelTop, 60, 12)">{{ vd(num) }}</div>
 
               <!-- Khối ĐÃ GỬI: mỗi thùng 1 dòng code/color/lv + 1 dòng thời gian -->
               <template v-for="(tank, t) in TANKS" :key="'s-' + num + tank">
@@ -71,13 +73,13 @@
     </div>
 
     <div class="vba-statusbar">
-      <span>{{ loading ? 'Đang nạp...' : 'Cập nhật lúc ' + lastLoadedText }}</span>
+      <span>{{ loading ? $t('machineIdBoard.loadingText') : $t('machineIdBoard.updatedAtPrefix') + lastLoadedText }}</span>
       <span class="vba-legend">
-        Đã gửi:
+        {{ $t('machineIdBoard.legendSent') }}
         <i class="sw" style="background:#00b050"></i>&lt;6h
         <i class="sw" style="background:#ffc000"></i>&lt;12h
         <i class="sw" style="background:#ff0000"></i>≥12h
-        &nbsp;|&nbsp; Đang chờ:
+        &nbsp;|&nbsp; {{ $t('machineIdBoard.legendWaiting') }}
         <i class="sw" style="background:#ffffff"></i>&lt;24h
         <i class="sw" style="background:#b4cde6"></i>&lt;48h
         <i class="sw" style="background:#b4a0c8"></i>≥48h
@@ -300,6 +302,32 @@ const loadAll = async () => {
 // RunAutoVD: nạp lại mỗi 3 phút.
 let timer: any = null;
 
+/* ===== Nhấp nháy đỏ "mẻ vừa chạy" — tín hiệu đẩy từ /bpdb-machines/gantt-test =====
+   Kênh Reverb PUBLIC "bpdb-machine-alerts" (xem BpdbMachineRunningAlert.php), bắn bởi trang
+   test khi nó tự phát hiện 1 mẻ BPDB vừa chuyển "đang chạy" (không liên quan tới nguồn dữ
+   liệu sent/waiting của chính trang này — xem ghi chú đầu file: 2 nguồn tách biệt hoàn
+   toàn). Chỉ là hiệu ứng UI tạm thời, không phải dữ liệu thật của tbl_SentLog/tbl_input_all
+   nên tự tắt sau BLINK_DURATION_MS chứ không chờ loadAll() xác nhận lại. */
+const BLINK_DURATION_MS = 180_000; // khớp chu kỳ tự nạp lại 3 phút của chính board này.
+const blinkingMachines = ref<Set<number>>(new Set());
+const blinkTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
+const onRunningAlert = (e: { machineCode?: string }) => {
+  const num = machineNum(e?.machineCode);
+  if (num === null) return;
+
+  const existingTimer = blinkTimers.get(num);
+  if (existingTimer) clearTimeout(existingTimer);
+
+  blinkingMachines.value = new Set(blinkingMachines.value).add(num);
+  blinkTimers.set(num, setTimeout(() => {
+    blinkTimers.delete(num);
+    const next = new Set(blinkingMachines.value);
+    next.delete(num);
+    blinkingMachines.value = next;
+  }, BLINK_DURATION_MS));
+};
+
 onMounted(() => {
   // Vào trang là ẩn sẵn sidebar+topbar — giữ đúng bề ngoài gọn của bản công khai, người đã
   // đăng nhập bấm nút 3 gạch mới lộ menu ra.
@@ -314,6 +342,7 @@ onMounted(() => {
   loadAll();
   timer = setInterval(loadAll, 180_000);
   echo.channel('production-batches').listen('.updated', loadAll);
+  echo.channel('bpdb-machine-alerts').listen('.running', onRunningAlert);
 });
 
 onUnmounted(() => {
@@ -321,6 +350,9 @@ onUnmounted(() => {
   ro?.disconnect();
   if (timer) clearInterval(timer);
   echo.leaveChannel('production-batches');
+  echo.leaveChannel('bpdb-machine-alerts');
+  blinkTimers.forEach(t => clearTimeout(t));
+  blinkTimers.clear();
   isFullscreen.value = previousIsFullscreen;
 });
 </script>
@@ -392,6 +424,18 @@ onUnmounted(() => {
 .vba-title { font-size: 14pt; }
 .vba-machine { font-size: 12pt; font-weight: bold; }
 .vba-tank { font-size: 9pt; }
+
+/* Nhấp nháy đỏ "mẻ vừa chạy" (tín hiệu từ /bpdb-machines/gantt-test) — step-start (không
+   fade mờ dần) để giật mắt rõ trên màn hình treo xưởng nhìn từ xa, giống kiểu cảnh báo VBA
+   cũ (MSForms không có transition mượt). */
+@keyframes vba-blink {
+  0%, 100% { background-color: #ff0000; color: #ffffff; }
+  50% { background-color: transparent; color: #000000; }
+}
+.vba-blink {
+  animation: vba-blink 1s step-start infinite;
+  border-radius: 2px;
+}
 
 /* TextBox541 — vạch ngăn, nền COLOR_HIGHLIGHT */
 .vba-rule {

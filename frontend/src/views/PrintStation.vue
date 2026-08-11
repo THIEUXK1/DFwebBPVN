@@ -5,15 +5,15 @@
       <div class="banner-content">
         <span class="banner-icon">🌐</span>
         <div class="banner-text">
-          <strong>CHẾ ĐỘ GIÁM SÁT TỪ XA: </strong>
-          <span v-if="remoteMode === 'VIEW_ONLY'">CHỈ XEM (VIEW_ONLY) - Các nút thao tác nghiệp vụ đã bị vô hiệu hóa.</span>
-          <span v-else>ĐIỀU KHIỂN TỪ XA (REMOTE_OPERATE) - Cho phép vận hành từ xa. Mọi thao tác sẽ được ghi Audit Log kiểm toán.</span>
+          <strong>{{ $t('printStation.remoteBannerPrefix') }}</strong>
+          <span v-if="remoteMode === 'VIEW_ONLY'">{{ $t('printStation.remoteBannerViewOnly') }}</span>
+          <span v-else>{{ $t('printStation.remoteBannerOperate') }}</span>
         </div>
       </div>
       <div class="banner-actions">
         <select v-model="remoteMode" class="form-select font-xs select-mode">
-          <option value="VIEW_ONLY">🔒 Chế độ Chỉ xem</option>
-          <option value="REMOTE_OPERATE">⚡ Chế độ Điều khiển</option>
+          <option value="VIEW_ONLY">{{ $t('printStation.remoteModeViewOnlyOption') }}</option>
+          <option value="REMOTE_OPERATE">{{ $t('printStation.remoteModeOperateOption') }}</option>
         </select>
       </div>
     </div>
@@ -24,18 +24,18 @@
          banner vẫn hiện "Chưa gán" vì chưa ai bấm Lưu). -->
     <div class="station-banner">
       <div class="banner-left">
-        <span class="station-badge">PRINT STATION</span>
+        <span class="station-badge">{{ $t('printStation.stationBadge') }}</span>
         <template v-if="currentWorkstation">
           <h2>{{ currentWorkstation.name }}</h2>
-          <p class="text-muted font-sm">Mã trạm: <code>{{ currentWorkstation.code }}</code> | Vị trí: {{ currentWorkstation.location }}</p>
+          <p class="text-muted font-sm">{{ $t('printStation.stationCodeLabel') }}<code>{{ currentWorkstation.code }}</code>{{ $t('printStation.stationLocationLabel') }}{{ currentWorkstation.location }}</p>
         </template>
         <template v-else>
-          <h2>Chưa đăng ký trạm (tài khoản Admin)</h2>
+          <h2>{{ $t('printStation.noStationTitle') }}</h2>
         </template>
       </div>
       <div class="banner-right">
         <div class="dev-badge">
-          <span>🖥️ In qua hộp thoại in của trình duyệt — không cần chọn/cài máy in trước.</span>
+          <span>{{ $t('printStation.devBadgeText') }}</span>
         </div>
       </div>
     </div>
@@ -50,8 +50,8 @@
          (CONFIRMED) và chuyển xuống bảng lịch sử bên dưới (yêu cầu 2026-07-30). -->
     <section class="section card-sec print-queue-panel mb-4" v-if="!label">
       <div class="queue-header">
-        <h3>🖨️ Hàng chờ in tem mới ({{ pendingDispatches.length }})</h3>
-        <span class="text-muted font-sm">Tự làm mới mỗi 8 giây — in thoải mái bằng "⚡ In nhanh"/"👁️ Xem trước", xong bấm "✅ OK" để chuyển xuống lịch sử.</span>
+        <h3>{{ $t('printStation.queueTitle', { count: pendingDispatches.length }) }}</h3>
+        <span class="text-muted font-sm">{{ $t('printStation.queueSubtitle') }}</span>
       </div>
 
       <p v-if="confirmError" class="text-error mt-2">❌ {{ confirmError }}</p>
@@ -61,15 +61,15 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Màu</th>
-                <th>Mã hàng</th>
-                <th>Máy</th>
-                <th>Thùng</th>
-                <th>Mực nước</th>
-                <th>Trạng thái</th>
-                <th title="Đã từng in ít nhất 1 lần chưa — tự tích khi bấm In nhanh/Xem trước, KHÔNG phải xác nhận xong">Đã từng in</th>
-                <th>Mã Lô</th>
-                <th class="actions-col">Thao tác</th>
+                <th>{{ $t('printStation.colColor') }}</th>
+                <th>{{ $t('printStation.colProductCode') }}</th>
+                <th>{{ $t('printStation.colMachine') }}</th>
+                <th>{{ $t('printStation.colTank') }}</th>
+                <th>{{ $t('printStation.colWaterLevel') }}</th>
+                <th>{{ $t('common.status') }}</th>
+                <th :title="$t('printStation.colEverPrintedTitle')">{{ $t('printStation.colEverPrinted') }}</th>
+                <th>{{ $t('printStation.colBatchId') }}</th>
+                <th class="actions-col">{{ $t('common.actions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -78,17 +78,17 @@
                 <td>{{ d.batch?.product_code }}</td>
                 <td><span class="machine-tag">{{ d.batch?.machine?.code || 'N/A' }}</span></td>
                 <td>{{ d.batch?.tank?.code || '-' }}</td>
-                <td>{{ d.batch?.level_code || 'Mặc định' }}</td>
+                <td>{{ d.batch?.level_code || $t('printStation.defaultWaterLevel') }}</td>
                 <td>
-                  <span v-if="confirmedIds.has(d.id)" class="badge badge-green">Đã in</span>
-                  <span v-else class="badge badge-red">Chưa in</span>
+                  <span v-if="confirmedIds.has(d.id)" class="badge badge-green">{{ $t('printStation.badgePrinted') }}</span>
+                  <span v-else class="badge badge-red">{{ $t('printStation.badgeNotPrinted') }}</span>
                 </td>
                 <td class="text-center">
                   <input
                     type="checkbox"
                     :checked="!!d.ever_printed"
                     @change="toggleEverPrinted(d, ($event.target as HTMLInputElement).checked)"
-                    title="Đã từng in tem này chưa (tick tay được nếu cần sửa lại)"
+                    :title="$t('printStation.everPrintedCheckboxTitle')"
                   />
                 </td>
                 <td class="highlight-code">{{ d.batch?.legacy_batch_id }}</td>
@@ -98,33 +98,33 @@
                     class="btn btn-primary btn-sm"
                     :disabled="confirmingId === d.id"
                   >
-                    ⚡ In nhanh
+                    {{ $t('printStation.quickPrintButton') }}
                   </button>
                   <button
                     @click="openPrintPreview(d)"
                     class="btn btn-secondary btn-sm"
                     :disabled="confirmingId === d.id"
                   >
-                    👁️ Xem trước
+                    {{ $t('printStation.previewButton') }}
                   </button>
                   <button
                     @click="confirmDone(d)"
                     class="btn btn-ok btn-sm"
                     :disabled="confirmingId === d.id"
-                    title="Đã in xong — chuyển đơn này xuống bảng lịch sử"
+                    :title="$t('printStation.okButtonTitle')"
                   >
-                    {{ confirmingId === d.id ? 'Đang xử lý...' : '✅ OK' }}
+                    {{ confirmingId === d.id ? $t('printStation.processingButton') : $t('printStation.okButton') }}
                   </button>
                 </td>
               </tr>
               <tr v-if="!col.length">
-                <td colspan="9" class="text-muted text-center">Không có đơn nào ở cột này.</td>
+                <td colspan="9" class="text-muted text-center">{{ $t('printStation.emptyColumn') }}</td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
-      <p v-else class="text-muted text-center mt-3">Không có đơn nào đang chờ in.</p>
+      <p v-else class="text-muted text-center mt-3">{{ $t('printStation.emptyQueue') }}</p>
     </section>
 
     <!-- Bảng lịch sử — đơn đã bấm "✅ OK" (CONFIRMED) rơi xuống đây, tách khỏi hàng chờ

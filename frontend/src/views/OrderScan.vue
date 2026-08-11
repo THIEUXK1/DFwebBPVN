@@ -5,15 +5,15 @@
       <div class="banner-content">
         <span class="banner-icon">🌐</span>
         <div class="banner-text">
-          <strong>CHẾ ĐỘ GIÁM SÁT TỪ XA: </strong>
-          <span v-if="remoteMode === 'VIEW_ONLY'">CHỈ XEM (VIEW_ONLY) - Các nút thao tác nghiệp vụ đã bị vô hiệu hóa.</span>
-          <span v-else>ĐIỀU KHIỂN TỪ XA (REMOTE_OPERATE) - Cho phép vận hành từ xa. Mọi thao tác sẽ được ghi Audit Log kiểm toán.</span>
+          <strong>{{ $t('orderScan.remoteBannerPrefix') }}</strong>
+          <span v-if="remoteMode === 'VIEW_ONLY'">{{ $t('orderScan.remoteViewOnly') }}</span>
+          <span v-else>{{ $t('orderScan.remoteOperate') }}</span>
         </div>
       </div>
       <div class="banner-actions">
         <select v-model="remoteMode" class="form-select font-xs select-mode">
-          <option value="VIEW_ONLY">🔒 Chế độ Chỉ xem</option>
-          <option value="REMOTE_OPERATE">⚡ Chế độ Điều khiển</option>
+          <option value="VIEW_ONLY">{{ $t('orderScan.remoteModeViewOnlyOption') }}</option>
+          <option value="REMOTE_OPERATE">{{ $t('orderScan.remoteModeOperateOption') }}</option>
         </select>
       </div>
     </div>
@@ -22,41 +22,41 @@
     <div class="station-banner">
       <div class="banner-left">
         <span class="station-badge">ORDER DESK</span>
-        <h2>{{ currentWorkstation ? currentWorkstation.name : 'Chưa đăng ký trạm' }}</h2>
-        <p class="text-muted font-sm">Mã trạm: <code>{{ currentWorkstation?.code }}</code> | Vị trí: {{ currentWorkstation?.location }}</p>
+        <h2>{{ currentWorkstation ? currentWorkstation.name : $t('orderScan.noWorkstationRegistered') }}</h2>
+        <p class="text-muted font-sm">{{ $t('orderScan.workstationCodeLabel') }} <code>{{ currentWorkstation?.code }}</code> | {{ $t('orderScan.workstationLocationLabel') }} {{ currentWorkstation?.location }}</p>
       </div>
     </div>
 
     <!-- Wait / Scan screen -->
     <div v-if="!previewBatch" class="scanning-wait-screen card-sec text-center">
       <div class="scanner-anim-icon">🔳</div>
-      <h3>ĐƯA MÃ QR ĐƠN CÔNG THỨC VÀO VÙNG QUÉT</h3>
-      <p class="text-muted">Hệ thống sẽ tự động tải thông tin lô, không cần chọn hay nhập lại.</p>
+      <h3>{{ $t('orderScan.scanTitle') }}</h3>
+      <p class="text-muted">{{ $t('orderScan.scanDesc') }}</p>
 
       <!-- Manual entry fallback: scanner hardware unavailable/broken -->
       <div class="manual-entry-widget mt-5">
-        <h4>⌨️ Nhập mã Lô thủ công (khi máy quét lỗi)</h4>
+        <h4>{{ $t('orderScan.manualEntryTitle') }}</h4>
         <div class="manual-input-row">
           <input
             v-model="manualQuery"
             @keyup.enter="searchManual"
             type="text"
             class="form-input manual-input"
-            placeholder="Nhập mã Lô, ví dụ: B260716"
+            :placeholder="$t('orderScan.manualInputPlaceholder')"
           />
-          <button 
-            @click="searchManual" 
-            class="btn btn-secondary" 
+          <button
+            @click="searchManual"
+            class="btn btn-secondary"
             :disabled="!manualQuery.trim() || searching || (isImpersonating && remoteMode === 'VIEW_ONLY')"
           >
-            {{ searching ? 'Đang tìm...' : 'Tìm' }}
+            {{ searching ? $t('orderScan.searching') : $t('orderScan.searchBtn') }}
           </button>
         </div>
 
         <div v-if="manualError" class="manual-error mt-2">{{ manualError }}</div>
 
         <div v-if="manualResults.length > 1" class="manual-results mt-3">
-          <p class="text-muted font-sm">Tìm thấy {{ manualResults.length }} lô khớp — chọn đúng lô:</p>
+          <p class="text-muted font-sm">{{ $t('orderScan.manualResultsFound', { count: manualResults.length }) }}</p>
           <button
             v-for="b in manualResults"
             :key="b.id"
@@ -64,7 +64,7 @@
             @click="!isImpersonating || remoteMode !== 'VIEW_ONLY' ? selectManualResult(b) : null"
             :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'"
           >
-            <strong>{{ b.legacy_batch_id }}</strong> — Màu {{ b.color }} — Máy {{ b.machine?.code || 'N/A' }}
+            <strong>{{ b.legacy_batch_id }}</strong>{{ $t('orderScan.resultColorPrefix') }}{{ b.color }}{{ $t('orderScan.resultMachinePrefix') }}{{ b.machine?.code || 'N/A' }}
           </button>
         </div>
       </div>
@@ -74,33 +74,33 @@
     <div v-else class="section card-sec order-preview">
       <div class="meta-badge-row mb-3">
         <span class="badge" :class="alreadyAcknowledged ? 'badge-green' : 'badge-yellow'">
-          {{ alreadyAcknowledged ? 'ĐÃ XÁC NHẬN TRƯỚC ĐÓ' : 'CHỜ XÁC NHẬN' }}
+          {{ alreadyAcknowledged ? $t('orderScan.ackBadgeDone') : $t('orderScan.ackBadgePending') }}
         </span>
       </div>
 
-      <h3>Lô nhuộm: <span class="text-glow-blue">{{ previewBatch.legacy_batch_id }}</span></h3>
+      <h3>{{ $t('orderScan.batchLabel') }} <span class="text-glow-blue">{{ previewBatch.legacy_batch_id }}</span></h3>
 
       <div class="details-grid mt-4">
-        <div><span class="label">Mã màu:</span> <span class="val">{{ previewBatch.color }}</span></div>
-        <div><span class="label">Mã hàng:</span> <span class="val">{{ previewBatch.product_code }}</span></div>
-        <div><span class="label">Máy nhuộm:</span> <span class="machine-tag">{{ previewBatch.machine?.code || 'N/A' }}</span></div>
-        <div><span class="label">Thùng:</span> <span class="val">{{ previewBatch.tank?.code || 'Chưa gán' }}</span></div>
-        <div><span class="label">Mức nước:</span> <span class="val">{{ previewBatch.level_code || 'Mặc định' }}</span></div>
-        <div><span class="label">Trạng thái hiện tại:</span> <span class="val">{{ previewBatch.status }}</span></div>
+        <div><span class="label">{{ $t('orderScan.detailColor') }}</span> <span class="val">{{ previewBatch.color }}</span></div>
+        <div><span class="label">{{ $t('orderScan.detailProduct') }}</span> <span class="val">{{ previewBatch.product_code }}</span></div>
+        <div><span class="label">{{ $t('orderScan.detailMachine') }}</span> <span class="machine-tag">{{ previewBatch.machine?.code || 'N/A' }}</span></div>
+        <div><span class="label">{{ $t('orderScan.detailTank') }}</span> <span class="val">{{ previewBatch.tank?.code || $t('orderScan.tankUnassigned') }}</span></div>
+        <div><span class="label">{{ $t('orderScan.detailWaterLevel') }}</span> <span class="val">{{ previewBatch.level_code || $t('orderScan.waterLevelDefault') }}</span></div>
+        <div><span class="label">{{ $t('orderScan.detailStatus') }}</span> <span class="val">{{ previewBatch.status }}</span></div>
       </div>
 
       <div v-if="confirmError" class="manual-error mt-3">{{ confirmError }}</div>
       <div v-if="confirmSuccess" class="confirm-success mt-3">{{ confirmSuccess }}</div>
 
       <div class="flex-row gap-3 mt-5">
-        <button class="btn btn-secondary flex-1" @click="resetScan">Quét lô khác</button>
+        <button class="btn btn-secondary flex-1" @click="resetScan">{{ $t('orderScan.rescanBtn') }}</button>
         <button
           v-if="!alreadyAcknowledged"
           class="btn btn-primary flex-2"
           @click="confirmReceipt"
           :disabled="confirming || (isImpersonating && remoteMode === 'VIEW_ONLY')"
         >
-          {{ confirming ? 'Đang xác nhận...' : '✅ Đã nhận đơn' }}
+          {{ confirming ? $t('orderScan.confirming') : $t('orderScan.confirmReceiptBtn') }}
         </button>
       </div>
 
@@ -108,11 +108,11 @@
            chất vào màn hình này (giữ đúng nguyên tắc "1 máy = 1 nhiệm vụ" của WS-001),
            chỉ đưa thẳng qua đúng màn hình với lô đã chọn sẵn, khỏi phải quét lại. -->
       <div v-if="alreadyAcknowledged" class="next-step-row mt-4">
-        <p class="text-muted font-sm mb-2">Bước tiếp theo cho lô này:</p>
+        <p class="text-muted font-sm mb-2">{{ $t('orderScan.nextStepLabel') }}</p>
         <div class="flex-row gap-3">
-          <button class="btn btn-secondary flex-1" @click="goToWeighing">⚖️ Sang Trạm cân</button>
-          <button class="btn btn-secondary flex-1" @click="goToPrint">🏷️ Sang In tem</button>
-          <button class="btn btn-secondary flex-1" @click="goToChemicalCall">🧪 Gọi hóa chất</button>
+          <button class="btn btn-secondary flex-1" @click="goToWeighing">{{ $t('orderScan.goToWeighingBtn') }}</button>
+          <button class="btn btn-secondary flex-1" @click="goToPrint">{{ $t('orderScan.goToPrintBtn') }}</button>
+          <button class="btn btn-secondary flex-1" @click="goToChemicalCall">{{ $t('orderScan.goToChemicalCallBtn') }}</button>
         </div>
       </div>
     </div>
@@ -121,11 +121,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import scannerService from '../services/scanner';
 import { currentWorkstation } from '../services/workstation';
 
+const { t } = useI18n({ useScope: 'global' });
 const route = useRoute();
 const router = useRouter();
 const isImpersonating = computed(() => route.query.impersonate === 'true');
@@ -174,13 +176,13 @@ async function loadOrder(batchId: string) {
       manualQuery.value = '';
     }
   } catch (err: any) {
-    manualError.value = err.response?.data?.message || 'Không tìm thấy lô sản xuất tương ứng.';
+    manualError.value = err.response?.data?.message || t('orderScan.errorBatchNotFound');
   }
 }
 
 function handleScan(token: string) {
   if (!token.startsWith('DF:ORDER:')) {
-    manualError.value = 'Mã quét không phải mã QR đơn công thức hợp lệ.';
+    manualError.value = t('orderScan.errorInvalidQr');
     return;
   }
   const batchId = token.split(':')[2];
@@ -200,14 +202,14 @@ async function searchManual() {
     });
     const rows = res.data?.data || [];
     if (rows.length === 0) {
-      manualError.value = `Không tìm thấy lô nào khớp mã "${query}".`;
+      manualError.value = t('orderScan.errorNoMatch', { query });
     } else if (rows.length === 1) {
       scannerService.submitManualEntry(`DF:ORDER:${rows[0].id}`);
     } else {
       manualResults.value = rows;
     }
   } catch (err: any) {
-    manualError.value = 'Không thể tìm kiếm lô sản xuất. Vui lòng thử lại.';
+    manualError.value = t('orderScan.errorSearchFailed');
   } finally {
     searching.value = false;
   }
@@ -234,7 +236,7 @@ async function confirmReceipt() {
     // Kiosk auto-reset: ready for the next order without any manual navigation.
     resetTimer = setTimeout(resetScan, 3000);
   } catch (err: any) {
-    confirmError.value = err.response?.data?.message || 'Không thể xác nhận nhận đơn.';
+    confirmError.value = err.response?.data?.message || t('orderScan.errorConfirmFailed');
   } finally {
     confirming.value = false;
   }

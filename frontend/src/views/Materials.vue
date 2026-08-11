@@ -4,26 +4,26 @@
     <main class="main-content">
       <section class="section">
         <div class="section-header">
-          <h3>🧪 Quản Lý Danh Mục Vật Tư, Thuốc Nhuộm & Hóa Chất</h3>
+          <h3>🧪 {{ $t('materials.title') }}</h3>
           <div class="header-actions">
-            <input 
+            <input
               id="material-search-input"
-              v-model="searchQuery" 
+              v-model="searchQuery"
               @input="handleSearch"
-              type="text" 
-              placeholder="🔍 Tìm mã hoặc tên vật tư..." 
+              type="text"
+              :placeholder="$t('materials.searchPlaceholder')"
               class="form-input search-box"
             />
-            <select 
+            <select
               id="material-type-filter"
-              v-model="selectedType" 
-              @change="fetchMaterials" 
+              v-model="selectedType"
+              @change="fetchMaterials"
               class="form-select filter-select"
             >
-              <option value="">Tất cả phân loại</option>
-              <option value="DYE">DYE (Bột màu nhuộm)</option>
-              <option value="CHEMICAL">CHEMICAL (Hóa chất/Dung môi)</option>
-              <option value="ADDITIVE">ADDITIVE (Phụ gia/Chất trợ)</option>
+              <option value="">{{ $t('materials.filterAll') }}</option>
+              <option value="DYE">{{ $t('materials.typeDye') }}</option>
+              <option value="CHEMICAL">{{ $t('materials.typeChemical') }}</option>
+              <option value="ADDITIVE">{{ $t('materials.typeAdditive') }}</option>
             </select>
           </div>
         </div>
@@ -33,13 +33,13 @@
           <table class="stats-table">
             <thead>
               <tr>
-                <th>Mã Vật Tư</th>
-                <th>Tên Nguyên Liệu</th>
-                <th>Loại</th>
-                <th>Nhà Cung Cấp</th>
-                <th class="number-cell">Tồn Kho (g)</th>
-                <th>Trạng Thái</th>
-                <th class="action-cell">Thao Tác</th>
+                <th>{{ $t('materials.colCode') }}</th>
+                <th>{{ $t('materials.colMaterialName') }}</th>
+                <th>{{ $t('materials.colType') }}</th>
+                <th>{{ $t('materials.colSupplier') }}</th>
+                <th class="number-cell">{{ $t('materials.colStock') }}</th>
+                <th>{{ $t('materials.colStatus') }}</th>
+                <th class="action-cell">{{ $t('materials.colActions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -53,21 +53,21 @@
                 <td class="number-cell bold-text text-glow">{{ mat.stock_qty.toLocaleString() }} g</td>
                 <td>
                   <span :class="mat.is_active ? 'badge-active' : 'badge-inactive'">
-                    {{ mat.is_active ? 'HOẠT ĐỘNG' : 'TẠM KHÓA' }}
+                    {{ mat.is_active ? $t('materials.statusActive') : $t('materials.statusLocked') }}
                   </span>
                 </td>
                 <td class="action-cell">
-                  <button 
+                  <button
                     :id="'edit-btn-' + mat.code"
-                    @click="openEditModal(mat)" 
+                    @click="openEditModal(mat)"
                     class="edit-action-btn"
                   >
-                    ✏️ Sửa
+                    ✏️ {{ $t('materials.editButton') }}
                   </button>
                 </td>
               </tr>
               <tr v-if="materials.length === 0">
-                <td colspan="7" class="empty-cell">Không tìm thấy vật tư nào phù hợp.</td>
+                <td colspan="7" class="empty-cell">{{ $t('materials.emptyRow') }}</td>
               </tr>
             </tbody>
           </table>
@@ -75,22 +75,22 @@
 
         <!-- Pagination -->
         <div class="pagination-footer" v-if="totalPages > 1">
-          <button 
+          <button
             id="prev-page-btn"
-            @click="changePage(currentPage - 1)" 
-            :disabled="currentPage === 1" 
+            @click="changePage(currentPage - 1)"
+            :disabled="currentPage === 1"
             class="page-btn"
           >
-            ◀ Trước
+            ◀ {{ $t('materials.prevPage') }}
           </button>
-          <span class="page-info">Trang {{ currentPage }} / {{ totalPages }} (Tổng {{ totalItems }} dòng)</span>
-          <button 
+          <span class="page-info">{{ $t('materials.pageInfo', { current: currentPage, total: totalPages, totalItems }) }}</span>
+          <button
             id="next-page-btn"
-            @click="changePage(currentPage + 1)" 
-            :disabled="currentPage === totalPages" 
+            @click="changePage(currentPage + 1)"
+            :disabled="currentPage === totalPages"
             class="page-btn"
           >
-            Sau ▶
+            {{ $t('materials.nextPage') }} ▶
           </button>
         </div>
       </section>
@@ -100,42 +100,42 @@
     <div class="modal-backdrop" v-if="showModal">
       <div class="modal-card">
         <div class="modal-header">
-          <h4>✏️ Cập Nhật Vật Tư: {{ editingMaterial?.code }}</h4>
+          <h4>✏️ {{ $t('materials.editModalTitle', { code: editingMaterial?.code }) }}</h4>
           <button @click="closeModal" class="close-modal-btn">✕</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="edit-mat-name">Tên nguyên liệu</label>
-            <input 
+            <label for="edit-mat-name">{{ $t('materials.labelName') }}</label>
+            <input
               id="edit-mat-name"
-              v-model="editForm.name" 
-              type="text" 
+              v-model="editForm.name"
+              type="text"
               class="form-input"
             />
           </div>
           <div class="form-group">
-            <label for="edit-mat-stock">Tồn kho hiện tại (g)</label>
-            <input 
+            <label for="edit-mat-stock">{{ $t('materials.labelStock') }}</label>
+            <input
               id="edit-mat-stock"
-              v-model.number="editForm.stock_qty" 
-              type="number" 
+              v-model.number="editForm.stock_qty"
+              type="number"
               class="form-input"
             />
           </div>
           <div class="form-group row-group">
-            <label for="edit-mat-active">Trạng thái hoạt động</label>
-            <input 
+            <label for="edit-mat-active">{{ $t('materials.labelActiveStatus') }}</label>
+            <input
               id="edit-mat-active"
-              v-model="editForm.is_active" 
-              type="checkbox" 
+              v-model="editForm.is_active"
+              type="checkbox"
               class="form-checkbox"
             />
           </div>
         </div>
         <div class="modal-footer">
-          <button id="cancel-modal-btn" @click="closeModal" class="cancel-btn">Hủy</button>
+          <button id="cancel-modal-btn" @click="closeModal" class="cancel-btn">{{ $t('common.cancel') }}</button>
           <button id="save-modal-btn" @click="saveMaterial" class="submit-btn" :disabled="saving">
-            {{ saving ? 'Đang lưu...' : 'Lưu Thay Đổi' }}
+            {{ saving ? $t('materials.saving') : $t('materials.saveChanges') }}
           </button>
         </div>
       </div>

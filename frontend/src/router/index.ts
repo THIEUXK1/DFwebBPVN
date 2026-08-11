@@ -311,6 +311,14 @@ const routes = [
     component: () => import('../views/BpdbMachinesGantt.vue'),
     meta: { requiresAuth: false }
   },
+  // Bản TEST tạm của route trên (yêu cầu 2026-08-11) — clone nguyên, chỉ thêm tính năng đẩy
+  // tín hiệu mẻ vừa chạy sang /machine-id-board. Xem ghi chú đầu BpdbMachinesGanttTest.vue.
+  {
+    path: '/bpdb-machines/gantt-test',
+    name: 'BpdbMachinesGanttTest',
+    component: () => import('../views/BpdbMachinesGanttTest.vue'),
+    meta: { requiresAuth: false }
+  },
   // Fallback redirect
   {
     path: '/:pathMatch(.*)*',

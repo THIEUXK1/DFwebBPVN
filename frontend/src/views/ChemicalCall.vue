@@ -5,15 +5,15 @@
       <div class="banner-content">
         <span class="banner-icon">🌐</span>
         <div class="banner-text">
-          <strong>CHẾ ĐỘ GIÁM SÁT TỪ XA: </strong>
-          <span v-if="remoteMode === 'VIEW_ONLY'">CHỈ XEM (VIEW_ONLY) - Các nút thao tác nghiệp vụ đã bị vô hiệu hóa.</span>
-          <span v-else>ĐIỀU KHIỂN TỪ XA (REMOTE_OPERATE) - Cho phép vận hành từ xa. Mọi thao tác sẽ được ghi Audit Log kiểm toán.</span>
+          <strong>{{ $t('chemicalCall.remoteBannerLabel') }}</strong>
+          <span v-if="remoteMode === 'VIEW_ONLY'">{{ $t('chemicalCall.remoteViewOnlyDesc') }}</span>
+          <span v-else>{{ $t('chemicalCall.remoteOperateDesc') }}</span>
         </div>
       </div>
       <div class="banner-actions">
         <select v-model="remoteMode" class="form-select font-xs select-mode">
-          <option value="VIEW_ONLY">🔒 Chế độ Chỉ xem</option>
-          <option value="REMOTE_OPERATE">⚡ Chế độ Điều khiển</option>
+          <option value="VIEW_ONLY">{{ $t('chemicalCall.remoteModeViewOnlyOption') }}</option>
+          <option value="REMOTE_OPERATE">{{ $t('chemicalCall.remoteModeOperateOption') }}</option>
         </select>
       </div>
     </div>
@@ -24,13 +24,13 @@
 
     <!-- Quản lý danh mục: thêm máy mới / thêm kênh mới -->
     <div class="admin-actions-row">
-      <button @click="openAddMachine" class="btn btn-secondary btn-sm">➕ Thêm máy</button>
-      <button @click="openAddChannel" class="btn btn-secondary btn-sm">➕ Thêm thùng</button>
+      <button @click="openAddMachine" class="btn btn-secondary btn-sm">{{ $t('chemicalCall.addMachineButton') }}</button>
+      <button @click="openAddChannel" class="btn btn-secondary btn-sm">{{ $t('chemicalCall.addChannelButton') }}</button>
     </div>
 
     <!-- Factory Operating Grid (Equivalent to VBA CHEM_ORDER) -->
     <div v-if="loading" class="card text-center padding-xl text-muted">
-      <span class="spinner">⏳</span> Đang tải thông tin van đường ống xưởng nhuộm...
+      <span class="spinner">⏳</span> {{ $t('chemicalCall.loadingChannels') }}
     </div>
 
     <div v-else class="machine-grid" :class="{ 'grid-4col': isFullscreen }">
@@ -40,7 +40,7 @@
         class="card machine-card"
       >
         <div class="machine-card-header">
-          <span class="machine-name-title">🖥️ Máy {{ machineCode }}</span>
+          <span class="machine-name-title">{{ $t('chemicalCall.machineTitle', { code: machineCode }) }}</span>
           <span class="machine-status-dot dot-green"></span>
         </div>
 
@@ -57,11 +57,11 @@
           >
             <div class="channel-number-col">
               <span v-if="isChannelRed(c)" class="alert-dot" aria-hidden="true"></span>
-              <span class="channel-number-pill">Thùng {{ c.channel_number }}</span>
+              <span class="channel-number-pill">{{ $t('chemicalCall.channelPill', { number: c.channel_number }) }}</span>
             </div>
 
             <div class="chemical-name-col">
-              <span class="chem-formula" title="Tên hóa chất / công thức từ Database">{{ c.chemical_code }}</span>
+              <span class="chem-formula" :title="$t('chemicalCall.chemFormulaTitle')">{{ c.chemical_code }}</span>
             </div>
 
             <div class="time-col font-xs text-muted text-right">
@@ -77,13 +77,13 @@
                 :class="isChannelRed(c) ? 'btn-danger' : 'btn-success'"
                 :disabled="actionLoading !== null || (isImpersonating && remoteMode === 'VIEW_ONLY')"
               >
-                <span v-if="actionLoading === c.channel_id">⏳ Đang xử lý...</span>
-                <span v-else>{{ isChannelRed(c) ? '🔴 Bấm khi Xong' : '🟢 OK — Bấm để Gọi' }}</span>
+                <span v-if="actionLoading === c.channel_id">{{ $t('chemicalCall.processingLabel') }}</span>
+                <span v-else>{{ isChannelRed(c) ? $t('chemicalCall.toggleDoneLabel') : $t('chemicalCall.toggleCallLabel') }}</span>
               </button>
               <button
                 @click="openEditChannel(c)"
                 class="btn btn-sm btn-secondary edit-channel-btn"
-                title="Sửa thùng (số thùng / mã hóa chất)"
+                :title="$t('chemicalCall.editChannelTitle')"
                 :disabled="actionLoading !== null || (isImpersonating && remoteMode === 'VIEW_ONLY')"
               >
                 ✏️
@@ -98,23 +98,23 @@
     <div v-if="showAddMachine" class="modal-overlay" @click.self="showAddMachine = false">
       <div class="ws-modal-card">
         <div class="modal-header">
-          <h3>➕ Thêm máy mới</h3>
+          <h3>{{ $t('chemicalCall.addMachineModalTitle') }}</h3>
           <button @click="showAddMachine = false" class="close-btn">&times;</button>
         </div>
         <div class="modal-body">
           <div class="form-group mb-3">
-            <label>Mã máy (vd: VD019)</label>
-            <input v-model="newMachine.code" type="text" class="form-control" placeholder="VD019" />
+            <label>{{ $t('chemicalCall.machineCodeLabel') }}</label>
+            <input v-model="newMachine.code" type="text" class="form-control" :placeholder="$t('chemicalCall.machineCodePlaceholder')" />
           </div>
           <div class="form-group mb-3">
-            <label>Tên máy</label>
-            <input v-model="newMachine.name" type="text" class="form-control" placeholder="Máy nhuộm VD019" />
+            <label>{{ $t('chemicalCall.machineNameLabel') }}</label>
+            <input v-model="newMachine.name" type="text" class="form-control" :placeholder="$t('chemicalCall.machineNamePlaceholder')" />
           </div>
           <p v-if="addMachineError" class="text-error font-sm">❌ {{ addMachineError }}</p>
           <div class="modal-actions">
-            <button @click="showAddMachine = false" class="btn btn-secondary">Hủy</button>
+            <button @click="showAddMachine = false" class="btn btn-secondary">{{ $t('common.cancel') }}</button>
             <button @click="submitAddMachine" class="btn btn-primary" :disabled="!newMachine.code || !newMachine.name || addingMachine">
-              {{ addingMachine ? 'Đang lưu...' : 'Lưu máy mới' }}
+              {{ addingMachine ? $t('chemicalCall.savingLabel') : $t('chemicalCall.saveMachineButton') }}
             </button>
           </div>
         </div>
@@ -125,30 +125,30 @@
     <div v-if="showAddChannel" class="modal-overlay" @click.self="showAddChannel = false">
       <div class="ws-modal-card">
         <div class="modal-header">
-          <h3>➕ Thêm thùng mới</h3>
+          <h3>{{ $t('chemicalCall.addChannelModalTitle') }}</h3>
           <button @click="showAddChannel = false" class="close-btn">&times;</button>
         </div>
         <div class="modal-body">
           <div class="form-group mb-3">
-            <label>Máy</label>
+            <label>{{ $t('chemicalCall.machineLabel') }}</label>
             <select v-model="newChannel.machine_id" class="form-select">
-              <option :value="null">-- Chọn máy --</option>
+              <option :value="null">{{ $t('chemicalCall.selectMachinePlaceholder') }}</option>
               <option v-for="m in machinesList" :key="m.id" :value="m.id">{{ m.code }} ({{ m.name }})</option>
             </select>
           </div>
           <div class="form-group mb-3">
-            <label>Số thùng</label>
-            <input v-model.number="newChannel.channel_number" type="number" min="1" class="form-control" placeholder="1" />
+            <label>{{ $t('chemicalCall.channelNumberLabel') }}</label>
+            <input v-model.number="newChannel.channel_number" type="number" min="1" class="form-control" :placeholder="$t('chemicalCall.channelNumberPlaceholder')" />
           </div>
           <div class="form-group mb-3">
-            <label>Mã hóa chất</label>
-            <input v-model="newChannel.chemical_code" type="text" class="form-control" placeholder="AC02" />
+            <label>{{ $t('chemicalCall.chemicalCodeLabel') }}</label>
+            <input v-model="newChannel.chemical_code" type="text" class="form-control" :placeholder="$t('chemicalCall.chemicalCodePlaceholder')" />
           </div>
           <p v-if="addChannelError" class="text-error font-sm">❌ {{ addChannelError }}</p>
           <div class="modal-actions">
-            <button @click="showAddChannel = false" class="btn btn-secondary">Hủy</button>
+            <button @click="showAddChannel = false" class="btn btn-secondary">{{ $t('common.cancel') }}</button>
             <button @click="submitAddChannel" class="btn btn-primary" :disabled="!newChannel.machine_id || !newChannel.channel_number || !newChannel.chemical_code || addingChannel">
-              {{ addingChannel ? 'Đang lưu...' : 'Lưu thùng mới' }}
+              {{ addingChannel ? $t('chemicalCall.savingLabel') : $t('chemicalCall.saveChannelButton') }}
             </button>
           </div>
         </div>
@@ -159,23 +159,23 @@
     <div v-if="showEditChannel" class="modal-overlay" @click.self="showEditChannel = false">
       <div class="ws-modal-card">
         <div class="modal-header">
-          <h3>✏️ Sửa thùng {{ editChannel.machine_code }} — Thùng {{ editChannel.original_channel_number }}</h3>
+          <h3>{{ $t('chemicalCall.editChannelModalTitle', { machineCode: editChannel.machine_code, number: editChannel.original_channel_number }) }}</h3>
           <button @click="showEditChannel = false" class="close-btn">&times;</button>
         </div>
         <div class="modal-body">
           <div class="form-group mb-3">
-            <label>Số thùng</label>
+            <label>{{ $t('chemicalCall.channelNumberLabel') }}</label>
             <input v-model.number="editChannel.channel_number" type="number" min="1" class="form-control" />
           </div>
           <div class="form-group mb-3">
-            <label>Mã hóa chất</label>
-            <input v-model="editChannel.chemical_code" type="text" class="form-control" placeholder="AC02" />
+            <label>{{ $t('chemicalCall.chemicalCodeLabel') }}</label>
+            <input v-model="editChannel.chemical_code" type="text" class="form-control" :placeholder="$t('chemicalCall.chemicalCodePlaceholder')" />
           </div>
           <p v-if="editChannelError" class="text-error font-sm">❌ {{ editChannelError }}</p>
           <div class="modal-actions">
-            <button @click="showEditChannel = false" class="btn btn-secondary">Hủy</button>
+            <button @click="showEditChannel = false" class="btn btn-secondary">{{ $t('common.cancel') }}</button>
             <button @click="submitEditChannel" class="btn btn-primary" :disabled="!editChannel.channel_number || !editChannel.chemical_code || editingChannel">
-              {{ editingChannel ? 'Đang lưu...' : 'Lưu thay đổi' }}
+              {{ editingChannel ? $t('chemicalCall.savingLabel') : $t('chemicalCall.saveChangesButton') }}
             </button>
           </div>
         </div>
@@ -185,29 +185,29 @@
     <!-- Collapsible Log Panel (Bottom of page, audit compliant) -->
     <div class="logs-panel card">
       <div class="logs-header" @click="showLogs = !showLogs">
-        <h4>📋 Nhật ký trạng thái van phát xưởng nhuộm</h4>
-        <span class="toggle-icon text-muted font-sm">{{ showLogs ? '▼ Thu gọn' : '▲ Mở rộng' }}</span>
+        <h4>{{ $t('chemicalCall.logsPanelTitle') }}</h4>
+        <span class="toggle-icon text-muted font-sm">{{ showLogs ? $t('chemicalCall.logsCollapseLabel') : $t('chemicalCall.logsExpandLabel') }}</span>
       </div>
       <div v-if="showLogs" class="logs-body mt-3">
         <div class="table-responsive">
           <table class="table table-dark logs-table">
             <thead>
               <tr>
-                <th>Thời gian</th>
-                <th>Máy</th>
-                <th>Thùng</th>
-                <th>Hóa chất</th>
-                <th>Chuyển trạng thái</th>
-                <th>Người thao tác</th>
-                <th>Workstation</th>
-                <th>Chi tiết</th>
+                <th>{{ $t('chemicalCall.tableColTime') }}</th>
+                <th>{{ $t('chemicalCall.tableColMachine') }}</th>
+                <th>{{ $t('chemicalCall.tableColChannel') }}</th>
+                <th>{{ $t('chemicalCall.tableColChemical') }}</th>
+                <th>{{ $t('chemicalCall.tableColTransition') }}</th>
+                <th>{{ $t('chemicalCall.tableColActor') }}</th>
+                <th>{{ $t('chemicalCall.tableColWorkstation') }}</th>
+                <th>{{ $t('chemicalCall.tableColDetail') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="(log, idx) in logs" :key="idx" :class="log.type">
                 <td class="font-mono">{{ log.time }}</td>
                 <td><strong>{{ log.machine_code || '-' }}</strong></td>
-                <td>Thùng {{ log.channel_number || '-' }}</td>
+                <td>{{ $t('chemicalCall.channelPill', { number: log.channel_number || '-' }) }}</td>
                 <td class="font-mono text-info">{{ log.chemical_code || '-' }}</td>
                 <td>
                   <span class="status-transition">
@@ -216,12 +216,12 @@
                     <span class="badge" :class="getSimpleStatus(log.after_status).cls">{{ getSimpleStatus(log.after_status).label }}</span>
                   </span>
                 </td>
-                <td><code>{{ log.actor_username || 'Hệ thống' }}</code></td>
+                <td><code>{{ log.actor_username || $t('chemicalCall.systemActor') }}</code></td>
                 <td><code>{{ log.workstation_code || '-' }}</code></td>
                 <td>{{ log.message }}</td>
               </tr>
               <tr v-if="logs.length === 0">
-                <td colspan="8" class="text-center text-muted py-4">Chưa có nhật ký hoạt động nào được ghi nhận.</td>
+                <td colspan="8" class="text-center text-muted py-4">{{ $t('chemicalCall.noLogsMessage') }}</td>
               </tr>
             </tbody>
           </table>
@@ -236,11 +236,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import echo from '../services/echo';
 import { isFullscreen } from '../services/layout';
 import FullscreenButton from '../components/FullscreenButton.vue';
 
+const { t } = useI18n({ useScope: 'global' });
 const route = useRoute();
 const isImpersonating = computed(() => route.query.impersonate === 'true');
 const targetWsId = computed(() => route.query.target_ws);
@@ -354,7 +356,7 @@ async function fetchChannels() {
     channelsList.value = res.data;
   } catch (err: any) {
     console.error('Failed to fetch channels:', err);
-    errorMsg.value = 'Không thể kết nối đến máy chủ API để lấy thông tin van đường ống.';
+    errorMsg.value = t('chemicalCall.errorFetchChannels');
   } finally {
     loading.value = false;
   }
@@ -393,9 +395,9 @@ async function submitAddMachine() {
     await axios.post('/api/machines', newMachine.value);
     showAddMachine.value = false;
     await fetchMachinesList();
-    successMsg.value = `Đã thêm máy ${newMachine.value.code} thành công.`;
+    successMsg.value = t('chemicalCall.successAddMachine', { code: newMachine.value.code });
   } catch (err: any) {
-    addMachineError.value = err.response?.data?.message || 'Không thể thêm máy mới (mã máy có thể đã tồn tại).';
+    addMachineError.value = err.response?.data?.message || t('chemicalCall.errorAddMachine');
   } finally {
     addingMachine.value = false;
   }
@@ -417,9 +419,9 @@ async function submitAddChannel() {
     await axios.post('/api/chemical-channels', newChannel.value);
     showAddChannel.value = false;
     await fetchChannels();
-    successMsg.value = `Đã thêm thùng ${newChannel.value.channel_number} thành công.`;
+    successMsg.value = t('chemicalCall.successAddChannel', { number: newChannel.value.channel_number });
   } catch (err: any) {
-    addChannelError.value = err.response?.data?.message || 'Không thể thêm thùng mới.';
+    addChannelError.value = err.response?.data?.message || t('chemicalCall.errorAddChannel');
   } finally {
     addingChannel.value = false;
   }
@@ -447,9 +449,9 @@ async function submitEditChannel() {
     }, getRequestConfig());
     showEditChannel.value = false;
     await fetchChannels();
-    successMsg.value = `Đã cập nhật thùng ${editChannel.value.channel_number} (${editChannel.value.machine_code}).`;
+    successMsg.value = t('chemicalCall.successEditChannel', { number: editChannel.value.channel_number, machineCode: editChannel.value.machine_code });
   } catch (err: any) {
-    editChannelError.value = err.response?.data?.message || 'Không thể sửa thùng.';
+    editChannelError.value = err.response?.data?.message || t('chemicalCall.errorEditChannel');
   } finally {
     editingChannel.value = false;
   }
@@ -482,7 +484,7 @@ async function toggleChannel(channel: ChemicalChannel) {
       const requestId = previousRequest!.id;
       await axios.patch(`/api/chemical-call-requests/${requestId}/complete`, {}, getRequestConfig());
       await axios.patch(`/api/chemical-call-requests/${requestId}/reset`, {}, getRequestConfig());
-      successMsg.value = `Đã đánh dấu XONG cho máy ${channel.machine_code} - Thùng ${channel.channel_number}.`;
+      successMsg.value = t('chemicalCall.successToggleDone', { machineCode: channel.machine_code, number: channel.channel_number });
     } else {
       // Nếu còn sót request DONE cũ chưa đóng (VD do lỗi mạng lần trước), đóng nốt
       // trước khi gọi mới — tránh vi phạm ràng buộc unique request đang active.
@@ -494,7 +496,7 @@ async function toggleChannel(channel: ChemicalChannel) {
         channel_id: channel.channel_id,
         idempotency_key: idempotencyKey
       }, getRequestConfig());
-      successMsg.value = `Đã GỌI hóa chất cho máy ${channel.machine_code} - Thùng ${channel.channel_number}.`;
+      successMsg.value = t('chemicalCall.successToggleCall', { machineCode: channel.machine_code, number: channel.channel_number });
     }
     // Đợi fetchChannels() lấy trạng thái THẬT từ server rồi mới mở khoá thao tác —
     // tránh trường hợp API mutation trả về xong nhưng dữ liệu trên lưới vẫn là dữ
@@ -502,7 +504,7 @@ async function toggleChannel(channel: ChemicalChannel) {
     await Promise.all([fetchChannels(), fetchRecentEvents()]);
   } catch (err: any) {
     channel.current_request = previousRequest;
-    errorMsg.value = err.response?.data?.message || 'Không thể đổi trạng thái thùng.';
+    errorMsg.value = err.response?.data?.message || t('chemicalCall.errorToggleChannel');
   } finally {
     actionLoading.value = null;
   }
@@ -517,13 +519,13 @@ function getChannelRowClass(channel: ChemicalChannel) {
 // riêng CANCELLED giữ nhãn riêng vì đó là "hủy yêu cầu", không phải trạng thái van.
 function getSimpleStatus(status: string): { label: string; cls: string } {
   if (status === 'CREATED' || status === 'ORDERED' || status === 'ACKNOWLEDGED') {
-    return { label: '🔴 CHƯA OK', cls: 'badge-danger' };
+    return { label: t('chemicalCall.statusNotOk'), cls: 'badge-danger' };
   }
   if (status === 'DONE' || status === 'RESET') {
-    return { label: '🟢 OK', cls: 'badge-success' };
+    return { label: t('chemicalCall.statusOk'), cls: 'badge-success' };
   }
   if (status === 'CANCELLED') {
-    return { label: '⚪ ĐÃ HỦY', cls: 'badge-neutral' };
+    return { label: t('chemicalCall.statusCancelled'), cls: 'badge-neutral' };
   }
   return { label: status || '-', cls: 'badge-neutral' };
 }

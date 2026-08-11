@@ -5,7 +5,7 @@
     <div v-if="errorMsg" class="alert-box alert-error">⚠️ {{ errorMsg }}</div>
 
     <div v-if="loading" class="card text-center padding-xl text-muted">
-      <span class="spinner">⏳</span> Đang tải bảng gọi hóa chất...
+      <span class="spinner">⏳</span> {{ $t('chemicalCallClassic.loadingLabel') }}
     </div>
 
     <div v-else class="classic-columns">
@@ -23,7 +23,7 @@
             <button
               class="classic-call-btn"
               :disabled="actionLoading === c.channel_id"
-              :title="`Gọi hóa chất ${c.chemical_code} cho ${machineCode}`"
+              :title="$t('chemicalCallClassic.callButtonTitle', { code: c.chemical_code, machine: machineCode })"
               @click="callChemical(c)"
             >
               {{ c.chemical_code }}
@@ -36,7 +36,7 @@
             <button
               class="classic-ok-btn"
               :disabled="actionLoading === c.channel_id"
-              title="Xác nhận đã cấp xong"
+              :title="$t('chemicalCallClassic.okButtonTitle')"
               @click="markDone(c)"
             >
               OK

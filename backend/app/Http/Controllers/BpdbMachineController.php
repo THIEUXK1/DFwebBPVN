@@ -11,6 +11,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\BpdbMachineRunningAlert;
 use App\Models\FeatureFlag;
 use App\Services\ColorService\BpdbMachineMonitoringService;
 use Illuminate\Http\Request;
@@ -132,6 +133,33 @@ class BpdbMachineController extends Controller
             'readOnly' => true,
             'syncedAt' => $detail['syncedAt'],
         ]);
+    }
+
+    /**
+     * Nhận tín hiệu "1 mẻ VỪA chuyển sang đang chạy" từ trang test `/bpdb-machines/gantt-test`
+     * (client tự phát hiện qua diff `newlyAppearedRunningIds`, xem BpdbMachinesGanttTest.vue)
+     * và bắn broadcast để `/machine-id-board` nhấp nháy đỏ đúng mã máy đó.
+     *
+     * Không ghi DB — đây là tín hiệu UI ngắn hạn, không phải hành động nghiệp vụ cần Audit
+     * Log (CLAUDE.md mục 5 chỉ bắt buộc với duyệt công thức/override dung sai/reprint/force
+     * unlock/troubleshooting KB). Endpoint public (không auth) nên validate chặt định dạng
+     * machineCode để chặn payload rác.
+     */
+    public function notifyRunning(Request $request)
+    {
+        $validated = $request->validate([
+            'machineCode' => ['required', 'string', 'regex:/^VD\d+$/i'],
+            'tankLabel' => ['nullable', 'string', 'max:8'],
+            'color' => ['nullable', 'string', 'max:64'],
+            'productCode' => ['nullable', 'string', 'max:64'],
+            'taskId' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        $validated['occurredAt'] = now()->toIso8601String();
+
+        event(new BpdbMachineRunningAlert($validated));
+
+        return response()->noContent();
     }
 
     /**

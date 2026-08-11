@@ -1,43 +1,43 @@
 <template>
   <div class="print-history-admin">
     <div class="page-header mb-4">
-      <h2>📜 Lịch sử in tem — Toàn hệ thống</h2>
-      <p class="text-muted font-sm">Xem lịch sử in của TẤT CẢ trạm — cùng dữ liệu Trạm in dùng, có thêm bộ lọc.</p>
+      <h2>{{ $t('printHistoryAdmin.pageTitle') }}</h2>
+      <p class="text-muted font-sm">{{ $t('printHistoryAdmin.pageDesc') }}</p>
     </div>
 
     <div class="card-sec filter-panel mb-4">
       <div class="filter-row">
         <div class="form-group">
-          <label>Trạm (gửi hoặc in)</label>
+          <label>{{ $t('printHistoryAdmin.stationLabel') }}</label>
           <select v-model="filters.station_code" class="form-select">
-            <option value="">-- Tất cả trạm --</option>
+            <option value="">{{ $t('printHistoryAdmin.allStationsOption') }}</option>
             <option v-for="ws in workstationsList" :key="ws.id" :value="ws.code">{{ ws.code }} - {{ ws.name }}</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Trạng thái in</label>
+          <label>{{ $t('printHistoryAdmin.printStatusLabel') }}</label>
           <select v-model="filters.print_status" class="form-select">
-            <option value="">-- Tất cả --</option>
-            <option value="PENDING">Đang chờ Agent in</option>
-            <option value="PRINTED">Đã in xong</option>
-            <option value="FAILED">In lỗi</option>
-            <option value="CANCELLED">Đã hủy</option>
+            <option value="">{{ $t('printHistoryAdmin.allOption') }}</option>
+            <option value="PENDING">{{ $t('printHistoryAdmin.statusPending') }}</option>
+            <option value="PRINTED">{{ $t('printHistoryAdmin.statusPrinted') }}</option>
+            <option value="FAILED">{{ $t('printHistoryAdmin.statusFailed') }}</option>
+            <option value="CANCELLED">{{ $t('printHistoryAdmin.statusCancelled') }}</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Từ ngày</label>
+          <label>{{ $t('printHistoryAdmin.fromDateLabel') }}</label>
           <input v-model="filters.from" type="date" class="form-control" />
         </div>
         <div class="form-group">
-          <label>Đến ngày</label>
+          <label>{{ $t('printHistoryAdmin.toDateLabel') }}</label>
           <input v-model="filters.to" type="date" class="form-control" />
         </div>
         <div class="form-group flex-2">
-          <label>Tìm mã Lô / màu / mã hàng</label>
-          <input v-model="filters.q" type="text" class="form-control" placeholder="Vd: AP88646" @keyup.enter="fetchHistory" />
+          <label>{{ $t('printHistoryAdmin.searchLabel') }}</label>
+          <input v-model="filters.q" type="text" class="form-control" :placeholder="$t('printHistoryAdmin.searchPlaceholder')" @keyup.enter="fetchHistory" />
         </div>
-        <button class="btn btn-primary" @click="fetchHistory" :disabled="loading">{{ loading ? 'Đang tải...' : 'Lọc' }}</button>
-        <button class="btn btn-secondary" @click="resetFilters">Xóa lọc</button>
+        <button class="btn btn-primary" @click="fetchHistory" :disabled="loading">{{ loading ? $t('common.loading') : $t('common.filter') }}</button>
+        <button class="btn btn-secondary" @click="resetFilters">{{ $t('printHistoryAdmin.resetFiltersButton') }}</button>
       </div>
     </div>
 

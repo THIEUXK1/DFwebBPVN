@@ -5,7 +5,7 @@
     class="nav-toggle-btn"
     :class="variant === 'vba' ? 'nav-vba' : 'nav-app'"
     :style="{ zIndex }"
-    :title="isFullscreen ? 'Mở menu điều hướng' : 'Ẩn menu điều hướng'"
+    :title="isFullscreen ? $t('navToggleButton.showMenuTitle') : $t('navToggleButton.hideMenuTitle')"
     @click="isFullscreen = !isFullscreen"
   >
     <SvgIcon name="menu" size="16" />
@@ -20,11 +20,11 @@
     class="nav-toggle-btn"
     :class="variant === 'vba' ? 'nav-vba' : 'nav-app'"
     :style="{ zIndex }"
-    title="Đăng nhập tài khoản"
+    :title="$t('navToggleButton.loginTitle')"
     @click="goToLogin"
   >
     <SvgIcon name="user" size="16" />
-    <span class="nav-toggle-label">Đăng nhập</span>
+    <span class="nav-toggle-label">{{ $t('navToggleButton.loginLabel') }}</span>
   </button>
 </template>
 

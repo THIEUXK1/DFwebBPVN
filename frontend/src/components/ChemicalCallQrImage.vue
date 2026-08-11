@@ -4,7 +4,7 @@
     class="chem-call-qr-thumb"
     :class="{ 'chem-call-qr-thumb--large': size >= 100, 'is-loaded': loaded }"
     :style="{ '--qr-size': size + 'px' }"
-    alt="QR Báo phát AC"
+    :alt="$t('chemicalCallQrImage.alt')"
     decoding="async"
     @load="loaded = true"
   />

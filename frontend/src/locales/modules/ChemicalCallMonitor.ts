@@ -1,0 +1,32 @@
+export default {
+  vi: {
+    loadingChannels: 'Đang tải thông tin van đường ống xưởng nhuộm...',
+    machineTitle: '🖥️ Máy {code}',
+    channelPill: 'Thùng {number}',
+    processingLabel: '⏳ Đang xử lý...',
+    toggleDoneLabel: '🔴 Bấm khi Xong',
+    toggleCallLabel: '🟢 OK — Bấm để Gọi',
+    errorFetchChannels: 'Không thể kết nối đến máy chủ API để lấy thông tin van đường ống.',
+    errorToggleChannel: 'Không thể đổi trạng thái kênh.',
+  },
+  en: {
+    loadingChannels: 'Loading dyeing workshop pipeline valve information...',
+    machineTitle: '🖥️ Machine {code}',
+    channelPill: 'Tank {number}',
+    processingLabel: '⏳ Processing...',
+    toggleDoneLabel: '🔴 Tap When Done',
+    toggleCallLabel: '🟢 OK — Tap to Call',
+    errorFetchChannels: 'Unable to connect to the API server to retrieve pipeline valve information.',
+    errorToggleChannel: 'Unable to change channel status.',
+  },
+  zh: {
+    loadingChannels: '正在加载染色车间管道阀门信息...',
+    machineTitle: '🖥️ 机台 {code}',
+    channelPill: '料桶 {number}',
+    processingLabel: '⏳ 处理中...',
+    toggleDoneLabel: '🔴 完成后点击',
+    toggleCallLabel: '🟢 OK — 点击呼叫',
+    errorFetchChannels: '无法连接到API服务器以获取管道阀门信息。',
+    errorToggleChannel: '无法更改通道状态。',
+  },
+};

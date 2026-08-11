@@ -12,10 +12,10 @@
   <div class="gantt-page" :class="{ 'is-immersive': isBrowserFullscreen }">
     <p v-if="errorMsg" class="text-error mt-2">❌ {{ errorMsg }}</p>
     <div v-if="!bpdbConnected" class="stale-banner error-banner mt-2">
-      ⚠️ BPDB mất kết nối — biểu đồ đang hiển thị dữ liệu cache gần nhất (lúc {{ formatTime(lastSyncedAt) }}).
+      {{ $t('bpdbMachinesGantt.bpdbDisconnected', { time: formatTime(lastSyncedAt) }) }}
     </div>
     <div v-else-if="dataStale" class="stale-banner mt-2">
-      ⏱️ Dữ liệu có thể đã cũ — lần đồng bộ gần nhất lúc {{ formatTime(lastSyncedAt) }} ({{ dataAgeSeconds }}s trước).
+      {{ $t('bpdbMachinesGantt.dataStale', { time: formatTime(lastSyncedAt), seconds: dataAgeSeconds }) }}
     </div>
 
     <!-- v-show (không phải v-if): giữ nguyên DOM + state của các ô lọc ngày/tìm máy khi
@@ -23,39 +23,39 @@
     <div class="toolbar mt-2" v-show="!isBrowserFullscreen">
       <div class="toolbar-group">
         <label class="field">
-          <span class="field-label">Từ ngày</span>
+          <span class="field-label">{{ $t('bpdbMachinesGantt.fromDateLabel') }}</span>
           <input type="date" v-model="fromDate" class="form-select" />
         </label>
         <label class="field">
-          <span class="field-label">Đến ngày</span>
+          <span class="field-label">{{ $t('bpdbMachinesGantt.toDateLabel') }}</span>
           <input type="date" v-model="toDate" class="form-select" />
         </label>
-        <button class="btn btn-primary btn-sm" @click="loadGantt()" :disabled="loading">🔍 Lọc đồ thị</button>
+        <button class="btn btn-primary btn-sm" @click="loadGantt()" :disabled="loading">{{ $t('bpdbMachinesGantt.filterButton') }}</button>
         <label class="field">
-          <span class="field-label">Tìm máy</span>
-          <input v-model="machineSearch" type="text" class="form-select" placeholder="🔍 Tìm tên máy…" />
+          <span class="field-label">{{ $t('bpdbMachinesGantt.searchMachineLabel') }}</span>
+          <input v-model="machineSearch" type="text" class="form-select" :placeholder="$t('bpdbMachinesGantt.searchMachinePlaceholder')" />
         </label>
       </div>
       <div class="toolbar-group">
-        <button class="btn btn-secondary btn-sm" @click="loadGantt()" :disabled="loading">{{ loading ? 'Đang tải...' : '🔄 Tải lại' }}</button>
-        <button class="btn btn-secondary btn-sm" @click="moveToNow">🕐 Về hiện tại</button>
-        <label class="realtime-toggle"><input type="checkbox" v-model="autoMove" /> Auto cuộn</label>
-        <label class="realtime-toggle"><input type="checkbox" v-model="autoRefresh" /> Auto tải lại 30s</label>
-        <label class="realtime-toggle"><input type="checkbox" v-model="autoJumpNew" /> Tự nhảy tới mẻ mới</label>
+        <button class="btn btn-secondary btn-sm" @click="loadGantt()" :disabled="loading">{{ loading ? $t('common.loading') : $t('bpdbMachinesGantt.reloadButton') }}</button>
+        <button class="btn btn-secondary btn-sm" @click="moveToNow">{{ $t('bpdbMachinesGantt.moveToNowButton') }}</button>
+        <label class="realtime-toggle"><input type="checkbox" v-model="autoMove" /> {{ $t('bpdbMachinesGantt.autoScrollLabel') }}</label>
+        <label class="realtime-toggle"><input type="checkbox" v-model="autoRefresh" /> {{ $t('bpdbMachinesGantt.autoRefreshLabel') }}</label>
+        <label class="realtime-toggle"><input type="checkbox" v-model="autoJumpNew" /> {{ $t('bpdbMachinesGantt.autoJumpLabel') }}</label>
         <!-- Người xem công khai (không phải Admin) không có AppLayout nên không có nút
              chuyển theme ở topbar chung — trang tự có nút riêng, dùng chung cho cả 2
              trường hợp (kể cả khi Admin đã lộ AppLayout, đỡ phải rẽ nhánh UI). -->
         <button
           class="btn btn-secondary btn-sm theme-toggle-btn"
           @click="toggleTheme"
-          :title="theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'"
+          :title="theme === 'dark' ? $t('bpdbMachinesGantt.themeToLightTitle') : $t('bpdbMachinesGantt.themeToDarkTitle')"
         >
           <SvgIcon :name="theme === 'dark' ? 'sun' : 'moon'" size="16" />
         </button>
         <button
           class="btn btn-secondary btn-sm theme-toggle-btn"
           @click="toggleBrowserFullscreen"
-          :title="isBrowserFullscreen ? 'Thoát toàn màn hình (F11)' : 'Toàn màn hình (F11)'"
+          :title="isBrowserFullscreen ? $t('bpdbMachinesGantt.exitBrowserFullscreenTitle') : $t('bpdbMachinesGantt.enterBrowserFullscreenTitle')"
         >
           {{ isBrowserFullscreen ? '⤢' : '⛶' }}
         </button>
@@ -68,7 +68,7 @@
           v-if="isAdminUser"
           class="btn btn-secondary btn-sm theme-toggle-btn"
           @click="isFullscreen = !isFullscreen"
-          :title="isFullscreen ? 'Mở menu điều hướng (Admin)' : 'Ẩn menu điều hướng'"
+          :title="isFullscreen ? $t('bpdbMachinesGantt.openNavMenuTitle') : $t('bpdbMachinesGantt.hideNavMenuTitle')"
         >
           <SvgIcon name="menu" size="16" />
         </button>

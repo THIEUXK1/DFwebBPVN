@@ -23,32 +23,32 @@
       <div class="head">
         <div class="tabs">
           <button class="vba-btn tab" :class="{ 'is-active': tab === 'sent' }" @click="switchTab('sent')">
-            ĐÃ GỬI (SEND)
+            {{ $t('qrPrinterHistory.tabSent') }}
           </button>
           <button class="vba-btn tab" :class="{ 'is-active': tab === 'print' }" @click="switchTab('print')">
-            ĐÃ IN (PRINT)
+            {{ $t('qrPrinterHistory.tabPrint') }}
           </button>
         </div>
 
         <div class="tools">
           <label>
-            Khoảng:
+            {{ $t('qrPrinterHistory.rangeLabel') }}
             <select v-model.number="days" class="vba-select" @change="fetchLogs">
-              <option :value="1">Hôm nay</option>
-              <option :value="7">7 ngày</option>
-              <option :value="30">30 ngày</option>
-              <option :value="90">90 ngày</option>
+              <option :value="1">{{ $t('qrPrinterHistory.rangeToday') }}</option>
+              <option :value="7">{{ $t('qrPrinterHistory.range7d') }}</option>
+              <option :value="30">{{ $t('qrPrinterHistory.range30d') }}</option>
+              <option :value="90">{{ $t('qrPrinterHistory.range90d') }}</option>
             </select>
           </label>
-          <input v-model="search" class="vba-input" placeholder="Lọc COLOR / CODE / máy / mã thuốc..." />
-          <button class="vba-btn" :disabled="loading" @click="fetchLogs">{{ loading ? 'Đang tải...' : 'LÀM MỚI' }}</button>
-          <a class="vba-btn" href="/qr-printer">← VỀ FORM QR PRINTER</a>
+          <input v-model="search" class="vba-input" :placeholder="$t('qrPrinterHistory.searchPlaceholder')" />
+          <button class="vba-btn" :disabled="loading" @click="fetchLogs">{{ loading ? $t('common.loading') : $t('qrPrinterHistory.refreshBtn') }}</button>
+          <a class="vba-btn" href="/qr-printer">{{ $t('qrPrinterHistory.backToFormLink') }}</a>
         </div>
       </div>
 
       <div class="count">
-        {{ tab === 'sent' ? 'Lô đã gửi xuống hàng chờ' : 'Các lần bấm print ở màn /qr-printer' }}
-        — {{ visible.length }} bản ghi
+        {{ tab === 'sent' ? $t('qrPrinterHistory.countSentLabel') : $t('qrPrinterHistory.countPrintLabel') }}
+        {{ $t('qrPrinterHistory.recordsCountLabel', { count: visible.length }) }}
         <span v-if="error" class="err">· {{ error }}</span>
       </div>
 
@@ -57,7 +57,7 @@
           <tr>
             <th style="width: 30px"></th>
             <th style="width: 36px">#</th>
-            <th style="width: 130px">THỜI GIAN</th>
+            <th style="width: 130px">{{ $t('qrPrinterHistory.theadTime') }}</th>
             <th style="width: 120px">COLOR</th>
             <th style="width: 90px">CODE</th>
             <th style="width: 60px">MACHINE</th>
@@ -65,7 +65,7 @@
             <th style="width: 40px">LV</th>
             <th style="width: 44px">DYE</th>
             <th style="width: 50px">CHEM</th>
-            <th style="width: 130px">{{ tab === 'sent' ? 'TRẠNG THÁI' : 'MÁY TRẠM' }}</th>
+            <th style="width: 130px">{{ tab === 'sent' ? $t('qrPrinterHistory.theadStatus') : $t('qrPrinterHistory.theadStation') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -87,30 +87,30 @@
               <td colspan="11">
                 <div class="detail">
                   <div class="detail-block">
-                    <div class="detail-title">THUỐC NHUỘM ({{ r.dye?.length || 0 }} dòng)</div>
+                    <div class="detail-title">{{ $t('qrPrinterHistory.dyeDetailTitle', { count: r.dye?.length || 0 }) }}</div>
                     <table class="mini-tbl">
                       <tr><th>RACK</th><th>DYE CODE</th><th>WEIGHT</th></tr>
                       <tr v-for="(d, k) in r.dye || []" :key="'d' + k">
                         <td>{{ d.rack }}</td><td>{{ d.code }}</td><td class="num">{{ d.weight }}</td>
                       </tr>
-                      <tr v-if="!r.dye?.length"><td colspan="3" class="dim">(không có)</td></tr>
+                      <tr v-if="!r.dye?.length"><td colspan="3" class="dim">{{ $t('qrPrinterHistory.noneLabel') }}</td></tr>
                     </table>
                   </div>
                   <div class="detail-block">
-                    <div class="detail-title">HÓA CHẤT ({{ r.chem?.length || 0 }} dòng)</div>
+                    <div class="detail-title">{{ $t('qrPrinterHistory.chemDetailTitle', { count: r.chem?.length || 0 }) }}</div>
                     <table class="mini-tbl">
                       <tr><th>RACK</th><th>chem CODE</th><th>WEIGHT</th></tr>
                       <tr v-for="(c, k) in r.chem || []" :key="'c' + k">
                         <td>{{ c.rack }}</td><td>{{ c.code }}</td><td class="num">{{ c.weight }}</td>
                       </tr>
-                      <tr v-if="!r.chem?.length"><td colspan="3" class="dim">(không có)</td></tr>
+                      <tr v-if="!r.chem?.length"><td colspan="3" class="dim">{{ $t('qrPrinterHistory.noneLabel') }}</td></tr>
                     </table>
                   </div>
                   <div class="detail-block meta">
-                    <div class="detail-title">GHI CHÚ</div>
-                    <div v-if="r.batch_id">Mã lô: <code>{{ r.batch_id }}</code></div>
+                    <div class="detail-title">{{ $t('qrPrinterHistory.noteTitle') }}</div>
+                    <div v-if="r.batch_id">{{ $t('qrPrinterHistory.batchIdLabel') }} <code>{{ r.batch_id }}</code></div>
                     <div v-if="r.note">{{ r.note }}</div>
-                    <div class="dim">{{ tab === 'sent' ? 'Lô ' + r.id : 'Bản ghi audit #' + r.id }}</div>
+                    <div class="dim">{{ tab === 'sent' ? $t('qrPrinterHistory.sentRowLabel', { id: r.id }) : $t('qrPrinterHistory.printRowLabel', { id: r.id }) }}</div>
                   </div>
                 </div>
               </td>
@@ -118,22 +118,20 @@
           </template>
           <tr v-if="!visible.length">
             <td colspan="11" class="empty">
-              {{ loading ? 'Đang tải...' : 'Chưa có bản ghi nào trong khoảng thời gian đã chọn.' }}
+              {{ loading ? $t('common.loading') : $t('qrPrinterHistory.noRecordsMsg') }}
             </td>
           </tr>
         </tbody>
       </table>
 
       <p class="note">
-        <strong>ĐÃ GỬI</strong> đọc thẳng từ bảng lô sản xuất nên có sẵn lịch sử cũ, và gồm cả lô
-        gửi từ màn hình khác (<a href="/production-batches/grid">/production-batches/grid</a>,
-        <a href="/print-order-entry">/print-order-entry</a>) chứ không riêng form
-        <a href="/qr-printer">/qr-printer</a>. 9 dòng chi tiết đọc ngược từ chuỗi QR đã lưu lúc gửi.
+        <strong>{{ $t('qrPrinterHistory.noteSentBold') }}</strong> {{ $t('qrPrinterHistory.noteSentPrefix') }}<a href="/production-batches/grid">/production-batches/grid</a>{{ $t('qrPrinterHistory.noteSentMiddle') }}
+        <a href="/print-order-entry">/print-order-entry</a>{{ $t('qrPrinterHistory.noteSentSuffix') }}
+        <a href="/qr-printer">/qr-printer</a>{{ $t('qrPrinterHistory.noteSentEnd') }}
         <br />
-        <strong>ĐÃ IN</strong> là các lần bấm nút <code>print</code> ở form — trước 07/08/2026 hệ
-        thống không lưu vết việc này, nên tab đó chỉ có dữ liệu từ ngày đó trở đi.
+        <strong>{{ $t('qrPrinterHistory.notePrintBold') }}</strong> {{ $t('qrPrinterHistory.notePrintPrefix') }} <code>print</code> {{ $t('qrPrinterHistory.notePrintSuffix') }}
         <br />
-        Mỗi lần tải tối đa 100 lô / 200 bản ghi in gần nhất; ô lọc hoạt động trên phần đã tải về.
+        {{ $t('qrPrinterHistory.noteLimitText') }}
       </p>
     </div>
 
@@ -146,6 +144,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import AppLayout from '../components/AppLayout.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
@@ -156,6 +155,7 @@ import { useAuthStore } from '../stores/auth';
 // lấy khi người xem đã đăng nhập để vẫn có menu điều hướng.
 const isLoggedIn = useAuthStore().isAuthenticated;
 const pageWrapper = isLoggedIn ? AppLayout : 'div';
+const { t } = useI18n({ useScope: 'global' });
 
 const route = useRoute();
 const router = useRouter();
@@ -251,7 +251,7 @@ async function fetchLogs(): Promise<void> {
   try {
     await (tab.value === 'sent' ? fetchSent() : fetchPrints());
   } catch (e: any) {
-    error.value = e.response?.data?.message || 'Không tải được nhật ký.';
+    error.value = e.response?.data?.message || t('qrPrinterHistory.fetchError');
     rows.value = [];
   } finally {
     loading.value = false;

@@ -6,10 +6,12 @@ import './style.css'; // Global CSS theme styles
 import axios from 'axios';
 import { useAuthStore } from './stores/auth';
 import { initTheme } from './services/theme';
+import { i18n, initLocale } from './i18n';
 
 // Áp dụng theme (sáng/tối) đã lưu ngay từ đầu, trước khi app mount, để tránh
 // nháy giao diện tối mặc định rồi mới đổi sang sáng sau khi Vue chạy xong.
 initTheme();
+initLocale();
 
 // Centralized API backend baseURL — dùng đúng host mà trình duyệt đang dùng để mở
 // trang (LAN IP của máy chủ, không phải 'localhost') để các máy trạm khác trong
@@ -29,6 +31,7 @@ const pinia = createPinia();
 
 app.use(pinia);
 app.use(router);
+app.use(i18n);
 
 // Phiên (đăng nhập hoặc kiosk) hết hạn/không hợp lệ -> trước đây chỉ console.error im
 // lặng, người dùng thấy màn hình trống không rõ lý do (đúng triệu chứng báo lỗi 401

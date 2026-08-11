@@ -1,0 +1,66 @@
+// Dựng lại UserForm TO_SEND (workbook "...PRINTER LANDSCAPE - jit qr sending...xlsm") —
+// xem PrintOrderEntry.vue. `vi` là bản sao y nguyên chữ đang hiển thị trước khi thêm i18n.
+export default {
+  vi: {
+    printBtn: 'print',
+    printBtnTitleSend: 'Xem trước + mở hộp thoại in ngay (TO_SEND.HandleSendPrint)',
+    printBtnTitleWait: 'Xem trước + mở hộp thoại in ngay (TO_SEND.HandlewaitPrint)',
+    scaleCheckTitle: 'scale_check — tick là ghi thẳng xuống DB ngay (TO_SEND.SavePrintCheck)',
+    okBtn: 'OK',
+    okBtnTitle: 'Xác nhận đã in & đã gửi — đơn rời hàng chờ sang lịch sử (TO_SEND.ConfirmRow)',
+    waitCheckboxTitle: 'Bảng production_batches chưa có cột scale_check tương ứng — xem ghi chú',
+    createdAtTooltip: 'Tạo lúc {time}',
+    sentLogLink: '📄 SENT LOG — xem đơn đã tích & đã bấm OK →',
+    zoomLabel: 'Vừa màn hình: {percent}%',
+    scaleCheckTickedMsg: 'Đã tick đối chiếu cân cho đơn {color}.',
+    scaleCheckUntickedMsg: 'Đã bỏ tick đối chiếu cân cho đơn {color}.',
+    scaleCheckUpdateError: 'Không cập nhật được cờ đối chiếu cân.',
+    popupBlockedMsg:
+      'Trình duyệt đã chặn cửa sổ in — cho phép popup cho trang này, hoặc bấm nút PRINT trong phiếu xem trước.',
+    labelBuildError: 'Không dựng được tem để in — thử lại bằng nút PRINT trong phiếu xem trước.',
+    confirmedMsg: 'Đã xác nhận đơn {color} - {code}. Xem ở màn hình SENT LOG.',
+    confirmError: 'Không xác nhận được đơn.',
+  },
+  en: {
+    printBtn: 'print',
+    printBtnTitleSend: 'Preview and open the print dialog immediately (TO_SEND.HandleSendPrint)',
+    printBtnTitleWait: 'Preview and open the print dialog immediately (TO_SEND.HandlewaitPrint)',
+    scaleCheckTitle:
+      'scale_check — checking writes directly to the database immediately (TO_SEND.SavePrintCheck)',
+    okBtn: 'OK',
+    okBtnTitle:
+      'Confirm printed & sent — the order leaves the queue and moves to history (TO_SEND.ConfirmRow)',
+    waitCheckboxTitle:
+      'Table production_batches does not have a matching scale_check column yet — see the note',
+    createdAtTooltip: 'Created at {time}',
+    sentLogLink: '📄 SENT LOG — view checked & confirmed (OK) orders →',
+    zoomLabel: 'Fit to screen: {percent}%',
+    scaleCheckTickedMsg: 'Marked weight reconciliation for order {color}.',
+    scaleCheckUntickedMsg: 'Unmarked weight reconciliation for order {color}.',
+    scaleCheckUpdateError: 'Could not update the weight reconciliation flag.',
+    popupBlockedMsg:
+      'The browser blocked the print window — allow pop-ups for this page, or click the PRINT button in the preview slip.',
+    labelBuildError: 'Could not build the label to print — try again using the PRINT button in the preview slip.',
+    confirmedMsg: 'Confirmed order {color} - {code}. View it on the SENT LOG screen.',
+    confirmError: 'Could not confirm the order.',
+  },
+  zh: {
+    printBtn: '打印',
+    printBtnTitleSend: '预览并立即打开打印对话框 (TO_SEND.HandleSendPrint)',
+    printBtnTitleWait: '预览并立即打开打印对话框 (TO_SEND.HandlewaitPrint)',
+    scaleCheckTitle: 'scale_check — 勾选后立即写入数据库 (TO_SEND.SavePrintCheck)',
+    okBtn: '确定',
+    okBtnTitle: '确认已打印并已发送——订单离开队列进入历史记录 (TO_SEND.ConfirmRow)',
+    waitCheckboxTitle: 'production_batches 表尚无对应的 scale_check 列——见说明',
+    createdAtTooltip: '创建于 {time}',
+    sentLogLink: '📄 SENT LOG — 查看已勾选并已确认(OK)的订单 →',
+    zoomLabel: '适应屏幕：{percent}%',
+    scaleCheckTickedMsg: '已为订单 {color} 勾选称重核对。',
+    scaleCheckUntickedMsg: '已取消订单 {color} 的称重核对勾选。',
+    scaleCheckUpdateError: '无法更新称重核对标记。',
+    popupBlockedMsg: '浏览器已阻止打印窗口——请允许此页面弹出窗口，或点击预览单据中的 PRINT 按钮。',
+    labelBuildError: '无法生成待打印的标签——请使用预览单据中的 PRINT 按钮重试。',
+    confirmedMsg: '已确认订单 {color} - {code}。请在 SENT LOG 界面查看。',
+    confirmError: '无法确认订单。',
+  },
+};

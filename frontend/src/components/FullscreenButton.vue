@@ -5,10 +5,10 @@
     class="fs-btn"
     :class="variant === 'vba' ? 'fs-vba' : 'fs-app'"
     :style="{ zIndex }"
-    :title="fullscreenOn ? 'Thoát toàn màn hình (hoặc bấm ESC)' : 'Toàn màn hình — ẩn cả menu và thanh trình duyệt'"
+    :title="fullscreenOn ? $t('fullscreenButton.exitTitle') : $t('fullscreenButton.enterTitle')"
     @click="toggleFullscreen"
   >
-    {{ fullscreenOn ? '✕ Thoát toàn màn hình' : '⛶ Toàn màn hình' }}
+    {{ fullscreenOn ? $t('fullscreenButton.exitLabel') : $t('fullscreenButton.enterLabel') }}
   </button>
 </template>
 

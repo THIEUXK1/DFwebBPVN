@@ -12,7 +12,7 @@
         <!-- 4 ô thông tin: COLOR/MACHINE hàng trên, CODE/LV hàng dưới -->
         <div class="ws2-fields panel">
           <div class="fld">
-            <label>COLOR — quét mã vào đây</label>
+            <label>COLOR — {{ $t('weighingStationV2.colorFieldHint') }}</label>
             <!-- KHÔNG dùng v-model: máy quét kiểu "giả bàn phím" bắn cả trăm ký tự trong vài
                  chục mili-giây; nếu mỗi ký tự làm Vue re-render thì trình duyệt xử lý không
                  kịp và RỚT ký tự giữa chừng (lỗi thật đã gặp ở /production-batches). Để input
@@ -23,7 +23,7 @@
               class="vba-txt txt-color"
               :class="{ scanning }"
               :value="activeBatch?.color || ''"
-              :placeholder="scanning ? 'Đang nạp đơn…' : (activeJob ? '' : 'Quét QR...')"
+              :placeholder="scanning ? $t('weighingStationV2.scanningPlaceholder') : (activeJob ? '' : $t('weighingStationV2.scanPlaceholder'))"
               :readonly="scanning"
               @keyup.enter="onScanEnter"
             />
@@ -48,9 +48,9 @@
              xuống bảng mới biết đủ hay chưa là thừa một nhịp. -->
         <div class="ws2-delta panel" :class="'tone-' + deltaTone">
           <div class="delta-band">
-            <span class="delta-caption">DELTA — đã trừ bì</span>
+            <span class="delta-caption">{{ $t('weighingStationV2.deltaCaption') }}</span>
             <span v-if="currentTarget !== null" class="delta-target">
-              mục tiêu {{ currentTarget.toFixed(2) }}
+              {{ $t('weighingStationV2.deltaTargetLabel', { value: currentTarget.toFixed(2) }) }}
             </span>
           </div>
           <div class="delta-body">
@@ -62,12 +62,12 @@
                    đang hiện là số CŨ đông cứng, không phải số đang dao động.
                    Dùng `signalLost` (ngưỡng 3s) chứ KHÔNG dùng `signalLive` (ngưỡng 1.5s dành
                    cho cổng an toàn) — xem ghi chú LOST_SIGNAL_MS trong useScaleFeed. -->
-              <span v-if="signalLost && !useSimValue" class="pill dead">✕ MẤT TÍN HIỆU</span>
+              <span v-if="signalLost && !useSimValue" class="pill dead">{{ $t('weighingStationV2.signalLostPill') }}</span>
               <span v-else class="pill" :class="isStable ? 'ok' : 'wait'">
-                {{ isStable ? '● ỔN ĐỊNH' : '○ CHỜ ỔN ĐỊNH' }}
+                {{ isStable ? $t('weighingStationV2.stablePill') : $t('weighingStationV2.waitingStablePill') }}
               </span>
-              <span v-if="tareBaseline !== null" class="delta-tare">Bì {{ tareBaseline.toFixed(2) }}</span>
-              <span v-else-if="currentIndex >= 0" class="delta-tare">chờ chốt bì</span>
+              <span v-if="tareBaseline !== null" class="delta-tare">{{ $t('weighingStationV2.tareLabel', { value: tareBaseline.toFixed(2) }) }}</span>
+              <span v-else-if="currentIndex >= 0" class="delta-tare">{{ $t('weighingStationV2.waitingTareLabel') }}</span>
             </div>
           </div>
         </div>
@@ -102,7 +102,7 @@
         <span class="raw-value">{{ grossWeight.toFixed(2) }}</span>
         <span class="raw-ws">
           <span class="raw-dot" :class="scaleOnline && !signalLost ? 'on' : 'off'"></span>
-          {{ currentWorkstation?.code || 'chưa gán trạm' }}
+          {{ currentWorkstation?.code || $t('weighingStationV2.noWorkstationFallback') }}
         </span>
 
         <!-- Đang chạy đường nào (ADR-013). Phải nhìn thấy được: đường cục bộ chết là số cân chậm
@@ -110,9 +110,9 @@
              vì sao mặt số bỗng ì đi. -->
         <span class="raw-nguon" :class="nguonCucBo ? 'nhanh' : 'cham'"
               :title="nguonCucBo
-                ? 'Đọc thẳng Agent trên máy này (~70ms) — nhanh như bản Excel VBA'
-                : 'Đang vòng qua máy chủ (~400-900ms). Kiểm tra service DFAgent trên máy này nếu muốn nhanh hơn.'">
-          {{ nguonCucBo ? '⚡ Agent tại chỗ' : '☁ qua máy chủ' }}
+                ? $t('weighingStationV2.localSourceTitle')
+                : $t('weighingStationV2.serverSourceTitle')">
+          {{ nguonCucBo ? $t('weighingStationV2.localSourceLabel') : $t('weighingStationV2.serverSourceLabel') }}
         </span>
 
         <!-- HAI sự cố khác hẳn nhau, cách xử lý cũng khác, nên phải nói rõ là cái nào:

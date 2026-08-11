@@ -4,10 +4,10 @@
       <div class="section card-sec">
         <div class="section-header">
           <div>
-            <h3>⚡ Hàng chờ Điều phối & Phát lệnh Gửi máy</h3>
-            <p class="section-desc">Danh sách mẻ thuốc nhuộm/hóa chất sẵn sàng nạp van tự động. Yêu cầu nhận lệnh (Claim Lock) để phát lệnh.</p>
+            <h3>{{ $t('machineQueue.title') }}</h3>
+            <p class="section-desc">{{ $t('machineQueue.desc') }}</p>
           </div>
-          <button @click="fetchQueue" class="refresh-btn">🔄 Làm mới hàng chờ</button>
+          <button @click="fetchQueue" class="refresh-btn">{{ $t('machineQueue.refreshBtn') }}</button>
         </div>
 
         <div class="queue-cards-grid">
@@ -25,20 +25,20 @@
             <!-- Card Body -->
             <div class="q-body">
               <div class="q-row">
-                <span class="q-label">Mã Lô:</span>
+                <span class="q-label">{{ $t('machineQueue.labelBatch') }}</span>
                 <span class="q-value bold-text text-glow-blue">{{ item.batch?.legacy_batch_id || 'N/A' }}</span>
               </div>
               <div class="q-row">
-                <span class="q-label">Mã Màu:</span>
+                <span class="q-label">{{ $t('machineQueue.labelColor') }}</span>
                 <span class="q-value">{{ item.batch?.color || 'N/A' }}</span>
               </div>
               <div class="q-row">
-                <span class="q-label">Mã Hàng:</span>
+                <span class="q-label">{{ $t('machineQueue.labelProduct') }}</span>
                 <span class="q-value">{{ item.batch?.product_code || 'N/A' }}</span>
               </div>
               <div class="q-row" v-if="item.batch?.tank">
-                <span class="q-label">Thùng trộn:</span>
-                <span class="q-value tank-tag">Thùng {{ item.batch?.tank?.code }}</span>
+                <span class="q-label">{{ $t('machineQueue.labelTank') }}</span>
+                <span class="q-value tank-tag">{{ $t('machineQueue.tankValue', { code: item.batch?.tank?.code }) }}</span>
               </div>
             </div>
 
@@ -46,18 +46,18 @@
             <div class="lock-status-bar" v-if="item.locked_by">
               <div class="lock-info" v-if="isLockedByMe(item)">
                 <span class="lock-icon">🔒</span>
-                <span>Bạn đang giữ lệnh (Còn <strong>{{ getTimerStr(item) }}</strong>)</span>
+                <span>{{ $t('machineQueue.lockedByMePrefix') }}<strong>{{ getTimerStr(item) }}</strong>{{ $t('machineQueue.lockedByMeSuffix') }}</span>
               </div>
               <div class="lock-info other" v-else>
                 <span class="lock-icon">🔒</span>
-                <span>Được nhận bởi <strong>{{ item.locked_by_user?.display_name || 'Vận hành viên' }}</strong> 
-                  <span v-if="isLockExpired(item)" class="expired-label">(Hết hạn)</span>
-                  <span v-else>(Còn {{ getTimerStr(item) }})</span>
+                <span>{{ $t('machineQueue.lockedByOtherPrefix') }}<strong>{{ item.locked_by_user?.display_name || $t('machineQueue.defaultOperator') }}</strong>{{ $t('machineQueue.lockedByOtherSuffix') }}
+                  <span v-if="isLockExpired(item)" class="expired-label">{{ $t('machineQueue.expiredLabel') }}</span>
+                  <span v-else>{{ $t('machineQueue.remainingLabel', { timer: getTimerStr(item) }) }}</span>
                 </span>
               </div>
             </div>
             <div class="lock-status-bar unlocked-bar" v-else>
-              <span>🔓 Lệnh đang trống - Sẵn sàng tiếp nhận</span>
+              <span>{{ $t('machineQueue.unlockedBar') }}</span>
             </div>
 
             <!-- Card Actions -->
@@ -68,54 +68,54 @@
                 @click="claimLock(item.id)" 
                 class="action-btn claim-btn"
               >
-                📥 Nhận lệnh (Claim Lock)
+                {{ $t('machineQueue.claimBtn') }}
               </button>
 
               <!-- Case 2: Locked by current user -->
               <template v-else-if="isLockedByMe(item)">
-                <button 
-                  @click="releaseLock(item.id)" 
+                <button
+                  @click="releaseLock(item.id)"
                   class="action-btn release-btn"
                 >
-                  🔓 Trả lại lệnh
+                  {{ $t('machineQueue.releaseBtn') }}
                 </button>
-                <button 
-                  @click="sendToMachine(item)" 
+                <button
+                  @click="sendToMachine(item)"
                   class="action-btn send-btn"
                 >
-                  ⚡ Gửi máy nhuộm (Send)
+                  {{ $t('machineQueue.sendBtn') }}
                 </button>
               </template>
 
               <!-- Case 3: Locked by another user -->
               <template v-else>
-                <button 
-                  v-if="isLockExpired(item)" 
-                  @click="claimLock(item.id)" 
+                <button
+                  v-if="isLockExpired(item)"
+                  @click="claimLock(item.id)"
                   class="action-btn override-btn"
                 >
-                  ⚔️ Chiếm quyền nhận lệnh (Override)
+                  {{ $t('machineQueue.overrideBtn') }}
                 </button>
-                <button 
-                  v-else-if="isAdminOrShiftLeader" 
-                  @click="releaseLock(item.id)" 
+                <button
+                  v-else-if="isAdminOrShiftLeader"
+                  @click="releaseLock(item.id)"
                   class="action-btn force-release-btn"
                 >
-                  🔓 Giải phóng bắt buộc (Force)
+                  {{ $t('machineQueue.forceReleaseBtn') }}
                 </button>
-                <button 
-                  v-else 
-                  disabled 
+                <button
+                  v-else
+                  disabled
                   class="action-btn disabled-btn"
                 >
-                  🔒 Lệnh đang bị khóa
+                  {{ $t('machineQueue.lockedDisabledBtn') }}
                 </button>
               </template>
             </div>
           </div>
 
           <div v-if="queue.length === 0" class="empty-queue">
-            🎉 Hàng chờ điều phối trống. Tất cả các mẻ đã được gửi máy nhuộm thành công!
+            {{ $t('machineQueue.emptyQueue') }}
           </div>
         </div>
       </div>
@@ -125,9 +125,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '../stores/auth';
 import axios from 'axios';
 
+const { t } = useI18n({ useScope: 'global' });
 const authStore = useAuthStore();
 
 const queue = ref<any[]>([]);
@@ -194,7 +196,7 @@ const claimLock = async (id: string) => {
     });
     fetchQueue();
   } catch (error: any) {
-    alert(error.response?.data?.message || 'Không thể nhận khóa lệnh.');
+    alert(error.response?.data?.message || t('machineQueue.errorClaimLock'));
   }
 };
 
@@ -203,7 +205,7 @@ const releaseLock = async (id: string) => {
   // If it's a force release, ask for reason
   const item = queue.value.find(q => q.id === id);
   if (item && !isLockedByMe(item)) {
-    reason = prompt('Nhập lý do giải phóng khóa bắt buộc:', 'Quá ca hoặc người dùng quên tắt trạm.') || '';
+    reason = prompt(t('machineQueue.forceReleasePromptTitle'), t('machineQueue.forceReleasePromptDefault')) || '';
     if (!reason) return;
   }
 
@@ -216,12 +218,12 @@ const releaseLock = async (id: string) => {
     });
     fetchQueue();
   } catch (error: any) {
-    alert(error.response?.data?.message || 'Không thể giải phóng khóa.');
+    alert(error.response?.data?.message || t('machineQueue.errorReleaseLock'));
   }
 };
 
 const sendToMachine = async (item: any) => {
-  const confirmSend = confirm(`Bạn có chắc chắn muốn phát lệnh gửi mẻ ${item.batch?.legacy_batch_id} sang máy nhuộm ${item.batch?.machine?.code}?`);
+  const confirmSend = confirm(t('machineQueue.confirmSendToMachine', { batchId: item.batch?.legacy_batch_id, machineCode: item.batch?.machine?.code }));
   if (!confirmSend) return;
 
   try {
@@ -232,7 +234,7 @@ const sendToMachine = async (item: any) => {
     alert(response.data.message);
     fetchQueue();
   } catch (error: any) {
-    alert(error.response?.data?.message || 'Lỗi phát lệnh gửi máy.');
+    alert(error.response?.data?.message || t('machineQueue.errorSendToMachine'));
   }
 };
 

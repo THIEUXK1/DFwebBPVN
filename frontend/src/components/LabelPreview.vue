@@ -1,10 +1,7 @@
 <template>
   <div class="label-preview-root">
     <div v-if="mode === 'no-layout'" class="no-layout-notice">
-      ℹ️ Loại tem này (đơn sản xuất / QR_LABEL_PRINTING) <strong>chưa có mẫu bố cục/kích thước</strong>
-      định nghĩa trong hệ thống web — tem in ra dùng đúng mẫu đã cấu hình sẵn trên chính máy in vật lý
-      (template TSPL cục bộ). Web chỉ gửi <strong>nội dung QR thô</strong>, nên chỉ xem trước được nội
-      dung từng mã QR bên dưới — <strong>không xem được đúng bố cục/kích thước tem thật</strong>.
+      ℹ️ {{ $t('labelPreview.noLayoutPart1') }}<strong>{{ $t('labelPreview.noLayoutStrong1') }}</strong>{{ $t('labelPreview.noLayoutPart2') }}<strong>{{ $t('labelPreview.noLayoutStrong2') }}</strong>{{ $t('labelPreview.noLayoutPart3') }}<strong>{{ $t('labelPreview.noLayoutStrong3') }}</strong>{{ $t('labelPreview.noLayoutPart4') }}
       <div class="qr-payload-list mt-3">
         <div v-for="(item, idx) in qrPayloads" :key="idx" class="qr-payload-item">
           <!-- Phải chú kiểu cho `el`: hàm mũi tên viết thẳng trong template không được suy kiểu
@@ -24,27 +21,25 @@
          mang theo CSS của riêng nó (`.df-slip`, `@page`), dán thẳng là rò ra toàn ứng dụng. -->
     <div v-else-if="mode === 'html'" class="html-preview">
       <p class="text-muted font-xs mb-2">
-        Phiếu cân dựng theo đúng bố cục sheet của form VBA
-        (<strong>{{ sizeMm.width }}mm × {{ sizeMm.height }}mm</strong>, Calibri 12, kẻ ô A1:E19).
-        Bản in thật được co lại cho vừa 1 trang giống <em>FitToPages</em> của Excel.
+        {{ $t('labelPreview.htmlPreviewDesc1') }}
+        (<strong>{{ sizeMm.width }}mm × {{ sizeMm.height }}mm</strong>{{ $t('labelPreview.htmlPreviewDesc2') }}
+        <em>FitToPages</em> {{ $t('labelPreview.htmlPreviewDesc3') }}
       </p>
       <div class="canvas-wrap">
-        <iframe class="html-frame" :srcdoc="htmlDoc" title="Xem trước phiếu cân"></iframe>
+        <iframe class="html-frame" :srcdoc="htmlDoc" :title="$t('labelPreview.htmlPreviewIframeTitle')"></iframe>
       </div>
     </div>
 
     <div v-else-if="mode === 'tspl'" class="tspl-preview">
       <p class="text-muted font-xs mb-2">
-        Xem trước gần đúng từ lệnh TSPL thật sẽ gửi xuống máy in — kích thước theo đúng tỉ lệ khai báo
-        (<strong>{{ sizeMm.width }}mm × {{ sizeMm.height }}mm</strong>). Font chữ/khoảng cách là mô phỏng
-        tương đối, không phải ảnh in chính xác từng pixel.
+        {{ $t('labelPreview.tsplPreviewDesc1') }}<strong>{{ sizeMm.width }}mm × {{ sizeMm.height }}mm</strong>{{ $t('labelPreview.tsplPreviewDesc2') }}
       </p>
       <div class="canvas-wrap">
         <canvas ref="tsplCanvas" :width="canvasPx.width" :height="canvasPx.height" class="label-canvas"></canvas>
       </div>
     </div>
 
-    <div v-else class="text-muted font-xs">Không có dữ liệu tem để xem trước.</div>
+    <div v-else class="text-muted font-xs">{{ $t('labelPreview.emptyMessage') }}</div>
   </div>
 </template>
 

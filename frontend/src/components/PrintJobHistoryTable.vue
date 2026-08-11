@@ -5,15 +5,15 @@
       <thead>
         <tr>
           <th></th>
-          <th>Mã Lô</th>
-          <th>Màu</th>
-          <th>Mã hàng</th>
-          <th>Máy</th>
-          <th>Thùng</th>
-          <th>Trạm gửi</th>
-          <th>Thời gian chuyển</th>
-          <th>Trạng thái in mới nhất</th>
-          <th>Thao tác</th>
+          <th>{{ $t('printJobHistoryTable.colBatchCode') }}</th>
+          <th>{{ $t('printJobHistoryTable.colColor') }}</th>
+          <th>{{ $t('printJobHistoryTable.colProductCode') }}</th>
+          <th>{{ $t('printJobHistoryTable.colMachine') }}</th>
+          <th>{{ $t('printJobHistoryTable.colTank') }}</th>
+          <th>{{ $t('printJobHistoryTable.colOriginStation') }}</th>
+          <th>{{ $t('printJobHistoryTable.colTransferTime') }}</th>
+          <th>{{ $t('printJobHistoryTable.colLatestPrintStatus') }}</th>
+          <th>{{ $t('printJobHistoryTable.colActions') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -39,7 +39,7 @@
                 class="btn btn-secondary btn-sm"
                 :disabled="busyId === d.id"
                 @click="requestReprint(d)"
-              >🖨️ In lại</button>
+              >{{ $t('printJobHistoryTable.reprintButton') }}</button>
             </td>
           </tr>
 
@@ -49,42 +49,42 @@
               <table class="data-table nested-table">
                 <thead>
                   <tr>
-                    <th>Lúc tạo lệnh in</th>
-                    <th>Máy in dự kiến</th>
-                    <th>Trạng thái</th>
-                    <th>Lỗi</th>
-                    <th>Tier C — lần gửi máy in thật</th>
-                    <th>Thao tác</th>
+                    <th>{{ $t('printJobHistoryTable.nestedColCreatedAt') }}</th>
+                    <th>{{ $t('printJobHistoryTable.nestedColPrinter') }}</th>
+                    <th>{{ $t('printJobHistoryTable.nestedColStatus') }}</th>
+                    <th>{{ $t('printJobHistoryTable.nestedColError') }}</th>
+                    <th>{{ $t('printJobHistoryTable.nestedColAttempts') }}</th>
+                    <th>{{ $t('printJobHistoryTable.nestedColActions') }}</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="(pj, idx) in d.print_jobs" :key="pj.id">
-                    <td>{{ formatTime(pj.created_at) }} <span v-if="idx > 0" class="badge badge-yellow font-xs">In lại</span></td>
+                    <td>{{ formatTime(pj.created_at) }} <span v-if="idx > 0" class="badge badge-yellow font-xs">{{ $t('printJobHistoryTable.reprintBadge') }}</span></td>
                     <td>{{ pj.printer_address || '—' }}</td>
                     <td><span :class="['badge', printStatusBadgeClass(pj.status)]">{{ printStatusLabel(pj.status) }}</span></td>
                     <td class="text-error font-xs">{{ latestError(pj) || '—' }}</td>
                     <td>
                       <div v-if="pj.attempts?.length" class="attempts-list">
                         <div v-for="a in pj.attempts" :key="a.id" class="font-xs">
-                          Lần {{ a.attempt_no }}: {{ a.status === 'PRINTED' ? '✅' : '❌' }} {{ formatTime(a.finished_at) }}
+                          {{ $t('printJobHistoryTable.attemptLabel', { no: a.attempt_no }) }} {{ a.status === 'PRINTED' ? '✅' : '❌' }} {{ formatTime(a.finished_at) }}
                         </div>
                       </div>
-                      <span v-else class="text-muted font-xs">Chưa có phản hồi từ Agent</span>
+                      <span v-else class="text-muted font-xs">{{ $t('printJobHistoryTable.noAgentResponse') }}</span>
                     </td>
                     <td class="actions-cell">
-                      <button class="btn btn-secondary btn-sm" @click.stop="openPreview(pj)">👁️ Xem tem</button>
+                      <button class="btn btn-secondary btn-sm" @click.stop="openPreview(pj)">{{ $t('printJobHistoryTable.viewLabelButton') }}</button>
                       <button
                         v-if="pj.status === 'PENDING'"
                         class="btn btn-secondary btn-sm"
                         :disabled="busyId === pj.id"
                         @click.stop="cancelJob(pj)"
-                      >Hủy lệnh in</button>
+                      >{{ $t('printJobHistoryTable.cancelPrintButton') }}</button>
                       <button
                         v-else-if="idx === d.print_jobs.length - 1"
                         class="btn btn-secondary btn-sm"
                         :disabled="busyId === d.id"
                         @click.stop="requestReprint(d)"
-                      >🖨️ In lại</button>
+                      >{{ $t('printJobHistoryTable.reprintButton') }}</button>
                     </td>
                   </tr>
                 </tbody>
@@ -94,7 +94,7 @@
         </template>
       </tbody>
     </table>
-    <p v-if="!rows.length" class="text-muted text-center mt-3">Chưa có tem nào được in.</p>
+    <p v-if="!rows.length" class="text-muted text-center mt-3">{{ $t('printJobHistoryTable.noRows') }}</p>
 
     <!-- Modal nhập lý do — thay window.prompt() (bị chặn/không hiện gì trong 1 số webview
          nhúng, vd VSCode Simple Browser) bằng UI thật trong trang, luôn hoạt động. -->
@@ -105,16 +105,16 @@
           v-model="reasonModal.value"
           class="form-input"
           rows="3"
-          placeholder="Nhập lý do..."
+          :placeholder="$t('printJobHistoryTable.reasonModalPlaceholder')"
           autofocus
         ></textarea>
         <div class="reason-modal-actions">
-          <button class="btn btn-secondary btn-sm" @click="closeReasonModal">Hủy</button>
+          <button class="btn btn-secondary btn-sm" @click="closeReasonModal">{{ $t('common.cancel') }}</button>
           <button
             class="btn btn-primary btn-sm"
             :disabled="!reasonModal.value.trim()"
             @click="confirmReasonModal"
-          >Xác nhận</button>
+          >{{ $t('common.confirm') }}</button>
         </div>
       </div>
     </div>
@@ -123,7 +123,7 @@
     <div v-if="previewJob" class="modal-overlay" @click.self="previewJob = null">
       <div class="preview-modal-card">
         <div class="preview-modal-header">
-          <h4>👁️ Xem trước tem — {{ formatTime(previewJob.created_at) }}</h4>
+          <h4>{{ $t('printJobHistoryTable.previewModalTitle', { time: formatTime(previewJob.created_at) }) }}</h4>
           <button class="close-btn" @click="previewJob = null">&times;</button>
         </div>
         <LabelPreview :label-payload="previewJob.label_payload" />
@@ -134,8 +134,11 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import LabelPreview from './LabelPreview.vue';
+
+const { t } = useI18n({ useScope: 'global' });
 
 const previewJob = ref<any | null>(null);
 function openPreview(pj: any) {
@@ -178,9 +181,12 @@ function latestError(pj: any) {
 
 function printStatusLabel(status: string | undefined) {
   const map: Record<string, string> = {
-    PENDING: 'Đang chờ Agent in', PRINTED: 'Đã in xong', FAILED: 'In lỗi', CANCELLED: 'Đã hủy',
+    PENDING: t('printJobHistoryTable.statusPending'),
+    PRINTED: t('printJobHistoryTable.statusPrinted'),
+    FAILED: t('printJobHistoryTable.statusFailed'),
+    CANCELLED: t('printJobHistoryTable.statusCancelled'),
   };
-  return map[status || ''] || status || 'Không rõ';
+  return map[status || ''] || status || t('printJobHistoryTable.statusUnknown');
 }
 
 function printStatusBadgeClass(status: string | undefined) {
@@ -224,13 +230,13 @@ function confirmReasonModal() {
 }
 
 function cancelJob(pj: any) {
-  openReasonModal('Lý do hủy lệnh in', async (reason) => {
+  openReasonModal(t('printJobHistoryTable.cancelReasonTitle'), async (reason) => {
     busyId.value = pj.id;
     try {
       await axios.post(`/api/print-jobs/${pj.id}/cancel`, { reason });
       emit('refresh');
     } catch (err: any) {
-      actionError.value = err.response?.data?.message || 'Không thể hủy lệnh in.';
+      actionError.value = err.response?.data?.message || t('printJobHistoryTable.cancelPrintFailed');
     } finally {
       busyId.value = null;
     }
@@ -238,7 +244,7 @@ function cancelJob(pj: any) {
 }
 
 function requestReprint(d: any) {
-  openReasonModal('Lý do in lại (bắt buộc)', async (reason) => {
+  openReasonModal(t('printJobHistoryTable.reprintReasonTitle'), async (reason) => {
     busyId.value = d.id;
     try {
       const fallbackStation = latestJob(d)?.workstation_id;
@@ -250,7 +256,7 @@ function requestReprint(d: any) {
       });
       emit('refresh');
     } catch (err: any) {
-      actionError.value = err.response?.data?.message || 'Không thể tạo lệnh in lại.';
+      actionError.value = err.response?.data?.message || t('printJobHistoryTable.reprintFailed');
     } finally {
       busyId.value = null;
     }

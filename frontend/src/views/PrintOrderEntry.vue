@@ -38,18 +38,18 @@
                    :style="{ ...box(sendLeft(i) + 294, sendTop(i), 36, 25.5), backgroundColor: rowBg(slot) }" />
 
             <button class="vba-btn" :style="box(sendLeft(i) + 330, sendTop(i), 48, 24)"
-                    :disabled="!slot" title="Xem trước + mở hộp thoại in ngay (TO_SEND.HandleSendPrint)"
-                    @click="onSendPrint(slot)">print</button>
+                    :disabled="!slot" :title="$t('printOrderEntry.printBtnTitleSend')"
+                    @click="onSendPrint(slot)">{{ $t('printOrderEntry.printBtn') }}</button>
 
             <input type="checkbox" class="vba-check" :style="box(sendLeft(i) + 384, sendTop(i) + 6, 11.25, 18)"
                    :checked="!!slot?.scale_checked" :disabled="!slot"
-                   title="scale_check — tick là ghi thẳng xuống DB ngay (TO_SEND.SavePrintCheck)"
+                   :title="$t('printOrderEntry.scaleCheckTitle')"
                    @change="onToggleScaleCheck(slot, ($event.target as HTMLInputElement).checked)" />
 
             <button class="vba-btn" :style="box(sendLeft(i) + 402, sendTop(i), 36, 24)"
                     :disabled="!slot || confirmingId === slot?.id"
-                    title="Xác nhận đã in & đã gửi — đơn rời hàng chờ sang lịch sử (TO_SEND.ConfirmRow)"
-                    @click="onConfirm(slot)">OK</button>
+                    :title="$t('printOrderEntry.okBtnTitle')"
+                    @click="onConfirm(slot)">{{ $t('printOrderEntry.okBtn') }}</button>
           </template>
 
           <!-- ============ 18 bảng chờ in theo máy, 2 băng × 9 máy ============ -->
@@ -60,7 +60,7 @@
               <!-- Ô id rộng 6pt: bản gốc dùng nó làm dải màu báo tuổi đơn, không hiện chữ -->
               <input readonly class="vba-text vba-cell"
                      :style="{ ...box(p.left, p.rowTop + r * 18, 6, 18), backgroundColor: vbaAgeColor(b?.created_at) }"
-                     :title="b ? 'Tạo lúc ' + fmt(b.created_at) : ''" />
+                     :title="b ? $t('printOrderEntry.createdAtTooltip', { time: fmt(b.created_at) }) : ''" />
               <input :value="b?.color || ''" readonly class="vba-text vba-cell"
                      :style="box(p.left + 6, p.rowTop + r * 18, 48, 18)" />
               <input :value="b?.product_code || ''" readonly class="vba-text vba-cell"
@@ -68,10 +68,10 @@
               <input :value="b?.level_code || ''" readonly class="vba-text vba-cell"
                      :style="box(p.left + 90, p.rowTop + r * 18, 24, 18)" />
               <button class="vba-btn vba-btn-tiny" :style="box(p.left + 114, p.rowTop + r * 18, 24, 18)"
-                      :disabled="!b" title="Xem trước + mở hộp thoại in ngay (TO_SEND.HandlewaitPrint)"
-                      @click="onWaitPrint(b)">print</button>
+                      :disabled="!b" :title="$t('printOrderEntry.printBtnTitleWait')"
+                      @click="onWaitPrint(b)">{{ $t('printOrderEntry.printBtn') }}</button>
               <input type="checkbox" class="vba-check" :style="box(p.left + 138, p.rowTop + r * 18, 11.5, 18.75)"
-                     disabled title="Bảng production_batches chưa có cột scale_check tương ứng — xem ghi chú" />
+                     disabled :title="$t('printOrderEntry.waitCheckboxTitle')" />
             </template>
           </template>
         </div>
@@ -82,8 +82,8 @@
     <VbaPrintForm v-if="previewData" :data="previewData" @close="previewData = null" />
 
     <div class="vba-statusbar">
-      <router-link to="/print-sent-log" class="sent-log-link">📄 SENT LOG — xem đơn đã tích &amp; đã bấm OK →</router-link>
-      <span class="vba-zoom">Vừa màn hình: {{ Math.round(scale * 100) }}%</span>
+      <router-link to="/print-sent-log" class="sent-log-link">{{ $t('printOrderEntry.sentLogLink') }}</router-link>
+      <span class="vba-zoom">{{ $t('printOrderEntry.zoomLabel', { percent: Math.round(scale * 100) }) }}</span>
       <span v-if="statusMsg" :class="{ 'is-error': statusIsError }">{{ statusMsg }}</span>
     </div>
 
@@ -95,6 +95,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import echo from '../services/echo';
 import { currentWorkstation } from '../services/workstation';
@@ -112,6 +113,7 @@ import { useAuthStore } from '../stores/auth';
 const isLoggedIn = useAuthStore().isAuthenticated;
 const pageWrapper = isLoggedIn ? AppLayout : 'div';
 const previousIsFullscreen = isFullscreen.value;
+const { t } = useI18n({ useScope: 'global' });
 
 // Endpoint /api/public/... — trang không đăng nhập không gọi được nhóm /api/ thường.
 const API = '/api/public';
@@ -242,9 +244,9 @@ const onToggleScaleCheck = async (slot: any, checked: boolean) => {
   try {
     await axios.patch(`${API}/machine-dispatches/${slot.id}/scale-checked`, { scale_checked: checked });
     slot.scale_checked = checked;
-    say(`Đã ${checked ? 'tick' : 'bỏ tick'} đối chiếu cân cho đơn ${slot.batch?.color || ''}.`);
+    say(t(checked ? 'printOrderEntry.scaleCheckTickedMsg' : 'printOrderEntry.scaleCheckUntickedMsg', { color: slot.batch?.color || '' }));
   } catch (e: any) {
-    say(e.response?.data?.message || 'Không cập nhật được cờ đối chiếu cân.', true);
+    say(e.response?.data?.message || t('printOrderEntry.scaleCheckUpdateError'), true);
   }
 };
 
@@ -264,7 +266,7 @@ const openPreviewAndPrint = (data: VbaPrintFormData) => {
   previewData.value = data;
   const win = window.open('', '_blank', 'width=780,height=980');
   if (!win) {
-    say('Trình duyệt đã chặn cửa sổ in — cho phép popup cho trang này, hoặc bấm nút PRINT trong phiếu xem trước.', true);
+    say(t('printOrderEntry.popupBlockedMsg'), true);
     return;
   }
   writeDispatchSlipToWindow(win, {
@@ -278,7 +280,7 @@ const openPreviewAndPrint = (data: VbaPrintFormData) => {
     batchId: data.batchId,
   }).catch((e: any) => {
     console.error('Không dựng được tem để in:', e);
-    say('Không dựng được tem để in — thử lại bằng nút PRINT trong phiếu xem trước.', true);
+    say(t('printOrderEntry.labelBuildError'), true);
   });
 };
 
@@ -329,10 +331,10 @@ const onConfirm = async (slot: any) => {
       workstation_id: currentWorkstation.value?.code || undefined,
       printed_via_browser: true,
     });
-    say(`Đã xác nhận đơn ${slot.batch?.color || ''} - ${slot.batch?.product_code || ''}. Xem ở màn hình SENT LOG.`);
+    say(t('printOrderEntry.confirmedMsg', { color: slot.batch?.color || '', code: slot.batch?.product_code || '' }));
     fetchDispatches();
   } catch (e: any) {
-    say(e.response?.data?.message || 'Không xác nhận được đơn.', true);
+    say(e.response?.data?.message || t('printOrderEntry.confirmError'), true);
   } finally {
     confirmingId.value = null;
   }

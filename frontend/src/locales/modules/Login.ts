@@ -1,0 +1,32 @@
+export default {
+  vi: {
+    heading: 'Hệ Thống Điều Phối & Cân Nhuộm',
+    subtitle: 'Chuyển đổi số công đoạn nhuộm đai và pha màu tự động',
+    usernameLabel: 'Tên tài khoản',
+    usernamePlaceholder: 'Nhập tên tài khoản...',
+    passwordLabel: 'Mật khẩu',
+    passwordPlaceholder: 'Nhập mật khẩu...',
+    submitButton: 'Đăng Nhập',
+    footerCopyright: '© 2026 Nhà Máy Nhuộm DF. Bảo lưu mọi quyền.',
+  },
+  en: {
+    heading: 'Dyeing & Weighing Dispatch System',
+    subtitle: 'Digital transformation of dyeing and automatic color dosing stages',
+    usernameLabel: 'Username',
+    usernamePlaceholder: 'Enter username...',
+    passwordLabel: 'Password',
+    passwordPlaceholder: 'Enter password...',
+    submitButton: 'Log In',
+    footerCopyright: '© 2026 DF Dyeing Factory. All rights reserved.',
+  },
+  zh: {
+    heading: '染色调度与称重系统',
+    subtitle: '染色工序与自动配色投料数字化转型',
+    usernameLabel: '账号',
+    usernamePlaceholder: '请输入账号...',
+    passwordLabel: '密码',
+    passwordPlaceholder: '请输入密码...',
+    submitButton: '登录',
+    footerCopyright: '© 2026 DF 染色厂. 保留所有权利。',
+  },
+};

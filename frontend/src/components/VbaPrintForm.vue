@@ -4,9 +4,9 @@
        dùng chung một component). Form gốc 306 × 390pt. -->
   <div class="vba-modal-backdrop" @click.self="$emit('close')">
     <div class="vba-form vba-modal" :style="{ width: '306pt', height: '390pt' }">
-      <button class="vba-btn vba-btn-print" :style="box(24, 18, 126, 36)" @click="doPrint" :disabled="printing">PRINT</button>
-      <button class="vba-btn" :style="box(156, 18, 66, 36)" @click="$emit('close')">CLEAR</button>
-      <button class="vba-btn" :style="box(222, 18, 60, 36)" @click="$emit('close')">CLOSE</button>
+      <button class="vba-btn vba-btn-print" :style="box(24, 18, 126, 36)" @click="doPrint" :disabled="printing">{{ $t('vbaPrintForm.btnPrint') }}</button>
+      <button class="vba-btn" :style="box(156, 18, 66, 36)" @click="$emit('close')">{{ $t('vbaPrintForm.btnClear') }}</button>
+      <button class="vba-btn" :style="box(222, 18, 60, 36)" @click="$emit('close')">{{ $t('vbaPrintForm.btnClose') }}</button>
 
       <label class="vba-label" :style="box(24, 60, 72, 18)">dye stuff information</label>
       <label class="vba-label" :style="box(156, 60, 72, 18)">auxiliary information</label>
@@ -15,11 +15,11 @@
 
       <label class="vba-label vba-label-bold" :style="box(24, 138, 126, 18)">DF_WEIGHING_SLIP</label>
 
-      <label class="vba-label" :style="box(24, 162, 36, 18)">mã màu</label>
-      <label class="vba-label" :style="box(90.05, 162, 36, 18)">mã đai</label>
-      <label class="vba-label" :style="box(156, 162, 36, 18)">mã máy</label>
-      <label class="vba-label" :style="box(210, 162, 36, 18)">mã thùng</label>
-      <label class="vba-label" :style="box(258, 162, 24, 18)">lv</label>
+      <label class="vba-label" :style="box(24, 162, 36, 18)">{{ $t('vbaPrintForm.lblColor') }}</label>
+      <label class="vba-label" :style="box(90.05, 162, 36, 18)">{{ $t('vbaPrintForm.lblBelt') }}</label>
+      <label class="vba-label" :style="box(156, 162, 36, 18)">{{ $t('vbaPrintForm.lblMachine') }}</label>
+      <label class="vba-label" :style="box(210, 162, 36, 18)">{{ $t('vbaPrintForm.lblTank') }}</label>
+      <label class="vba-label" :style="box(258, 162, 24, 18)">{{ $t('vbaPrintForm.lblLevel') }}</label>
 
       <input :value="data.color" readonly class="vba-text" :style="box(24, 180, 54, 18)" />
       <input :value="data.code" readonly class="vba-text" :style="box(90.05, 180, 54, 18)" />
@@ -58,9 +58,11 @@ export interface VbaPrintFormData {
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { parseRackLines } from '../utils/rackParser';
 import { writeDispatchSlipToWindow } from '../utils/dispatchSlipPrint';
 
+const { t } = useI18n({ useScope: 'global' });
 const props = defineProps<{ data: VbaPrintFormData }>();
 const emit = defineEmits<{ (e: 'close'): void }>();
 
@@ -84,7 +86,7 @@ const doPrint = async () => {
   if (printing.value) return;
   const win = window.open('', '_blank', 'width=780,height=980');
   if (!win) {
-    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    alert(t('vbaPrintForm.popupBlockedAlert'));
     return;
   }
   // Chụp dữ liệu ra biến cục bộ TRƯỚC khi đóng phiếu: `emit('close')` làm component unmount

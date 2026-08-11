@@ -3,8 +3,8 @@
     <!-- Realtime Connection Status Banner -->
     <div class="connection-status-banner" :class="'banner-' + connectionStatus.toLowerCase()">
       <span class="status-indicator-dot"></span>
-      <span class="status-text">Trạng thái hệ thống: {{ connectionStatusText }}</span>
-      <span class="status-subtext" v-if="connectionStatus === 'FALLBACK'"> (Đang dùng chế độ dự phòng Polling 10s)</span>
+      <span class="status-text">{{ $t('dashboard.connectionStatusPrefix') }}{{ connectionStatusText }}</span>
+      <span class="status-subtext" v-if="connectionStatus === 'FALLBACK'">{{ $t('dashboard.connectionFallbackSuffix') }}</span>
     </div>
 
     <!-- Dashboard Main Navigation Tabs -->
@@ -26,9 +26,9 @@
       <!-- TAB 1: OVERALL OVERVIEW -->
       <div v-if="activeTab === 'overview'" class="tab-panel">
         <div class="panel-header mb-4">
-          <h3>📊 Điều độ sản xuất &amp; Giám sát máy nhuộm</h3>
-          <p class="text-muted" v-if="authStore.isAdmin">Trạng thái vận hành thời gian thực máy VD — nguồn BPDB (chỉ đọc).</p>
-          <p class="text-muted" v-else>Trạng thái hoạt động thời gian thực của máy nhuộm VD01 - VD18.</p>
+          <h3>{{ $t('dashboard.overviewTitle') }}</h3>
+          <p class="text-muted" v-if="authStore.isAdmin">{{ $t('dashboard.overviewSubtitleAdmin') }}</p>
+          <p class="text-muted" v-else>{{ $t('dashboard.overviewSubtitleUser') }}</p>
         </div>
 
         <div class="overview-status-layout">
@@ -47,7 +47,7 @@
               <span class="tile-code">{{ m.displayName }}</span>
               <span class="tile-status">{{ m.operationalStatus }}</span>
             </div>
-            <p v-if="!bpdbMachines.length" class="text-muted font-sm">Không có dữ liệu máy VD.</p>
+            <p v-if="!bpdbMachines.length" class="text-muted font-sm">{{ $t('dashboard.noVdMachineData') }}</p>
           </div>
 
           <!-- Fallback: trạng thái nội bộ (app.machines) cho tài khoản không phải Admin — vẫn
@@ -67,7 +67,7 @@
 
           <!-- Bảng chú thích trạng thái, bên phải lưới máy (yêu cầu 2026-07-29) -->
           <aside class="status-legend">
-            <h4 class="legend-title">Chú thích trạng thái</h4>
+            <h4 class="legend-title">{{ $t('dashboard.legendTitle') }}</h4>
             <ul class="legend-list">
               <li v-for="item in (authStore.isAdmin ? bpdbStatusLegend : appStatusLegend)" :key="item.status" class="legend-item">
                 <span class="legend-icon">{{ item.icon }}</span>
