@@ -78,9 +78,9 @@
     <div class="gantt-container mt-2">
       <div id="ganttNeedle" class="gantt-needle" :style="needleStyle" :data-time="needleLabel" v-show="needleVisible"></div>
       <div ref="timelineEl" class="gantt-canvas"></div>
-      <p v-if="!loading && totalRecords === 0" class="gantt-empty">Không có task nào khớp trong khoảng ngày/tên máy đã chọn.</p>
+      <p v-if="!loading && totalRecords === 0" class="gantt-empty">{{ $t('bpdbMachinesGantt.emptyState') }}</p>
     </div>
-    <p class="footnote">Tổng số thanh hiển thị: <strong>{{ totalRecords }}</strong> · viền đỏ nhấp nháy = mẻ đang chạy, chưa kết thúc · viền xanh dương nhấp nháy = mẻ đã ghép được giờ kết thúc THẬT từ MES (bấm xem thông tin mẻ) · mẻ đang chạy luôn vẽ bên PHẢI vạch giờ hiện tại, mẻ đã xong dồn về bên TRÁI · các mẻ đã xong liên tiếp trùng mã màu - mã hàng được gộp thành 1 thanh</p>
+    <p class="footnote">{{ $t('bpdbMachinesGantt.footnotePrefix') }}<strong>{{ totalRecords }}</strong>{{ $t('bpdbMachinesGantt.footnoteSuffix') }}</p>
 
     <!-- Đồng hồ nổi góc trên trái — chỉ hiện khi toàn màn hình (che mất đồng hồ hệ điều hành). -->
     <div v-show="isBrowserFullscreen" class="fs-clock">
@@ -92,10 +92,10 @@
          cụ (chứa nút ⛶) đã bị ẩn, không còn đường nào khác để thoát bằng chuột. -->
     <div v-show="isBrowserFullscreen" class="fs-exit">
       <span v-if="showF11Hint" class="fs-exit-hint">
-        Trình duyệt chỉ cho thoát bằng phím <kbd>F11</kbd>
+        {{ $t('bpdbMachinesGantt.f11HintPrefix') }} <kbd>F11</kbd>
       </span>
-      <button class="fs-exit-btn" @click="exitFullscreenView" title="Thoát toàn màn hình">
-        <span aria-hidden="true">⤢</span> Thoát toàn màn hình
+      <button class="fs-exit-btn" @click="exitFullscreenView" :title="$t('bpdbMachinesGantt.exitFullscreenLabel')">
+        <span aria-hidden="true">⤢</span> {{ $t('bpdbMachinesGantt.exitFullscreenLabel') }}
       </button>
     </div>
 
@@ -103,30 +103,30 @@
          tooltip hover mặc định của vis-timeline trước đây. position: fixed nên đặt ở cuối
          cây, vị trí do detailPopupStyle tính theo điểm bấm. -->
     <div v-if="detailPopup" class="gantt-detail-popup" :style="detailPopupStyle">
-      <button class="gantt-detail-close" @click="closeDetailPopup" title="Đóng (Esc)">✕</button>
+      <button class="gantt-detail-close" @click="closeDetailPopup" :title="$t('bpdbMachinesGantt.closeEscTitle')">✕</button>
       <div class="gantt-detail-head">
         <span class="gantt-detail-swatch" :style="{ backgroundColor: detailPopup.barColor }"></span>
         <span class="gantt-detail-title">
-          {{ detailPopup.machineCode }}<template v-if="detailPopup.tankLabel"> · Tank {{ detailPopup.tankLabel }}</template>
+          {{ detailPopup.machineCode }}<template v-if="detailPopup.tankLabel">{{ $t('bpdbMachinesGantt.tankPrefix') }}{{ detailPopup.tankLabel }}</template>
         </span>
       </div>
       <dl class="gantt-detail-list">
         <template v-if="detailPopup.color && detailPopup.productCode">
-          <dt>Mã màu - Mã hàng</dt>
+          <dt>{{ $t('bpdbMachinesGantt.colorProductLabel') }}</dt>
           <dd>{{ detailPopup.color }} - {{ detailPopup.productCode }}</dd>
         </template>
         <template v-else>
-          <dt>TaskTitle gốc (không tách được mã màu/mã hàng)</dt>
+          <dt>{{ $t('bpdbMachinesGantt.rawTaskTitleLabel') }}</dt>
           <dd>{{ detailPopup.taskTitle || '—' }}</dd>
         </template>
-        <dt>Trạng thái</dt>
+        <dt>{{ $t('common.status') }}</dt>
         <dd>
           {{ detailPopup.statusLabel }}
-          <span v-if="detailPopup.uncompleted" class="gantt-blink">(đang chạy)</span>
+          <span v-if="detailPopup.uncompleted" class="gantt-blink">{{ $t('bpdbMachinesGantt.runningNote') }}</span>
         </dd>
         <template v-if="detailPopup.mergedCount > 1">
-          <dt>Số mẻ</dt>
-          <dd>{{ detailPopup.mergedCount }} mẻ liên tiếp cùng mã màu - mã hàng (đã gộp)</dd>
+          <dt>{{ $t('bpdbMachinesGantt.mergedCountLabel') }}</dt>
+          <dd>{{ $t('bpdbMachinesGantt.mergedCountText', { count: detailPopup.mergedCount }) }}</dd>
         </template>
         <!-- Tổng số mẻ mã này đã chạy từ trước tới nay (yêu cầu 2026-08-03) — KHÁC hai
              con số phía trên: không giới hạn theo khoảng ngày đang lọc, cũng không giới
@@ -135,14 +135,14 @@
              chạy của cùng mã màu - mã hàng là một lần đánh mẫu, nên đơn vị hiển thị là
              "lần" chứ không phải "mẻ" (yêu cầu 2026-08-06). -->
         <template v-if="detailPopup.color && detailPopup.productCode">
-          <dt>Số lần đánh mẫu</dt>
+          <dt>{{ $t('bpdbMachinesGantt.lotTotalLabel') }}</dt>
           <dd>
-            <template v-if="lotTotal?.loading">Đang đếm…</template>
-            <template v-else-if="lotTotal?.failed">Không đếm được (BPDB mất kết nối)</template>
+            <template v-if="lotTotal?.loading">{{ $t('bpdbMachinesGantt.lotTotalLoading') }}</template>
+            <template v-else-if="lotTotal?.failed">{{ $t('bpdbMachinesGantt.lotTotalFailed') }}</template>
             <template v-else-if="lotTotal">
-              <strong>{{ lotTotal.total }}</strong> lần
+              <strong>{{ lotTotal.total }}</strong> {{ $t('bpdbMachinesGantt.timesUnit') }}
               <span class="gantt-detail-note">
-                trên toàn bộ máy VD<template v-if="lotTotal.firstRunAt">, từ {{ formatDay(lotTotal.firstRunAt) }} tới nay</template>
+                {{ $t('bpdbMachinesGantt.allMachinesNote') }}<template v-if="lotTotal.firstRunAt">{{ $t('bpdbMachinesGantt.sinceDatePrefix') }}{{ formatDay(lotTotal.firstRunAt) }}{{ $t('bpdbMachinesGantt.sinceDateSuffix') }}</template>
               </span>
             </template>
             <template v-else>—</template>
@@ -150,31 +150,31 @@
           <!-- Chia theo từng máy VD (yêu cầu 2026-08-03) — cùng 1 lần đếm ở trên, không gọi
                thêm API. Máy đánh mẫu nhiều lần nhất đứng trước. -->
           <template v-if="lotTotal && !lotTotal.loading && !lotTotal.failed && lotTotal.byMachine.length">
-            <dt>Theo máy</dt>
+            <dt>{{ $t('bpdbMachinesGantt.byMachineLabel') }}</dt>
             <dd>
               <span class="gantt-detail-machines">
                 <span v-for="m in lotTotal.byMachine" :key="m.machineCode" class="gantt-detail-machine">
                   {{ m.machineCode }}: <strong>{{ m.count }}</strong>
                 </span>
               </span>
-              <span class="gantt-detail-note">{{ lotTotal.byMachine.length }} máy đã từng chạy mã này</span>
+              <span class="gantt-detail-note">{{ $t('bpdbMachinesGantt.machineCountSuffix', { count: lotTotal.byMachine.length }) }}</span>
             </dd>
           </template>
         </template>
-        <dt>Bắt đầu</dt>
+        <dt>{{ $t('bpdbMachinesGantt.startLabel') }}</dt>
         <dd>{{ detailPopup.startText }}</dd>
-        <dt>Kết thúc</dt>
+        <dt>{{ $t('bpdbMachinesGantt.endLabel') }}</dt>
         <dd>
           {{ detailPopup.endText }}
-          <span v-if="detailPopup.endSource === 'MES'" class="gantt-detail-note">giờ thật từ MES</span>
-          <span v-else-if="detailPopup.endSource === 'BPDB'" class="gantt-detail-note">ước tính (giờ pha BPDB, chưa có xác nhận MES)</span>
+          <span v-if="detailPopup.endSource === 'MES'" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesRealTimeNote') }}</span>
+          <span v-else-if="detailPopup.endSource === 'BPDB'" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesEstimateNote') }}</span>
         </dd>
         <template v-if="detailPopup.errorMessage">
-          <dt class="text-error">Lỗi</dt>
+          <dt class="text-error">{{ $t('common.error') }}</dt>
           <dd class="text-error">{{ detailPopup.errorMessage }}</dd>
         </template>
       </dl>
-      <div v-if="detailPopup.mesBatchNo" class="gantt-detail-note">→ Thông tin đầy đủ từ MES ở bảng bên phải</div>
+      <div v-if="detailPopup.mesBatchNo" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesFullInfoNote') }}</div>
     </div>
 
     <!-- Bảng thông tin mẻ MES cố định bên PHẢI (yêu cầu 2026-08-08) — rộng rãi, cuộn được,
@@ -182,17 +182,17 @@
     <div v-if="mesPanelOpen && detailPopup?.mesBatchNo" class="gantt-mes-panel">
       <div class="gantt-mes-panel-head">
         <div class="gantt-mes-panel-title">
-          Thông tin mẻ (MES)
+          {{ $t('bpdbMachinesGantt.mesPanelTitle') }}
           <span class="gantt-mes-panel-batch">{{ detailPopup.mesBatchNo }}</span>
         </div>
-        <button type="button" class="gantt-detail-close" aria-label="Đóng" @click="mesPanelOpen = false">✕</button>
+        <button type="button" class="gantt-detail-close" :aria-label="$t('common.close')" @click="mesPanelOpen = false">✕</button>
       </div>
       <div class="gantt-mes-panel-body">
         <template v-if="mesBatch?.loading">
-          <div class="gantt-detail-note">Đang tải từ MES…</div>
+          <div class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesLoading') }}</div>
         </template>
         <template v-else-if="mesBatch?.failed">
-          <div class="gantt-detail-note">Không tải được thông tin mẻ (chưa đồng bộ?)</div>
+          <div class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesFailed') }}</div>
         </template>
         <template v-else-if="mesBatch?.raw">
           <table class="gantt-mes-table">
@@ -204,7 +204,7 @@
             </tbody>
           </table>
           <details v-if="mesFieldRowsRest.length" class="gantt-mes-all">
-            <summary>Tất cả trường ({{ mesFieldRowsRest.length }})</summary>
+            <summary>{{ $t('bpdbMachinesGantt.allFieldsSummary', { count: mesFieldRowsRest.length }) }}</summary>
             <table class="gantt-mes-table">
               <tbody>
                 <tr v-for="row in mesFieldRowsRest" :key="row.label">
@@ -214,7 +214,7 @@
               </tbody>
             </table>
           </details>
-          <div v-if="mesBatch.syncedAt" class="gantt-detail-note">Đồng bộ MES lúc {{ formatTime(mesBatch.syncedAt) }}</div>
+          <div v-if="mesBatch.syncedAt" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesSyncedAtPrefix') }}{{ formatTime(mesBatch.syncedAt) }}</div>
         </template>
       </div>
     </div>
@@ -246,7 +246,9 @@ import { theme, toggleTheme } from '../services/theme';
 import SvgIcon from '../components/SvgIcon.vue';
 import AppLayout from '../components/AppLayout.vue';
 import { useAuthStore } from '../stores/auth';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n({ useScope: 'global' });
 const authStore = useAuthStore();
 // Snapshot MỘT LẦN lúc khởi tạo — KHÔNG dùng ref/computed. Trạng thái đăng nhập không đổi
 // trong vòng đời trang này (không có luồng login/logout ngay trên trang Gantt), nên chốt
@@ -333,13 +335,7 @@ const toggleBrowserFullscreen = () => {
   }
 };
 
-const RAW_TASK_STATUS_LABELS: Record<string, string> = {
-  '10': 'Chờ hệ thống xử lý',
-  '20': 'Đang chuyển trạng thái',
-  '30': 'Đang được hệ thống xử lý',
-  '40': 'Task đã kết thúc',
-  '99': 'Task bị hủy/xóa',
-};
+const RAW_TASK_STATUS_CODES = ['10', '20', '30', '40', '99'];
 
 // Độ dài vẽ tối thiểu của mỗi thanh Gantt — mẻ ngắn hơn vẫn được vẽ rộng bằng đúng ngần
 // này thời gian (không phải ép cứng theo px), giữ đúng bản chất "thanh dài = thời gian dài".
@@ -445,7 +441,10 @@ const formatDay = (iso: string | null) => {
   return new Date(iso).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
-const rawTaskStatusLabel = (status: number) => RAW_TASK_STATUS_LABELS[String(status)] || `Không xác định (${status})`;
+const rawTaskStatusLabel = (status: number) =>
+  RAW_TASK_STATUS_CODES.includes(String(status))
+    ? t(`bpdbMachinesGantt.taskStatus${status}`)
+    : t('bpdbMachinesGantt.statusUnknown', { status });
 
 // Màu thanh Gantt = màu ĐẠI DIỆN HỌ MÀU của mẻ, do backend suy ra từ mã màu
 // (xem ColorCodePalette.php: BPDB/MES đều không lưu RGB thật cho chuyền VD). Nếu backend
@@ -533,7 +532,7 @@ const buildDetail = (item: any, realEnd: Date, barColor: string): GanttDetail =>
     statusLabel: rawTaskStatusLabel(item.taskStatus),
     uncompleted: !!item.uncompleted,
     startText: formatTime(item.start),
-    endText: item.uncompleted ? 'Chưa kết thúc' : formatTime(realEnd.toISOString()),
+    endText: item.uncompleted ? t('bpdbMachinesGantt.endTextNotFinished') : formatTime(realEnd.toISOString()),
     endSource: item.endSource ?? 'BPDB',
     mesBatchNo: item.mesBatchNo ?? null,
     mesLineNo: item.mesLineNo != null ? String(item.mesLineNo) : null,
@@ -605,36 +604,37 @@ const loadLotTotal = async (detail: GanttDetail) => {
 };
 
 // ---- Toàn bộ thông tin mẻ trong MES (bấm vào thanh đã ghép MES) ----
-// Danh sách trường ưu tiên hiển thị (nhãn tiếng Việt), theo đúng tên field của MES eBatchLine.
+// Danh sách trường ưu tiên hiển thị, theo đúng tên field của MES eBatchLine. Nhãn hiển thị lấy
+// từ locale (bpdbMachinesGantt.mesFields.<key>) nên thứ tự ở đây chỉ quyết định thứ tự hiển thị.
 // Field không có trong dữ liệu sẽ tự bỏ qua. Phần còn lại xem trong "Tất cả trường".
-const MES_FIELDS: { key: string; label: string }[] = [
-  { key: 'batchNo', label: 'Số mẻ' },
-  { key: 'batchState', label: 'Trạng thái mẻ' },
-  { key: 'colorCode', label: 'Mã màu' },
-  { key: 'artCode', label: 'Mã hàng' },
-  { key: 'rootArt', label: 'Mã hàng gốc' },
-  { key: 'custCode', label: 'Khách' },
-  { key: 'endCustCode', label: 'Khách cuối' },
-  { key: 'orderUcode', label: 'Phiếu phối màu' },
-  { key: 'moCode', label: 'MO' },
-  { key: 'pfmPfno', label: 'Số công thức' },
-  { key: 'machineNo', label: 'Máy' },
-  { key: 'oldMachineNo', label: 'Máy trước' },
-  { key: 'batchTypeName', label: 'Loại mẻ' },
-  { key: 'batchNum', label: 'SL kế hoạch (m)' },
-  { key: 'clNum', label: 'SL nhuộm (m)' },
-  { key: 'clWet', label: 'KL nhuộm (kg)' },
-  { key: 'clShift', label: 'Ca' },
-  { key: 'beginTime', label: 'Bắt đầu' },
-  { key: 'beginByName', label: 'Người bắt đầu' },
-  { key: 'getTime', label: 'Nhận' },
-  { key: 'getByName', label: 'Người nhận' },
-  { key: 'endTime', label: 'Kết thúc' },
-  { key: 'endByName', label: 'Người kết thúc' },
-  { key: 'pmcDateStr', label: 'Ngày giao' },
-  { key: 'priorityRemark', label: 'Ưu tiên' },
-  { key: 'techRemark', label: 'Ghi chú kỹ thuật' },
-  { key: 'remark', label: 'Ghi chú sản xuất' },
+const MES_FIELD_KEYS: string[] = [
+  'batchNo',
+  'batchState',
+  'colorCode',
+  'artCode',
+  'rootArt',
+  'custCode',
+  'endCustCode',
+  'orderUcode',
+  'moCode',
+  'pfmPfno',
+  'machineNo',
+  'oldMachineNo',
+  'batchTypeName',
+  'batchNum',
+  'clNum',
+  'clWet',
+  'clShift',
+  'beginTime',
+  'beginByName',
+  'getTime',
+  'getByName',
+  'endTime',
+  'endByName',
+  'pmcDateStr',
+  'priorityRemark',
+  'techRemark',
+  'remark',
 ];
 
 interface MesBatch {
@@ -648,15 +648,15 @@ interface MesBatch {
 const mesBatch = ref<MesBatch | null>(null);
 const mesBatchCache = new Map<string, { raw: Record<string, any>; syncedAt: string | null }>();
 
-/** Các cặp nhãn→giá trị ưu tiên (chỉ trường có dữ liệu), theo thứ tự MES_FIELDS. */
+/** Các cặp nhãn→giá trị ưu tiên (chỉ trường có dữ liệu), theo thứ tự MES_FIELD_KEYS. */
 const mesFieldRows = computed(() => {
   const raw = mesBatch.value?.raw;
   if (!raw) return [] as { label: string; value: string }[];
   const out: { label: string; value: string }[] = [];
-  for (const f of MES_FIELDS) {
-    const v = raw[f.key];
+  for (const key of MES_FIELD_KEYS) {
+    const v = raw[key];
     if (v !== null && v !== undefined && String(v).trim() !== '' && String(v).trim() !== '0') {
-      out.push({ label: f.label, value: String(v) });
+      out.push({ label: t(`bpdbMachinesGantt.mesFields.${key}`), value: String(v) });
     }
   }
   return out;
@@ -666,7 +666,7 @@ const mesFieldRows = computed(() => {
 const mesFieldRowsRest = computed(() => {
   const raw = mesBatch.value?.raw;
   if (!raw) return [] as { label: string; value: string }[];
-  const shown = new Set(MES_FIELDS.map((f) => f.key));
+  const shown = new Set(MES_FIELD_KEYS);
   const out: { label: string; value: string }[] = [];
   for (const k of Object.keys(raw)) {
     if (shown.has(k)) continue;
@@ -1007,7 +1007,7 @@ const applyMachineFilter = () => {
     // 2026-08-02) — box absolute, chiều cao do capNhatOGopMay() đo lại sau mỗi lần vis vẽ
     // xong. Icon ghim đặt bên PHẢI tên máy cho dễ ấn (yêu cầu 2026-07-29).
     const machineCard = isMachineHead
-      ? `<span class="gantt-machine-merged"><span class="gantt-machine-row"><span class="gantt-machine-name" title="${machineName}">${machineName}</span><span class="gantt-pin-btn${isPinned ? ' is-pinned' : ''}" data-machine-id="${machineId}" title="${isPinned ? 'Bỏ ghim' : 'Ghim lên đầu'}">📌</span></span></span>`
+      ? `<span class="gantt-machine-merged"><span class="gantt-machine-row"><span class="gantt-machine-name" title="${machineName}">${machineName}</span><span class="gantt-pin-btn${isPinned ? ' is-pinned' : ''}" data-machine-id="${machineId}" title="${isPinned ? t('bpdbMachinesGantt.unpinTitle') : t('bpdbMachinesGantt.pinTitle')}">📌</span></span></span>`
       : '';
 
     return {
@@ -1113,7 +1113,7 @@ const loadGantt = async () => {
       requestAnimationFrame(() => timeline?.focus(idsToFocus, { zoom: false }));
     }
   } catch (e: any) {
-    errorMsg.value = e.response?.data?.message || 'Không tải được dữ liệu Gantt.';
+    errorMsg.value = e.response?.data?.message || t('bpdbMachinesGantt.errorFallback');
   } finally {
     loading.value = false;
   }

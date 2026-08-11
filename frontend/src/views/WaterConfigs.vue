@@ -4,8 +4,8 @@
     <main class="main-content">
       <section class="section">
         <div class="section-header">
-          <h3>💧 Bảng Tra Hệ Số Nước Theo Chuyền Máy & Công Đoạn</h3>
-          <p class="section-desc">Số liệu cấu hình tỉ lệ (Liquor Ratio) và hệ số nhân (Ratio Coefficient) dùng để tự động tính lượng nước (Liters) trong mẻ nhuộm.</p>
+          <h3>💧 {{ $t('waterConfigs.title') }}</h3>
+          <p class="section-desc">{{ $t('waterConfigs.description') }}</p>
         </div>
 
         <!-- Matrix/List of configs -->
@@ -13,11 +13,11 @@
           <table class="stats-table">
             <thead>
               <tr>
-                <th>Dòng Máy / Chuyền</th>
-                <th>Công Đoạn</th>
-                <th class="number-cell">Hệ Số Nhân (Coeff)</th>
-                <th class="number-cell">Tỉ Lệ Dung Dịch (Ratio)</th>
-                <th class="action-cell">Thao Tác</th>
+                <th>{{ $t('waterConfigs.colMachineLine') }}</th>
+                <th>{{ $t('waterConfigs.colProcess') }}</th>
+                <th class="number-cell">{{ $t('waterConfigs.colCoefficient') }}</th>
+                <th class="number-cell">{{ $t('waterConfigs.colLiquorRatio') }}</th>
+                <th class="action-cell">{{ $t('waterConfigs.colActions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -34,12 +34,12 @@
                     @click="openEditModal(cfg)" 
                     class="edit-action-btn"
                   >
-                    ✏️ Cấu hình
+                    ✏️ {{ $t('waterConfigs.configureButton') }}
                   </button>
                 </td>
               </tr>
               <tr v-if="configs.length === 0">
-                <td colspan="5" class="empty-cell">Chưa cấu hình dữ liệu mực nước nào.</td>
+                <td colspan="5" class="empty-cell">{{ $t('waterConfigs.emptyRow') }}</td>
               </tr>
             </tbody>
           </table>
@@ -51,12 +51,12 @@
     <div class="modal-backdrop" v-if="showModal">
       <div class="modal-card">
         <div class="modal-header">
-          <h4>💧 Cấu hình Mực Nước: Chuyền {{ editingConfig?.machine_line }} - Công đoạn {{ editingConfig?.process_code }}</h4>
+          <h4>💧 {{ $t('waterConfigs.editModalTitle', { line: editingConfig?.machine_line, process: editingConfig?.process_code }) }}</h4>
           <button @click="closeModal" class="close-modal-btn">✕</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="edit-ratio-coeff">Hệ số nhân (Ratio Coefficient)</label>
+            <label for="edit-ratio-coeff">{{ $t('waterConfigs.labelRatioCoefficient') }}</label>
             <input 
               id="edit-ratio-coeff"
               v-model.number="editForm.ratio_coefficient" 
@@ -66,7 +66,7 @@
             />
           </div>
           <div class="form-group">
-            <label for="edit-liquor-ratio">Tỉ lệ dung dịch (1:X)</label>
+            <label for="edit-liquor-ratio">{{ $t('waterConfigs.labelLiquorRatio') }}</label>
             <input 
               id="edit-liquor-ratio"
               v-model.number="editForm.liquor_ratio" 
@@ -77,9 +77,9 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button id="cancel-cfg-modal-btn" @click="closeModal" class="cancel-btn">Hủy</button>
+          <button id="cancel-cfg-modal-btn" @click="closeModal" class="cancel-btn">{{ $t('common.cancel') }}</button>
           <button id="save-cfg-modal-btn" @click="saveConfig" class="submit-btn" :disabled="saving">
-            {{ saving ? 'Đang lưu...' : 'Lưu Cấu Hình' }}
+            {{ saving ? $t('waterConfigs.saving') : $t('waterConfigs.saveConfig') }}
           </button>
         </div>
       </div>

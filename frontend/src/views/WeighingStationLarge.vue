@@ -13,7 +13,7 @@
         <div class="stage" :style="{ transform: `scale(${scale})` }">
 
         <!-- Nhãn tiêu đề cột -->
-        <div v-for="h in HEADERS" :key="h.text" class="vv-head" :style="box(h)">{{ h.text }}</div>
+        <div v-for="h in HEADERS" :key="h.text" class="vv-head" :style="box(h)">{{ $t(h.text!) }}</div>
 
         <!-- Số thứ tự dòng 1..9 -->
         <div v-for="i in 9" :key="'n' + i" class="vv-rowno" :style="box(rowNoBox(i - 1))">{{ i }}</div>
@@ -61,9 +61,9 @@
         </template>
 
         <!-- Cột nút bên phải -->
-        <button class="vv-btn key" :style="box(C.btn_del)" @click="numDel">DEL</button>
-        <button class="vv-btn ghost" :style="box(C.btnPrint)" @click="printSlip()">PRINT</button>
-        <button class="vv-btn ghost" :style="box(C.btnCheck)" @click="moLichSuCan">CHECK</button>
+        <button class="vv-btn key" :style="box(C.btn_del)" @click="numDel">{{ $t('weighingStationLarge.btnDel') }}</button>
+        <button class="vv-btn ghost" :style="box(C.btnPrint)" @click="printSlip()">{{ $t('weighingStationLarge.btnPrint') }}</button>
+        <button class="vv-btn ghost" :style="box(C.btnCheck)" @click="moLichSuCan">{{ $t('weighingStationLarge.btnCheck') }}</button>
 
         <button
           v-for="k in NUMPAD"
@@ -73,22 +73,22 @@
           @click="numClick(k.d)"
         >{{ k.d }}</button>
 
-        <button class="vv-btn ghost" :style="box(C.btnClose)" @click="onClose">CLOSE</button>
-        <button class="vv-btn out" :style="box(C.btn_out)" :disabled="sendingRack" @click="onOut">OUT</button>
-        <button class="vv-btn in" :style="box(C.btn_in)" :disabled="sendingRack" @click="onIn">IN</button>
+        <button class="vv-btn ghost" :style="box(C.btnClose)" @click="onClose">{{ $t('weighingStationLarge.btnClose') }}</button>
+        <button class="vv-btn out" :style="box(C.btn_out)" :disabled="sendingRack" @click="onOut">{{ $t('weighingStationLarge.btnOut') }}</button>
+        <button class="vv-btn in" :style="box(C.btn_in)" :disabled="sendingRack" @click="onIn">{{ $t('weighingStationLarge.btnIn') }}</button>
         <!-- onClear() có ngoặc: để "onClear" trần thì Vue truyền MouseEvent vào tham số
              skipConfirm (truthy) -> bỏ qua luôn hộp xác nhận. -->
-        <button class="vv-btn danger" :style="box(C.btnCLEAR)" :disabled="saving" @click="onClear()">CLEAR</button>
+        <button class="vv-btn danger" :style="box(C.btnCLEAR)" :disabled="saving" @click="onClear()">{{ $t('weighingStationLarge.btnClear') }}</button>
         <button class="vv-btn primary" :style="box(C.btnSAVE)" :disabled="saving" @click="onSave">
-          {{ saving ? '…' : 'SAVE' }}
+          {{ saving ? '…' : $t('weighingStationLarge.btnSave') }}
         </button>
         <button class="vv-btn accent" :style="box(C.btnNext)" :disabled="saving || !canPressNext" @click="onNext">
-          NEXT
+          {{ $t('weighingStationLarge.btnNext') }}
         </button>
 
         <!-- Nhãn cho các ô dưới — bản VBA để trống trơn, ai không thuộc form thì không đoán được ô
              nào là gì. Đặt vừa khít khe 9pt giữa lưới và hàng ô, không đụng vào toạ độ gốc. -->
-        <div v-for="g in LEGENDS" :key="g.text" class="vv-legend" :style="box(g)">{{ g.text }}</div>
+        <div v-for="g in LEGENDS" :key="g.text" class="vv-legend" :style="box(g)">{{ $t(g.text!) }}</div>
 
         <!-- Khối dưới trái: COLOR / MACHINE / CODE / LV + ô delta khổng lồ + rawline -->
         <input
@@ -97,7 +97,7 @@
           :class="{ scanning }"
           :style="box(C.txt_COLOR)"
           :value="activeBatch?.color || ''"
-          :placeholder="scanning ? '…' : 'quét QR'"
+          :placeholder="scanning ? '…' : $t('weighingStationLarge.scanPlaceholder')"
           :readonly="scanning"
           @keyup.enter="docOQuet"
           @change="docOQuet"
@@ -105,10 +105,10 @@
         />
         <div class="vv-text ro" :style="box(C.txt_MACHINE)">{{ activeBatch?.machine?.code || '' }}</div>
         <div class="vv-text ro field" :style="box(C.txt_CODE)">
-          <i class="cap">CODE</i><span>{{ activeBatch?.product_code || '' }}</span>
+          <i class="cap">{{ $t('weighingStationLarge.capCode') }}</i><span>{{ activeBatch?.product_code || '' }}</span>
         </div>
         <div class="vv-text ro field" :style="box(C.txt_LV)">
-          <i class="cap">LV</i><span>{{ activeBatch?.level_code || '' }}</span>
+          <i class="cap">{{ $t('weighingStationLarge.capLv') }}</i><span>{{ activeBatch?.level_code || '' }}</span>
         </div>
 
         <!-- delta_rawline: số thợ thực sự nhìn khi đang đổ vật tư -->
@@ -118,7 +118,7 @@
         </div>
 
           <div class="vv-text ro num field raw" :style="box(C.rawline)">
-            <i class="cap">RAW</i><span>{{ grossWeight.toFixed(2) }}</span>
+            <i class="cap">{{ $t('weighingStationLarge.capRaw') }}</i><span>{{ grossWeight.toFixed(2) }}</span>
           </div>
         </div>
       </div>
@@ -140,39 +140,39 @@
       <button
         class="wb-toggle"
         :title="coSuCo
-          ? (statusMsg?.text || 'Có mẻ chưa gửi được lên máy chủ') + ' — bấm để xem chi tiết'
-          : 'Hiện cột thông tin (trạm, hàng đợi, cỡ chữ, giả lập)'"
+          ? (statusMsg?.text || $t('weighingStationLarge.wbToggleAlarmDefaultMsg')) + $t('weighingStationLarge.wbToggleAlarmTitleSuffix')
+          : $t('weighingStationLarge.wbToggleInfoTitle')"
         @click="datHienWebbar(true)"
       >
         <span class="wb-toggle-icon">{{ coSuCo ? '❗' : '‹' }}</span>
-        <span class="wb-toggle-label">{{ coSuCo ? 'SỰ CỐ' : 'THÔNG TIN' }}</span>
+        <span class="wb-toggle-label">{{ coSuCo ? $t('weighingStationLarge.wbToggleAlarmLabel') : $t('weighingStationLarge.wbToggleInfoLabel') }}</span>
       </button>
     </div>
 
     <div v-else class="webbar" :class="{ alarm: statusMsg?.bad }">
-      <button class="wb-hide" title="Thu gọn cột này cho rộng mặt form" @click="datHienWebbar(false)">
-        THU GỌN ›
+      <button class="wb-hide" :title="$t('weighingStationLarge.wbHideTitle')" @click="datHienWebbar(false)">
+        {{ $t('weighingStationLarge.wbHideLabel') }}
       </button>
       <span class="wb-ws">
         <!-- `signalLost` (3s) chứ không phải `signalLive` (1.5s): ngưỡng chặt là CỔNG AN TOÀN
              cho việc chốt bì/lưu số, dùng nó để bật đèn báo thì đèn nhấp nháy mỗi lần số về trễ
              một nhịp — xem ghi chú LOST_SIGNAL_MS trong useScaleFeed. -->
         <span class="wb-dot" :class="scaleOnline && !signalLost ? 'on' : 'off'"></span>
-        {{ currentWorkstation?.code || 'chưa gán trạm' }}
+        {{ currentWorkstation?.code || $t('weighingStationLarge.noWorkstationShort') }}
       </span>
       <span class="wb-pill" :class="isStable ? 'ok' : 'wait'">
-        {{ signalLost && !useSimValue ? '✕ MẤT TÍN HIỆU' : (isStable ? '● ỔN ĐỊNH' : '○ CHỜ ỔN ĐỊNH') }}
+        {{ signalLost && !useSimValue ? $t('weighingStationLarge.signalLostLabel') : (isStable ? $t('weighingStationLarge.stableLabel') : $t('weighingStationLarge.waitStableLabel')) }}
       </span>
-      <span v-if="tareBaseline !== null" class="wb-tare">Bì {{ tareBaseline.toFixed(2) }}</span>
-      <button v-if="currentIndex >= 0 && tareBaseline !== null" class="wb-btn" @click="retare">BÌ LẠI</button>
+      <span v-if="tareBaseline !== null" class="wb-tare">{{ $t('weighingStationLarge.tarePrefix') }} {{ tareBaseline.toFixed(2) }}</span>
+      <button v-if="currentIndex >= 0 && tareBaseline !== null" class="wb-btn" @click="retare">{{ $t('weighingStationLarge.retareBtn') }}</button>
 
-      <span v-if="rackBatchText" class="wb-rack" :title="'Lô rack sẽ gửi khi bấm OUT'">
-        LÔ 1: {{ rackBatchText }}
-        <button class="wb-btn" @click="onCopyRacks">COPY</button>
+      <span v-if="rackBatchText" class="wb-rack" :title="$t('weighingStationLarge.rackBatchTitle')">
+        {{ $t('weighingStationLarge.rackBatchPrefix') }} {{ rackBatchText }}
+        <button class="wb-btn" @click="onCopyRacks">{{ $t('weighingStationLarge.copyBtn') }}</button>
       </span>
 
       <button v-if="queueCount > 0" class="wb-queue" :class="{ stuck: stuckCount > 0 }" @click="showQueue = true">
-        {{ stuckCount > 0 ? '✕' : '⏳' }} {{ queueCount }} mẻ chờ gửi
+        {{ stuckCount > 0 ? '✕' : '⏳' }} {{ queueCount }} {{ $t('weighingStationLarge.queueWaitingSuffix') }}
       </button>
 
       <!-- Cỡ hiển thị — để ngay trong dải thao tác chứ không giấu vào một trang cài đặt: thợ đeo
@@ -181,14 +181,14 @@
            Các nấc trên 100% cố ý cho tràn và phải cuộn — dành cho người đứng xa cần chữ to hơn
            là cần nhìn thấy cả form cùng lúc. -->
       <span class="zoom-ctl">
-        <button class="wb-btn" :disabled="heSoPhong <= MUC_PHONG[0]" title="Thu nhỏ" @click="doiCoManHinh(-1)">A−</button>
-        <button class="zoom-val" title="Về vừa màn hình (100%)" @click="datMucPhong(1)">
+        <button class="wb-btn" :disabled="heSoPhong <= MUC_PHONG[0]" :title="$t('weighingStationLarge.zoomShrinkTitle')" @click="doiCoManHinh(-1)">A−</button>
+        <button class="zoom-val" :title="$t('weighingStationLarge.zoomFitTitle')" @click="datMucPhong(1)">
           {{ Math.round(heSoPhong * 100) }}%
         </button>
         <button
           class="wb-btn"
           :disabled="heSoPhong >= MUC_PHONG[MUC_PHONG.length - 1]"
-          title="Phóng to — trên 100% thì mặt form tràn khung, cuộn để xem hết"
+          :title="$t('weighingStationLarge.zoomEnlargeTitle')"
           @click="doiCoManHinh(1)"
         >A+</button>
       </span>
@@ -197,7 +197,7 @@
            để sau nó thì mỗi lần có thông báo dài là cụm giả lập bị đẩy ra sát rìa phải, có màn
            hình hẹp còn đẩy khuất hẳn. Trước nó thì vị trí đứng yên bất kể thông báo dài ngắn. -->
       <label class="wb-sim">
-        <input type="checkbox" v-model="useSimValue" /> giả lập
+        <input type="checkbox" v-model="useSimValue" /> {{ $t('weighingStationLarge.simLabel') }}
       </label>
       <input v-if="useSimValue" type="number" step="0.1" class="wb-siminput" v-model.number="simulatedWeight" />
 
@@ -212,16 +212,15 @@
     <div v-if="showQueue" class="queue-overlay" @click.self="showQueue = false">
       <div class="queue-modal">
         <div class="queue-head">
-          <strong>Mẻ chờ gửi lên máy chủ ({{ queueCount }})</strong>
-          <button class="wb-btn" @click="showQueue = false">ĐÓNG</button>
+          <strong>{{ $t('weighingStationLarge.queueModalTitle', { count: queueCount }) }}</strong>
+          <button class="wb-btn" @click="showQueue = false">{{ $t('weighingStationLarge.queueCloseBtn') }}</button>
         </div>
         <p class="queue-note">
-          Các mẻ này <strong>đã cân xong và đã in phiếu</strong>, chỉ chưa lên được máy chủ. Máy tự
-          gửi lại khi có mạng. <strong>Đừng xoá dữ liệu trình duyệt</strong> khi danh sách còn mẻ.
+          {{ $t('weighingStationLarge.queueNotePrefix') }}<strong>{{ $t('weighingStationLarge.queueNoteStrong1') }}</strong>{{ $t('weighingStationLarge.queueNoteMiddle') }}<strong>{{ $t('weighingStationLarge.queueNoteStrong2') }}</strong>{{ $t('weighingStationLarge.queueNoteSuffix') }}
         </p>
         <table class="queue-table">
           <thead>
-            <tr><th>Mẻ</th><th>Xếp hàng lúc</th><th class="c-num">Lần thử</th><th>Trạng thái</th><th></th></tr>
+            <tr><th>{{ $t('weighingStationLarge.thBatch') }}</th><th>{{ $t('weighingStationLarge.thQueuedAt') }}</th><th class="c-num">{{ $t('weighingStationLarge.thAttempts') }}</th><th>{{ $t('common.status') }}</th><th></th></tr>
           </thead>
           <tbody>
             <tr v-for="q in queueItems" :key="q.idempotency_key">
@@ -230,20 +229,20 @@
               <td class="c-num">{{ q.so_lan_thu }}</td>
               <td>
                 <span v-if="q.loi_nghiep_vu" class="queue-err">
-                  {{ q.loi_nghiep_vu }} <em>(vẫn đang tự gửi lại mỗi 15 giây)</em>
+                  {{ q.loi_nghiep_vu }} <em>{{ $t('weighingStationLarge.queueRetryingNote') }}</em>
                 </span>
-                <span v-else-if="duongThong">đang chờ tới lượt gửi</span>
-                <span v-else>mất kết nối — đang dò lại mỗi 15 giây</span>
+                <span v-else-if="duongThong">{{ $t('weighingStationLarge.queueWaitingTurn') }}</span>
+                <span v-else>{{ $t('weighingStationLarge.queueOffline') }}</span>
               </td>
               <td class="queue-act">
-                <button v-if="q.loi_nghiep_vu" class="wb-btn" @click="onThuLai(q.idempotency_key)">THỬ LẠI</button>
+                <button v-if="q.loi_nghiep_vu" class="wb-btn" @click="onThuLai(q.idempotency_key)">{{ $t('weighingStationLarge.queueRetryBtn') }}</button>
               </td>
             </tr>
           </tbody>
         </table>
         <div class="queue-foot">
           <button class="wb-btn" :disabled="flushing" @click="onGuiNgay">
-            {{ flushing ? 'ĐANG GỬI…' : 'GỬI NGAY' }}
+            {{ flushing ? $t('weighingStationLarge.queueSendingBtn') : $t('weighingStationLarge.queueSendNowBtn') }}
           </button>
         </div>
       </div>
@@ -286,6 +285,7 @@
 
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import FullscreenButton from '../components/FullscreenButton.vue';
 import HopThoaiVba from '../components/HopThoaiVba.vue';
@@ -330,10 +330,10 @@ const ROW_OFFSET = 0;
 
 /** Nhãn cột — bản gốc cũng so le (RACK ở 0, ba cái kia ở 3.63pt); cho về cùng 0 luôn. */
 const HEADERS: Box[] = [
-  { l: 12.02, t: 0, w: 30.02, h: 11.99, f: 7.8, text: 'RACK' },
-  { l: 65.99, t: 0, w: 47.99, h: 11.99, f: 7.8, text: 'DYE CODE' },
-  { l: 257.98, t: 0, w: 36, h: 11.99, f: 7.8, text: 'WEIGHT' },
-  { l: 396.03, t: 0, w: 42.01, h: 11.99, f: 7.8, text: 'PROCESS' },
+  { l: 12.02, t: 0, w: 30.02, h: 11.99, f: 7.8, text: 'weighingStationLarge.headerRack' },
+  { l: 65.99, t: 0, w: 47.99, h: 11.99, f: 7.8, text: 'weighingStationLarge.headerDyeCode' },
+  { l: 257.98, t: 0, w: 36, h: 11.99, f: 7.8, text: 'weighingStationLarge.headerWeight' },
+  { l: 396.03, t: 0, w: 42.01, h: 11.99, f: 7.8, text: 'weighingStationLarge.headerProcess' },
 ];
 
 /**
@@ -343,9 +343,9 @@ const HEADERS: Box[] = [
  * CODE / LV / RAW không có khe trống phía trên nên nhãn nằm luôn trong ô (xem `.field .cap`).
  */
 const LEGENDS: Box[] = [
-  { l: 11.99, t: 441, w: 90, h: 8.4, f: 6.4, text: 'COLOR' },
-  { l: 108, t: 441, w: 47.99, h: 8.4, f: 6.4, text: 'MACHINE' },
-  { l: 162, t: 441, w: 384.01, h: 8.4, f: 6.4, text: 'DELTA — ĐÃ TRỪ BÌ' },
+  { l: 11.99, t: 441, w: 90, h: 8.4, f: 6.4, text: 'weighingStationLarge.legendColor' },
+  { l: 108, t: 441, w: 47.99, h: 8.4, f: 6.4, text: 'weighingStationLarge.legendMachine' },
+  { l: 162, t: 441, w: 384.01, h: 8.4, f: 6.4, text: 'weighingStationLarge.legendDelta' },
 ];
 
 /** Bàn phím số: 3 cột x 3 hàng + phím 0. Trùng khít btn_1..btn_9, btn_0. */
@@ -414,6 +414,8 @@ const rowNoBox = (i: number): Box => ({ l: 6.01, t: rowTop(i) + 12, w: 6.01, h: 
 // Hộp thoại hỏi/báo vẽ TRONG TRANG. Dùng chung với /weighing-station-v2 — hai màn đều chạy F11
 // cả ca, mà hộp thoại gốc của trình duyệt đá màn hình ra khỏi toàn màn hình. Xem useHopThoai.ts.
 const { thoai, hoiXacNhan, baoTin, dongThoai } = useHopThoai();
+
+const { t } = useI18n({ useScope: 'global' });
 
 const rootRef = ref<HTMLElement | null>(null);
 const wrapRef = ref<HTMLElement | null>(null);
@@ -673,10 +675,12 @@ function daSuaMucTieu(i: number): boolean {
 function tipMucTieu(i: number): string {
   if (daSuaMucTieu(i)) {
     const goc = mucTieuGoc.value[i];
-    return `Mục tiêu đã sửa tay. Số in trên tem: ${goc === null ? '(trống)' : Number(goc).toFixed(2)}`;
+    return t('weighingStationLarge.tipEdited', {
+      value: goc === null ? t('weighingStationLarge.tipEditedEmpty') : Number(goc).toFixed(2),
+    });
   }
-  if (suaDuocMucTieu(i)) return 'Sửa được mục tiêu tới khi bấm NEXT lần đầu (bàn phím số bên phải gõ được vào đây).';
-  if (currentIndex.value !== -1) return 'Đã bắt đầu cân — không sửa mục tiêu giữa mẻ nữa. Bấm CLEAR rồi quét lại nếu cần đổi.';
+  if (suaDuocMucTieu(i)) return t('weighingStationLarge.tipEditable');
+  if (currentIndex.value !== -1) return t('weighingStationLarge.tipLocked');
   return '';
 }
 
@@ -801,12 +805,14 @@ const statusMsg = computed<{ text: string; bad: boolean } | null>(() => {
     return {
       // Kèm tuổi số đọc để phân biệt "Agent chết hẳn" (số tăng vô hạn) với "Agent sống nhưng số
       // về chậm" (dừng quanh vài giây) — hai thứ này sửa ở hai chỗ khác nhau.
-      text: '⚠ MẤT TÍN HIỆU CÂN — kiểm tra Agent / dây cân'
-        + (readingAgeMs.value !== null ? ` (số cân cũ ${(readingAgeMs.value / 1000).toFixed(1)}s)` : ''),
+      text: t('weighingStationLarge.signalLostMsg')
+        + (readingAgeMs.value !== null
+          ? t('weighingStationLarge.signalLostAgeSuffix', { sec: (readingAgeMs.value / 1000).toFixed(1) })
+          : ''),
       bad: true,
     };
   if (!useSimValue.value && !scaleOnline.value)
-    return { text: '⚠ MẤT KẾT NỐI MÁY CHỦ — số cân không cập nhật. Số đã cân KHÔNG mất.', bad: true };
+    return { text: t('weighingStationLarge.serverDisconnectedMsg'), bad: true };
   return null;
 });
 
@@ -850,14 +856,14 @@ async function onOut() {
   if (!rackLoaded.value) buildRackBatch();
   if (rackBatch1.value.every((r) => !r)) {
     rackOk.value = false;
-    rackMsg.value = 'Không có mã rack nào để gửi — nhập mã ở cột RACK hoặc quét đơn trước.';
+    rackMsg.value = t('weighingStationLarge.rackNoneToSend');
     return;
   }
   sendingRack.value = true;
   // Chờ tới khi Agent ack (tối đa ~12 giây) nên phải nói rõ đang chờ — nút xám mà không có chữ
   // thì thợ tưởng máy treo và bấm lại.
   rackOk.value = true;
-  rackMsg.value = 'Đang gửi mã rack sang hệ pha màu — chờ Agent xác nhận…';
+  rackMsg.value = t('weighingStationLarge.rackSendingOut');
   const res = await guiRackSangAgent('OUT', rackBatch1.value, currentWorkstation.value?.code || 'ws');
   sendingRack.value = false;
   rackOk.value = res.ok;
@@ -872,7 +878,7 @@ async function onOut() {
 async function onIn() {
   sendingRack.value = true;
   rackOk.value = true;
-  rackMsg.value = 'Đang gửi lệnh NHẬN (IN) — chờ Agent xác nhận…';
+  rackMsg.value = t('weighingStationLarge.rackSendingIn');
   const res = await guiRackSangAgent('IN', rackBatch1.value, currentWorkstation.value?.code || 'ws');
   sendingRack.value = false;
   rackOk.value = res.ok;
@@ -890,16 +896,16 @@ async function onCopyRacks() {
   const text = rackBatch1.value.filter(Boolean).join('\n');
   if (!text) {
     rackOk.value = false;
-    rackMsg.value = 'Lô 1 đang trống, không có gì để chép.';
+    rackMsg.value = t('weighingStationLarge.rackCopyEmpty');
     return;
   }
   try {
     await navigator.clipboard.writeText(text);
     rackOk.value = true;
-    rackMsg.value = 'Đã chép lô 1 ra clipboard — dán sang hệ pha màu bằng Ctrl+V.';
+    rackMsg.value = t('weighingStationLarge.rackCopySuccess');
   } catch {
     rackOk.value = false;
-    rackMsg.value = 'Trình duyệt không cho chép clipboard — chép tay từ dải thông tin bên dưới.';
+    rackMsg.value = t('weighingStationLarge.rackCopyFail');
   }
 }
 
@@ -1143,9 +1149,7 @@ watch([isStable, grossWeight], () => {
     tareBaseline.value = p.tare;
     armed.value = true;
   } else {
-    errorMsg.value =
-      `Đĩa cân đã thay đổi trong lúc tải lại trang (${p.gross.toFixed(2)} → ${grossWeight.value.toFixed(2)}). `
-      + 'Các ô đã cân vẫn còn nguyên — bấm NEXT để cân tiếp ô kế và lấy bì mới.';
+    errorMsg.value = t('weighingStationLarge.resumeMismatch', { from: p.gross.toFixed(2), to: grossWeight.value.toFixed(2) });
   }
 });
 
@@ -1296,14 +1300,7 @@ const handleBarcodeScan = async (token: string) => {
    */
   if (!currentWorkstation.value) {
     scannerService.playBeep(600, 400);
-    await baoTin(
-      'Máy này CHƯA nhận được trạm cân nào nên chưa quét được.\n'
-      + '\n'
-      + 'Xem cột bên phải: đang hiện "chưa gán trạm" thay vì mã trạm.\n'
-      + '\n'
-      + 'Kiểm tra Agent "Cân to" (service DFAgentLarge) còn chạy trên chính máy này không, đợi '
-      + 'khoảng một phút cho nó báo danh, rồi tải lại trang.'
-    );
+    await baoTin(t('weighingStationLarge.noWorkstationDialog'));
     nextTick(veOQuet);
     return;
   }
@@ -1321,12 +1318,7 @@ const handleBarcodeScan = async (token: string) => {
       scanning.value = false;
       // Kèm luôn chuỗi đọc được: ô quét bị đặt lại về mã màu ngay sau đây nên đây là chỗ DUY NHẤT
       // thợ/kỹ thuật còn thấy máy quét thực sự bắn ra cái gì.
-      await baoTin(
-        'Mã quét thiếu COLOR hoặc CODE nên không mở được mẻ — kiểm tra lại đầu đọc hoặc mã tem. '
-        + '(Thiếu MACHINE/LV thì vẫn nạp được, để trống ô đó.)\n'
-        + '\n'
-        + `Chuỗi đọc được: ${token.slice(0, 80)}${token.length > 80 ? '…' : ''}`
-      );
+      await baoTin(t('weighingStationLarge.scanParseFail', { token: `${token.slice(0, 80)}${token.length > 80 ? '…' : ''}` }));
       nextTick(veOQuet);
       return;
     }
@@ -1365,7 +1357,7 @@ const handleBarcodeScan = async (token: string) => {
     }
   } catch (err: any) {
     scannerService.playBeep(600, 400);
-    await baoTin(err.response?.data?.message || 'Không thể mở lệnh sản xuất này.');
+    await baoTin(err.response?.data?.message || t('weighingStationLarge.scanOpenFail'));
   } finally {
     scanning.value = false;
     nextTick(veOQuet);
@@ -1504,8 +1496,8 @@ async function onClear(skipConfirm = false, alreadySaved = false) {
   if (hasSomething && !skipConfirm) {
     const ok = await hoiXacNhan(
       hasUnsaved
-        ? 'CLEAR sẽ xoá sạch màn hình, kể cả số đã cân nhưng CHƯA bấm SAVE.\n\nVẫn xoá?'
-        : 'CLEAR sẽ xoá đơn đang mở khỏi màn hình. Quét lại mã QR để cân từ đầu.\n\nVẫn xoá?'
+        ? t('weighingStationLarge.clearConfirmUnsaved')
+        : t('weighingStationLarge.clearConfirmOrder')
     );
     if (!ok) return;
   }
@@ -1597,13 +1589,13 @@ async function onSave() {
 
   if (rows.length === 0) {
     if (!canTay) {
-      errorMsg.value = 'Không có dòng nào để lưu.';
+      errorMsg.value = t('weighingStationLarge.saveNoRows');
     } else if (!signalLive.value) {
-      errorMsg.value = 'Mất tín hiệu cân — số đang hiện là số cũ, không lưu được. Kiểm tra Agent / dây cân.';
+      errorMsg.value = t('weighingStationLarge.saveSignalLost');
     } else if (!isStable.value) {
-      errorMsg.value = 'Số cân chưa đứng yên — chờ cân ổn định rồi bấm SAVE lại.';
+      errorMsg.value = t('weighingStationLarge.saveNotStable');
     } else {
-      errorMsg.value = 'Cân đang rỗng (0.00) — đặt vật tư lên cân rồi bấm SAVE.';
+      errorMsg.value = t('weighingStationLarge.saveEmptyScale');
     }
     return;
   }
@@ -1613,9 +1605,7 @@ async function onSave() {
   // "user activation" bắt phải mở trước mọi `await`.
   const unweighed = rows.filter((r: any) => r.weight === null).length;
   if (unweighed > 0) {
-    const ok = await hoiXacNhan(
-      `Còn ${unweighed} dòng CHƯA CÂN. Lưu bây giờ sẽ chốt các dòng đó là KHÔNG ĐẠT và không cân lại được nữa.\n\nVẫn lưu?`
-    );
+    const ok = await hoiXacNhan(t('weighingStationLarge.unweighedConfirm', { count: unweighed }));
     if (!ok) return;
   }
 
@@ -1638,7 +1628,7 @@ async function onSave() {
         rows,
       },
       canTay
-        ? `Cân tay · ${rows.length} dòng`
+        ? t('weighingStationLarge.manualBatchLabel', { count: rows.length })
         : `${activeBatch.value?.color ?? ''} · ${activeBatch.value?.product_code ?? ''}`,
       currentWorkstation.value?.code || 'ws'
     );
@@ -1659,7 +1649,7 @@ async function onSave() {
     } catch (err: any) {
       const status = err?.response?.status;
       if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
-        const loi: string = err?.response?.data?.message || `Máy chủ từ chối mẻ này (HTTP ${status}).`;
+        const loi: string = err?.response?.data?.message || t('weighingStationLarge.serverRejectFallback', { status });
         loiNghiepVu = loi;
         danhDauKet(item.idempotency_key, loi);
       }
@@ -1672,11 +1662,9 @@ async function onSave() {
     await onClear(true, true);
 
     if (loiNghiepVu) {
-      errorMsg.value = `Máy chủ TỪ CHỐI mẻ này: ${loiNghiepVu} Phiếu đã in, mẻ vẫn nằm trong hàng đợi.`;
+      errorMsg.value = t('weighingStationLarge.saveRejected', { reason: loiNghiepVu });
     } else if (!daLenServer) {
-      errorMsg.value =
-        'Chưa gửi được lên máy chủ — mẻ đang nằm trong HÀNG ĐỢI của máy này và sẽ tự gửi khi có mạng. '
-        + 'Phiếu đã in. Cứ quét mẻ tiếp theo bình thường, ĐỪNG xoá dữ liệu trình duyệt.';
+      errorMsg.value = t('weighingStationLarge.saveQueuedOffline');
     }
     return;
   }
@@ -1701,7 +1689,7 @@ async function onSave() {
     await onClear(true, true);
   } catch (err: any) {
     // KHÔNG xoá capturedWeights khi lỗi — số vừa cân phải còn nguyên để bấm SAVE lại.
-    errorMsg.value = err.response?.data?.message || 'Không lưu được mẻ cân. Số đã cân vẫn còn trên màn hình — thử SAVE lại.';
+    errorMsg.value = err.response?.data?.message || t('weighingStationLarge.saveFailedFallback');
   } finally {
     saving.value = false;
   }
@@ -1828,7 +1816,7 @@ const printSlip = async () => {
     });
     inPhieuTrongTrang(res.data?.data?.label_payload || '');
   } catch (err: any) {
-    await baoTin(err.response?.data?.message || 'Không thể in phiếu cân.');
+    await baoTin(err.response?.data?.message || t('weighingStationLarge.printSlipFail'));
   }
 };
 

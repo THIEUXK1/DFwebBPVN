@@ -121,14 +121,13 @@
              Trước 2026-08-02 chỉ có vế đầu, mà vế đầu lại đòi `scaleOnline === true` — nên đúng
              lúc mất mạng thì màn hình IM LẶNG hoàn toàn, chỉ còn một chấm đỏ 9px. -->
         <span v-if="!useSimValue && scaleOnline && signalLost" class="raw-warn">
-          ⚠ MẤT TÍN HIỆU CÂN — kiểm tra Agent / PuTTY / dây cân
+          {{ $t('weighingStationV2.signalLostWarning') }}
           <!-- Tuổi số đọc: phân biệt "Agent chết hẳn" (số nhảy lên vô hạn) với "Agent còn sống
                nhưng số về chậm" (số dừng quanh vài giây) — hai thứ này sửa ở hai chỗ khác nhau. -->
-          <em v-if="readingAgeMs !== null"> (số cân cũ {{ (readingAgeMs / 1000).toFixed(1) }}s)</em>
+          <em v-if="readingAgeMs !== null">{{ $t('weighingStationV2.oldReadingSuffix', { sec: (readingAgeMs / 1000).toFixed(1) }) }}</em>
         </span>
         <span v-else-if="!useSimValue && !scaleOnline" class="raw-warn">
-          ⚠ MẤT KẾT NỐI MÁY CHỦ — số cân không cập nhật. Số đã cân KHÔNG mất, cân lại được ngay
-          khi có mạng.
+          {{ $t('weighingStationV2.serverDisconnectedWarning') }}
         </span>
 
         <!-- Bì giờ TỰ ĐỘNG lấy ở lần đọc ổn định đầu tiên sau NEXT (đúng VBA) — nút này chỉ
@@ -137,9 +136,9 @@
           v-if="currentIndex >= 0 && tareBaseline !== null"
           class="vba-btn tiny"
           @click="retare"
-          title="Bì bị chốt nhầm? Bỏ bì hiện tại, lần đọc ổn định kế tiếp sẽ tự lấy bì mới"
+          :title="$t('weighingStationV2.retareTitle')"
         >
-          BÌ LẠI
+          {{ $t('weighingStationV2.retareButton') }}
         </button>
 
         <!-- Chỉ báo hàng đợi — luôn nằm cạnh đèn tín hiệu cân để thợ thấy cùng một chỗ. Ẩn hẳn
@@ -148,24 +147,24 @@
           v-if="queueCount > 0"
           class="queue-chip"
           :class="{ stuck: stuckCount > 0 }"
-          :title="stuckCount > 0 ? 'Máy chủ từ chối — vẫn đang tự gửi lại, bấm để xem lý do' : 'Mẻ chưa gửi được, sẽ tự gửi khi có mạng — bấm để xem'"
+          :title="stuckCount > 0 ? $t('weighingStationV2.queueStuckTitle') : $t('weighingStationV2.queuePendingTitle')"
           @click="showQueue = true"
         >
-          {{ stuckCount > 0 ? '✕' : '⏳' }} {{ queueCount }} mẻ chờ gửi
-          <span v-if="flushing" class="queue-spin">đang gửi…</span>
-          <span v-else-if="!duongThong" class="queue-spin">mất kết nối</span>
+          {{ stuckCount > 0 ? '✕' : '⏳' }} {{ $t('weighingStationV2.queuePendingCount', { count: queueCount }) }}
+          <span v-if="flushing" class="queue-spin">{{ $t('weighingStationV2.sendingLabel') }}</span>
+          <span v-else-if="!duongThong" class="queue-spin">{{ $t('weighingStationV2.disconnectedLabel') }}</span>
         </button>
 
         <!-- Cỡ hiển thị — để ở đây thay vì trong một trang cài đặt: thợ đứng cân, đeo găng, cần
              chỉnh được ngay tại chỗ khi đổi ca hoặc đổi người. -->
-        <span class="zoom-ctl" title="Phóng to/thu nhỏ toàn màn hình cân (máy này nhớ lựa chọn)">
+        <span class="zoom-ctl" :title="$t('weighingStationV2.zoomCtlTitle')">
           <button class="vba-btn tiny" :disabled="mucPhongTo <= MUC_PHONG[0]" @click="doiCoManHinh(-1)">A−</button>
           <b>{{ Math.round(mucPhongTo * 100) }}%</b>
           <button class="vba-btn tiny" :disabled="mucPhongTo >= MUC_PHONG[MUC_PHONG.length - 1]" @click="doiCoManHinh(1)">A+</button>
         </span>
 
         <label class="sim-toggle">
-          <input type="checkbox" v-model="useSimValue" /> giả lập
+          <input type="checkbox" v-model="useSimValue" /> {{ $t('weighingStationV2.simToggleLabel') }}
         </label>
         <input
           v-if="useSimValue"
@@ -191,40 +190,31 @@
 
       <p v-if="onBlankRow" class="ws2-notice">
         <template v-if="!activeJob">
-          ℹ Đang <strong>cân tay</strong> (chưa quét đơn nào) — SAVE vẫn in phiếu và lưu bình thường,
-          chỉ không có màu/mã hàng/mục tiêu để đối chiếu. Quét mã QR nếu cần cân theo đơn.
+          ℹ {{ $t('weighingStationV2.manualNoticePrefix') }}<strong>{{ $t('weighingStationV2.manualWeighTerm') }}</strong>{{ $t('weighingStationV2.manualNoticeSuffix') }}
         </template>
         <template v-else>
-          ⚠ Dòng {{ currentIndex + 1 }} không có vật tư trong mã QR — cân được để tham khảo, nhưng
-          <strong>SAVE sẽ không lưu số ở dòng này</strong>.
+          ⚠ {{ $t('weighingStationV2.blankRowPrefix', { line: currentIndex + 1 }) }}<strong>{{ $t('weighingStationV2.blankRowStrong') }}</strong>.
         </template>
       </p>
       <p v-if="parallelNotice" class="ws2-notice">ℹ {{ parallelNotice }}</p>
       <p v-if="errorMsg" class="ws2-error">❌ {{ errorMsg }}</p>
       <p v-else-if="!activeJob" class="ws2-hint">
-        Chưa có mẻ nào — đưa con trỏ vào ô <strong>COLOR</strong> rồi quét mã QR trên phiếu để nạp đơn.
-        Cần cân tạm thì <strong>không cần đơn</strong>: đặt vật tư lên cân, thấy số ở ô
-        <strong>RAW</strong> là bấm <strong>SAVE</strong> lưu và in phiếu được ngay. Muốn cân nhiều
-        thứ thành một phiếu thì bấm <strong>NEXT</strong> cho từng thứ rồi mới SAVE.
+        {{ $t('weighingStationV2.hintNoJobP1') }}<strong>COLOR</strong>{{ $t('weighingStationV2.hintNoJobP2') }}<strong>{{ $t('weighingStationV2.hintNoJobStrong') }}</strong>{{ $t('weighingStationV2.hintNoJobP3') }}<strong>RAW</strong>{{ $t('weighingStationV2.hintNoJobP4') }}<strong>SAVE</strong>{{ $t('weighingStationV2.hintNoJobP5') }}<strong>NEXT</strong>{{ $t('weighingStationV2.hintNoJobP6') }}
       </p>
       <p v-else class="ws2-hint">
-        Bấm <strong>NEXT</strong> để bắt đầu ô 1. Mỗi lần NEXT: chốt số ô đang cân rồi sang ô kế và lấy bì mới.
-        Cân xong hết thì bấm <strong>SAVE</strong> để lưu cả mẻ.
+        {{ $t('weighingStationV2.hintJobP1') }}<strong>NEXT</strong>{{ $t('weighingStationV2.hintJobP2') }}<strong>SAVE</strong>{{ $t('weighingStationV2.hintJobP3') }}
       </p>
 
     <!-- Bảng hàng đợi — chỉ mở khi thợ chủ động bấm, không tự bật lên chắn màn hình cân. -->
     <div v-if="showQueue" class="queue-overlay" @click.self="showQueue = false">
       <div class="queue-modal">
         <div class="queue-head">
-          <strong>Mẻ chờ gửi lên máy chủ ({{ queueCount }})</strong>
-          <button class="vba-btn tiny" @click="showQueue = false">ĐÓNG</button>
+          <strong>{{ $t('weighingStationV2.queueModalTitle', { count: queueCount }) }}</strong>
+          <button class="vba-btn tiny" @click="showQueue = false">{{ $t('weighingStationV2.queueModalCloseButton') }}</button>
         </div>
 
         <p class="queue-note">
-          Các mẻ này <strong>đã cân xong và đã in phiếu</strong>, chỉ chưa lên được máy chủ. Máy tự
-          gửi lại khi có mạng. Mẻ nào hỏng hẳn (quét nhầm, phiếu bỏ đi) thì bấm <strong>BỎ MẺ</strong>
-          — mẻ bị bỏ vẫn được giữ vết trong máy để đối chiếu với tờ phiếu đã in.
-          <strong>Đừng xoá dữ liệu trình duyệt</strong> khi danh sách còn mẻ.
+          {{ $t('weighingStationV2.queueNoteP1') }}<strong>{{ $t('weighingStationV2.queueNoteStrong1') }}</strong>{{ $t('weighingStationV2.queueNoteP2') }}<strong>{{ $t('weighingStationV2.discardBatchButton') }}</strong>{{ $t('weighingStationV2.queueNoteP3') }}<strong>{{ $t('weighingStationV2.queueNoteStrong3') }}</strong>{{ $t('weighingStationV2.queueNoteP4') }}
         </p>
 
         <!-- Kết quả của lần bấm THỬ LẠI/BỎ MẺ gần nhất. Bắt buộc phải có: trước đây bấm THỬ LẠI
@@ -235,7 +225,7 @@
 
         <table class="queue-table">
           <thead>
-            <tr><th>Mẻ</th><th>Xếp hàng lúc</th><th class="c-num">Lần thử</th><th>Trạng thái</th><th></th></tr>
+            <tr><th>{{ $t('weighingStationV2.colBatch') }}</th><th>{{ $t('weighingStationV2.colQueuedAt') }}</th><th class="c-num">{{ $t('weighingStationV2.colAttempts') }}</th><th>{{ $t('common.status') }}</th><th></th></tr>
           </thead>
           <tbody>
             <tr v-for="q in queueItems" :key="q.idempotency_key">
@@ -244,20 +234,20 @@
               <td class="c-num">{{ q.so_lan_thu }}</td>
               <td>
                 <span v-if="q.loi_nghiep_vu" class="queue-err">
-                  {{ q.loi_nghiep_vu }} <em>(vẫn đang tự gửi lại mỗi 15 giây)</em>
+                  {{ q.loi_nghiep_vu }} <em>{{ $t('weighingStationV2.retryingEvery15s') }}</em>
                 </span>
-                <span v-else-if="duongThong">đang chờ tới lượt gửi</span>
-                <span v-else>mất kết nối — đang dò lại mỗi 15 giây</span>
+                <span v-else-if="duongThong">{{ $t('weighingStationV2.waitingTurn') }}</span>
+                <span v-else>{{ $t('weighingStationV2.disconnectedRetrying') }}</span>
               </td>
               <!-- THỬ LẠI hiện cho MỌI mẻ (không chỉ mẻ bị server chê): mẻ đang chờ vì mất mạng
                    cũng cần một đường bấm tay để biết ngay đường đã thông chưa. BỎ MẺ là đường
                    thoát cuối cho mẻ hỏng hẳn — có hỏi xác nhận và có lưu vết (xem saveQueue). -->
               <td class="queue-act">
                 <button class="vba-btn tiny" :disabled="flushing" @click="onThuLai(q.idempotency_key)">
-                  THỬ LẠI
+                  {{ $t('weighingStationV2.retryButton') }}
                 </button>
                 <button class="vba-btn tiny danger" :disabled="flushing" @click="onBoMe(q)">
-                  BỎ MẺ
+                  {{ $t('weighingStationV2.discardBatchButton') }}
                 </button>
               </td>
             </tr>
@@ -266,7 +256,7 @@
 
         <div class="queue-foot">
           <button class="vba-btn tiny" :disabled="flushing" @click="onGuiNgay">
-            {{ flushing ? 'ĐANG GỬI…' : 'GỬI NGAY' }}
+            {{ flushing ? $t('weighingStationV2.sendingNow') : $t('weighingStationV2.sendNowButton') }}
           </button>
         </div>
       </div>
@@ -296,6 +286,7 @@
 
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import VbaRackGrid from '../components/weighing/VbaRackGrid.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
@@ -315,6 +306,7 @@ import {
 } from '../services/saveQueue';
 
 const router = useRouter();
+const { t } = useI18n({ useScope: 'global' });
 
 const {
   liveWeight, grossWeight, isStable, scaleOnline, nguonCucBo, signalLive, signalLost, readingAgeMs, tareBaseline, armed,
@@ -717,9 +709,10 @@ watch([isStable, grossWeight], () => {
     armed.value = true;
   } else {
     // Đĩa đã khác -> bì cũ vô nghĩa. Nói rõ ra thay vì âm thầm cho ra số sai.
-    errorMsg.value =
-      `Đĩa cân đã thay đổi trong lúc tải lại trang (${p.gross.toFixed(2)} → ${grossWeight.value.toFixed(2)}). `
-      + 'Các ô đã cân vẫn còn nguyên — bấm NEXT để cân tiếp ô kế và lấy bì mới.';
+    errorMsg.value = t('weighingStationV2.resumePlateChanged', {
+      before: p.gross.toFixed(2),
+      after: grossWeight.value.toFixed(2),
+    });
   }
 });
 
@@ -784,7 +777,7 @@ const handleBarcodeScan = async (token: string) => {
     if (!parsed) {
       scannerService.playBeep(600, 400);
       scanning.value = false;
-      await baoTin('Mã quét thiếu COLOR hoặc CODE nên không mở được mẻ — kiểm tra lại đầu đọc hoặc mã tem. (Thiếu MACHINE/LV thì vẫn nạp được, để trống ô đó.)');
+      await baoTin(t('weighingStationV2.qrMissingColorCode'));
       nextTick(() => scanInputRef.value?.focus());
       return;
     }
@@ -810,7 +803,7 @@ const handleBarcodeScan = async (token: string) => {
     }
   } catch (err: any) {
     scannerService.playBeep(600, 400);
-    await baoTin(err.response?.data?.message || 'Không thể mở lệnh sản xuất này.');
+    await baoTin(err.response?.data?.message || t('weighingStationV2.cannotOpenOrder'));
   } finally {
     scanning.value = false;
     // Trả con trỏ về ô quét để bắn mã kế tiếp ngay, không phải bấm chuột lại.
@@ -962,8 +955,8 @@ async function onClear(skipConfirm = false, alreadySaved = false) {
   if (hasSomething && !skipConfirm) {
     const ok = await hoiXacNhan(
       hasUnsaved
-        ? 'CLEAR sẽ xoá sạch màn hình, kể cả số đã cân nhưng CHƯA bấm SAVE.\n\nVẫn xoá?'
-        : 'CLEAR sẽ xoá đơn đang mở khỏi màn hình. Quét lại mã QR để cân từ đầu.\n\nVẫn xoá?'
+        ? t('weighingStationV2.clearConfirmUnsaved')
+        : t('weighingStationV2.clearConfirmOpen')
     );
     if (!ok) return;
   }
@@ -1085,13 +1078,13 @@ async function onSave() {
     // Nói ĐÚNG lý do: ba nguyên nhân dưới đây cách xử lý khác hẳn nhau, gộp thành một câu chung
     // là thợ đứng bấm lại mãi mà không biết phải làm gì.
     if (!canTay) {
-      errorMsg.value = 'Không có dòng nào để lưu.';
+      errorMsg.value = t('weighingStationV2.noRowsToSave');
     } else if (!signalLive.value) {
-      errorMsg.value = 'Mất tín hiệu cân — số đang hiện là số cũ, không lưu được. Kiểm tra Agent / dây cân.';
+      errorMsg.value = t('weighingStationV2.signalLostCannotSave');
     } else if (!isStable.value) {
-      errorMsg.value = 'Số cân chưa đứng yên — chờ cân ổn định rồi bấm SAVE lại.';
+      errorMsg.value = t('weighingStationV2.notStableCannotSave');
     } else {
-      errorMsg.value = 'Cân đang rỗng (0.00) — đặt vật tư lên cân rồi bấm SAVE.';
+      errorMsg.value = t('weighingStationV2.emptyScaleCannotSave');
     }
     return;
   }
@@ -1106,7 +1099,7 @@ async function onSave() {
   const unweighed = rows.filter((r: any) => r.weight === null).length;
   if (unweighed > 0) {
     const ok = await hoiXacNhan(
-      `Còn ${unweighed} dòng CHƯA CÂN. Lưu bây giờ sẽ chốt các dòng đó là KHÔNG ĐẠT và không cân lại được nữa.\n\nVẫn lưu?`
+      t('weighingStationV2.unweighedRowsConfirm', { count: unweighed })
     );
     if (!ok) return;
   }
@@ -1150,7 +1143,7 @@ async function onSave() {
         rows,
       },
       canTay
-        ? `Cân tay · ${rows.length} dòng`
+        ? t('weighingStationV2.manualBatchLabel', { count: rows.length })
         : `${activeBatch.value?.color ?? ''} · ${activeBatch.value?.product_code ?? ''}`,
       currentWorkstation.value?.code || 'ws'
     );
@@ -1181,7 +1174,7 @@ async function onSave() {
       // gửi. Nhưng VẪN GIỮ trong hàng đợi: phiếu đã in ra giấy ở trên rồi, xoá đi sẽ để lại một
       // tờ phiếu trên hàng mà trong máy không còn dấu vết nào để đối chiếu.
       if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
-        const loi: string = err?.response?.data?.message || `Máy chủ từ chối mẻ này (HTTP ${status}).`;
+        const loi: string = err?.response?.data?.message || t('weighingStationV2.serverRejectedHttp', { status });
         loiNghiepVu = loi;
         danhDauKet(item.idempotency_key, loi);
       }
@@ -1197,13 +1190,9 @@ async function onSave() {
     await onClear(true, true);
 
     if (loiNghiepVu) {
-      errorMsg.value =
-        `Máy chủ TỪ CHỐI mẻ này: ${loiNghiepVu} Phiếu đã in, mẻ vẫn nằm trong hàng đợi — `
-        + 'bấm chỉ báo "mẻ chờ gửi" để xem và xử lý.';
+      errorMsg.value = t('weighingStationV2.serverRejectedBatchMsg', { reason: loiNghiepVu });
     } else if (!daLenServer) {
-      errorMsg.value =
-        'Chưa gửi được lên máy chủ — mẻ đang nằm trong HÀNG ĐỢI của máy này và sẽ tự gửi khi có mạng. '
-        + 'Phiếu đã in. Cứ quét mẻ tiếp theo bình thường, ĐỪNG xoá dữ liệu trình duyệt.';
+      errorMsg.value = t('weighingStationV2.notSentQueuedNotice');
     }
     return;
   }
@@ -1234,7 +1223,7 @@ async function onSave() {
   } catch (err: any) {
     // KHÔNG xoá capturedWeights khi lỗi — số thao tác viên vừa cân phải còn nguyên để bấm
     // SAVE lại, nếu không họ mất trắng cả mẻ.
-    errorMsg.value = err.response?.data?.message || 'Không lưu được mẻ cân. Số đã cân vẫn còn trên màn hình — thử SAVE lại.';
+    errorMsg.value = err.response?.data?.message || t('weighingStationV2.saveFailedKeepData');
   } finally {
     saving.value = false;
   }
@@ -1393,7 +1382,7 @@ const printSlip = async () => {
     });
     inPhieuTrongTrang(res.data?.data?.label_payload || '');
   } catch (err: any) {
-    await baoTin(err.response?.data?.message || 'Không thể in phiếu cân.');
+    await baoTin(err.response?.data?.message || t('weighingStationV2.cannotPrintSlip'));
   }
 };
 
@@ -1474,13 +1463,13 @@ async function onGuiNgay() {
   queueItems.value = danhSachChoGui();
 
   if (da_gui > 0 && queueCount.value === 0) {
-    datQueueMsg(true, `Đã gửi hết ${da_gui}/${truoc} mẻ lên máy chủ.`);
+    datQueueMsg(true, t('weighingStationV2.sentAllBatches', { sent: da_gui, total: truoc }));
   } else if (da_gui > 0) {
-    datQueueMsg(false, `Gửi được ${da_gui}/${truoc} mẻ, còn ${queueCount.value} mẻ chưa lên được — xem lý do ở cột Trạng thái.`);
+    datQueueMsg(false, t('weighingStationV2.sentPartialBatches', { sent: da_gui, total: truoc, remaining: queueCount.value }));
   } else {
     datQueueMsg(false, duongThong.value
-      ? 'Không gửi được mẻ nào — máy chủ có trả lời nhưng từ chối, xem lý do ở cột Trạng thái.'
-      : 'Không gửi được mẻ nào — không kết nối được máy chủ.');
+      ? t('weighingStationV2.noneSentRejected')
+      : t('weighingStationV2.noneSentOffline'));
   }
 }
 
@@ -1492,7 +1481,7 @@ async function onGuiNgay() {
  * hiện nguyên văn lời từ chối của máy chủ.
  */
 async function onThuLai(key: string) {
-  datQueueMsg(true, 'Đang gửi lại…');
+  datQueueMsg(true, t('weighingStationV2.retryingMessage'));
   const { ok, message } = await guiMotNgay(key);
   queueItems.value = danhSachChoGui();
   datQueueMsg(ok, message);
@@ -1504,18 +1493,18 @@ async function onThuLai(key: string) {
  */
 async function onBoMe(q: { idempotency_key: string; nhan: string; queued_at: string }) {
   const dong = [
-    `Bỏ hẳn mẻ "${q.nhan || '—'}" (xếp hàng lúc ${formatQueueTime(q.queued_at)}) khỏi hàng đợi?`,
+    t('weighingStationV2.discardBatchConfirmTitle', { label: q.nhan || '—', time: formatQueueTime(q.queued_at) }),
     '',
-    'Mẻ này sẽ KHÔNG BAO GIỜ được gửi lên máy chủ nữa, trong khi phiếu đã in ra giấy.',
-    'Chỉ bỏ khi phiếu đó cũng bị huỷ (quét nhầm, cân lại mẻ khác).',
+    t('weighingStationV2.discardBatchConfirmLine2'),
+    t('weighingStationV2.discardBatchConfirmLine3'),
   ].join('\n');
   if (!await hoiXacNhan(dong)) return;
 
   const daBo = boMe(q.idempotency_key);
   queueItems.value = danhSachChoGui();
   datQueueMsg(daBo, daBo
-    ? `Đã bỏ mẻ "${q.nhan || '—'}" khỏi hàng đợi (vẫn lưu vết trong máy để đối chiếu).`
-    : 'Mẻ này không còn trong hàng đợi.');
+    ? t('weighingStationV2.discardedBatchMsg', { label: q.nhan || '—' })
+    : t('weighingStationV2.batchNotInQueueMsg'));
   if (queueCount.value === 0) showQueue.value = false;
 }
 

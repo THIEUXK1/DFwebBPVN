@@ -132,8 +132,8 @@
          2026-07-30: "in thoải mái, có nút ok thì đưa xuống bảng lịch sử"). -->
     <section class="section card-sec print-history-panel mb-4" v-if="!label">
       <div class="queue-header">
-        <h3>📋 Lịch sử đã in ({{ printHistory.length }})</h3>
-        <span class="text-muted font-sm">Các đơn đã bấm "✅ OK" ở hàng chờ trên — vẫn in lại được, có ghi lý do.</span>
+        <h3>{{ $t('printStation.historyTitle', { count: printHistory.length }) }}</h3>
+        <span class="text-muted font-sm">{{ $t('printStation.historySubtitle') }}</span>
       </div>
 
       <p v-if="historyError" class="text-error mt-2">❌ {{ historyError }}</p>
@@ -142,15 +142,15 @@
         <table class="data-table">
           <thead>
             <tr>
-              <th>Màu</th>
-              <th>Mã hàng</th>
-              <th>Máy</th>
-              <th>Thùng</th>
-              <th>Mã Lô</th>
-              <th>Thời gian xác nhận</th>
-              <th>Số lần in</th>
-              <th>Trạng thái</th>
-              <th class="actions-col">Thao tác</th>
+              <th>{{ $t('printStation.colColor') }}</th>
+              <th>{{ $t('printStation.colProductCode') }}</th>
+              <th>{{ $t('printStation.colMachine') }}</th>
+              <th>{{ $t('printStation.colTank') }}</th>
+              <th>{{ $t('printStation.colBatchId') }}</th>
+              <th>{{ $t('printStation.colConfirmedAt') }}</th>
+              <th>{{ $t('printStation.colPrintCount') }}</th>
+              <th>{{ $t('common.status') }}</th>
+              <th class="actions-col">{{ $t('common.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -162,22 +162,22 @@
               <td class="highlight-code">{{ d.batch?.legacy_batch_id }}</td>
               <td>{{ formatTime(d.updated_at || d.created_at) }}</td>
               <td class="text-center">{{ d.print_jobs?.length || 1 }}</td>
-              <td><span class="badge badge-green">Đã in</span></td>
+              <td><span class="badge badge-green">{{ $t('printStation.badgePrinted') }}</span></td>
               <td class="actions-cell actions-col">
                 <button
                   @click="reprintFromHistory(d)"
                   class="btn btn-secondary btn-sm"
                   :disabled="reprintingHistoryId === d.id"
-                  title="In lại tem này — bắt buộc nhập lý do, có ghi Audit Log"
+                  :title="$t('printStation.reprintButtonTitle')"
                 >
-                  {{ reprintingHistoryId === d.id ? 'Đang xử lý...' : '🖨️ In lại' }}
+                  {{ reprintingHistoryId === d.id ? $t('printStation.processingButton') : $t('printStation.reprintButton') }}
                 </button>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p v-else class="text-muted text-center mt-3">Chưa có đơn nào được xác nhận xong.</p>
+      <p v-else class="text-muted text-center mt-3">{{ $t('printStation.emptyHistory') }}</p>
     </section>
 
     <!-- Xem trước tem trước khi in — layout giống scaleform.frm (VBA gốc): thông tin đầu
@@ -188,31 +188,31 @@
     <div v-if="previewDispatch" class="modal-overlay" @click.self="closePrintPreview">
       <div class="preview-modal-card">
         <div class="preview-modal-header">
-          <h4>👁️ Xem trước tem — {{ previewDispatch.batch?.legacy_batch_id }}</h4>
+          <h4>{{ $t('printStation.previewTitle', { batchId: previewDispatch.batch?.legacy_batch_id }) }}</h4>
           <button class="close-btn" @click="closePrintPreview">&times;</button>
         </div>
 
         <div class="preview-body">
           <div class="preview-header-grid">
-            <div><span class="label">Mã màu:</span> <span class="val">{{ previewDispatch.batch?.color }}</span></div>
-            <div><span class="label">Mã hàng:</span> <span class="val">{{ previewDispatch.batch?.product_code }}</span></div>
-            <div><span class="label">Máy nhuộm:</span> <span class="machine-tag">{{ previewDispatch.batch?.machine?.code || 'N/A' }}</span></div>
-            <div><span class="label">Thùng:</span> <span class="val">{{ previewDispatch.batch?.tank?.code || 'Chưa gán' }}</span></div>
-            <div><span class="label">Mức nước:</span> <span class="val">{{ previewDispatch.batch?.level_code || 'Mặc định' }}</span></div>
+            <div><span class="label">{{ $t('printStation.labelColor') }}</span> <span class="val">{{ previewDispatch.batch?.color }}</span></div>
+            <div><span class="label">{{ $t('printStation.labelProductCode') }}</span> <span class="val">{{ previewDispatch.batch?.product_code }}</span></div>
+            <div><span class="label">{{ $t('printStation.labelMachine') }}</span> <span class="machine-tag">{{ previewDispatch.batch?.machine?.code || 'N/A' }}</span></div>
+            <div><span class="label">{{ $t('printStation.labelTank') }}</span> <span class="val">{{ previewDispatch.batch?.tank?.code || $t('printStation.notAssigned') }}</span></div>
+            <div><span class="label">{{ $t('printStation.labelWaterLevelPreview') }}</span> <span class="val">{{ previewDispatch.batch?.level_code || $t('printStation.defaultWaterLevel') }}</span></div>
           </div>
 
           <div class="preview-qr-row">
             <canvas ref="previewQrCanvas" class="preview-qr-canvas"></canvas>
             <p class="text-muted font-xs">
-              QR minh họa nội dung — máy in thật dùng đúng mẫu TSPL cấu hình sẵn trên máy in vật lý, có thể khác cách trình bày.
+              {{ $t('printStation.qrCaption') }}
             </p>
           </div>
 
           <div class="rack-tables-row">
             <div class="rack-table-col">
-              <label class="rack-table-title">🧵 Thuốc nhuộm (DYE)</label>
+              <label class="rack-table-title">{{ $t('printStation.dyeSectionTitle') }}</label>
               <table class="data-table rack-table">
-                <thead><tr><th>RACK</th><th>MÃ THUỐC NHUỘM</th><th>KHỐI LƯỢNG</th></tr></thead>
+                <thead><tr><th>RACK</th><th>{{ $t('printStation.rackColDyeCode') }}</th><th>{{ $t('printStation.rackColWeight') }}</th></tr></thead>
                 <tbody>
                   <tr v-for="(line, idx) in previewDyeLines" :key="'pdye-' + idx" class="rack-row-filled">
                     <td class="rack-cell-num">{{ line.rack }}</td>
@@ -223,9 +223,9 @@
               </table>
             </div>
             <div class="rack-table-col">
-              <label class="rack-table-title">🧪 Hóa chất (CHEM)</label>
+              <label class="rack-table-title">{{ $t('printStation.chemSectionTitle') }}</label>
               <table class="data-table rack-table">
-                <thead><tr><th>RACK</th><th>MÃ HÓA CHẤT</th><th>KHỐI LƯỢNG</th></tr></thead>
+                <thead><tr><th>RACK</th><th>{{ $t('printStation.rackColChemCode') }}</th><th>{{ $t('printStation.rackColWeight') }}</th></tr></thead>
                 <tbody>
                   <tr v-for="(line, idx) in previewChemLines" :key="'pchem-' + idx" class="rack-row-filled">
                     <td class="rack-cell-num">{{ line.rack }}</td>
@@ -240,25 +240,25 @@
         </div>
 
         <div class="preview-modal-actions">
-          <button class="btn btn-secondary" @click="closePrintPreview">Đóng</button>
+          <button class="btn btn-secondary" @click="closePrintPreview">{{ $t('common.close') }}</button>
           <button
             class="btn btn-primary"
             :disabled="confirmingId === previewDispatch.id"
             @click="printPreviewViaBrowser"
           >
-            🖥️ In qua trình duyệt
+            {{ $t('printStation.printViaBrowserButton') }}
           </button>
           <button
             class="btn btn-ok"
             :disabled="confirmingId === previewDispatch.id"
             @click="confirmDone(previewDispatch, true)"
           >
-            {{ confirmingId === previewDispatch.id ? 'Đang xử lý...' : '✅ OK — Xong, chuyển xuống lịch sử' }}
+            {{ confirmingId === previewDispatch.id ? $t('printStation.processingButton') : $t('printStation.okConfirmButton') }}
           </button>
         </div>
         <p v-if="confirmError" class="text-error mt-2">❌ {{ confirmError }}</p>
         <p class="text-muted font-xs mt-2">
-          "🖥️ In qua trình duyệt" mở hộp thoại in, bấm được nhiều lần thoải mái (in hỏng cứ in lại). Chỉ khi bấm "✅ OK" đơn mới được xác nhận và chuyển xuống bảng lịch sử.
+          {{ $t('printStation.previewFooterNote') }}
         </p>
       </div>
     </div>
@@ -266,32 +266,32 @@
     <!-- Wait / Scan screen -->
     <div v-if="!label" class="scanning-wait-screen card-sec text-center">
       <div class="scanner-anim-icon">🏷️</div>
-      <h3>QUÉT MÃ QR TRÊN TEM ĐỂ IN LẠI</h3>
-      <p class="text-muted">Dùng khi cần in lại tem bị rách/mất/mờ, không phụ thuộc vào trạm cân đã tạo tem.</p>
+      <h3>{{ $t('printStation.scanTitle') }}</h3>
+      <p class="text-muted">{{ $t('printStation.scanSubtitle') }}</p>
 
       <div class="manual-entry-widget mt-5">
-        <h4>⌨️ Tìm theo mã Lô (khi máy quét lỗi)</h4>
+        <h4>{{ $t('printStation.manualSearchTitle') }}</h4>
         <div class="manual-input-row">
           <input
             v-model="manualQuery"
             @keyup.enter="searchManual"
             type="text"
             class="form-input manual-input"
-            placeholder="Nhập mã Lô, ví dụ: B260716"
+            :placeholder="$t('printStation.manualInputPlaceholder')"
           />
           <button 
             @click="searchManual" 
             class="btn btn-secondary" 
             :disabled="!manualQuery.trim() || searching || (isImpersonating && remoteMode === 'VIEW_ONLY')"
           >
-            {{ searching ? 'Đang tìm...' : 'Tìm' }}
+            {{ searching ? $t('printStation.searchingButton') : $t('printStation.searchButton') }}
           </button>
         </div>
 
         <div v-if="manualError" class="manual-error mt-2">{{ manualError }}</div>
 
         <div v-if="manualResults.length" class="manual-results mt-3">
-          <p class="text-muted font-sm">Tìm thấy {{ manualResults.length }} tem khớp — chọn đúng tem:</p>
+          <p class="text-muted font-sm">{{ $t('printStation.manualResultsFound', { count: manualResults.length }) }}</p>
           <button
             v-for="l in manualResults"
             :key="l.id"
@@ -310,20 +310,20 @@
     <div v-else class="section card-sec label-detail">
       <div class="meta-badge-row mb-3">
         <span class="badge badge-blue">{{ label.material_type }}</span>
-        <span v-if="label.reprint_count > 0" class="badge badge-yellow">Đã in lại {{ label.reprint_count }} lần</span>
+        <span v-if="label.reprint_count > 0" class="badge badge-yellow">{{ $t('printStation.reprintCountBadge', { count: label.reprint_count }) }}</span>
       </div>
 
-      <h3>Lô nhuộm: <span class="text-glow-blue">{{ label.batch?.legacy_batch_id }}</span></h3>
+      <h3>{{ $t('printStation.batchLabelPrefix') }}<span class="text-glow-blue">{{ label.batch?.legacy_batch_id }}</span></h3>
 
       <div class="details-grid mt-4">
-        <div><span class="label">Mã màu:</span> <span class="val">{{ label.batch?.color }}</span></div>
-        <div><span class="label">Máy nhuộm:</span> <span class="machine-tag">{{ label.batch?.machine?.code || 'N/A' }}</span></div>
-        <div><span class="label">Khối lượng:</span> <span class="val bold-text">{{ (label.weight / 1000).toFixed(3) }} kg</span></div>
-        <div><span class="label">Thời gian tạo tem:</span> <span class="val">{{ formatTime(label.created_at) }}</span></div>
+        <div><span class="label">{{ $t('printStation.labelColor') }}</span> <span class="val">{{ label.batch?.color }}</span></div>
+        <div><span class="label">{{ $t('printStation.labelMachine') }}</span> <span class="machine-tag">{{ label.batch?.machine?.code || 'N/A' }}</span></div>
+        <div><span class="label">{{ $t('printStation.labelWeight') }}</span> <span class="val bold-text">{{ (label.weight / 1000).toFixed(3) }} kg</span></div>
+        <div><span class="label">{{ $t('printStation.labelCreatedAt') }}</span> <span class="val">{{ formatTime(label.created_at) }}</span></div>
       </div>
 
       <div class="job-items-sec mt-4" v-if="label.job?.items?.length">
-        <h4>🧪 Thành phần đã cân:</h4>
+        <h4>{{ $t('printStation.componentsTitle') }}</h4>
         <div class="sequence-list">
           <div v-for="item in label.job.items" :key="item.id" class="seq-card done">
             <div class="seq-content">
@@ -337,12 +337,12 @@
       </div>
 
       <div class="form-group mt-4">
-        <label>Lý do in lại (bắt buộc)</label>
+        <label>{{ $t('printStation.reprintReasonLabel') }}</label>
         <input 
           v-model="reprintReason" 
           type="text" 
           class="form-input" 
-          placeholder="Ví dụ: Tem bị rách, mất tem gốc..." 
+          :placeholder="$t('printStation.reprintReasonPlaceholder')"
           :disabled="isImpersonating && remoteMode === 'VIEW_ONLY'"
         />
       </div>
@@ -351,13 +351,13 @@
       <div v-if="reprintSuccess" class="confirm-success mt-2">{{ reprintSuccess }}</div>
 
       <div class="flex-row gap-3 mt-4">
-        <button class="btn btn-secondary flex-1" @click="resetScan">Quét tem khác</button>
+        <button class="btn btn-secondary flex-1" @click="resetScan">{{ $t('printStation.scanOtherButton') }}</button>
         <button
           class="btn btn-primary flex-2"
           @click="submitReprint"
           :disabled="reprinting || reprintReason.trim().length < 5 || (isImpersonating && remoteMode === 'VIEW_ONLY')"
         >
-          {{ reprinting ? 'Đang gửi lệnh in...' : '🖨️ In lại tem' }}
+          {{ reprinting ? $t('printStation.sendingPrintButton') : $t('printStation.reprintLabelButton') }}
         </button>
       </div>
     </div>
@@ -367,6 +367,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import QRCode from 'qrcode';
 import echo from '../services/echo';
@@ -377,6 +378,7 @@ import { parseRackLines } from '../utils/rackParser';
 import { writeDispatchSlipToWindow } from '../utils/dispatchSlipPrint';
 
 const route = useRoute();
+const { t } = useI18n({ useScope: 'global' });
 const isImpersonating = computed(() => route.query.impersonate === 'true');
 const targetWsId = computed(() => route.query.target_ws);
 
@@ -490,7 +492,7 @@ async function confirmAndPrint(dispatch: any, viaBrowser?: boolean) {
       confirmedIds.value.delete(dispatch.id);
     }, 600);
   } catch (err: any) {
-    confirmError.value = err.response?.data?.message || 'Không thể tạo lệnh in cho đơn này.';
+    confirmError.value = err.response?.data?.message || t('printStation.errConfirmGeneric');
   } finally {
     confirmingId.value = null;
   }
@@ -617,14 +619,14 @@ async function reprintFromHistory(dispatch: any) {
   // "transient user activation" của cú click có thể đã hết hạn -> trình duyệt chặn popup.
   const win = window.open('', '_blank', 'width=780,height=980');
   if (!win) {
-    alert('Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.');
+    alert(t('printStation.errPopupBlocked'));
     return;
   }
 
-  const reason = prompt('Lý do in lại tem (bắt buộc, ví dụ: tem bị rách/mất/mờ):');
+  const reason = prompt(t('printStation.promptReprintReason'));
   if (!reason || reason.trim().length < 3) {
     win.close();
-    if (reason !== null) historyError.value = 'Cần nhập lý do in lại (tối thiểu 3 ký tự).';
+    if (reason !== null) historyError.value = t('printStation.errReprintReasonRequired');
     return;
   }
 
@@ -638,7 +640,7 @@ async function reprintFromHistory(dispatch: any) {
     }, getRequestConfig());
     await fetchHistory();
   } catch (err: any) {
-    historyError.value = err.response?.data?.message || 'Không ghi nhận được lần in lại (tem vẫn đã in ra).';
+    historyError.value = err.response?.data?.message || t('printStation.errReprintHistoryGeneric');
   } finally {
     reprintingHistoryId.value = null;
   }
@@ -666,13 +668,13 @@ async function loadLabel(labelId: string) {
       manualQuery.value = '';
     }
   } catch (err: any) {
-    manualError.value = err.response?.data?.message || 'Không tìm thấy tem vật tư tương ứng.';
+    manualError.value = err.response?.data?.message || t('printStation.errLabelNotFound');
   }
 }
 
 function handleScan(token: string) {
   if (!token.startsWith('DF:MATERIAL_LABEL:')) {
-    manualError.value = 'Mã quét không phải mã QR tem vật tư hợp lệ.';
+    manualError.value = t('printStation.errInvalidScan');
     return;
   }
   const labelId = token.split(':')[2];
@@ -692,14 +694,14 @@ async function searchManual() {
     });
     const rows = res.data?.data || [];
     if (rows.length === 0) {
-      manualError.value = `Không tìm thấy tem nào khớp mã "${query}".`;
+      manualError.value = t('printStation.errNoManualMatch', { query });
     } else if (rows.length === 1) {
       scannerService.submitManualEntry(`DF:MATERIAL_LABEL:${rows[0].id}`);
     } else {
       manualResults.value = rows;
     }
   } catch (err: any) {
-    manualError.value = 'Không thể tìm kiếm tem vật tư. Vui lòng thử lại.';
+    manualError.value = t('printStation.errManualSearchFailed');
   } finally {
     searching.value = false;
   }
@@ -789,17 +791,17 @@ async function submitReprint() {
   // cú click (yêu cầu 2026-07-30: "ấn vào đấy ra cái in của trình duyệt luôn").
   const printWin = window.open('', '_blank', 'width=780,height=520');
   if (!printWin) {
-    reprintError.value = 'Trình duyệt đã chặn cửa sổ mới — cho phép popup cho trang này rồi thử lại.';
+    reprintError.value = t('printStation.errPopupBlocked');
     return;
   }
-  printWin.document.write('<p style="font-family:sans-serif;padding:20px;">Đang xử lý...</p>');
+  printWin.document.write(`<p style="font-family:sans-serif;padding:20px;">${t('printStation.processingWindowMessage')}</p>`);
 
   let managerPin: string | null = null;
   const authStore = useAuthStore();
   if (!authStore.user) {
-    managerPin = prompt('Nhập mã PIN của Giám sát (Supervisor) để in lại tem:');
+    managerPin = prompt(t('printStation.promptManagerPin'));
     if (!managerPin) {
-      reprintError.value = 'Cần có mã PIN Giám sát để in lại tem.';
+      reprintError.value = t('printStation.errManagerPinRequired');
       printWin.close();
       return;
     }
@@ -820,7 +822,7 @@ async function submitReprint() {
     await printMaterialLabelViaBrowser(label.value, printWin);
     resetTimer = setTimeout(resetScan, 3000);
   } catch (err: any) {
-    reprintError.value = err.response?.data?.message || 'Không thể in lại tem.';
+    reprintError.value = err.response?.data?.message || t('printStation.errReprintFailed');
     printWin.close();
   } finally {
     reprinting.value = false;

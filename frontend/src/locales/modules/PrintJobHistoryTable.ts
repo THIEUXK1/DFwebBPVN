@@ -33,6 +33,7 @@ export default {
     statusUnknown: 'Không rõ',
     cancelPrintFailed: 'Không thể hủy lệnh in.',
     reprintFailed: 'Không thể tạo lệnh in lại.',
+    printCountSuffix: '({count} lần)',
   },
   en: {
     colBatchCode: 'Batch ID',
@@ -68,6 +69,7 @@ export default {
     statusUnknown: 'Unknown',
     cancelPrintFailed: 'Unable to cancel the print job.',
     reprintFailed: 'Unable to create the reprint job.',
+    printCountSuffix: '({count} times)',
   },
   zh: {
     colBatchCode: '批次号',
@@ -103,5 +105,6 @@ export default {
     statusUnknown: '未知',
     cancelPrintFailed: '无法取消打印任务。',
     reprintFailed: '无法创建补打任务。',
+    printCountSuffix: '（{count} 次）',
   },
 };

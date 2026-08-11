@@ -31,7 +31,7 @@
               <span :class="['badge', printStatusBadgeClass(latestJob(d)?.status)]">
                 {{ printStatusLabel(latestJob(d)?.status) }}
               </span>
-              <span v-if="d.print_jobs?.length > 1" class="text-muted font-xs ml-1">({{ d.print_jobs.length }} lần)</span>
+              <span v-if="d.print_jobs?.length > 1" class="text-muted font-xs ml-1">{{ $t('printJobHistoryTable.printCountSuffix', { count: d.print_jobs.length }) }}</span>
             </td>
             <td class="actions-cell" @click.stop>
               <button

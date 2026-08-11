@@ -18,10 +18,10 @@
          đang dở trên form không bị mất (yêu cầu 07/08/2026). -->
     <div class="vba-topbar">
       <a class="ext-btn" href="/qr-printer/history?tab=sent" target="_blank" rel="noopener">
-        📤 LỊCH SỬ ĐÃ GỬI
+        {{ $t('qrPrinterForm.sentHistoryLink') }}
       </a>
       <a class="ext-btn" href="/qr-printer/history?tab=print" target="_blank" rel="noopener">
-        🖨️ LỊCH SỬ ĐÃ IN
+        {{ $t('qrPrinterForm.printHistoryLink') }}
       </a>
     </div>
 
@@ -43,7 +43,7 @@
             class="vba-text vba-scan vba-f162"
             :style="box(6, 6, 96, 25.2)"
             :readonly="headerLocked"
-            title="txt_COLOR — quét tem vào đây rồi Enter"
+            :title="$t('qrPrinterForm.colorInputTitle')"
             @keyup.enter="onColorCommit"
             @change="onColorCommit"
           />
@@ -189,14 +189,14 @@
          ở đâu trong .xlsm. 63.5 × 38.5mm là giá trị duy nhất ghi trong workbook (DEVMODE của
          sheet RECORD, máy in "TSC TE200 on vn-ld047"). -->
     <div class="vba-statusbar">
-      <span class="vba-zoom">Vừa màn hình: {{ Math.round(scale * 100) }}%</span>
+      <span class="vba-zoom">{{ $t('qrPrinterForm.zoomLabel', { percent: Math.round(scale * 100) }) }}</span>
       <label class="vba-paper">
-        Khổ giấy (mm):
+        {{ $t('qrPrinterForm.paperLabel') }}
         <input v-model.number="paperW" type="number" min="10" max="300" step="0.5" />
         ×
         <input v-model.number="paperH" type="number" min="10" max="300" step="0.5" />
       </label>
-      <span class="vba-hint">Mũi tên ←↑→↓ chuyển ô, Enter xuống ô dưới</span>
+      <span class="vba-hint">{{ $t('qrPrinterForm.keyboardHint') }}</span>
       <span v-if="statusMsg" :class="{ 'is-error': statusIsError }">{{ statusMsg }}</span>
     </div>
 
@@ -208,6 +208,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import AppLayout from '../components/AppLayout.vue';
 import FullscreenButton from '../components/FullscreenButton.vue';
@@ -226,6 +227,7 @@ import {
 // Trang công khai (requiresAuth:false) — App.vue không bọc AppLayout, trang tự bọc lấy khi người
 // xem đã đăng nhập để vẫn có menu điều hướng (mở bằng nút 3 gạch, xem NavToggleButton).
 const isLoggedIn = useAuthStore().isAuthenticated;
+const { t } = useI18n({ useScope: 'global' });
 const pageWrapper = isLoggedIn ? AppLayout : 'div';
 const previousIsFullscreen = isFullscreen.value;
 
@@ -456,7 +458,7 @@ function onColorCommit(): void {
   }
 
   headerLocked.value = true;
-  say(`Đã tách tem: ${parts[0]} — ${header.code || '(không có mã hàng)'}.`);
+  say(t('qrPrinterForm.splitDone', { batch: parts[0], product: header.code || t('qrPrinterForm.noProductCode') }));
 
   // `txt_RACK9` — bản gốc nhảy focus xuống ô RACK DÒNG 9 sau khi tách mã.
   nextTick(() => focusCell(8, 0));
@@ -514,7 +516,7 @@ function handleClearChemWeight(): void {
 /** `btnClose_Click` — bản gốc Unload form và hiện lại Excel; ở web tương đương xoá trắng phiên. */
 function handleClose(): void {
   handleClear();
-  say('Đã đóng phiên nhập (CLOSE) — form đã được xóa trắng.');
+  say(t('qrPrinterForm.closedSession'));
 }
 
 /* ===================================================================================
@@ -587,14 +589,14 @@ async function handleSend(): Promise<void> {
       (m: any) => String(m.code).toUpperCase() === machineCode
     );
     if (!machine) {
-      say(`Máy ${machineCode} chưa có trong danh mục máy của hệ thống web — không gửi được.`, true);
+      say(t('qrPrinterForm.machineNotFound', { machine: machineCode }), true);
       return;
     }
     const tank = (tanksRes.data.data || []).find(
       (t: any) => t.machine_id === machine.id && String(t.code).toUpperCase() === tankCode
     );
     if (!tank) {
-      say(`Máy ${machineCode} chưa có thùng ${tankCode} trong danh mục — không gửi được.`, true);
+      say(t('qrPrinterForm.tankNotFound', { machine: machineCode, tank: tankCode }), true);
       return;
     }
 
@@ -622,7 +624,7 @@ async function handleSend(): Promise<void> {
     handleClear();
     say('Send OK');
   } catch (error: any) {
-    say(error.response?.data?.message || 'Không gửi được đơn.', true);
+    say(error.response?.data?.message || t('qrPrinterForm.sendFailed'), true);
   } finally {
     sending.value = false;
   }
@@ -659,17 +661,17 @@ async function handlePrint(): Promise<void> {
   if (printing.value) return;
   const win = window.open('', '_blank', 'width=900,height=700');
   if (!win) {
-    say('Trình duyệt đã chặn cửa sổ in — cho phép pop-up cho trang này rồi bấm lại.', true);
+    say(t('qrPrinterForm.popupBlocked'), true);
     return;
   }
   printing.value = true;
   try {
     await writeSlipToWindow(win, slipData());
-    logAction('PRINT', { note: `Khổ giấy ${paperW.value} × ${paperH.value} mm` });
-    say('Đã mở phiếu để in.');
+    logAction('PRINT', { note: t('qrPrinterForm.printLogNote', { w: paperW.value, h: paperH.value }) });
+    say(t('qrPrinterForm.printOpened'));
   } catch (err) {
     win.close();
-    say('Không dựng được phiếu in: ' + (err instanceof Error ? err.message : String(err)), true);
+    say(t('qrPrinterForm.printBuildFailed', { error: err instanceof Error ? err.message : String(err) }), true);
   } finally {
     printing.value = false;
   }

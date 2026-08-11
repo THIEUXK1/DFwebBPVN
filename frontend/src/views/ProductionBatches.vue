@@ -3,17 +3,17 @@
     <!-- Page Header -->
     <div class="page-header-row">
       <div class="header-titles">
-        <h2>🔫 Trạm Quét đơn sản xuất</h2>
-        <p class="text-muted">Quét mã QR "ALL DATA" trên phiếu MES để tạo lô sản xuất mới.</p>
+        <h2>{{ $t('productionBatches.pageTitle') }}</h2>
+        <p class="text-muted">{{ $t('productionBatches.pageDesc') }}</p>
       </div>
       <div class="header-actions">
         <router-link to="/production-batches/list" class="btn btn-secondary">
           <SvgIcon name="batch" size="18" />
-          Xem danh sách Lô sản xuất
+          {{ $t('productionBatches.navList') }}
         </router-link>
         <router-link to="/production-batches/grid" class="btn btn-secondary">
           <SvgIcon name="batch" size="18" />
-          Nhập đơn (Form VBA)
+          {{ $t('productionBatches.navGrid') }}
         </router-link>
       </div>
     </div>
@@ -24,57 +24,57 @@
          Xác nhận bằng 2 mẫu QR thật (phiếu MES BEST PACIFIC + ảnh chụp MainForm đang chạy). -->
     <section class="section card-sec scan-order-panel mb-4">
       <div class="scan-panel-header">
-        <h3>🔫 Quét đơn sản xuất (MES QR)</h3>
-        <span class="text-muted">Quét mã "ALL DATA" trên phiếu MES vào ô bên dưới — hệ thống tự tách thông tin.</span>
+        <h3>{{ $t('productionBatches.panelTitle') }}</h3>
+        <span class="text-muted">{{ $t('productionBatches.panelDesc') }}</span>
       </div>
 
       <div class="scan-input-row">
-        <label>SCAN QR</label>
+        <label>{{ $t('productionBatches.scanLabel') }}</label>
         <input
           ref="scanInputRef"
           @keyup.enter="handleScan"
           type="text"
           autocomplete="off"
           :disabled="scanning"
-          :placeholder="scanning ? 'Đang xử lý mã vừa quét...' : 'Đưa con trỏ vào đây rồi quét mã QR trên phiếu MES...'"
+          :placeholder="scanning ? $t('productionBatches.scanPlaceholderBusy') : $t('productionBatches.scanPlaceholderIdle')"
           class="form-control scan-input-large"
         />
       </div>
 
       <p v-if="debugRawScan" class="text-muted mono-text scan-debug-line">
-        🔍 Debug raw_scan nhận được ở server: "{{ debugRawScan }}"
+        {{ $t('productionBatches.debugRawScanLine', { value: debugRawScan }) }}
       </p>
 
       <div class="scan-fields-grid">
         <div class="form-group">
-          <label>Mã màu (Color)</label>
+          <label>{{ $t('productionBatches.labelColor') }}</label>
           <input v-model="scanForm.color" type="text" class="form-control" placeholder="AP88646" />
         </div>
         <div class="form-group">
-          <label>Mã hàng (Code)</label>
+          <label>{{ $t('productionBatches.labelCode') }}</label>
           <input v-model="scanForm.code" type="text" class="form-control" placeholder="T6276" />
         </div>
         <div class="form-group">
-          <label>MACHINE</label>
+          <label>{{ $t('productionBatches.labelMachine') }}</label>
           <select v-model="scanMachineId" class="form-select" @change="onScanMachineChange">
-            <option :value="null">-- Chọn máy --</option>
+            <option :value="null">{{ $t('productionBatches.optSelectMachine') }}</option>
             <option v-for="m in machines" :key="m.id" :value="m.id">{{ m.code }}</option>
           </select>
           <span v-if="scanForm.machine && !scanMachineId" class="text-error scan-hint">
-            Quét ra "{{ scanForm.machine }}" — không khớp máy nào, chọn tay ở trên.
+            {{ $t('productionBatches.scanMachineMismatchHint', { machine: scanForm.machine }) }}
           </span>
         </div>
         <div class="form-group">
-          <label>TANK</label>
+          <label>{{ $t('productionBatches.labelTank') }}</label>
           <select v-model="scanTankId" class="form-select" :disabled="!scanMachineId">
-            <option :value="null">-- Chọn thùng --</option>
+            <option :value="null">{{ $t('productionBatches.optSelectTank') }}</option>
             <option v-for="t in availableTanks" :key="t.id" :value="t.id">{{ t.code }}</option>
           </select>
         </div>
         <div class="form-group">
-          <label>OK (Mức nước)</label>
+          <label>{{ $t('productionBatches.labelWaterLevel') }}</label>
           <select v-model="scanForm.level" class="form-select">
-            <option value="">-- Chọn mức nước --</option>
+            <option value="">{{ $t('productionBatches.optSelectWaterLevel') }}</option>
             <option v-for="lv in waterLevels" :key="lv" :value="String(lv)">{{ lv }}</option>
           </select>
         </div>
@@ -82,11 +82,11 @@
 
       <div class="scan-raw-preview" v-if="scanForm.rawQrDye || scanForm.rawQrChemical">
         <div class="raw-box">
-          <label>Dữ liệu cân thuốc nhuộm (raw_qr_dye)</label>
+          <label>{{ $t('productionBatches.rawDyeLabel') }}</label>
           <input :value="scanForm.rawQrDye" type="text" class="form-control mono-text" readonly />
         </div>
         <div class="raw-box">
-          <label>Dữ liệu cân hóa chất (raw_qr_chem)</label>
+          <label>{{ $t('productionBatches.rawChemLabel') }}</label>
           <input :value="scanForm.rawQrChemical" type="text" class="form-control mono-text" readonly />
         </div>
       </div>
@@ -94,13 +94,13 @@
       <!-- Bảng tách dòng RACK/MÃ/KHỐI LƯỢNG — giống layout scaleform.frm (VBA gốc) -->
       <div class="rack-tables-row" v-if="dyeRackLines.length || chemRackLines.length">
         <div class="rack-table-col">
-          <label class="rack-table-title">🧵 Thuốc nhuộm (DYE)</label>
+          <label class="rack-table-title">{{ $t('productionBatches.rackDyeTitle') }}</label>
           <table class="data-table rack-table">
             <thead>
               <tr>
-                <th>RACK</th>
-                <th>MÃ THUỐC NHUỘM</th>
-                <th>KHỐI LƯỢNG</th>
+                <th>{{ $t('productionBatches.colRack') }}</th>
+                <th>{{ $t('productionBatches.colDyeCode') }}</th>
+                <th>{{ $t('productionBatches.colWeight') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -113,13 +113,13 @@
           </table>
         </div>
         <div class="rack-table-col">
-          <label class="rack-table-title">🧪 Hóa chất (CHEM)</label>
+          <label class="rack-table-title">{{ $t('productionBatches.rackChemTitle') }}</label>
           <table class="data-table rack-table">
             <thead>
               <tr>
-                <th>RACK</th>
-                <th>MÃ HÓA CHẤT</th>
-                <th>KHỐI LƯỢNG</th>
+                <th>{{ $t('productionBatches.colRack') }}</th>
+                <th>{{ $t('productionBatches.colChemCode') }}</th>
+                <th>{{ $t('productionBatches.colWeight') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -134,8 +134,7 @@
       </div>
 
       <p v-if="scanIncomplete" class="text-error mt-2 scan-incomplete-warning">
-        ⚠️ Mã quét có dấu hiệu bị rớt ký tự giữa chừng (thiếu đoạn thuốc nhuộm/hóa chất) — dữ liệu bên dưới KHÔNG đáng tin.
-        Vui lòng đưa lại phiếu MES và quét lại, không SAVE khi còn cảnh báo này.
+        {{ $t('productionBatches.scanIncompleteWarning') }}
       </p>
       <p v-if="scanErrorMsg" class="text-error mt-2">❌ {{ scanErrorMsg }}</p>
       <p v-if="scanSuccessMsg" class="text-success mt-2">✅ {{ scanSuccessMsg }}</p>
@@ -144,7 +143,7 @@
         <p class="text-error">⚠️ {{ duplicateWarning }}</p>
         <label class="duplicate-confirm-label">
           <input type="checkbox" v-model="confirmDuplicateSave" />
-          Tôi xác nhận vẫn muốn lưu đơn này (biết rõ có thể trùng)
+          {{ $t('productionBatches.duplicateConfirmLabel') }}
         </label>
       </div>
 
@@ -154,24 +153,23 @@
           class="btn btn-primary"
           :disabled="savingScan || scanIncomplete || !scanForm.color || !scanForm.code || !scanMachineId || (!!duplicateWarning && !confirmDuplicateSave)"
         >
-          {{ savingScan ? 'Đang lưu...' : (duplicateWarning ? '💾 SAVE (đã xác nhận trùng)' : '💾 SAVE') }}
+          {{ savingScan ? $t('productionBatches.btnSaving') : (duplicateWarning ? $t('productionBatches.btnSaveDuplicateConfirmed') : $t('productionBatches.btnSave')) }}
         </button>
-        <button @click="clearScanForm" class="btn btn-secondary">CLEAR</button>
+        <button @click="clearScanForm" class="btn btn-secondary">{{ $t('productionBatches.btnClear') }}</button>
         <button
           @click="confirm2Ok = !confirm2Ok"
           class="btn"
           :class="confirm2Ok ? 'btn-success' : 'btn-secondary'"
           :disabled="scanIncomplete"
         >
-          {{ confirm2Ok ? '✅ ĐÃ PHÊ DUYỆT' : 'PHÊ DUYỆT' }}
+          {{ confirm2Ok ? $t('productionBatches.btnApprovedOn') : $t('productionBatches.btnApprove') }}
         </button>
         <button @click="checkDuplicateOrder" class="btn btn-secondary" :disabled="!scanForm.color || !scanForm.code">
-          CHECK
+          {{ $t('productionBatches.btnCheck') }}
         </button>
       </div>
       <p class="text-muted scan-footnote">
-        Tick PHÊ DUYỆT trước khi SAVE = lưu &amp; gửi hàng chờ in tem ngay trong cùng thao tác (như VBA).
-        Không tick = chỉ lưu đơn chờ (NEW), duyệt sau ở trang "Xem danh sách Lô sản xuất". Chọn Thùng là tùy chọn, không bắt buộc để duyệt.
+        {{ $t('productionBatches.footnote') }}
       </p>
     </section>
 
@@ -180,23 +178,23 @@
          (đã sắp created_at desc từ backend, chỉ cần cắt N dòng đầu — RECENT_BATCH_LIMIT). -->
     <section class="section card-sec recent-batches-panel">
       <div class="recent-header">
-        <h3>🕘 {{ RECENT_BATCH_LIMIT }} lô gần nhất</h3>
-        <router-link to="/production-batches/list" class="text-muted font-sm">Xem đầy đủ →</router-link>
+        <h3>{{ $t('productionBatches.recentTitle', { limit: RECENT_BATCH_LIMIT }) }}</h3>
+        <router-link to="/production-batches/list" class="text-muted font-sm">{{ $t('productionBatches.viewAllLink') }}</router-link>
       </div>
       <div class="table-container-fixed mt-3">
         <table class="data-table">
           <thead>
             <tr>
-              <th>Mã Lô</th>
-              <th>Màu</th>
-              <th>Mã hàng</th>
-              <th>Máy</th>
-              <th>Thùng</th>
-              <th>Mức nước</th>
-              <th>Tiến Trình</th>
-              <th>Trạng thái</th>
-              <th>Cập nhật</th>
-              <th>Thao tác</th>
+              <th>{{ $t('productionBatches.colBatchId') }}</th>
+              <th>{{ $t('productionBatches.colColor') }}</th>
+              <th>{{ $t('productionBatches.colProductCode') }}</th>
+              <th>{{ $t('productionBatches.colMachine') }}</th>
+              <th>{{ $t('productionBatches.colTank') }}</th>
+              <th>{{ $t('productionBatches.colWaterLevelShort') }}</th>
+              <th>{{ $t('productionBatches.colProgress') }}</th>
+              <th>{{ $t('productionBatches.colStatus') }}</th>
+              <th>{{ $t('productionBatches.colUpdated') }}</th>
+              <th>{{ $t('productionBatches.colActions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -213,22 +211,22 @@
                   @change="updateTank(batch, ($event.target as HTMLSelectElement).value)"
                   @blur="editingTankBatchId = null"
                 >
-                  <option value="">-- Không chọn --</option>
+                  <option value="">{{ $t('productionBatches.optTankNone') }}</option>
                   <option v-for="t in tanks.filter(t => t.machine_id === batch.machine_id)" :key="t.id" :value="t.id">
                     {{ t.code }}
                   </option>
                 </select>
-                <button v-else-if="batch.status === 'NEW'" class="tank-pick-btn" @click="editingTankBatchId = batch.id" title="Bấm để chọn nhanh Thùng trộn">
+                <button v-else-if="batch.status === 'NEW'" class="tank-pick-btn" @click="editingTankBatchId = batch.id" :title="$t('productionBatches.tankPickTitle')">
                   <span class="tank-tag" v-if="batch.tank">{{ batch.tank?.code }}</span>
-                  <span class="text-muted" v-else>+ Chọn thùng</span>
+                  <span class="text-muted" v-else>{{ $t('productionBatches.tankPickPlaceholder') }}</span>
                 </button>
-                <span v-else class="tank-tag" title="Đơn đã duyệt — không thể đổi Thùng trộn nữa">
+                <span v-else class="tank-tag" :title="$t('productionBatches.tankLockedTitle')">
                   {{ batch.tank?.code || 'N/A' }}
                 </span>
               </td>
               <td>{{ batch.level_code || 'N/A' }}</td>
               <td>
-                <div class="progress-bar-wrapper" :title="'Độ hoàn tất: ' + getProgressPercent(batch.status) + '%'">
+                <div class="progress-bar-wrapper" :title="$t('productionBatches.progressTitle', { percent: getProgressPercent(batch.status) })">
                   <div class="progress-bar-fill" :style="{ width: getProgressPercent(batch.status) + '%' }"></div>
                 </div>
               </td>
@@ -238,23 +236,23 @@
                 <button
                   @click="openRecentDetail(batch)"
                   class="btn btn-secondary btn-sm"
-                  title="Xem chi tiết Thuốc nhuộm (DYE) và Hóa chất (CHEM) của lô này"
+                  :title="$t('productionBatches.detailBtnTitle')"
                 >
-                  👁️ Chi tiết
+                  {{ $t('productionBatches.detailBtnLabel') }}
                 </button>
                 <button
                   v-if="batch.status === 'NEW'"
                   @click="approveRecentBatch(batch)"
                   class="btn btn-primary btn-sm"
                   :disabled="approvingRecentId === batch.id || !batch.tank"
-                  :title="!batch.tank ? 'Phải chọn Thùng trộn trước khi duyệt' : ''"
+                  :title="!batch.tank ? $t('productionBatches.approveTankRequiredTitle') : ''"
                 >
-                  {{ approvingRecentId === batch.id ? 'Đang duyệt...' : (!batch.tank ? '⚠️ Chưa có Thùng' : '✅ Duyệt') }}
+                  {{ approvingRecentId === batch.id ? $t('productionBatches.approvingLabel') : (!batch.tank ? $t('productionBatches.approveMissingTank') : $t('productionBatches.approveLabel')) }}
                 </button>
               </td>
             </tr>
             <tr v-if="recentBatches.length === 0">
-              <td colspan="10" class="text-center text-muted pad-empty-row">Chưa có lô sản xuất nào.</td>
+              <td colspan="10" class="text-center text-muted pad-empty-row">{{ $t('productionBatches.emptyRecentBatches') }}</td>
             </tr>
           </tbody>
         </table>
@@ -266,7 +264,7 @@
     <div class="drawer-overlay center-modal-overlay" v-if="recentDetailOpen" @click.self="closeRecentDetail">
       <div class="right-drawer detail-modal">
         <div class="drawer-header">
-          <h3>🔍 Chi tiết Lô sản xuất</h3>
+          <h3>{{ $t('productionBatches.detailModalTitle') }}</h3>
           <button @click="closeRecentDetail" class="drawer-close-btn">&times;</button>
         </div>
 
@@ -275,49 +273,49 @@
             <span :class="['badge', getRecentStatusClass(selectedRecentBatch.status)]" class="hero-badge">
               {{ selectedRecentBatch.status }}
             </span>
-            <h4>Lô: {{ selectedRecentBatch.legacy_batch_id }}</h4>
+            <h4>{{ $t('productionBatches.detailBatchHeading', { batchId: selectedRecentBatch.legacy_batch_id }) }}</h4>
           </div>
 
           <div class="detail-info-list">
             <div class="detail-item">
-              <span class="detail-label">Mã màu công thức (Color)</span>
+              <span class="detail-label">{{ $t('productionBatches.detailColorLabel') }}</span>
               <span class="detail-value">{{ selectedRecentBatch.color }}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Mã hàng sản phẩm (Product)</span>
+              <span class="detail-label">{{ $t('productionBatches.detailProductLabel') }}</span>
               <span class="detail-value">{{ selectedRecentBatch.product_code }}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Máy nhuộm chỉ định</span>
+              <span class="detail-label">{{ $t('productionBatches.detailMachineLabel') }}</span>
               <span class="detail-value">{{ selectedRecentBatch.machine ? selectedRecentBatch.machine.code + ' - ' + selectedRecentBatch.machine.name : 'N/A' }}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Thùng trộn nhuộm</span>
+              <span class="detail-label">{{ $t('productionBatches.detailTankLabel') }}</span>
               <select
                 v-if="selectedRecentBatch.status === 'NEW'"
                 :value="selectedRecentBatch.tank_id || ''"
                 class="form-select detail-tank-select"
                 @change="updateTank(selectedRecentBatch, ($event.target as HTMLSelectElement).value)"
               >
-                <option value="">-- Chưa chọn --</option>
+                <option value="">{{ $t('productionBatches.optTankNotSelected') }}</option>
                 <option v-for="t in tanks.filter(t => t.machine_id === selectedRecentBatch.machine_id)" :key="t.id" :value="t.id">
-                  Thùng {{ t.code }}
+                  {{ $t('productionBatches.tankPrefixed', { code: t.code }) }}
                 </option>
               </select>
-              <span v-else class="detail-value" title="Đơn đã duyệt — không thể đổi Thùng trộn nữa">
-                {{ selectedRecentBatch.tank ? 'Thùng ' + selectedRecentBatch.tank.code : 'Chưa chọn' }}
+              <span v-else class="detail-value" :title="$t('productionBatches.tankLockedTitle')">
+                {{ selectedRecentBatch.tank ? $t('productionBatches.tankPrefixed', { code: selectedRecentBatch.tank.code }) : $t('productionBatches.tankNotSelected') }}
               </span>
             </div>
             <div class="detail-item" v-if="selectedRecentBatch.level_code">
-              <span class="detail-label">Mức nước chỉ định</span>
+              <span class="detail-label">{{ $t('productionBatches.detailWaterLevelLabel') }}</span>
               <span class="detail-value">{{ selectedRecentBatch.level_code }}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Ngày khởi tạo</span>
+              <span class="detail-label">{{ $t('productionBatches.detailCreatedLabel') }}</span>
               <span class="detail-value">{{ formatRecentDate(selectedRecentBatch.created_at) }}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Ngày cập nhật gần nhất</span>
+              <span class="detail-label">{{ $t('productionBatches.detailUpdatedLabel') }}</span>
               <span class="detail-value">{{ formatRecentDate(selectedRecentBatch.updated_at) }}</span>
             </div>
           </div>
@@ -325,9 +323,9 @@
           <!-- Bảng tách dòng RACK/MÃ/KHỐI LƯỢNG — giống layout scaleform.frm (VBA gốc) -->
           <div class="rack-tables-row mt-4" v-if="selectedRecentDyeLines.length || selectedRecentChemLines.length">
             <div class="rack-table-col">
-              <label class="rack-table-title">🧵 Thuốc nhuộm (DYE)</label>
+              <label class="rack-table-title">{{ $t('productionBatches.rackDyeTitle') }}</label>
               <table class="data-table rack-table">
-                <thead><tr><th>RACK</th><th>MÃ THUỐC NHUỘM</th><th>KHỐI LƯỢNG</th></tr></thead>
+                <thead><tr><th>{{ $t('productionBatches.colRack') }}</th><th>{{ $t('productionBatches.colDyeCode') }}</th><th>{{ $t('productionBatches.colWeight') }}</th></tr></thead>
                 <tbody>
                   <tr v-for="(line, idx) in selectedRecentDyeLines" :key="'rec-dye-' + idx" class="rack-row-filled">
                     <td class="rack-cell-num">{{ line.rack }}</td>
@@ -338,9 +336,9 @@
               </table>
             </div>
             <div class="rack-table-col">
-              <label class="rack-table-title">🧪 Hóa chất (CHEM)</label>
+              <label class="rack-table-title">{{ $t('productionBatches.rackChemTitle') }}</label>
               <table class="data-table rack-table">
-                <thead><tr><th>RACK</th><th>MÃ HÓA CHẤT</th><th>KHỐI LƯỢNG</th></tr></thead>
+                <thead><tr><th>{{ $t('productionBatches.colRack') }}</th><th>{{ $t('productionBatches.colChemCode') }}</th><th>{{ $t('productionBatches.colWeight') }}</th></tr></thead>
                 <tbody>
                   <tr v-for="(line, idx) in selectedRecentChemLines" :key="'rec-chem-' + idx" class="rack-row-filled">
                     <td class="rack-cell-num">{{ line.rack }}</td>
@@ -351,10 +349,10 @@
               </table>
             </div>
           </div>
-          <p v-else class="text-muted font-sm mt-4">Lô này không có dữ liệu quét DYE/CHEM (được tạo bằng tay hoặc từ MES giả lập).</p>
+          <p v-else class="text-muted font-sm mt-4">{{ $t('productionBatches.noRackData') }}</p>
 
           <p v-if="selectedRecentBatch.status === 'NEW' && !selectedRecentBatch.tank" class="text-error mt-2">
-            ⚠️ Phải chọn Thùng trộn trước khi duyệt đơn này.
+            {{ $t('productionBatches.tankRequiredWarning') }}
           </p>
 
           <div class="drawer-actions mt-4">
@@ -363,11 +361,11 @@
               @click="approveRecentBatch(selectedRecentBatch)"
               class="btn btn-primary flex-2"
               :disabled="approvingRecentId === selectedRecentBatch.id || !selectedRecentBatch.tank"
-              :title="!selectedRecentBatch.tank ? 'Phải chọn Thùng trộn trước khi duyệt' : ''"
+              :title="!selectedRecentBatch.tank ? $t('productionBatches.approveTankRequiredTitle') : ''"
             >
-              {{ approvingRecentId === selectedRecentBatch.id ? 'Đang duyệt...' : '✅ Duyệt đơn → Tạo hàng chờ in tem' }}
+              {{ approvingRecentId === selectedRecentBatch.id ? $t('productionBatches.approvingLabel') : $t('productionBatches.approveCta') }}
             </button>
-            <button @click="closeRecentDetail" class="btn btn-secondary flex-1">Đóng cửa sổ</button>
+            <button @click="closeRecentDetail" class="btn btn-secondary flex-1">{{ $t('productionBatches.closeWindow') }}</button>
           </div>
         </div>
       </div>
@@ -377,11 +375,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, reactive, nextTick } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import SvgIcon from '../components/SvgIcon.vue';
 import { currentWorkstation } from '../services/workstation';
 import { parseRackLines } from '../utils/rackParser';
 import echo from '../services/echo';
+
+const { t } = useI18n({ useScope: 'global' });
 
 // Danh sách lô gần đây — dùng làm nguồn cho CHECK trùng màu/mã hàng trước khi SAVE
 // (checkDuplicateOrder) VÀ hiển thị nhanh N dòng mới nhất cuối trang (recentBatches).
@@ -456,7 +457,7 @@ const updateTank = async (batch: any, tankIdRaw: string) => {
     batch.tank_id = res.data.data.tank_id;
     batch.tank = res.data.data.tank;
   } catch (error: any) {
-    alert(error.response?.data?.message || 'Không thể cập nhật Thùng trộn.');
+    alert(error.response?.data?.message || t('productionBatches.errUpdateTank'));
   }
 };
 
@@ -468,7 +469,7 @@ const approveRecentBatch = async (batch: any) => {
     });
     batch.status = 'APPROVED';
   } catch (error: any) {
-    alert(error.response?.data?.message || 'Không thể duyệt đơn.');
+    alert(error.response?.data?.message || t('productionBatches.errApproveBatch'));
   } finally {
     approvingRecentId.value = null;
   }
@@ -594,7 +595,7 @@ const handleScan = async () => {
     scanTankId.value = null;
     autoCheckDuplicateAfterScan();
   } catch (error: any) {
-    scanErrorMsg.value = error.response?.data?.message || 'Không đọc được mã quét.';
+    scanErrorMsg.value = error.response?.data?.message || t('productionBatches.errScanRead');
   } finally {
     scanning.value = false;
     // Input bị disabled trong lúc xử lý nên mất focus — trả focus lại để quét liên
@@ -638,7 +639,7 @@ const isDuplicateOrder = (color: string, code: string, machineId: number | null)
 // đơn kế mà không hay đơn này đang trùng.
 const autoCheckDuplicateAfterScan = () => {
   if (isDuplicateOrder(scanForm.color, scanForm.code, scanMachineId.value)) {
-    duplicateWarning.value = 'Nghi ngờ trùng: đã có đơn cùng mã màu + mã hàng + máy đang chờ duyệt (chưa gửi máy). Tick xác nhận rồi lưu lại nếu vẫn muốn tạo mới.';
+    duplicateWarning.value = t('productionBatches.duplicateAutoWarning');
   }
 };
 
@@ -650,9 +651,9 @@ const checkDuplicateOrder = async () => {
   scanSuccessMsg.value = '';
   const duplicate = isDuplicateOrder(scanForm.color, scanForm.code, scanMachineId.value);
   if (duplicate) {
-    scanSuccessMsg.value = 'YES — Đơn đã tồn tại (đang chờ duyệt).';
+    scanSuccessMsg.value = t('productionBatches.checkResultYes');
   } else {
-    scanSuccessMsg.value = 'NO — Chưa tồn tại, có thể lưu mới.';
+    scanSuccessMsg.value = t('productionBatches.checkResultNo');
   }
 };
 
@@ -663,7 +664,7 @@ const saveScanOrder = async () => {
   scanSuccessMsg.value = '';
 
   if (!scanForm.color || !scanForm.code || !scanMachineId.value) {
-    scanErrorMsg.value = 'Khong du thong tin (thiếu màu/mã hàng/máy).';
+    scanErrorMsg.value = t('productionBatches.errMissingInfo');
     return;
   }
 
@@ -691,15 +692,17 @@ const saveScanOrder = async () => {
         await axios.post(`/api/production-batches/${newBatch.id}/approve`, {
           workstation_id: currentWorkstation.value?.code
         });
-        scanSuccessMsg.value = `Đã lưu và gửi hàng chờ in tem: ${scanForm.color} - ${scanForm.code}.`;
+        scanSuccessMsg.value = t('productionBatches.msgSentToPrintQueue', { color: scanForm.color, code: scanForm.code });
       } catch (approveErr: any) {
         // Lưu đơn đã thành công — chỉ riêng bước duyệt tự động thất bại (vd chưa chọn
         // Thùng trộn). Báo rõ để người vận hành tự duyệt lại thủ công trong bảng bên dưới,
         // không lặng lẽ nuốt lỗi.
-        scanErrorMsg.value = `Đã lưu đơn nhưng DUYỆT TỰ ĐỘNG thất bại: ${approveErr.response?.data?.message || 'Lỗi không xác định'}. Duyệt lại thủ công ở trang "Xem danh sách Lô sản xuất".`;
+        scanErrorMsg.value = t('productionBatches.msgAutoApproveFailed', {
+          error: approveErr.response?.data?.message || t('productionBatches.errUnknownFallback')
+        });
       }
     } else {
-      scanSuccessMsg.value = `Đã lưu đơn (chờ duyệt): ${scanForm.color} - ${scanForm.code}.`;
+      scanSuccessMsg.value = t('productionBatches.msgSavedPending', { color: scanForm.color, code: scanForm.code });
     }
 
     clearScanForm();
@@ -708,7 +711,7 @@ const saveScanOrder = async () => {
     if (error.response?.data?.status === 'DUPLICATE_WARNING') {
       duplicateWarning.value = error.response.data.message;
     } else {
-      scanErrorMsg.value = error.response?.data?.message || 'Có lỗi khi lưu đơn.';
+      scanErrorMsg.value = error.response?.data?.message || t('productionBatches.errSaveGeneric');
     }
   } finally {
     savingScan.value = false;

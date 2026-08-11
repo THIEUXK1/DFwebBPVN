@@ -2,8 +2,8 @@
   <div class="kiosk-setup-container">
     <div class="setup-card">
       <div class="setup-header">
-        <h2>🖥️ Thiết lập Máy trạm (Workstation Setup)</h2>
-        <p class="text-muted">Nhập mã Registration Token được cấp bởi Quản trị viên để đăng ký thiết bị này vào hệ thống.</p>
+        <h2>🖥️ {{ $t('workstationKioskSetup.title') }}</h2>
+        <p class="text-muted">{{ $t('workstationKioskSetup.description') }}</p>
       </div>
 
       <div v-if="errorMsg" class="card error-card mb-4">{{ errorMsg }}</div>
@@ -11,7 +11,7 @@
 
       <form @submit.prevent="handleHandshake">
         <div class="form-group mb-3">
-          <label>Mã kích hoạt trạm (Registration Token)</label>
+          <label>{{ $t('workstationKioskSetup.labelToken') }}</label>
           <input 
             v-model="token" 
             type="text" 
@@ -23,21 +23,21 @@
 
         <div class="row">
           <div class="col form-group mb-3">
-            <label>Tên máy tính (Hostname)</label>
-            <input 
-              v-model="hostname" 
-              type="text" 
-              class="form-input" 
-              placeholder="VD: PC-WEIGH-01"
+            <label>{{ $t('workstationKioskSetup.labelHostname') }}</label>
+            <input
+              v-model="hostname"
+              type="text"
+              class="form-input"
+              :placeholder="$t('workstationKioskSetup.placeholderHostname')"
             />
           </div>
           <div class="col form-group mb-3">
-            <label>Địa chỉ vật lý (MAC Address)</label>
-            <input 
-              v-model="macAddress" 
-              type="text" 
-              class="form-input" 
-              placeholder="VD: 00:1A:2B:3C:4D:5E"
+            <label>{{ $t('workstationKioskSetup.labelMacAddress') }}</label>
+            <input
+              v-model="macAddress"
+              type="text"
+              class="form-input"
+              :placeholder="$t('workstationKioskSetup.placeholderMacAddress')"
             />
           </div>
         </div>
@@ -46,13 +46,13 @@
           <div class="status-indicator">
             <span class="dot" :class="agentConnected ? 'dot-green' : 'dot-grey'"></span>
             <span class="font-sm font-semibold">
-              Trạng thái Local Agent: {{ agentConnected ? 'ĐÃ KẾT NỐI (Tự động đọc Hostname/MAC)' : 'CHƯA KẾT NỐI (Nhập thủ công)' }}
+              {{ $t('workstationKioskSetup.agentStatusLabel', { status: agentConnected ? $t('workstationKioskSetup.agentConnected') : $t('workstationKioskSetup.agentDisconnected') }) }}
             </span>
           </div>
         </div>
 
         <button type="submit" class="btn btn-primary w-full py-3 text-lg" :disabled="loading">
-          {{ loading ? 'Đang xác thực trạm...' : '🚀 Kích hoạt trạm' }}
+          {{ loading ? $t('workstationKioskSetup.activatingLabel') : $t('workstationKioskSetup.activateButton') }}
         </button>
       </form>
     </div>
@@ -62,8 +62,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 
+const { t } = useI18n({ useScope: 'global' });
 const router = useRouter();
 const token = ref('');
 const hostname = ref('');
@@ -109,7 +111,7 @@ async function handleHandshake() {
       const config = res.data.workstation;
       localStorage.setItem('df_workstation_token', token.value);
       localStorage.setItem('df_workstation_config', JSON.stringify(config));
-      successMsg.value = `Đăng ký thành công trạm ${config.name}! Đang chuyển hướng...`;
+      successMsg.value = t('workstationKioskSetup.registerSuccess', { name: config.name });
       
       // Dispatch custom event to notify AppLayout and router
       window.dispatchEvent(new Event('workstation-registered'));
@@ -119,7 +121,7 @@ async function handleHandshake() {
       }, 1500);
     }
   } catch (err: any) {
-    errorMsg.value = err.response?.data?.message || 'Đăng ký trạm thất bại. Vui lòng kiểm tra lại Token.';
+    errorMsg.value = err.response?.data?.message || t('workstationKioskSetup.registerFailed');
   } finally {
     loading.value = false;
   }

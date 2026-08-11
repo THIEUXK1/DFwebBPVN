@@ -5,7 +5,7 @@
     <div v-if="errorMsg" class="alert-box alert-error">⚠️ {{ errorMsg }}</div>
 
     <div v-if="loading" class="card text-center padding-xl text-muted">
-      <span class="spinner">⏳</span> Đang tải danh sách đang chờ xử lý...
+      <span class="spinner">⏳</span> {{ $t('chemicalCallPendingClassic.loadingLabel') }}
     </div>
 
     <div v-else class="classic-queue">
@@ -17,7 +17,7 @@
           <button
             class="classic-slot-ok"
             :disabled="!slotChannel(slotIndex) || actionLoading === slotChannel(slotIndex)?.channel_id"
-            title="Xác nhận đã cấp xong"
+            :title="$t('chemicalCallPendingClassic.okButtonTitle')"
             @click="onOkClick(slotIndex)"
           >
             OK
@@ -41,7 +41,7 @@
       </div>
 
       <div v-if="pendingChannels.length > 4" class="classic-overflow-hint">
-        +{{ pendingChannels.length - 4 }} khác đang chờ — xem đầy đủ ở "Đang chờ xử lý"
+        {{ $t('chemicalCallPendingClassic.overflowHint', { count: pendingChannels.length - 4 }) }}
       </div>
     </div>
 
@@ -53,6 +53,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import echo from '../services/echo';
 import ChemicalCallQrThumb from '../components/ChemicalCallQrThumb.vue';
@@ -93,6 +94,8 @@ interface ChemicalChannel {
   formula_qr_text: string | null;
   current_request: RequestInfo | null;
 }
+
+const { t } = useI18n({ useScope: 'global' });
 
 const channelsList = ref<ChemicalChannel[]>([]);
 const loading = ref(true);
@@ -149,7 +152,7 @@ async function fetchChannels() {
     channelsList.value = res.data;
   } catch (err) {
     console.error('Failed to fetch channels:', err);
-    errorMsg.value = 'Không thể kết nối đến máy chủ API để lấy thông tin van đường ống.';
+    errorMsg.value = t('chemicalCallPendingClassic.errorFetchChannels');
   } finally {
     loading.value = false;
   }
@@ -176,7 +179,7 @@ async function markDone(channel: ChemicalChannel) {
     await fetchChannels();
   } catch (err: any) {
     channel.current_request = previousRequest;
-    errorMsg.value = err.response?.data?.message || 'Không thể xác nhận xong cho thùng này.';
+    errorMsg.value = err.response?.data?.message || t('chemicalCallPendingClassic.errorMarkDone');
   } finally {
     actionLoading.value = null;
   }

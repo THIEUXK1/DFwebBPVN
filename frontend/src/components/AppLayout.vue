@@ -91,7 +91,7 @@
             :title="wsPillTitle"
           >
             <span class="ws-icon">{{ capabilityMismatch ? '⚠️' : '🖥️' }}</span>
-            <span class="ws-text">{{ currentWorkstation ? currentWorkstation.code : 'Chưa cấu hình Trạm' }}</span>
+            <span class="ws-text">{{ currentWorkstation ? currentWorkstation.code : $t('layout.noWorkstationConfigured') }}</span>
           </div>
 
           <!-- Realtime Status Lights -->

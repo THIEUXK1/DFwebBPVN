@@ -4,7 +4,7 @@
     <div v-if="errorMsg" class="alert-box alert-error">⚠️ {{ errorMsg }}</div>
 
     <div v-if="loading" class="card text-center padding-xl text-muted">
-      <span class="spinner">⏳</span> Đang tải danh sách đang chờ xử lý...
+      <span class="spinner">⏳</span> {{ $t('chemicalCallPending.loadingLabel') }}
     </div>
 
     <!-- Gom tất cả thùng "chưa OK" từ mọi máy vào 1 danh sách, xếp theo thời gian gọi lâu
@@ -13,7 +13,7 @@
     <div v-else class="card pending-panel" :class="{ 'has-pending': pendingChannels.length > 0 }">
       <div class="pending-panel-header">
         <span v-if="pendingChannels.length > 0" class="alert-dot" aria-hidden="true"></span>
-        <span>{{ pendingChannels.length > 0 ? `🔴 Đang chờ xử lý (${pendingChannels.length})` : '✅ Không có yêu cầu nào đang chờ' }}</span>
+        <span>{{ pendingChannels.length > 0 ? $t('chemicalCallPending.pendingHeader', { count: pendingChannels.length }) : $t('chemicalCallPending.noPendingHeader') }}</span>
       </div>
 
       <TransitionGroup v-if="pendingChannels.length > 0" name="card" tag="div" class="pending-list">
@@ -29,19 +29,19 @@
               :text="c.formula_qr_text"
               :size="180"
             />
-            <span v-else class="no-qr-hint font-xs text-muted">Chưa có QR</span>
+            <span v-else class="no-qr-hint font-xs text-muted">{{ $t('chemicalCallPending.noQrHint') }}</span>
           </div>
 
           <div class="pending-card-body">
-            <span class="channel-number-pill">{{ c.machine_code }} — Thùng {{ c.channel_number }}</span>
+            <span class="channel-number-pill">{{ $t('chemicalCallPending.channelLabel', { machine: c.machine_code, number: c.channel_number }) }}</span>
             <span class="chem-formula">{{ c.chemical_code }}</span>
-            <span class="font-xs text-muted call-time">Gọi lúc {{ c.current_request ? formatTime(c.current_request.requested_at) : '-' }}</span>
+            <span class="font-xs text-muted call-time">{{ $t('chemicalCallPending.callTimeLabel', { time: c.current_request ? formatTime(c.current_request.requested_at) : '-' }) }}</span>
             <button
               @click="toggleChannel(c, $event)"
               class="btn btn-sm py-1 font-semibold toggle-btn btn-danger"
               :disabled="actionLoading === c.channel_id"
             >
-              🔴 Bấm khi Xong
+              {{ $t('chemicalCallPending.toggleDoneLabel') }}
             </button>
           </div>
         </div>
@@ -55,6 +55,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import echo from '../services/echo';
 import ChemicalCallQrThumb from '../components/ChemicalCallQrThumb.vue';
@@ -77,6 +78,8 @@ interface ChemicalChannel {
   formula_qr_text: string | null;
   current_request: RequestInfo | null;
 }
+
+const { t } = useI18n({ useScope: 'global' });
 
 const channelsList = ref<ChemicalChannel[]>([]);
 const loading = ref(true);
@@ -107,7 +110,7 @@ async function fetchChannels() {
     channelsList.value = res.data;
   } catch (err) {
     console.error('Failed to fetch channels:', err);
-    errorMsg.value = 'Không thể kết nối đến máy chủ API để lấy thông tin van đường ống.';
+    errorMsg.value = t('chemicalCallPending.errorFetchChannels');
   } finally {
     loading.value = false;
   }
@@ -140,7 +143,7 @@ async function toggleChannel(channel: ChemicalChannel, event?: MouseEvent) {
     fetchChannels();
   } catch (err: any) {
     channel.current_request = previousRequest;
-    errorMsg.value = err.response?.data?.message || 'Không thể đổi trạng thái kênh.';
+    errorMsg.value = err.response?.data?.message || t('chemicalCallPending.errorToggleChannel');
   } finally {
     actionLoading.value = null;
   }

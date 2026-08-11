@@ -102,7 +102,9 @@ export default {
     noteSortSuffix: '(reversed from the original) for easier lookup.',
     notePrintStatusPrefix: 'The IN column shows the status of the',
     notePrintStatusBold: 'latest',
-    notePrintStatusMiddle: 'print job;',
+    // Khoảng trắng đầu chuỗi là CỐ Ý: key này render ngay sau </strong> không có space trong
+    // template (bản vi là dấu ';' phải dính liền chữ trước), nên tiếng Anh phải tự mang space.
+    notePrintStatusMiddle: ' print job;',
     notePrintStatusSuffix: 'is the number of times it has been printed (including reprints).',
   },
   zh: {

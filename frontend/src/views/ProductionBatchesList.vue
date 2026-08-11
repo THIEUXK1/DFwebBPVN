@@ -3,17 +3,17 @@
     <!-- Page Header -->
     <div class="page-header-row">
       <div class="header-titles">
-        <h2>📋 Danh sách Lô sản xuất</h2>
-        <p class="text-muted">Giám sát trạng thái sản xuất, cấp liệu, điều phối và liên kết kế hoạch từ hệ thống MES.</p>
+        <h2>{{ $t('productionBatchesList.pageTitle') }}</h2>
+        <p class="text-muted">{{ $t('productionBatchesList.pageDesc') }}</p>
       </div>
       <div class="header-actions">
         <router-link to="/production-batches" class="btn btn-secondary">
           <SvgIcon name="search" size="18" />
-          Sang trạm Quét đơn
+          {{ $t('productionBatchesList.navScanStation') }}
         </router-link>
         <router-link to="/production-batches/grid" class="btn btn-secondary">
           <SvgIcon name="batch" size="18" />
-          Nhập đơn (Form VBA)
+          {{ $t('productionBatchesList.navGrid') }}
         </router-link>
         <!-- MES Mock tool trigger button -->
         <button
@@ -22,7 +22,7 @@
           class="btn btn-primary"
         >
           <SvgIcon name="plus" size="18" />
-          Tạo lô từ MES (Giả lập)
+          {{ $t('productionBatchesList.btnCreateMock') }}
         </button>
       </div>
     </div>
@@ -31,43 +31,43 @@
     <div class="kpi-grid mb-4">
       <div class="kpi-card">
         <div class="kpi-header">
-          <span class="kpi-title">Tổng lô hôm nay</span>
+          <span class="kpi-title">{{ $t('productionBatchesList.kpiTotalTitle') }}</span>
           <span class="kpi-icon">📊</span>
         </div>
         <div class="kpi-value">{{ kpis.total }}</div>
-        <div class="kpi-subtext">Cập nhật thời gian thực</div>
+        <div class="kpi-subtext">{{ $t('productionBatchesList.kpiTotalSub') }}</div>
       </div>
       <div class="kpi-card kpi-blue">
         <div class="kpi-header">
-          <span class="kpi-title">Đang chuẩn bị</span>
+          <span class="kpi-title">{{ $t('productionBatchesList.kpiPreparingTitle') }}</span>
           <span class="kpi-icon">⚙️</span>
         </div>
         <div class="kpi-value">{{ kpis.preparing }}</div>
-        <div class="kpi-subtext">Mới tạo &amp; Chờ cân</div>
+        <div class="kpi-subtext">{{ $t('productionBatchesList.kpiPreparingSub') }}</div>
       </div>
       <div class="kpi-card kpi-yellow">
         <div class="kpi-header">
-          <span class="kpi-title">Đang cân đo</span>
+          <span class="kpi-title">{{ $t('productionBatchesList.kpiWeighingTitle') }}</span>
           <span class="kpi-icon">⚖️</span>
         </div>
         <div class="kpi-value">{{ kpis.weighing }}</div>
-        <div class="kpi-subtext">Đang cân tại trạm cân</div>
+        <div class="kpi-subtext">{{ $t('productionBatchesList.kpiWeighingSub') }}</div>
       </div>
       <div class="kpi-card kpi-green">
         <div class="kpi-header">
-          <span class="kpi-title">Đã cân (Chờ cấp máy)</span>
+          <span class="kpi-title">{{ $t('productionBatchesList.kpiWeighedTitle') }}</span>
           <span class="kpi-icon">✅</span>
         </div>
         <div class="kpi-value">{{ kpis.weighed }}</div>
-        <div class="kpi-subtext">Sẵn sàng nạp van</div>
+        <div class="kpi-subtext">{{ $t('productionBatchesList.kpiWeighedSub') }}</div>
       </div>
       <div class="kpi-card kpi-purple">
         <div class="kpi-header">
-          <span class="kpi-title">Hoàn thành / Đã cấp</span>
+          <span class="kpi-title">{{ $t('productionBatchesList.kpiCompletedTitle') }}</span>
           <span class="kpi-icon">⚡</span>
         </div>
         <div class="kpi-value">{{ kpis.completed }}</div>
-        <div class="kpi-subtext">Đã cấp máy &amp; Đóng mẻ</div>
+        <div class="kpi-subtext">{{ $t('productionBatchesList.kpiCompletedSub') }}</div>
       </div>
     </div>
 
@@ -75,38 +75,38 @@
     <section class="section filter-section mb-4">
       <div class="filter-bar">
         <div class="filter-group flex-2">
-          <label>Tìm kiếm lô sản xuất:</label>
+          <label>{{ $t('productionBatchesList.filterSearchLabel') }}</label>
           <div class="search-input-wrapper">
             <SvgIcon name="search" size="16" class="search-icon" />
             <input
               v-model="searchQuery"
               @input="onFilterChange"
               type="text"
-              placeholder="Nhập mã lô, mã màu, mã hàng..."
+              :placeholder="$t('productionBatchesList.filterSearchPlaceholder')"
               class="form-control pad-left-search"
             />
           </div>
         </div>
 
         <div class="filter-group">
-          <label>Trạng thái:</label>
+          <label>{{ $t('productionBatchesList.filterStatusLabel') }}</label>
           <select v-model="statusFilter" @change="onFilterChange" class="form-select">
-            <option value="">Tất cả trạng thái</option>
-            <option value="NEW">Mới tạo (NEW)</option>
-            <option value="APPROVED">Đã duyệt, chờ in tem (APPROVED)</option>
-            <option value="READY_TO_WEIGH">Chờ cân (READY_TO_WEIGH)</option>
-            <option value="WEIGHING">Đang cân (WEIGHING)</option>
-            <option value="WEIGHED">Đã cân xong (WEIGHED)</option>
-            <option value="SENT">Đã gửi máy (SENT)</option>
-            <option value="DONE">Hoàn thành (DONE)</option>
-            <option value="CANCELLED">Đã hủy (CANCELLED)</option>
+            <option value="">{{ $t('productionBatchesList.filterStatusAll') }}</option>
+            <option value="NEW">{{ $t('productionBatchesList.statusNew') }}</option>
+            <option value="APPROVED">{{ $t('productionBatchesList.statusApproved') }}</option>
+            <option value="READY_TO_WEIGH">{{ $t('productionBatchesList.statusReadyToWeigh') }}</option>
+            <option value="WEIGHING">{{ $t('productionBatchesList.statusWeighing') }}</option>
+            <option value="WEIGHED">{{ $t('productionBatchesList.statusWeighed') }}</option>
+            <option value="SENT">{{ $t('productionBatchesList.statusSent') }}</option>
+            <option value="DONE">{{ $t('productionBatchesList.statusDone') }}</option>
+            <option value="CANCELLED">{{ $t('productionBatchesList.statusCancelled') }}</option>
           </select>
         </div>
 
         <div class="filter-group">
-          <label>Máy chỉ định:</label>
+          <label>{{ $t('productionBatchesList.filterMachineLabel') }}</label>
           <select v-model="machineFilter" @change="onFilterChange" class="form-select">
-            <option value="">Tất cả máy nhuộm</option>
+            <option value="">{{ $t('productionBatchesList.filterMachineAll') }}</option>
             <option v-for="m in machines" :key="m.id" :value="m.id">
               {{ m.code }} ({{ m.name }})
             </option>
@@ -116,7 +116,7 @@
         <div class="filter-group actions-group">
           <label>&nbsp;</label>
           <button @click="clearFilters" class="btn btn-secondary w-full-mobile">
-            Xóa bộ lọc
+            {{ $t('productionBatchesList.btnClearFilters') }}
           </button>
         </div>
       </div>
@@ -128,16 +128,16 @@
         <table class="data-table">
           <thead>
             <tr>
-              <th>Mã Lô (Batch ID)</th>
-              <th>Mã Màu (Color)</th>
-              <th>Mã Hàng (Product)</th>
-              <th>Máy Nhuộm</th>
-              <th>Thùng Trộn</th>
-              <th>Mức nước</th>
-              <th>Tiến Trình</th>
-              <th>Trạng Thái</th>
-              <th>Ngày Cập Nhật</th>
-              <th>Thao Tác</th>
+              <th>{{ $t('productionBatchesList.colBatchId') }}</th>
+              <th>{{ $t('productionBatchesList.colColor') }}</th>
+              <th>{{ $t('productionBatchesList.colProduct') }}</th>
+              <th>{{ $t('productionBatchesList.colMachine') }}</th>
+              <th>{{ $t('productionBatchesList.colTank') }}</th>
+              <th>{{ $t('productionBatchesList.colWaterLevel') }}</th>
+              <th>{{ $t('productionBatchesList.colProgress') }}</th>
+              <th>{{ $t('productionBatchesList.colStatus') }}</th>
+              <th>{{ $t('productionBatchesList.colUpdated') }}</th>
+              <th>{{ $t('productionBatchesList.colActions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -170,7 +170,7 @@
                   @change="updateTank(batch, ($event.target as HTMLSelectElement).value)"
                   @blur="editingTankBatchId = null"
                 >
-                  <option value="">-- Không chọn --</option>
+                  <option value="">{{ $t('productionBatchesList.optTankNone') }}</option>
                   <option v-for="t in tanks.filter(t => t.machine_id === batch.machine_id)" :key="t.id" :value="t.id">
                     {{ t.code }}
                   </option>
@@ -179,18 +179,18 @@
                   v-else-if="batch.status === 'NEW'"
                   class="tank-pick-btn"
                   @click="openTankEdit(batch)"
-                  title="Bấm để chọn nhanh Thùng trộn"
+                  :title="$t('productionBatchesList.tankPickTitle')"
                 >
                   <span class="tank-tag" v-if="batch.tank">{{ batch.tank?.code }}</span>
-                  <span class="text-muted" v-else>+ Chọn thùng</span>
+                  <span class="text-muted" v-else>{{ $t('productionBatchesList.tankPickPlaceholder') }}</span>
                 </button>
-                <span v-else class="tank-tag" title="Đơn đã duyệt — không thể đổi Thùng trộn nữa">
+                <span v-else class="tank-tag" :title="$t('productionBatchesList.tankLockedTitle')">
                   {{ batch.tank?.code || 'N/A' }}
                 </span>
               </td>
               <td>{{ batch.level_code || 'N/A' }}</td>
               <td>
-                <div class="progress-bar-wrapper" :title="'Độ hoàn tất: ' + getProgressPercent(batch.status) + '%'">
+                <div class="progress-bar-wrapper" :title="$t('productionBatchesList.progressTitle', { percent: getProgressPercent(batch.status) })">
                   <div class="progress-bar-fill" :style="{ width: getProgressPercent(batch.status) + '%' }"></div>
                 </div>
               </td>
@@ -204,18 +204,18 @@
                 <button
                   @click="openDetailDrawer(batch)"
                   class="btn btn-secondary btn-sm"
-                  title="Xem chi tiết Thuốc nhuộm (DYE) và Hóa chất (CHEM) của lô này"
+                  :title="$t('productionBatchesList.detailBtnTitle')"
                 >
-                  👁️ DYE/CHEM
+                  {{ $t('productionBatchesList.detailBtnLabel') }}
                 </button>
                 <button
                   v-if="batch.status === 'NEW'"
                   @click="approveBatch(batch)"
                   class="btn btn-primary btn-sm"
                   :disabled="approvingId === batch.id || !batch.tank"
-                  :title="!batch.tank ? 'Phải chọn Thùng trộn trước khi duyệt' : ''"
+                  :title="!batch.tank ? $t('productionBatchesList.approveTankRequiredTitle') : ''"
                 >
-                  {{ approvingId === batch.id ? 'Đang duyệt...' : (!batch.tank ? '⚠️ Chưa có Thùng' : '✅ Duyệt đơn') }}
+                  {{ approvingId === batch.id ? $t('productionBatchesList.approvingLabel') : (!batch.tank ? $t('productionBatchesList.approveMissingTank') : $t('productionBatchesList.approveLabel')) }}
                 </button>
                 <select
                   :value="batch.status"
@@ -238,7 +238,7 @@
             <tr v-if="!loading && batches.length === 0">
               <td colspan="10" class="text-center text-muted pad-empty-row">
                 <div class="empty-state-icon">🔍</div>
-                <p>Không tìm thấy lô sản xuất nào khớp với điều kiện lọc.</p>
+                <p>{{ $t('productionBatchesList.emptyResult') }}</p>
               </td>
             </tr>
           </tbody>
@@ -252,15 +252,15 @@
           :disabled="currentPage === 1"
           class="btn btn-secondary btn-sm"
         >
-          ◀ Trước
+          {{ $t('productionBatchesList.pagePrev') }}
         </button>
-        <span class="page-info">Trang {{ currentPage }} / {{ totalPages }}</span>
+        <span class="page-info">{{ $t('productionBatchesList.pageInfo', { current: currentPage, total: totalPages }) }}</span>
         <button
           @click="changePage(currentPage + 1)"
           :disabled="currentPage === totalPages"
           class="btn btn-secondary btn-sm"
         >
-          Sau ▶
+          {{ $t('productionBatchesList.pageNext') }}
         </button>
       </div>
     </section>
@@ -270,56 +270,56 @@
       <div class="right-drawer">
         <div class="drawer-header">
           <div class="drawer-header-title">
-            <h3>🚀 Giả lập phát hành Lô sản xuất</h3>
-            <span class="sim-badge">Công cụ mô phỏng MES</span>
+            <h3>{{ $t('productionBatchesList.createDrawerTitle') }}</h3>
+            <span class="sim-badge">{{ $t('productionBatchesList.createDrawerBadge') }}</span>
           </div>
           <button @click="closeCreateDrawer" class="drawer-close-btn">&times;</button>
         </div>
 
         <div class="drawer-body">
-          <p class="drawer-desc mb-4">Nhập thông tin giả lập đẩy đơn lệnh nhuộm từ MES xuống trạm điều phối nhà máy.</p>
+          <p class="drawer-desc mb-4">{{ $t('productionBatchesList.createDrawerDesc') }}</p>
 
           <form @submit.prevent="createMockBatch" class="drawer-form">
             <div class="form-group">
-              <label for="mock-batch-id">Mã Lô sản xuất (Batch ID) <span class="required">*</span></label>
+              <label for="mock-batch-id">{{ $t('productionBatchesList.mockBatchIdLabel') }} <span class="required">*</span></label>
               <input
                 id="mock-batch-id"
                 v-model="mockForm.legacy_batch_id"
                 type="text"
                 required
-                placeholder="Ví dụ: L2-260715-08"
+                :placeholder="$t('productionBatchesList.mockBatchIdPlaceholder')"
                 class="form-control"
               />
             </div>
 
             <div class="form-group">
-              <label for="mock-color">Mã công thức màu (Color Code) <span class="required">*</span></label>
+              <label for="mock-color">{{ $t('productionBatchesList.mockColorLabel') }} <span class="required">*</span></label>
               <input
                 id="mock-color"
                 v-model="mockForm.color"
                 type="text"
                 required
-                placeholder="Ví dụ: A+110293"
+                :placeholder="$t('productionBatchesList.mockColorPlaceholder')"
                 class="form-control"
               />
             </div>
 
             <div class="form-group">
-              <label for="mock-product">Mã sản phẩm (Product Code) <span class="required">*</span></label>
+              <label for="mock-product">{{ $t('productionBatchesList.mockProductLabel') }} <span class="required">*</span></label>
               <input
                 id="mock-product"
                 v-model="mockForm.product_code"
                 type="text"
                 required
-                placeholder="Ví dụ: T7400"
+                :placeholder="$t('productionBatchesList.mockProductPlaceholder')"
                 class="form-control"
               />
             </div>
 
             <div class="form-group">
-              <label for="mock-machine">Máy nhuộm chỉ định <span class="required">*</span></label>
+              <label for="mock-machine">{{ $t('productionBatchesList.mockMachineLabel') }} <span class="required">*</span></label>
               <select id="mock-machine" v-model="mockForm.machine_id" required class="form-select">
-                <option value="">-- Chọn máy nhuộm --</option>
+                <option value="">{{ $t('productionBatchesList.optSelectMachine') }}</option>
                 <option v-for="m in machines" :key="m.id" :value="m.id">
                   {{ m.code }} ({{ m.name }})
                 </option>
@@ -327,19 +327,19 @@
             </div>
 
             <div class="form-group">
-              <label for="mock-tank">Thùng trộn nhuộm (Tùy chọn)</label>
+              <label for="mock-tank">{{ $t('productionBatchesList.mockTankLabel') }}</label>
               <select id="mock-tank" v-model="mockForm.tank_id" class="form-select">
-                <option value="">-- Mặc định --</option>
+                <option value="">{{ $t('productionBatchesList.optTankDefault') }}</option>
                 <option v-for="t in tanks" :key="t.id" :value="t.id">
-                  Thùng {{ t.code }}
+                  {{ $t('productionBatchesList.tankPrefixed', { code: t.code }) }}
                 </option>
               </select>
             </div>
 
             <div class="form-group">
-              <label for="mock-level">Mức nước cố định (Water Level)</label>
+              <label for="mock-level">{{ $t('productionBatchesList.mockLevelLabel') }}</label>
               <select id="mock-level" v-model="mockForm.level_code" class="form-select">
-                <option value="">-- Chọn mức nước --</option>
+                <option value="">{{ $t('productionBatchesList.optSelectWaterLevel') }}</option>
                 <option v-for="lv in waterLevels" :key="lv" :value="lv">{{ lv }}</option>
               </select>
             </div>
@@ -349,9 +349,9 @@
             <p v-if="errorMsg" class="text-error mt-2">❌ {{ errorMsg }}</p>
 
             <div class="drawer-actions mt-4">
-              <button type="button" @click="closeCreateDrawer" class="btn btn-secondary flex-1">Hủy</button>
+              <button type="button" @click="closeCreateDrawer" class="btn btn-secondary flex-1">{{ $t('common.cancel') }}</button>
               <button type="submit" class="btn btn-primary flex-2" :disabled="creatingBatch">
-                {{ creatingBatch ? 'Đang tạo...' : 'Phát hành Lệnh' }}
+                {{ creatingBatch ? $t('productionBatchesList.btnCreating') : $t('productionBatchesList.btnCreateSubmit') }}
               </button>
             </div>
           </form>
@@ -363,7 +363,7 @@
     <div class="drawer-overlay center-modal-overlay" v-if="detailDrawerOpen" @click.self="closeDetailDrawer">
       <div class="right-drawer detail-modal">
         <div class="drawer-header">
-          <h3>🔍 Chi tiết Lô sản xuất</h3>
+          <h3>{{ $t('productionBatchesList.detailModalTitle') }}</h3>
           <button @click="closeDetailDrawer" class="drawer-close-btn">&times;</button>
         </div>
 
@@ -372,49 +372,49 @@
             <span :class="['badge', getStatusBadgeClass(selectedBatch.status)]" class="hero-badge">
               {{ selectedBatch.status }}
             </span>
-            <h4>Lô: {{ selectedBatch.legacy_batch_id }}</h4>
+            <h4>{{ $t('productionBatchesList.detailBatchHeading', { batchId: selectedBatch.legacy_batch_id }) }}</h4>
           </div>
 
           <div class="detail-info-list">
             <div class="detail-item">
-              <span class="detail-label">Mã màu công thức (Color)</span>
+              <span class="detail-label">{{ $t('productionBatchesList.detailColorLabel') }}</span>
               <span class="detail-value">{{ selectedBatch.color }}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Mã hàng sản phẩm (Product)</span>
+              <span class="detail-label">{{ $t('productionBatchesList.detailProductLabel') }}</span>
               <span class="detail-value">{{ selectedBatch.product_code }}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Máy nhuộm chỉ định</span>
+              <span class="detail-label">{{ $t('productionBatchesList.detailMachineLabel') }}</span>
               <span class="detail-value">{{ selectedBatch.machine ? selectedBatch.machine.code + ' - ' + selectedBatch.machine.name : 'N/A' }}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Thùng trộn nhuộm</span>
+              <span class="detail-label">{{ $t('productionBatchesList.detailTankLabel') }}</span>
               <select
                 v-if="selectedBatch.status === 'NEW'"
                 :value="selectedBatch.tank_id || ''"
                 class="form-select detail-tank-select"
                 @change="updateTank(selectedBatch, ($event.target as HTMLSelectElement).value)"
               >
-                <option value="">-- Chưa chọn --</option>
+                <option value="">{{ $t('productionBatchesList.optTankNotSelected') }}</option>
                 <option v-for="t in tanks.filter(t => t.machine_id === selectedBatch.machine_id)" :key="t.id" :value="t.id">
-                  Thùng {{ t.code }}
+                  {{ $t('productionBatchesList.tankPrefixed', { code: t.code }) }}
                 </option>
               </select>
-              <span v-else class="detail-value" title="Đơn đã duyệt — không thể đổi Thùng trộn nữa">
-                {{ selectedBatch.tank ? 'Thùng ' + selectedBatch.tank.code : 'Chưa chọn' }}
+              <span v-else class="detail-value" :title="$t('productionBatchesList.tankLockedTitle')">
+                {{ selectedBatch.tank ? $t('productionBatchesList.tankPrefixed', { code: selectedBatch.tank.code }) : $t('productionBatchesList.tankNotSelected') }}
               </span>
             </div>
             <div class="detail-item" v-if="selectedBatch.level_code">
-              <span class="detail-label">Mức nước chỉ định</span>
+              <span class="detail-label">{{ $t('productionBatchesList.detailWaterLevelLabel') }}</span>
               <span class="detail-value">{{ selectedBatch.level_code }}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Ngày khởi tạo</span>
+              <span class="detail-label">{{ $t('productionBatchesList.detailCreatedLabel') }}</span>
               <span class="detail-value">{{ formatDate(selectedBatch.created_at) }}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Ngày cập nhật gần nhất</span>
+              <span class="detail-label">{{ $t('productionBatchesList.detailUpdatedLabel') }}</span>
               <span class="detail-value">{{ formatDate(selectedBatch.updated_at) }}</span>
             </div>
           </div>
@@ -422,9 +422,9 @@
           <!-- Bảng tách dòng RACK/MÃ/KHỐI LƯỢNG — giống layout scaleform.frm (VBA gốc) -->
           <div class="rack-tables-row mt-4" v-if="selectedDyeLines.length || selectedChemLines.length">
             <div class="rack-table-col">
-              <label class="rack-table-title">🧵 Thuốc nhuộm (DYE)</label>
+              <label class="rack-table-title">{{ $t('productionBatchesList.rackDyeTitle') }}</label>
               <table class="data-table rack-table">
-                <thead><tr><th>RACK</th><th>MÃ THUỐC NHUỘM</th><th>KHỐI LƯỢNG</th></tr></thead>
+                <thead><tr><th>{{ $t('productionBatchesList.colRack') }}</th><th>{{ $t('productionBatchesList.colDyeCode') }}</th><th>{{ $t('productionBatchesList.colWeight') }}</th></tr></thead>
                 <tbody>
                   <tr v-for="(line, idx) in selectedDyeLines" :key="'sel-dye-' + idx" class="rack-row-filled">
                     <td class="rack-cell-num">{{ line.rack }}</td>
@@ -435,9 +435,9 @@
               </table>
             </div>
             <div class="rack-table-col">
-              <label class="rack-table-title">🧪 Hóa chất (CHEM)</label>
+              <label class="rack-table-title">{{ $t('productionBatchesList.rackChemTitle') }}</label>
               <table class="data-table rack-table">
-                <thead><tr><th>RACK</th><th>MÃ HÓA CHẤT</th><th>KHỐI LƯỢNG</th></tr></thead>
+                <thead><tr><th>{{ $t('productionBatchesList.colRack') }}</th><th>{{ $t('productionBatchesList.colChemCode') }}</th><th>{{ $t('productionBatchesList.colWeight') }}</th></tr></thead>
                 <tbody>
                   <tr v-for="(line, idx) in selectedChemLines" :key="'sel-chem-' + idx" class="rack-row-filled">
                     <td class="rack-cell-num">{{ line.rack }}</td>
@@ -448,10 +448,10 @@
               </table>
             </div>
           </div>
-          <p v-else class="text-muted font-sm mt-4">Lô này không có dữ liệu quét DYE/CHEM (được tạo bằng tay hoặc từ MES giả lập).</p>
+          <p v-else class="text-muted font-sm mt-4">{{ $t('productionBatchesList.noRackData') }}</p>
 
           <p v-if="selectedBatch.status === 'NEW' && !selectedBatch.tank" class="text-error mt-2">
-            ⚠️ Phải chọn Thùng trộn trước khi duyệt đơn này.
+            {{ $t('productionBatchesList.tankRequiredWarning') }}
           </p>
           <p v-if="approveErrorMsg" class="text-error mt-2">❌ {{ approveErrorMsg }}</p>
 
@@ -461,11 +461,11 @@
               @click="approveBatch(selectedBatch)"
               class="btn btn-primary flex-2"
               :disabled="approvingId === selectedBatch.id || !selectedBatch.tank"
-              :title="!selectedBatch.tank ? 'Phải chọn Thùng trộn trước khi duyệt' : ''"
+              :title="!selectedBatch.tank ? $t('productionBatchesList.approveTankRequiredTitle') : ''"
             >
-              {{ approvingId === selectedBatch.id ? 'Đang duyệt...' : '✅ Duyệt đơn → Tạo hàng chờ in tem' }}
+              {{ approvingId === selectedBatch.id ? $t('productionBatchesList.approvingLabel') : $t('productionBatchesList.approveCta') }}
             </button>
-            <button @click="closeDetailDrawer" class="btn btn-secondary flex-1">Đóng cửa sổ</button>
+            <button @click="closeDetailDrawer" class="btn btn-secondary flex-1">{{ $t('productionBatchesList.closeWindow') }}</button>
           </div>
         </div>
       </div>
@@ -475,6 +475,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, reactive } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '../stores/auth';
 import axios from 'axios';
 import SvgIcon from '../components/SvgIcon.vue';
@@ -483,6 +484,7 @@ import { parseRackLines } from '../utils/rackParser';
 import echo from '../services/echo';
 
 const authStore = useAuthStore();
+const { t } = useI18n({ useScope: 'global' });
 
 // Table state
 const batches = ref<any[]>([]);
@@ -519,7 +521,7 @@ const updateTank = async (batch: any, tankIdRaw: string) => {
       selectedBatch.value.tank = res.data.data.tank;
     }
   } catch (error: any) {
-    alert(error.response?.data?.message || 'Không thể cập nhật Thùng trộn.');
+    alert(error.response?.data?.message || t('productionBatchesList.errUpdateTank'));
   }
 };
 
@@ -664,7 +666,7 @@ const approveBatch = async (batch: any) => {
     }
     fetchBatches();
   } catch (error: any) {
-    const msg = error.response?.data?.message || 'Không thể duyệt đơn.';
+    const msg = error.response?.data?.message || t('productionBatchesList.errApproveBatch');
     approveErrorMsg.value = msg;
     alert(msg);
   } finally {
@@ -677,7 +679,7 @@ const createMockBatch = async () => {
   errorMsg.value = '';
 
   if (!mockForm.legacy_batch_id || !mockForm.color || !mockForm.product_code || !mockForm.machine_id) {
-    errorMsg.value = 'Vui lòng điền đầy đủ các thông tin bắt buộc!';
+    errorMsg.value = t('productionBatchesList.errRequiredFields');
     return;
   }
 
@@ -693,7 +695,7 @@ const createMockBatch = async () => {
       status: 'NEW'
     });
 
-    successMsg.value = 'Đẩy đơn sản xuất từ MES thành công! Trạng thái: NEW — vào chi tiết lô để bấm "Duyệt đơn".';
+    successMsg.value = t('productionBatchesList.msgCreateSuccess');
     // Reset form fields
     mockForm.legacy_batch_id = '';
     mockForm.color = '';
@@ -707,7 +709,7 @@ const createMockBatch = async () => {
       closeCreateDrawer();
     }, 1500);
   } catch (error: any) {
-    errorMsg.value = error.response?.data?.message || 'Có lỗi xảy ra khi kết nối MES.';
+    errorMsg.value = error.response?.data?.message || t('productionBatchesList.errCreateGeneric');
   } finally {
     creatingBatch.value = false;
   }

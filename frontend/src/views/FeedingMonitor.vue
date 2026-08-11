@@ -4,12 +4,12 @@
     <div class="station-banner">
       <div class="banner-left">
         <span class="station-badge">{{ currentWorkstation?.type }}</span>
-        <h2>{{ currentWorkstation ? currentWorkstation.name : 'Chưa đăng ký trạm' }}</h2>
-        <p class="text-muted font-sm">Mã trạm: <code>{{ currentWorkstation?.code }}</code> | Vị trí: {{ currentWorkstation?.location }}</p>
+        <h2>{{ currentWorkstation ? currentWorkstation.name : $t('feedingMonitor.notRegistered') }}</h2>
+        <p class="text-muted font-sm">{{ $t('feedingMonitor.stationCodeLabel') }} <code>{{ currentWorkstation?.code }}</code> | {{ $t('feedingMonitor.locationLabel') }} {{ currentWorkstation?.location }}</p>
       </div>
       <div class="banner-right">
         <button @click="reloadData" class="btn btn-secondary btn-sm">
-          🔄 Làm mới dữ liệu
+          🔄 {{ $t('feedingMonitor.refreshData') }}
         </button>
       </div>
     </div>
@@ -18,23 +18,23 @@
     <div v-if="currentWorkstation?.type === 'TANK_RECEIVING'" class="tank-receiving-view">
       <div class="card-sec text-center padding-xl">
         <div class="scanner-anim-icon">📥</div>
-        <h3>QUY TRÌNH QUÉT KÉP ĐỐI CHIẾU NHẬN HÀNG TẠI THÙNG TRỘN</h3>
-        <p class="text-muted mb-4">Vui lòng quét lần lượt: (1) Mã QR bồn/máy và (2) Mã QR tem nguyên liệu sau cân.</p>
+        <h3>{{ $t('feedingMonitor.dualScanTitle') }}</h3>
+        <p class="text-muted mb-4">{{ $t('feedingMonitor.dualScanSubtitle') }}</p>
 
         <div class="dual-scan-inputs-grid max-w-500">
           <div class="form-group text-left">
-            <label>Bước 1: Quét bồn / Máy nhuộm (Machine / Tank QR)</label>
+            <label>{{ $t('feedingMonitor.step1ScanLabel') }}</label>
             <div class="scan-status-indicator" :class="{ scanned: tankCode }">
               <span class="indicator-icon">{{ tankCode ? '✅' : '⏳' }}</span>
-              <span class="indicator-text">{{ tankCode ? 'Đã quét: ' + tankCode : 'Đang chờ quét bồn...' }}</span>
+              <span class="indicator-text">{{ tankCode ? $t('feedingMonitor.scannedCode', { code: tankCode }) : $t('feedingMonitor.waitingTankScan') }}</span>
             </div>
           </div>
 
           <div class="form-group text-left mt-3">
-            <label>Bước 2: Quét Tem vật tư sau cân (Material Label QR)</label>
+            <label>{{ $t('feedingMonitor.step2ScanLabel') }}</label>
             <div class="scan-status-indicator" :class="{ scanned: labelCode }">
               <span class="indicator-icon">{{ labelCode ? '✅' : '⏳' }}</span>
-              <span class="indicator-text">{{ labelCode ? 'Đã quét: ' + labelCode : 'Đang chờ quét tem...' }}</span>
+              <span class="indicator-text">{{ labelCode ? $t('feedingMonitor.scannedCode', { code: labelCode }) : $t('feedingMonitor.waitingLabelScan') }}</span>
             </div>
           </div>
 
@@ -43,24 +43,24 @@
 
           <!-- Actions -->
           <div class="flex-row gap-3 mt-4">
-            <button @click="resetDualScan" class="btn btn-secondary flex-1">Reset</button>
+            <button @click="resetDualScan" class="btn btn-secondary flex-1">{{ $t('feedingMonitor.resetButton') }}</button>
             <button
               @click="submitDualScanVerify"
               class="btn btn-primary flex-2"
               :disabled="!tankCode || !labelCode"
             >
-              📥 Xác nhận tới thùng
+              📥 {{ $t('feedingMonitor.confirmToTank') }}
             </button>
           </div>
         </div>
 
         <!-- Manual entry fallback: scanner hardware unavailable/broken -->
         <div class="manual-entry-widget mt-5">
-          <h4>⌨️ Nhập thủ công (khi máy quét lỗi)</h4>
+          <h4>⌨️ {{ $t('feedingMonitor.manualEntryTitle') }}</h4>
           <div class="manual-input-row">
             <select v-model="mockMachineId" class="form-select" @change="selectMachineManually">
-              <option value="">Bước 1 — Chọn máy nhuộm...</option>
-              <option v-for="m in machines" :key="m.id" :value="m.id">Máy: {{ m.code }}</option>
+              <option value="">{{ $t('feedingMonitor.manualStep1Placeholder') }}</option>
+              <option v-for="m in machines" :key="m.id" :value="m.id">{{ $t('feedingMonitor.machinePrefix') }} {{ m.code }}</option>
             </select>
           </div>
           <div class="manual-input-row mt-2">
@@ -69,15 +69,15 @@
               @keyup.enter="searchLabelManually"
               type="text"
               class="form-input manual-input"
-              placeholder="Bước 2 — Nhập mã Lô của tem vật tư, ví dụ: B260716"
+              :placeholder="$t('feedingMonitor.manualStep2Placeholder')"
             />
             <button @click="searchLabelManually" class="btn btn-secondary" :disabled="!labelSearchQuery.trim() || labelSearching">
-              {{ labelSearching ? 'Đang tìm...' : 'Tìm' }}
+              {{ labelSearching ? $t('feedingMonitor.searchingText') : $t('feedingMonitor.searchButton') }}
             </button>
           </div>
           <div v-if="labelSearchError" class="manual-error mt-2">{{ labelSearchError }}</div>
           <div v-if="labelSearchResults.length" class="manual-results mt-3">
-            <p class="text-muted font-sm">Chọn đúng tem:</p>
+            <p class="text-muted font-sm">{{ $t('feedingMonitor.chooseLabel') }}</p>
             <button v-for="l in labelSearchResults" :key="l.id" class="manual-result-item" @click="selectLabelManually(l)">
               <strong>{{ l.batch?.legacy_batch_id }}</strong> — {{ (l.weight / 1000).toFixed(2) }} kg
             </button>
@@ -92,44 +92,44 @@
         <!-- Col 1: Selected Batch & Readiness interlocks -->
         <div class="section card-sec flex-1">
           <div class="section-header">
-            <h3>⚡ Chọn Lô cấp máy nhuộm</h3>
+            <h3>⚡ {{ $t('feedingMonitor.selectBatchTitle') }}</h3>
             <select v-model="selectedBatchId" @change="handleBatchChange" class="form-select batch-selector">
-              <option value="">-- Chọn lô nhuộm đang chờ cấp --</option>
+              <option value="">{{ $t('feedingMonitor.selectBatchPlaceholder') }}</option>
               <option v-for="b in readyBatches" :key="b.id" :value="b.id">
-                Lô {{ b.legacy_batch_id }} - Màu {{ b.color }} (Hàng {{ b.product_code }})
+                {{ $t('feedingMonitor.batchOption', { batchId: b.legacy_batch_id, color: b.color, productCode: b.product_code }) }}
               </option>
             </select>
           </div>
 
           <div v-if="selectedBatch" class="batch-details-box mt-3">
-            <h4>Chi tiết Lô Nhuộm:</h4>
+            <h4>{{ $t('feedingMonitor.batchDetailsTitle') }}</h4>
             <div class="details-grid">
-              <div><span class="label">Mã mẻ:</span> <strong class="value text-glow-blue">{{ selectedBatch.legacy_batch_id }}</strong></div>
-              <div><span class="label">Máy:</span> <span class="machine-tag">{{ selectedBatch.machine?.code || 'N/A' }}</span></div>
-              <div><span class="label">Màu nhuộm:</span> <span class="value">{{ selectedBatch.color }}</span></div>
-              <div><span class="label">Trạng thái Lô:</span> <span class="value">{{ selectedBatch.status }}</span></div>
+              <div><span class="label">{{ $t('feedingMonitor.labelBatchCode') }}</span> <strong class="value text-glow-blue">{{ selectedBatch.legacy_batch_id }}</strong></div>
+              <div><span class="label">{{ $t('feedingMonitor.machinePrefix') }}</span> <span class="machine-tag">{{ selectedBatch.machine?.code || 'N/A' }}</span></div>
+              <div><span class="label">{{ $t('feedingMonitor.labelColor') }}</span> <span class="value">{{ selectedBatch.color }}</span></div>
+              <div><span class="label">{{ $t('feedingMonitor.labelBatchStatus') }}</span> <span class="value">{{ selectedBatch.status }}</span></div>
             </div>
             
             <div class="readiness-checklist mt-4">
-              <h5>📋 Kiểm tra Điều kiện Đủ nước &amp; Nguyên liệu:</h5>
+              <h5>📋 {{ $t('feedingMonitor.readinessTitle') }}</h5>
               <div class="check-item" :class="{ ok: readiness.batch_weighed }">
                 <span class="icon">{{ readiness.batch_weighed ? '✅' : '❌' }}</span>
-                <span class="text">Đã cân định lượng mẻ nhuộm (Status WEIGHED)</span>
+                <span class="text">{{ $t('feedingMonitor.checkWeighed') }}</span>
               </div>
               <div class="check-item" :class="{ ok: readiness.transport_accepted }">
                 <span class="icon">{{ readiness.transport_accepted ? '✅' : '❌' }}</span>
-                <span class="text">Nguyên liệu đã tới bồn trộn máy (ARRIVED_AT_TANK)</span>
+                <span class="text">{{ $t('feedingMonitor.checkArrived') }}</span>
               </div>
             </div>
 
             <div class="mt-4" v-if="!readiness.ready_to_feed">
               <div class="alert-box alert-danger">
-                ⚠️ Cảnh báo: Lô nhuộm chưa đủ điều kiện cấp máy nhuộm (Cần hoàn tất cân và vận chuyển nguyên liệu tới thùng).
+                ⚠️ {{ $t('feedingMonitor.notReadyWarning') }}
               </div>
             </div>
             <div class="mt-3" v-else>
               <button @click="startFeedingProcess" class="btn btn-primary w-100" v-if="!activeOp">
-                ⚡ Khởi động quy trình Cấp máy
+                ⚡ {{ $t('feedingMonitor.startFeedButton') }}
               </button>
             </div>
           </div>
@@ -138,7 +138,7 @@
         <!-- Col 2: Step-by-step feeding process -->
         <div class="section card-sec flex-1" v-if="activeOp">
           <div class="section-header">
-            <h3>🛠️ Quy trình Cấp máy nhuộm thời gian thực</h3>
+            <h3>🛠️ {{ $t('feedingMonitor.feedProcessTitle') }}</h3>
           </div>
 
           <div class="steps-flow mt-3">
@@ -146,16 +146,16 @@
             <div class="step-card" :class="{ done: activeOp.water_verified }">
               <div class="step-header">
                 <span class="step-number">1</span>
-                <h5>Xác nhận Nạp nước Máy nhuộm</h5>
-                <span class="step-status">{{ activeOp.water_verified ? 'Đã kiểm tra' : 'Đang chờ' }}</span>
+                <h5>{{ $t('feedingMonitor.step1WaterTitle') }}</h5>
+                <span class="step-status">{{ activeOp.water_verified ? $t('feedingMonitor.statusChecked') : $t('feedingMonitor.statusWaiting') }}</span>
               </div>
-              <p class="text-muted">Kiểm tra mức nước và hệ số tỉ lệ nước đạt dung tích yêu cầu theo công thức.</p>
+              <p class="text-muted">{{ $t('feedingMonitor.step1WaterDesc') }}</p>
               <button 
                 @click="verifyWater" 
                 class="btn btn-small btn-success" 
                 v-if="!activeOp.water_verified"
               >
-                💧 Xác nhận Đủ Nước
+                💧 {{ $t('feedingMonitor.verifyWaterButton') }}
               </button>
             </div>
 
@@ -163,11 +163,11 @@
             <div class="step-card mt-3" :class="{ locked: !activeOp.water_verified && !activeOp.override_approved }">
               <div class="step-header">
                 <span class="step-number">2</span>
-                <h5>Kích hoạt Van Cấp Hóa chất</h5>
-                <span class="step-status">{{ activeOp.completed_at ? 'Đã nạp xong' : 'Sẵn sàng' }}</span>
+                <h5>{{ $t('feedingMonitor.step2ValveTitle') }}</h5>
+                <span class="step-status">{{ activeOp.completed_at ? $t('feedingMonitor.statusFed') : $t('feedingMonitor.statusReady') }}</span>
               </div>
               <p class="text-muted font-bold text-success" v-if="activeOp.override_approved">
-                ⚠️ Đã phê duyệt override: "{{ activeOp.override_reason }}" bởi Giám sát.
+                ⚠️ {{ $t('feedingMonitor.overrideApprovedMsg', { reason: activeOp.override_reason }) }}
               </p>
 
               <!-- Final Valve Trigger -->
@@ -177,31 +177,31 @@
                   class="valve-btn text-glow-green"
                   :disabled="!activeOp.water_verified && !activeOp.override_approved"
                 >
-                  ⚡ MỞ VAN CẤP HÓA CHẤT (KÍCH HOẠT)
+                  ⚡ {{ $t('feedingMonitor.openValveButton') }}
                 </button>
 
                 <!-- Supervisor Override option if locked -->
                 <div v-if="!activeOp.water_verified && !activeOp.override_approved" class="override-panel mt-3">
-                  <label class="text-warning font-bold">🔒 Chức năng bị khóa. Ký duyệt Override (Giám sát):</label>
-                  <input 
-                    type="text" 
-                    v-model="overrideReason" 
-                    class="form-input mt-2" 
-                    placeholder="Lý do bỏ qua điều kiện kiểm tra..."
+                  <label class="text-warning font-bold">🔒 {{ $t('feedingMonitor.lockedOverrideLabel') }}</label>
+                  <input
+                    type="text"
+                    v-model="overrideReason"
+                    class="form-input mt-2"
+                    :placeholder="$t('feedingMonitor.overrideReasonPlaceholder')"
                   />
                   <button 
                     @click="approveOverride" 
                     class="btn btn-warning mt-2 w-100"
                     :disabled="!overrideReason"
                   >
-                    🔑 Ký duyệt Override (Supervisor)
+                    🔑 {{ $t('feedingMonitor.approveOverrideButton') }}
                   </button>
                 </div>
               </div>
               
               <div class="success-valve-message mt-3" v-else>
-                <h4>🎉 Cấp máy nhuộm hoàn thành thành công!</h4>
-                <p class="text-muted">Van nạp hóa chất đã được đóng trở lại. Trạng thái lô chuyển sang DONE.</p>
+                <h4>🎉 {{ $t('feedingMonitor.feedCompleteTitle') }}</h4>
+                <p class="text-muted">{{ $t('feedingMonitor.feedCompleteDesc') }}</p>
               </div>
             </div>
           </div>
@@ -211,8 +211,8 @@
 
     <!-- VIEW 3: OTHERS -->
     <div v-else class="card-sec text-center padding-xl">
-      <h3>🖥️ TRẠM CHƯA ĐƯỢC PHÂN QUYỀN</h3>
-      <p class="text-muted">Giao diện cấp liệu máy nhuộm chỉ hỗ trợ tại trạm TANK_RECEIVING hoặc MACHINE_FEEDING.</p>
+      <h3>🖥️ {{ $t('feedingMonitor.unauthorizedTitle') }}</h3>
+      <p class="text-muted">{{ $t('feedingMonitor.unauthorizedDesc') }}</p>
     </div>
   </div>
 </template>
@@ -220,8 +220,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
+import { useI18n } from 'vue-i18n';
 import { currentWorkstation } from '../services/workstation';
 import { scannerService } from '../services/scanner';
+
+const { t } = useI18n({ useScope: 'global' });
 
 // State
 const readyBatches = ref<any[]>([]);
@@ -305,7 +308,7 @@ const handleBarcodeScan = (token: string) => {
     labelCode.value = token;
     scannerService.playBeep(1800, 100);
   } else {
-    dualScanError.value = 'Mã quét không thuộc định dạng máy/thùng hoặc tem vật tư.';
+    dualScanError.value = t('feedingMonitor.scanFormatError');
   }
 };
 
@@ -333,14 +336,14 @@ const submitDualScanVerify = async () => {
 
     if (res.data?.status === 'SUCCESS') {
       scannerService.playBeep(2000, 200);
-      const successMessage = res.data.message || 'Đối soát quét kép thành công! Đã cập nhật trạng thái nguyên liệu tới bồn.';
+      const successMessage = res.data.message || t('feedingMonitor.dualScanSuccessDefault');
       resetDualScan();
       dualScanSuccess.value = successMessage;
       fetchReadyBatches();
     }
   } catch (err: any) {
     scannerService.playBeep(600, 450); // error sound
-    dualScanError.value = err.response?.data?.message || 'Lỗi đối soát quét kép.';
+    dualScanError.value = err.response?.data?.message || t('feedingMonitor.dualScanErrorDefault');
   }
 };
 
@@ -361,14 +364,14 @@ const searchLabelManually = async () => {
     const res = await axios.get('/api/material-labels/search', { params: { q: query } });
     const rows = res.data?.data || [];
     if (rows.length === 0) {
-      labelSearchError.value = `Không tìm thấy tem nào khớp mã "${query}".`;
+      labelSearchError.value = t('feedingMonitor.labelNotFound', { query });
     } else if (rows.length === 1) {
       scannerService.submitManualEntry(`DF:MATERIAL_LABEL:${rows[0].id}`);
     } else {
       labelSearchResults.value = rows;
     }
   } catch (err) {
-    labelSearchError.value = 'Không thể tìm kiếm tem vật tư. Vui lòng thử lại.';
+    labelSearchError.value = t('feedingMonitor.labelSearchFailed');
   } finally {
     labelSearching.value = false;
   }
@@ -426,7 +429,7 @@ const startFeedingProcess = async () => {
       batch_id: selectedBatch.value.id
     });
     activeOp.value = res.data.data;
-    alert('Đã khởi tạo quy trình nạp van thành công!');
+    alert(t('feedingMonitor.feedStartedAlert'));
   } catch (error) {
     console.error('Error starting feed process:', error);
   }
@@ -437,7 +440,7 @@ const verifyWater = async () => {
   try {
     const res = await axios.post(`/api/feed-operations/${activeOp.value.id}/verify-water`);
     activeOp.value = res.data.data;
-    alert('Kiểm tra cấu hình nước đạt chuẩn!');
+    alert(t('feedingMonitor.waterVerifiedAlert'));
   } catch (error) {
     console.error('Error verifying water:', error);
   }
@@ -448,7 +451,7 @@ const completeFeeding = async () => {
   try {
     const res = await axios.post(`/api/feed-operations/${activeOp.value.id}/complete`);
     activeOp.value = res.data.data;
-    alert('Kích hoạt van mở nạp hóa chất thành công!');
+    alert(t('feedingMonitor.valveOpenedAlert'));
     fetchReadyBatches();
   } catch (error) {
     console.error('Error completing feed:', error);
@@ -463,7 +466,7 @@ const approveOverride = async () => {
     });
     activeOp.value = res.data.data;
     overrideReason.value = '';
-    alert('Đã ký duyệt Override thành công!');
+    alert(t('feedingMonitor.overrideApprovedAlert'));
   } catch (error) {
     console.error('Error approving override:', error);
   }

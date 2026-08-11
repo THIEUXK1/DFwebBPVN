@@ -6,11 +6,11 @@
     <div class="vba-form sent-log">
       <div class="sent-log-head">
         <div class="sent-log-title">
-          SENT LOG — đơn đã tích &amp; đã bấm OK ({{ filtered.length }}<span v-if="filtered.length !== rows.length">/{{ rows.length }}</span>)
+          {{ $t('printSentLog.titleLabel') }} ({{ filtered.length }}<span v-if="filtered.length !== rows.length">/{{ rows.length }}</span>)
         </div>
         <div class="sent-log-tools">
-          <button class="vba-btn" @click="fetchSentLog">LÀM MỚI</button>
-          <router-link to="/print-order-entry" class="vba-btn vba-link">← IN TEM NHẬP ĐƠN</router-link>
+          <button class="vba-btn" @click="fetchSentLog">{{ $t('printSentLog.refreshBtn') }}</button>
+          <router-link to="/print-order-entry" class="vba-btn vba-link">{{ $t('printSentLog.backToPrintOrderLink') }}</router-link>
         </div>
       </div>
 
@@ -18,71 +18,71 @@
            (endpoint giới hạn 100 dòng gần nhất) — không gọi lại API khi đổi lọc. -->
       <div class="filter-bar">
         <label>
-          Cửa sổ
+          {{ $t('printSentLog.windowLabel') }}
           <select v-model.number="windowHours" class="vba-select">
-            <option :value="24">24 giờ</option>
-            <option :value="48">48 giờ</option>
-            <option :value="168">7 ngày</option>
-            <option :value="720">30 ngày</option>
-            <option :value="0">Tất cả</option>
+            <option :value="24">{{ $t('printSentLog.window24h') }}</option>
+            <option :value="48">{{ $t('printSentLog.window48h') }}</option>
+            <option :value="168">{{ $t('printSentLog.window7d') }}</option>
+            <option :value="720">{{ $t('printSentLog.window30d') }}</option>
+            <option :value="0">{{ $t('common.all') }}</option>
           </select>
         </label>
 
         <label>
-          Máy
+          {{ $t('printSentLog.machineLabel') }}
           <select v-model="machineFilter" class="vba-select">
-            <option value="">-- Tất cả máy --</option>
+            <option value="">{{ $t('printSentLog.machineAllOption') }}</option>
             <option v-for="m in machineOptions" :key="m" :value="m">{{ m }}</option>
           </select>
         </label>
 
         <label>
-          Tank
+          {{ $t('printSentLog.tankLabel') }}
           <select v-model="tankFilter" class="vba-select">
-            <option value="">-- Tất cả tank --</option>
+            <option value="">{{ $t('printSentLog.tankAllOption') }}</option>
             <option v-for="t in tankOptions" :key="t" :value="t">{{ t }}</option>
           </select>
         </label>
 
         <label>
-          CHECK
+          {{ $t('printSentLog.checkLabel') }}
           <select v-model="checkFilter" class="vba-select">
-            <option value="">-- Tất cả --</option>
-            <option value="YES">Đã tích ✓</option>
-            <option value="NO">Chưa tích —</option>
+            <option value="">{{ $t('printSentLog.checkAllOption') }}</option>
+            <option value="YES">{{ $t('printSentLog.checkYesOption') }}</option>
+            <option value="NO">{{ $t('printSentLog.checkNoOption') }}</option>
           </select>
         </label>
 
         <label>
-          Trạng thái in
+          {{ $t('printSentLog.printStatusLabel') }}
           <select v-model="printFilter" class="vba-select">
-            <option value="">-- Tất cả --</option>
-            <option value="PRINTED">Đã in xong</option>
-            <option value="PENDING">Đang chờ in</option>
-            <option value="FAILED">In lỗi</option>
-            <option value="CANCELLED">Đã hủy</option>
-            <option value="NONE">Chưa có lệnh in</option>
+            <option value="">{{ $t('printSentLog.printStatusAllOption') }}</option>
+            <option value="PRINTED">{{ $t('printSentLog.printStatusPrintedOption') }}</option>
+            <option value="PENDING">{{ $t('printSentLog.printStatusPendingOption') }}</option>
+            <option value="FAILED">{{ $t('printSentLog.printStatusFailedOption') }}</option>
+            <option value="CANCELLED">{{ $t('printSentLog.printStatusCancelledOption') }}</option>
+            <option value="NONE">{{ $t('printSentLog.printStatusNoneOption') }}</option>
           </select>
         </label>
 
         <label>
-          Trạm gửi
+          {{ $t('printSentLog.stationLabel') }}
           <select v-model="stationFilter" class="vba-select">
-            <option value="">-- Tất cả trạm --</option>
+            <option value="">{{ $t('printSentLog.stationAllOption') }}</option>
             <option v-for="s in stationOptions" :key="s" :value="s">{{ s }}</option>
           </select>
         </label>
 
-        <input v-model="search" class="vba-input" placeholder="Lọc lô / màu / mã hàng / máy..." />
+        <input v-model="search" class="vba-input" :placeholder="$t('printSentLog.searchPlaceholder')" />
 
-        <button class="vba-btn" :disabled="!hasFilter" @click="resetFilters">XÓA LỌC</button>
+        <button class="vba-btn" :disabled="!hasFilter" @click="resetFilters">{{ $t('printSentLog.clearFilterBtn') }}</button>
       </div>
 
       <table class="sent-tbl">
         <thead>
           <tr>
             <th style="width: 36pt">#</th>
-            <th style="width: 78pt">LÔ</th>
+            <th style="width: 78pt">{{ $t('printSentLog.theadBatch') }}</th>
             <th style="width: 120pt">COLOR</th>
             <th style="width: 72pt">CODE</th>
             <th style="width: 54pt">MACHINE</th>
@@ -90,7 +90,7 @@
             <th style="width: 36pt">LV</th>
             <th style="width: 48pt">CHECK</th>
             <th style="width: 90pt">IN</th>
-            <th style="width: 72pt">TRẠM GỬI</th>
+            <th style="width: 72pt">{{ $t('printSentLog.theadStation') }}</th>
             <th style="width: 120pt">TIME3</th>
           </tr>
         </thead>
@@ -105,7 +105,7 @@
             <td>{{ d.batch?.level_code || '' }}</td>
             <td :class="d.scale_checked ? 'chk-yes' : 'chk-no'">{{ d.scale_checked ? '✓' : '—' }}</td>
             <td>
-              <span class="print-badge" :class="'pb-' + printStatusOf(d)">{{ PRINT_LABEL[printStatusOf(d)] }}</span>
+              <span class="print-badge" :class="'pb-' + printStatusOf(d)">{{ printLabel(printStatusOf(d)) }}</span>
               <span v-if="printCountOf(d) > 1" class="print-count">×{{ printCountOf(d) }}</span>
             </td>
             <td>{{ d.originating_station_code || '' }}</td>
@@ -113,7 +113,7 @@
           </tr>
           <tr v-if="pageRows.length === 0">
             <td colspan="11" class="sent-empty">
-              {{ loading ? 'Đang tải...' : 'Không có đơn nào khớp điều kiện.' }}
+              {{ loading ? $t('common.loading') : $t('printSentLog.noMatchMsg') }}
             </td>
           </tr>
         </tbody>
@@ -122,18 +122,18 @@
       <div class="pager">
         <div class="pager-info">
           <template v-if="filtered.length">
-            Hiển thị {{ pageStart + 1 }}–{{ pageStart + pageRows.length }} / {{ filtered.length }} đơn
+            {{ $t('printSentLog.pagerShowing', { from: pageStart + 1, to: pageStart + pageRows.length, total: filtered.length }) }}
           </template>
-          <template v-else>Không có dòng nào</template>
+          <template v-else>{{ $t('printSentLog.pagerNoRows') }}</template>
         </div>
         <div class="pager-ctrl">
           <label>
-            Mỗi trang
+            {{ $t('printSentLog.pageSizeLabel') }}
             <select v-model.number="pageSize" class="vba-select">
               <option :value="25">25</option>
               <option :value="50">50</option>
               <option :value="100">100</option>
-              <option :value="0">Tất cả</option>
+              <option :value="0">{{ $t('common.all') }}</option>
             </select>
           </label>
           <button class="vba-btn" :disabled="page <= 1" @click="page = 1">«</button>
@@ -147,16 +147,15 @@
           >{{ p }}</button>
           <button class="vba-btn" :disabled="page >= totalPages" @click="page++">›</button>
           <button class="vba-btn" :disabled="page >= totalPages" @click="page = totalPages">»</button>
-          <span class="pager-total">Trang {{ page }}/{{ totalPages }}</span>
+          <span class="pager-total">{{ $t('printSentLog.pagerTotal', { page, totalPages }) }}</span>
         </div>
       </div>
 
       <p class="sent-note">
-        Bản gốc đọc <code>tbl_sentlog WHERE TIME3 &gt;= DateAdd('h',-48,Now()) ORDER BY TIME3 ASC</code>
-        (hàm tên <code>LoadSent_Last24h</code> nhưng SQL thật là 48 giờ). Cột TIME3 ở đây lấy mốc
-        print job đầu tiên của đơn — web không ghi cột thời điểm xác nhận riêng.
-        Bảng này sắp xếp <strong>mới nhất lên đầu</strong> (ngược bản gốc) cho tiện tra cứu.
-        Cột IN lấy trạng thái của lệnh in <strong>mới nhất</strong>; <code>×n</code> là số lần đã in (kể cả in lại).
+        {{ $t('printSentLog.noteOriginalPrefix') }} <code>tbl_sentlog WHERE TIME3 &gt;= DateAdd('h',-48,Now()) ORDER BY TIME3 ASC</code>
+        {{ $t('printSentLog.noteOriginalMiddle') }} <code>LoadSent_Last24h</code> {{ $t('printSentLog.noteOriginalSuffix') }}
+        {{ $t('printSentLog.noteSortPrefix') }} <strong>{{ $t('printSentLog.noteSortBold') }}</strong> {{ $t('printSentLog.noteSortSuffix') }}
+        {{ $t('printSentLog.notePrintStatusPrefix') }} <strong>{{ $t('printSentLog.notePrintStatusBold') }}</strong>{{ $t('printSentLog.notePrintStatusMiddle') }} <code>×n</code> {{ $t('printSentLog.notePrintStatusSuffix') }}
       </p>
     </div>
 
@@ -166,9 +165,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import echo from '../services/echo';
 import FullscreenButton from '../components/FullscreenButton.vue';
+
+const { t } = useI18n({ useScope: 'global' });
 
 const windowHours = ref(48);
 const machineFilter = ref('');
@@ -189,13 +191,17 @@ const jobsOf = (d: any): any[] => d.print_jobs ?? d.printJobs ?? [];
 const confirmTimeOf = (d: any): string => jobsOf(d)[0]?.created_at ?? d.created_at;
 const printCountOf = (d: any): number => jobsOf(d).length;
 
+// Map trạng thái -> key dịch (không giữ sẵn chuỗi đã dịch): phải gọi t() lúc render thì đổi
+// ngôn ngữ mới cập nhật lại badge trên bảng.
 const PRINT_LABEL: Record<string, string> = {
-  PRINTED: 'Đã in',
-  PENDING: 'Chờ in',
-  FAILED: 'Lỗi',
-  CANCELLED: 'Đã hủy',
-  NONE: 'Chưa in',
+  PRINTED: 'printSentLog.printLabelPrinted',
+  PENDING: 'printSentLog.printLabelPending',
+  FAILED: 'printSentLog.printLabelFailed',
+  CANCELLED: 'printSentLog.printLabelCancelled',
+  NONE: 'printSentLog.printLabelNone',
 };
+
+const printLabel = (status: string) => t(PRINT_LABEL[status]);
 
 // Lấy trạng thái của lệnh in MỚI NHẤT (mảng do API trả về đã sắp xếp cũ → mới): in lại sau khi
 // lỗi thì đơn phải hiện là "Đã in", chứ không kẹt ở trạng thái lỗi của lần in hỏng trước đó.

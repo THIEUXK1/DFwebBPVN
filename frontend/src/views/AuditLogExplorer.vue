@@ -1,35 +1,35 @@
 <template>
   <div class="audit-container">
     <div class="panel-header mb-4">
-      <h3>🕵️ Audit Log Explorer</h3>
-      <p class="text-muted">Tra cứu nhật ký thay đổi bất biến (phê duyệt công thức, override dung sai/cấp máy, reprint tem, force unlock...).</p>
+      <h3>🕵️ {{ $t('auditLogExplorer.title') }}</h3>
+      <p class="text-muted">{{ $t('auditLogExplorer.description') }}</p>
     </div>
 
     <div class="card filter-bar mb-4">
       <div class="form-group">
-        <label>Từ ngày</label>
+        <label>{{ $t('auditLogExplorer.labelFromDate') }}</label>
         <input type="date" v-model="filters.from" class="form-input" />
       </div>
       <div class="form-group">
-        <label>Đến ngày</label>
+        <label>{{ $t('auditLogExplorer.labelToDate') }}</label>
         <input type="date" v-model="filters.to" class="form-input" />
       </div>
       <div class="form-group">
-        <label>Hành động (Action)</label>
+        <label>{{ $t('auditLogExplorer.labelAction') }}</label>
         <select v-model="filters.action" class="form-select">
-          <option value="">Tất cả</option>
+          <option value="">{{ $t('common.all') }}</option>
           <option v-for="a in filterOptions.actions" :key="a" :value="a">{{ a }}</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Đối tượng (Entity)</label>
+        <label>{{ $t('auditLogExplorer.labelEntity') }}</label>
         <select v-model="filters.entity_type" class="form-select">
-          <option value="">Tất cả</option>
+          <option value="">{{ $t('common.all') }}</option>
           <option v-for="e in filterOptions.entity_types" :key="e" :value="e">{{ e }}</option>
         </select>
       </div>
       <div class="filter-actions">
-        <button class="btn btn-primary" @click="load(1)" :disabled="loading">🔍 Tìm kiếm</button>
+        <button class="btn btn-primary" @click="load(1)" :disabled="loading">🔍 {{ $t('common.search') }}</button>
       </div>
     </div>
 
@@ -40,11 +40,11 @@
         <table class="data-table">
           <thead>
             <tr>
-              <th>Thời gian</th>
-              <th>Người thực hiện</th>
-              <th>Hành động</th>
-              <th>Đối tượng</th>
-              <th>Mã đối tượng</th>
+              <th>{{ $t('common.time') }}</th>
+              <th>{{ $t('auditLogExplorer.colUser') }}</th>
+              <th>{{ $t('common.action') }}</th>
+              <th>{{ $t('auditLogExplorer.colEntity') }}</th>
+              <th>{{ $t('auditLogExplorer.colEntityId') }}</th>
               <th>IP</th>
               <th></th>
             </tr>
@@ -64,11 +64,11 @@
                 <td colspan="7">
                   <div class="detail-grid">
                     <div>
-                      <h5>Trước khi thay đổi (before_data)</h5>
+                      <h5>{{ $t('auditLogExplorer.beforeDataTitle') }}</h5>
                       <pre>{{ prettyJson(row.before_data) }}</pre>
                     </div>
                     <div>
-                      <h5>Sau khi thay đổi (after_data)</h5>
+                      <h5>{{ $t('auditLogExplorer.afterDataTitle') }}</h5>
                       <pre>{{ prettyJson(row.after_data) }}</pre>
                     </div>
                   </div>
@@ -76,16 +76,16 @@
               </tr>
             </template>
             <tr v-if="!loading && logs.length === 0">
-              <td colspan="7" class="text-muted text-center">Không tìm thấy nhật ký phù hợp.</td>
+              <td colspan="7" class="text-muted text-center">{{ $t('auditLogExplorer.emptyRow') }}</td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <div class="pagination-footer" v-if="pagination.last_page > 1">
-        <button class="page-btn" :disabled="pagination.current_page === 1" @click="load(pagination.current_page - 1)">◀ Trước</button>
-        <span class="page-info">Trang {{ pagination.current_page }} / {{ pagination.last_page }} ({{ pagination.total }} bản ghi)</span>
-        <button class="page-btn" :disabled="pagination.current_page === pagination.last_page" @click="load(pagination.current_page + 1)">Sau ▶</button>
+        <button class="page-btn" :disabled="pagination.current_page === 1" @click="load(pagination.current_page - 1)">◀ {{ $t('auditLogExplorer.prevPage') }}</button>
+        <span class="page-info">{{ $t('auditLogExplorer.pageInfo', { current: pagination.current_page, last: pagination.last_page, total: pagination.total }) }}</span>
+        <button class="page-btn" :disabled="pagination.current_page === pagination.last_page" @click="load(pagination.current_page + 1)">{{ $t('auditLogExplorer.nextPage') }} ▶</button>
       </div>
     </div>
   </div>
@@ -93,7 +93,10 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
+
+const { t } = useI18n({ useScope: 'global' });
 
 function defaultDate(daysAgo: number) {
   const d = new Date();
@@ -143,7 +146,7 @@ async function load(page = 1) {
     pagination.last_page = data.last_page;
     pagination.total = data.total;
   } catch (err: any) {
-    errorMessage.value = err.response?.data?.message || 'Không thể tải nhật ký Audit Log.';
+    errorMessage.value = err.response?.data?.message || t('auditLogExplorer.errorLoad');
   } finally {
     loading.value = false;
   }
@@ -158,7 +161,7 @@ function truncate(v: string | null) {
   return v.length > 12 ? v.slice(0, 10) + '…' : v;
 }
 function prettyJson(v: any) {
-  if (!v) return '(không có)';
+  if (!v) return t('auditLogExplorer.emptyJson');
   try {
     const obj = typeof v === 'string' ? JSON.parse(v) : v;
     return JSON.stringify(obj, null, 2);

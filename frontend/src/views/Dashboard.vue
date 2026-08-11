@@ -89,18 +89,17 @@
         <section class="status-duration-report mt-4">
           <div class="report-head">
             <div>
-              <h4 class="report-title">⏱️ Máy đã ở trạng thái hiện tại bao lâu rồi</h4>
+              <h4 class="report-title">{{ $t('dashboard.durationReportTitle') }}</h4>
               <p class="report-sub" v-if="authStore.isAdmin">
-                Đếm từ mốc thật của task quyết định trạng thái trong BPDB (bắt đầu chạy / tạo task / kết thúc).
-                Máy trống không có task nào trong 30 ngày ghi là “&gt; 30 ngày”.
+                {{ $t('dashboard.durationReportSubAdmin') }}
               </p>
               <p class="report-sub" v-else>
-                Ước tính theo lần cập nhật gần nhất của mẻ đang chạy — bảng dữ liệu nội bộ chưa có mốc đổi trạng thái riêng.
+                {{ $t('dashboard.durationReportSubUser') }}
               </p>
             </div>
             <label class="report-filter">
               <input type="checkbox" v-model="onlyStuckMachines" />
-              <span>Chỉ hiện máy có cảnh báo kéo dài</span>
+              <span>{{ $t('dashboard.filterStuckOnly') }}</span>
             </label>
           </div>
 
@@ -108,13 +107,13 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Máy</th>
-                  <th>Trạng thái</th>
-                  <th>Đã kéo dài</th>
-                  <th>Từ lúc</th>
-                  <th v-if="authStore.isAdmin">Đếm từ mốc</th>
-                  <th v-if="authStore.isAdmin">Task / Lô hiện tại</th>
-                  <th>Cảnh báo</th>
+                  <th>{{ $t('dashboard.thMachine') }}</th>
+                  <th>{{ $t('common.status') }}</th>
+                  <th>{{ $t('dashboard.thDuration') }}</th>
+                  <th>{{ $t('dashboard.thSince') }}</th>
+                  <th v-if="authStore.isAdmin">{{ $t('dashboard.thAnchor') }}</th>
+                  <th v-if="authStore.isAdmin">{{ $t('dashboard.thCurrentTask') }}</th>
+                  <th>{{ $t('common.warning') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -138,7 +137,7 @@
                 </tr>
                 <tr v-if="statusDurationRows.length === 0">
                   <td :colspan="authStore.isAdmin ? 7 : 4" class="text-center text-muted">
-                    {{ onlyStuckMachines ? 'Không có máy nào đang bị cảnh báo kéo dài.' : 'Chưa có dữ liệu trạng thái máy.' }}
+                    {{ onlyStuckMachines ? $t('dashboard.noStuckMachines') : $t('dashboard.noMachineStatusData') }}
                   </td>
                 </tr>
               </tbody>
@@ -150,22 +149,22 @@
       <!-- TAB 2: WEIGHING ROOM -->
       <div v-if="activeTab === 'weighing'" class="tab-panel">
         <div class="panel-header mb-4">
-          <h3>⚖️ Giám sát Trạm Cân &amp; Chuẩn bị Nguyên liệu</h3>
-          <p class="text-muted">Hàng chờ cân nguyên liệu mẻ và thuốc nhuộm dán nhãn Lot hôm nay.</p>
+          <h3>{{ $t('dashboard.weighingTitle') }}</h3>
+          <p class="text-muted">{{ $t('dashboard.weighingSubtitle') }}</p>
         </div>
 
         <div class="table-responsive">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Mã Lô (Batch ID)</th>
-                <th>Màu (Color)</th>
-                <th>Sản phẩm (Product)</th>
-                <th>Máy nhuộm</th>
-                <th>Thùng trộn</th>
-                <th>Trạng thái cân</th>
-                <th>Thao tác cân hoàn thành</th>
-                <th>Vận chuyển</th>
+                <th>{{ $t('dashboard.thBatchId') }}</th>
+                <th>{{ $t('dashboard.thColor') }}</th>
+                <th>{{ $t('dashboard.thProduct') }}</th>
+                <th>{{ $t('dashboard.thDyeingMachine') }}</th>
+                <th>{{ $t('dashboard.thMixTank') }}</th>
+                <th>{{ $t('dashboard.thWeighingStatus') }}</th>
+                <th>{{ $t('dashboard.thWeighingAction') }}</th>
+                <th>{{ $t('dashboard.thTransport') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -182,8 +181,8 @@
                 </td>
                 <td>
                   <div class="weighed-indicators">
-                    <span class="indicator-number">{{ w.weighed_count }} hóa chất</span>
-                    <span class="indicator-time" v-if="w.last_weighed_at">Cân xong: {{ formatTime(w.last_weighed_at) }}</span>
+                    <span class="indicator-number">{{ $t('dashboard.weighedCountLabel', { count: w.weighed_count }) }}</span>
+                    <span class="indicator-time" v-if="w.last_weighed_at">{{ $t('dashboard.weighedDonePrefix') }}{{ formatTime(w.last_weighed_at) }}</span>
                   </div>
                 </td>
                 <td>
@@ -193,7 +192,7 @@
                 </td>
               </tr>
               <tr v-if="weighingData.length === 0">
-                <td colspan="8" class="text-center text-muted">Không có nhiệm vụ cân nào hôm nay.</td>
+                <td colspan="8" class="text-center text-muted">{{ $t('dashboard.noWeighingToday') }}</td>
               </tr>
             </tbody>
           </table>
@@ -203,8 +202,8 @@
       <!-- TAB 3: DYEING MACHINE DETAIL -->
       <div v-if="activeTab === 'dyeing'" class="tab-panel">
         <div class="panel-header mb-4">
-          <h3>🌀 Giám sát cấp máy nhuộm tự động</h3>
-          <p class="text-muted">Theo dõi khóa liên động nạp van nước, A11/DLG, hóa chất và thuốc nhuộm tại các máy nhuộm.</p>
+          <h3>{{ $t('dashboard.dyeingTitle') }}</h3>
+          <p class="text-muted">{{ $t('dashboard.dyeingSubtitle') }}</p>
         </div>
 
         <div class="machine-status-list">
@@ -216,32 +215,32 @@
 
             <div class="m-row-body" v-if="item.active_batch">
               <div class="m-row-info">
-                <div>Mẻ chạy: <strong class="code-link" @click="openBatchTimeline(item.active_batch.id)">{{ item.active_batch.legacy_batch_id }}</strong></div>
-                <div class="m-row-subtext">Trạng thái mẻ: {{ item.active_batch.status }}</div>
+                <div>{{ $t('dashboard.runningBatchPrefix') }}<strong class="code-link" @click="openBatchTimeline(item.active_batch.id)">{{ item.active_batch.legacy_batch_id }}</strong></div>
+                <div class="m-row-subtext">{{ $t('dashboard.batchStatusPrefix') }}{{ item.active_batch.status }}</div>
               </div>
 
               <!-- Interlock Checklist -->
               <div class="interlock-checklist">
                 <div class="checklist-item" :class="{ 'check-success': item.feed_operation?.water_verified }">
                   <span class="check-icon">{{ item.feed_operation?.water_verified ? '✓' : '✗' }}</span>
-                  <span class="check-label">Đủ nước nạp</span>
+                  <span class="check-label">{{ $t('dashboard.checkWaterOk') }}</span>
                 </div>
                 <div class="checklist-item" :class="{ 'check-success': item.feed_operation?.materials_verified }">
                   <span class="check-icon">{{ item.feed_operation?.materials_verified ? '✓' : '✗' }}</span>
-                  <span class="check-label">Xác thực nguyên liệu</span>
+                  <span class="check-label">{{ $t('dashboard.checkMaterialsVerified') }}</span>
                 </div>
                 <div class="checklist-item" :class="{ 'check-success': item.transport?.status === 'ARRIVED_AT_TANK' }">
                   <span class="check-icon">{{ item.transport?.status === 'ARRIVED_AT_TANK' ? '✓' : '✗' }}</span>
-                  <span class="check-label">Thùng 1A/2B đã tới trạm</span>
+                  <span class="check-label">{{ $t('dashboard.checkTankArrived') }}</span>
                 </div>
                 <div class="checklist-item" :class="{ 'check-success': item.feed_operation?.completed_at }">
                   <span class="check-icon">{{ item.feed_operation?.completed_at ? '✓' : '✗' }}</span>
-                  <span class="check-label">Van cấp đã mở</span>
+                  <span class="check-label">{{ $t('dashboard.checkValveOpen') }}</span>
                 </div>
               </div>
             </div>
             <div v-else class="m-row-empty text-muted">
-              Máy đang trống (IDLE). Không có hoạt động nạp cấp liệu.
+              {{ $t('dashboard.machineIdleEmpty') }}
             </div>
           </div>
         </div>
@@ -250,8 +249,8 @@
       <!-- TAB 4: ALERTS PANEL -->
       <div v-if="activeTab === 'alerts'" class="tab-panel">
         <div class="panel-header mb-4">
-          <h3>⚠️ Trung tâm Xử lý Cảnh báo tự động</h3>
-          <p class="text-muted">Quản lý và giải quyết các sự cố vận hành trễ SLA hoặc sai lệch dung sai cân đo.</p>
+          <h3>{{ $t('dashboard.alertsTitle') }}</h3>
+          <p class="text-muted">{{ $t('dashboard.alertsSubtitle') }}</p>
         </div>
 
         <div class="alerts-container">
@@ -269,14 +268,14 @@
             <div class="alert-body mt-2">
               <p class="alert-message">{{ alert.message }}</p>
               <div class="alert-meta-row mt-2" v-if="alert.batch || alert.machine">
-                <span class="meta-tag" v-if="alert.batch">Lô: {{ alert.batch.legacy_batch_id }}</span>
-                <span class="meta-tag" v-if="alert.machine">Máy: {{ alert.machine.code }}</span>
+                <span class="meta-tag" v-if="alert.batch">{{ $t('dashboard.alertBatchPrefix') }}{{ alert.batch.legacy_batch_id }}</span>
+                <span class="meta-tag" v-if="alert.machine">{{ $t('dashboard.alertMachinePrefix') }}{{ alert.machine.code }}</span>
               </div>
             </div>
 
             <div class="alert-actions-footer mt-4">
               <span class="assignee-info" v-if="alert.status === 'ACKNOWLEDGED'">
-                👤 Phụ trách: <strong>{{ alert.assignee?.display_name }}</strong>
+                {{ $t('dashboard.alertAssigneePrefix') }}<strong>{{ alert.assignee?.display_name }}</strong>
               </span>
               <div class="action-buttons">
                 <button 
@@ -284,13 +283,13 @@
                   @click="openAlertModal(alert, 'ACKNOWLEDGE')" 
                   class="btn btn-secondary btn-sm"
                 >
-                  Nhận xử lý
+                  {{ $t('dashboard.btnAcknowledge') }}
                 </button>
                 <button 
                   @click="openAlertModal(alert, 'RESOLVE')" 
                   class="btn btn-primary btn-sm"
                 >
-                  Đóng cảnh báo (Resolve)
+                  {{ $t('dashboard.btnResolve') }}
                 </button>
               </div>
             </div>
@@ -298,7 +297,7 @@
 
           <div v-if="alertsData.length === 0" class="text-center text-muted pad-empty-row card">
             <div class="empty-state-icon">✅</div>
-            <p>Tuyệt vời! Không có cảnh báo sự cố nào đang mở.</p>
+            <p>{{ $t('dashboard.noOpenAlerts') }}</p>
           </div>
         </div>
       </div>
@@ -306,30 +305,30 @@
       <!-- TAB 5: MANAGEMENT KPIS -->
       <div v-if="activeTab === 'management'" class="tab-panel">
         <div class="panel-header mb-4">
-          <h3>📈 Thống kê &amp; KPIs Quản lý Ca</h3>
-          <p class="text-muted">Biểu đồ chỉ số vận hành nhà máy gần thời gian thực.</p>
+          <h3>{{ $t('dashboard.managementTitle') }}</h3>
+          <p class="text-muted">{{ $t('dashboard.managementSubtitle') }}</p>
         </div>
 
         <div class="kpi-detail-grid">
           <div class="card kpi-detail-card">
-            <h4>Mẻ hoàn thành (hôm nay)</h4>
+            <h4>{{ $t('dashboard.kpiCompletedTodayTitle') }}</h4>
             <div class="kpi-detail-value text-success">{{ managementKpis.completed_today }}</div>
-            <p class="text-muted">Mẻ nhuộm đã nạp máy hoàn thành.</p>
+            <p class="text-muted">{{ $t('dashboard.kpiCompletedTodayDesc') }}</p>
           </div>
           <div class="card kpi-detail-card">
-            <h4>Mẻ đang chạy hiện hành</h4>
+            <h4>{{ $t('dashboard.kpiActiveBatchesTitle') }}</h4>
             <div class="kpi-detail-value text-warning">{{ managementKpis.active_batches }}</div>
-            <p class="text-muted">Mẻ đang cân, vận chuyển hoặc chờ nạp.</p>
+            <p class="text-muted">{{ $t('dashboard.kpiActiveBatchesDesc') }}</p>
           </div>
           <div class="card kpi-detail-card">
-            <h4>Nhiệm vụ cân trễ hạn</h4>
+            <h4>{{ $t('dashboard.kpiOverdueWeighingTitle') }}</h4>
             <div class="kpi-detail-value text-error">{{ managementKpis.overdue_weighing_count }}</div>
-            <p class="text-muted">Trọng số cân kéo dài vượt ngưỡng.</p>
+            <p class="text-muted">{{ $t('dashboard.kpiOverdueWeighingDesc') }}</p>
           </div>
           <div class="card kpi-detail-card">
-            <h4>Độ trễ vận chuyển trung bình</h4>
-            <div class="kpi-detail-value text-info">{{ managementKpis.average_transport_minutes }} phút</div>
-            <p class="text-muted">Thời gian trễ trung bình so với SLA.</p>
+            <h4>{{ $t('dashboard.kpiAvgTransportTitle') }}</h4>
+            <div class="kpi-detail-value text-info">{{ managementKpis.average_transport_minutes }}{{ $t('dashboard.kpiAvgTransportSuffix') }}</div>
+            <p class="text-muted">{{ $t('dashboard.kpiAvgTransportDesc') }}</p>
           </div>
         </div>
       </div>
@@ -340,7 +339,7 @@
          sát phải "chỉ giám sát", nên công cụ giả lập không được lộ ra cho tài khoản trạm MONITORING) -->
     <div v-if="authStore.isAdmin" class="collapsible-mock-section mt-4">
       <button @click="showMockPanel = !showMockPanel" class="mock-panel-toggle">
-        🛠️ Công cụ kiểm thử &amp; Giả lập (Admin / Developer)
+        {{ $t('dashboard.mockPanelToggle') }}
         <span>{{ showMockPanel ? '▲' : '▼' }}</span>
       </button>
 
@@ -348,36 +347,36 @@
         <div class="two-col-grid">
           <!-- Live Workstations readings -->
           <section class="section-sub">
-            <h4>📶 Nhịp tim Trạm Cân &amp; Telemetry Cân thô</h4>
+            <h4>{{ $t('dashboard.mockTelemetryTitle') }}</h4>
             <div class="ws-telemetry-row mt-2" v-for="ws in workstations" :key="ws.id">
               <div class="ws-header">
-                <strong>{{ ws.name }}</strong>
+                <strong>{{ $t(ws.nameKey) }}</strong>
                 <span :class="['ws-dot', ws.active ? 'dot-active' : 'dot-offline']"></span>
               </div>
               <div class="ws-weight-box">
                 <span class="ws-weight">{{ ws.weight.toFixed(2) }} kg</span>
-                <span class="ws-time">Cập nhật: {{ ws.lastUpdated }}</span>
+                <span class="ws-time">{{ $t('dashboard.wsUpdatedPrefix') }}{{ ws.lastUpdated }}</span>
               </div>
             </div>
           </section>
 
           <!-- Printing trigger simulator -->
           <section class="section-sub">
-            <h4>🚀 Phát lệnh in Tem Nhãn QR giả lập (TSPL)</h4>
+            <h4>{{ $t('dashboard.mockPrintTitle') }}</h4>
             <div class="control-form mt-2">
               <div class="form-group">
-                <label>Trạm cân đích</label>
+                <label>{{ $t('dashboard.targetWorkstationLabel') }}</label>
                 <select v-model="targetWorkstation" class="form-select">
-                  <option value="WS-01">WS-01 (Cân Dyes)</option>
-                  <option value="WS-02">WS-02 (Cân Chems)</option>
+                  <option value="WS-01">{{ $t('dashboard.ws01Option') }}</option>
+                  <option value="WS-02">{{ $t('dashboard.ws02Option') }}</option>
                 </select>
               </div>
               <div class="form-group mt-2">
-                <label>Nội dung mã lệnh TSPL</label>
+                <label>{{ $t('dashboard.tsplPayloadLabel') }}</label>
                 <textarea v-model="tsplPayload" class="form-control" style="height: 80px; font-family: monospace;"></textarea>
               </div>
               <button @click="triggerMockPrint" class="btn btn-primary mt-2" :disabled="printing">
-                {{ printing ? 'Đang gửi...' : 'Gửi lệnh in' }}
+                {{ printing ? $t('dashboard.sendingLabel') : $t('dashboard.sendPrintCommand') }}
               </button>
               <p v-if="printMessage" :class="printSuccess ? 'text-success' : 'text-error'" class="mt-2">{{ printMessage }}</p>
             </div>
@@ -390,13 +389,13 @@
     <div class="modal-backdrop" v-if="timelineOpen" @click.self="closeBatchTimeline">
       <div class="timeline-modal">
         <div class="modal-header">
-          <h3>📋 Trình tự thời gian mẻ nhuộm (Batch Timeline)</h3>
+          <h3>{{ $t('dashboard.timelineModalTitle') }}</h3>
           <button @click="closeBatchTimeline" class="modal-close-btn">&times;</button>
         </div>
         <div class="modal-body" v-if="activeTimelineData">
           <div class="timeline-hero mb-4">
-            <h4>Lô sản xuất: {{ activeTimelineData.batch.legacy_batch_id }}</h4>
-            <div class="text-muted">Màu: {{ activeTimelineData.batch.color }} | Vải: {{ activeTimelineData.batch.product_code }}</div>
+            <h4>{{ $t('dashboard.timelineBatchPrefix') }}{{ activeTimelineData.batch.legacy_batch_id }}</h4>
+            <div class="text-muted">{{ $t('dashboard.timelineColorPrefix') }}{{ activeTimelineData.batch.color }}{{ $t('dashboard.timelineFabricMiddle') }}{{ activeTimelineData.batch.product_code }}</div>
           </div>
 
           <div class="timeline-steps">
@@ -412,14 +411,14 @@
                   <strong class="step-title">{{ step.milestone }}</strong>
                   <span class="step-time">{{ formatTime(step.time) }}</span>
                 </div>
-                <div class="step-meta">Tác nhân: {{ step.actor }}</div>
+                <div class="step-meta">{{ $t('dashboard.timelineActorPrefix') }}{{ step.actor }}</div>
                 <p class="step-notes">{{ step.notes }}</p>
               </div>
             </div>
           </div>
         </div>
         <div class="modal-footer">
-          <button @click="closeBatchTimeline" class="btn btn-secondary">Đóng</button>
+          <button @click="closeBatchTimeline" class="btn btn-secondary">{{ $t('common.close') }}</button>
         </div>
       </div>
     </div>
@@ -428,19 +427,19 @@
     <div class="modal-backdrop" v-if="alertModalOpen" @click.self="closeAlertModal">
       <div class="action-modal">
         <div class="modal-header">
-          <h3>{{ alertModalAction === 'ACKNOWLEDGE' ? 'Nhận xử lý Sự cố' : 'Đóng Cảnh báo (Resolve)' }}</h3>
+          <h3>{{ alertModalAction === 'ACKNOWLEDGE' ? $t('dashboard.alertModalTitleAck') : $t('dashboard.alertModalTitleResolve') }}</h3>
           <button @click="closeAlertModal" class="modal-close-btn">&times;</button>
         </div>
         <div class="modal-body" v-if="selectedAlertForAction">
-          <p class="mb-4">Bạn đang xử lý cảnh báo: <strong>{{ selectedAlertForAction.message }}</strong></p>
+          <p class="mb-4">{{ $t('dashboard.alertModalHandlingPrefix') }}<strong>{{ selectedAlertForAction.message }}</strong></p>
           <div class="form-group">
-            <label>{{ alertModalAction === 'ACKNOWLEDGE' ? 'Ghi chú tiếp nhận' : 'Biện pháp khắc phục thực tế *' }}</label>
+            <label>{{ alertModalAction === 'ACKNOWLEDGE' ? $t('dashboard.alertModalNotesLabelAck') : $t('dashboard.alertModalNotesLabelResolve') }}</label>
             <textarea v-model="alertActionNotes" required class="form-control" style="height: 100px;"></textarea>
           </div>
         </div>
         <div class="modal-footer">
-          <button @click="closeAlertModal" class="btn btn-secondary">Hủy</button>
-          <button @click="submitAlertAction" class="btn btn-primary">Xác nhận</button>
+          <button @click="closeAlertModal" class="btn btn-secondary">{{ $t('common.cancel') }}</button>
+          <button @click="submitAlertAction" class="btn btn-primary">{{ $t('common.confirm') }}</button>
         </div>
       </div>
     </div>
@@ -450,31 +449,33 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '../stores/auth';
 import axios from 'axios';
 import echo from '../services/echo';
 
+const { t } = useI18n({ useScope: 'global' });
 const authStore = useAuthStore();
 
 // Tab configuration
-const tabs = [
-  { id: 'overview', name: 'Điều độ tổng thể', icon: '📊' },
-  { id: 'weighing', name: 'Phòng cân', icon: '⚖️' },
-  { id: 'dyeing', name: 'Máy nhuộm', icon: '🌀' },
-  { id: 'alerts', name: 'Cảnh báo', icon: '⚠️' },
-  { id: 'management', name: 'KPIs Quản lý', icon: '📈' }
-];
+const tabs = computed(() => [
+  { id: 'overview', name: t('dashboard.tabOverview'), icon: '📊' },
+  { id: 'weighing', name: t('dashboard.tabWeighing'), icon: '⚖️' },
+  { id: 'dyeing', name: t('dashboard.tabDyeing'), icon: '🌀' },
+  { id: 'alerts', name: t('dashboard.tabAlerts'), icon: '⚠️' },
+  { id: 'management', name: t('dashboard.tabManagement'), icon: '📈' }
+]);
 const activeTab = ref('overview');
 const showMockPanel = ref(false);
 
 // Connection Status banner
 const connectionStatus = ref('OFFLINE');
-const connectionStatusText = ref('Đang khởi tạo kết nối...');
+const connectionStatusText = ref(t('dashboard.initConnecting'));
 
 // Telemetry State
 const workstations = ref([
-  { id: 'WS-01', name: 'Trạm cân 1 (Thuốc nhuộm)', weight: 0.0, active: false, lastUpdated: 'Không có dữ liệu' },
-  { id: 'WS-02', name: 'Trạm cân 2 (Hóa chất)', weight: 0.0, active: false, lastUpdated: 'Không có dữ liệu' }
+  { id: 'WS-01', nameKey: 'dashboard.ws1Name', weight: 0.0, active: false, lastUpdated: t('dashboard.noDataShort') },
+  { id: 'WS-02', nameKey: 'dashboard.ws2Name', weight: 0.0, active: false, lastUpdated: t('dashboard.noDataShort') }
 ]);
 
 // Tab Snapshots
@@ -535,40 +536,43 @@ let durationTicker: ReturnType<typeof setInterval> | null = null;
 const onlyStuckMachines = ref(false);
 
 const formatDuration = (totalSeconds: number | null): string => {
-  if (totalSeconds === null) return 'Không xác định';
+  if (totalSeconds === null) return t('dashboard.durationUnknown');
   const s = Math.max(0, Math.floor(totalSeconds));
   const days = Math.floor(s / 86400);
   const hours = Math.floor((s % 86400) / 3600);
   const minutes = Math.floor((s % 3600) / 60);
   const seconds = s % 60;
-  if (days > 0) return `${days} ngày ${hours} giờ`;
-  if (hours > 0) return `${hours} giờ ${minutes} phút`;
-  if (minutes > 0) return `${minutes} phút ${seconds} giây`;
-  return `${seconds} giây`;
+  if (days > 0) return t('dashboard.durationDaysHours', { days, hours });
+  if (hours > 0) return t('dashboard.durationHoursMinutes', { hours, minutes });
+  if (minutes > 0) return t('dashboard.durationMinutesSeconds', { minutes, seconds });
+  return t('dashboard.durationSeconds', { seconds });
 };
 
-const anchorLabels: Record<string, string> = {
-  WORK_START: 'Bắt đầu chạy task',
-  CREATE: 'Tạo task',
-  FINISH: 'Kết thúc task',
-  LAST_ACTIVITY: 'Hoạt động cuối cùng',
-  BATCH_UPDATED_AT: 'Cập nhật mẻ gần nhất',
+const anchorLabelKeys: Record<string, string> = {
+  WORK_START: 'dashboard.anchorWorkStart',
+  CREATE: 'dashboard.anchorCreate',
+  FINISH: 'dashboard.anchorFinish',
+  LAST_ACTIVITY: 'dashboard.anchorLastActivity',
+  BATCH_UPDATED_AT: 'dashboard.anchorBatchUpdatedAt',
 };
+
+const anchorLabel = (source: string): string =>
+  anchorLabelKeys[source] ? t(anchorLabelKeys[source]) : '—';
 
 const warningLabel = (w: any): string => {
   if (!w) return '';
   const minutes = w.minutes != null ? Math.round(w.minutes) : null;
   switch (w.code) {
     case 'WAITING_TOO_LONG':
-      return `Chờ quá lâu (${minutes} phút / ngưỡng ${w.threshold})`;
+      return t('dashboard.warnWaitingTooLong', { minutes, threshold: w.threshold });
     case 'TRANSITION_STUCK':
-      return `Kẹt chuyển trạng thái (${minutes} phút / ngưỡng ${w.threshold})`;
+      return t('dashboard.warnTransitionStuck', { minutes, threshold: w.threshold });
     case 'PROCESSING_TOO_LONG':
-      return `Chạy quá lâu (${minutes} phút / ngưỡng ${w.threshold})`;
+      return t('dashboard.warnProcessingTooLong', { minutes, threshold: w.threshold });
     case 'ABORTED_OR_STALE':
-      return 'Task đang chạy nhưng đã bị xóa/hủy';
+      return t('dashboard.warnAbortedOrStale');
     case 'DATA_INCONSISTENT':
-      return 'Dữ liệu BPDB thiếu mốc thời gian';
+      return t('dashboard.warnDataInconsistent');
     default:
       return w.code;
   }
@@ -595,9 +599,9 @@ const statusDurationRows = computed(() => {
           code: m.displayName || m.machineCode,
           status: m.operationalStatus,
           icon: bpdbStatusIcon(m.operationalStatus),
-          durationText: idleNoData ? '> 30 ngày' : formatDuration(seconds),
-          sinceText: m.statusSince ? formatTime(m.statusSince) : (idleNoData ? 'Không có task trong 30 ngày' : '—'),
-          anchorLabel: anchorLabels[m.statusSinceSource] || '—',
+          durationText: idleNoData ? t('dashboard.durationOver30Days') : formatDuration(seconds),
+          sinceText: m.statusSince ? formatTime(m.statusSince) : (idleNoData ? t('dashboard.noTaskIn30Days') : '—'),
+          anchorLabel: anchorLabel(m.statusSinceSource),
           taskTitle: m.currentTask?.taskTitle || null,
           warningText: warningLabel(m.stuckWarning),
           hasWarning: !!m.stuckWarning || m.operationalStatus === 'ERROR',
@@ -617,7 +621,7 @@ const statusDurationRows = computed(() => {
           icon: appStatusIcon(m.status),
           durationText: formatDuration(seconds),
           sinceText: m.status_since ? formatTime(m.status_since) : '—',
-          anchorLabel: anchorLabels[m.status_since_source] || '—',
+          anchorLabel: anchorLabel(m.status_since_source),
           taskTitle: m.current_batch?.legacy_batch_id || null,
           warningText: '',
           hasWarning: false,
@@ -661,25 +665,25 @@ const appStatusIcon = (status: string) => {
 // Chú thích trạng thái hiển thị cạnh lưới máy — BPDB: khớp logic suy luận operationalStatus
 // ở BpdbMachineMonitoringService::reduceMachineStatus (backend); nội bộ: khớp state machine
 // Batch trong .claude/rules/architecture-workflow.md.
-const bpdbStatusLegend = [
-  { status: 'PROCESSING', icon: '⚙️', label: 'Đang xử lý', desc: 'Máy đang chạy task, BPDB đang xử lý.' },
-  { status: 'WAITING', icon: '⏳', label: 'Đang chờ', desc: 'Task đã tạo nhưng chưa bắt đầu chạy.' },
-  { status: 'TRANSITIONING', icon: '🔄', label: 'Chuyển trạng thái', desc: 'Task đang ở bước chuyển tiếp giữa các giai đoạn xử lý.' },
-  { status: 'COMPLETED_RECENTLY', icon: '✅', label: 'Vừa hoàn thành', desc: 'Task vừa kết thúc gần đây, máy sắp trống.' },
-  { status: 'CANCELLED', icon: '🚫', label: 'Đã hủy', desc: 'Task gần nhất bị hủy/xóa.' },
-  { status: 'ERROR', icon: '❌', label: 'Lỗi', desc: 'Task hiện tại phát sinh lỗi.' },
-  { status: 'IDLE', icon: '💤', label: 'Nhàn rỗi', desc: 'Không có task nào — máy đang trống.' },
-];
+const bpdbStatusLegend = computed(() => [
+  { status: 'PROCESSING', icon: '⚙️', label: t('dashboard.legendBpdbProcessingLabel'), desc: t('dashboard.legendBpdbProcessingDesc') },
+  { status: 'WAITING', icon: '⏳', label: t('dashboard.legendBpdbWaitingLabel'), desc: t('dashboard.legendBpdbWaitingDesc') },
+  { status: 'TRANSITIONING', icon: '🔄', label: t('dashboard.legendBpdbTransitioningLabel'), desc: t('dashboard.legendBpdbTransitioningDesc') },
+  { status: 'COMPLETED_RECENTLY', icon: '✅', label: t('dashboard.legendBpdbCompletedLabel'), desc: t('dashboard.legendBpdbCompletedDesc') },
+  { status: 'CANCELLED', icon: '🚫', label: t('dashboard.legendBpdbCancelledLabel'), desc: t('dashboard.legendBpdbCancelledDesc') },
+  { status: 'ERROR', icon: '❌', label: t('dashboard.legendBpdbErrorLabel'), desc: t('dashboard.legendBpdbErrorDesc') },
+  { status: 'IDLE', icon: '💤', label: t('dashboard.legendBpdbIdleLabel'), desc: t('dashboard.legendBpdbIdleDesc') },
+]);
 
-const appStatusLegend = [
-  { status: 'IDLE', icon: '💤', label: 'Nhàn rỗi', desc: 'Máy chưa có lệnh sản xuất nào.' },
-  { status: 'NEW', icon: '🆕', label: 'Lệnh mới', desc: 'Lệnh sản xuất vừa tạo, chưa cân.' },
-  { status: 'READY_TO_WEIGH', icon: '⚖️', label: 'Sẵn sàng cân', desc: 'Lệnh đủ điều kiện để bắt đầu cân nguyên liệu.' },
-  { status: 'WEIGHING', icon: '⚖️', label: 'Đang cân', desc: 'Đang trong quá trình cân nguyên liệu.' },
-  { status: 'WEIGHED', icon: '✅', label: 'Đã cân xong', desc: 'Đã cân xong, chờ vận chuyển/nạp máy.' },
-  { status: 'SENT', icon: '🚀', label: 'Đã gửi lệnh máy', desc: 'Đã gửi lệnh nạp vào máy nhuộm.' },
-  { status: 'DONE', icon: '🏁', label: 'Hoàn tất', desc: 'Mẻ đã hoàn tất toàn bộ quy trình.' },
-];
+const appStatusLegend = computed(() => [
+  { status: 'IDLE', icon: '💤', label: t('dashboard.legendAppIdleLabel'), desc: t('dashboard.legendAppIdleDesc') },
+  { status: 'NEW', icon: '🆕', label: t('dashboard.legendAppNewLabel'), desc: t('dashboard.legendAppNewDesc') },
+  { status: 'READY_TO_WEIGH', icon: '⚖️', label: t('dashboard.legendAppReadyLabel'), desc: t('dashboard.legendAppReadyDesc') },
+  { status: 'WEIGHING', icon: '⚖️', label: t('dashboard.legendAppWeighingLabel'), desc: t('dashboard.legendAppWeighingDesc') },
+  { status: 'WEIGHED', icon: '✅', label: t('dashboard.legendAppWeighedLabel'), desc: t('dashboard.legendAppWeighedDesc') },
+  { status: 'SENT', icon: '🚀', label: t('dashboard.legendAppSentLabel'), desc: t('dashboard.legendAppSentDesc') },
+  { status: 'DONE', icon: '🏁', label: t('dashboard.legendAppDoneLabel'), desc: t('dashboard.legendAppDoneDesc') },
+]);
 
 // Modals State
 const timelineOpen = ref(false);
@@ -701,7 +705,7 @@ const fetchLiveWeights = async () => {
       const live = res.data;
       ws.active = !!live?.active;
       ws.weight = live?.weight ?? 0;
-      ws.lastUpdated = ws.active ? new Date().toLocaleTimeString('vi-VN', { hour12: false }) : 'Không có dữ liệu';
+      ws.lastUpdated = ws.active ? new Date().toLocaleTimeString('vi-VN', { hour12: false }) : t('dashboard.noDataShort');
     } catch {
       // Bỏ qua lỗi 1 lần đọc — sẽ tự thử lại ở vòng poll tiếp theo.
     }
@@ -712,15 +716,15 @@ const initRealtimeConnection = () => {
   // 1. Theo dõi trạng thái kết nối WebSocket (Reverb) qua pusher-js connector.
   const pusherConnection = (echo.connector as any)?.pusher?.connection;
   const mapping: Record<string, string> = {
-    connected: 'Đã kết nối trực tiếp (Realtime Online)',
-    connecting: 'Đang kết nối...',
-    unavailable: 'Mất kết nối. Đang thử kết nối lại...',
-    disconnected: 'Không có kết nối mạng',
-    failed: 'Không có kết nối mạng',
+    connected: t('dashboard.connStateConnected'),
+    connecting: t('dashboard.connStateConnecting'),
+    unavailable: t('dashboard.connStateUnavailable'),
+    disconnected: t('dashboard.connStateDisconnected'),
+    failed: t('dashboard.connStateDisconnected'),
   };
   const applyStatus = (state: string) => {
     connectionStatus.value = state === 'connected' ? 'ONLINE' : (state === 'connecting' ? 'RECONNECTING' : 'OFFLINE');
-    connectionStatusText.value = mapping[state] || 'Chờ kết nối';
+    connectionStatusText.value = mapping[state] || t('dashboard.connStateWaiting');
   };
   if (pusherConnection) {
     applyStatus(pusherConnection.state);
@@ -850,7 +854,7 @@ const submitAlertAction = async () => {
   if (!selectedAlertForAction.value) return;
   
   if (alertModalAction.value === 'RESOLVE' && !alertActionNotes.value.trim()) {
-    alert('Vui lòng nhập biện pháp khắc phục thực tế!');
+    alert(t('dashboard.alertNeedsRemedy'));
     return;
   }
 
@@ -899,16 +903,16 @@ const triggerMockPrint = async () => {
 
     if (response.data.status === 'SUCCESS') {
       printSuccess.value = true;
-      printMessage.value = `Gửi lệnh in thành công! Job ID: ${response.data.data.id}.`;
+      printMessage.value = t('dashboard.printSuccessMsg', { id: response.data.data.id });
       // Trigger local agent heartbeat refresh in UI
       fetchOverviewSnapshot();
     } else {
       printSuccess.value = false;
-      printMessage.value = 'Lỗi in thất bại.';
+      printMessage.value = t('dashboard.printFailMsg');
     }
   } catch (err: any) {
     printSuccess.value = false;
-    printMessage.value = err.response?.data?.message || 'Có lỗi xảy ra khi kết nối máy chủ.';
+    printMessage.value = err.response?.data?.message || t('dashboard.printServerErrorMsg');
   } finally {
     printing.value = false;
   }

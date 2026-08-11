@@ -16,7 +16,7 @@ export default {
     legendTitle: 'Chú thích trạng thái',
 
     durationReportTitle: '⏱️ Máy đã ở trạng thái hiện tại bao lâu rồi',
-    durationReportSubAdmin: 'Đếm từ mốc thật của task quyết định trạng thái trong BPDB (bắt đầu chạy / tạo task / kết thúc). Máy trống không có task nào trong 30 ngày ghi là "> 30 ngày".',
+    durationReportSubAdmin: 'Đếm từ mốc thật của task quyết định trạng thái trong BPDB (bắt đầu chạy / tạo task / kết thúc). Máy trống không có task nào trong 30 ngày ghi là “> 30 ngày”.',
     durationReportSubUser: 'Ước tính theo lần cập nhật gần nhất của mẻ đang chạy — bảng dữ liệu nội bộ chưa có mốc đổi trạng thái riêng.',
     filterStuckOnly: 'Chỉ hiện máy có cảnh báo kéo dài',
     thMachine: 'Máy',
@@ -104,6 +104,8 @@ export default {
     durationHoursMinutes: '{hours} giờ {minutes} phút',
     durationMinutesSeconds: '{minutes} phút {seconds} giây',
     durationSeconds: '{seconds} giây',
+    durationOver30Days: '> 30 ngày',
+    noTaskIn30Days: 'Không có task trong 30 ngày',
 
     anchorWorkStart: 'Bắt đầu chạy task',
     anchorCreate: 'Tạo task',
@@ -263,6 +265,8 @@ export default {
     durationHoursMinutes: '{hours}h {minutes}m',
     durationMinutesSeconds: '{minutes}m {seconds}s',
     durationSeconds: '{seconds}s',
+    durationOver30Days: '> 30 days',
+    noTaskIn30Days: 'No task in the last 30 days',
 
     anchorWorkStart: 'Task started running',
     anchorCreate: 'Task created',
@@ -422,6 +426,8 @@ export default {
     durationHoursMinutes: '{hours}小时{minutes}分钟',
     durationMinutesSeconds: '{minutes}分钟{seconds}秒',
     durationSeconds: '{seconds}秒',
+    durationOver30Days: '> 30天',
+    noTaskIn30Days: '30天内无任何任务',
 
     anchorWorkStart: '任务开始运行',
     anchorCreate: '任务创建',

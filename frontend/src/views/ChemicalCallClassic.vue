@@ -54,6 +54,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import echo from '../services/echo';
 import AppLayout from '../components/AppLayout.vue';
@@ -65,6 +66,7 @@ import { useAuthStore } from '../stores/auth';
 // Trang công khai (requiresAuth:false) — App.vue không bọc AppLayout, trang tự bọc lấy khi
 // người xem đã đăng nhập để vẫn có menu điều hướng (hiện sẵn, ẩn/hiện bằng nút 3 gạch — xem
 // NavToggleButton).
+const { t } = useI18n({ useScope: 'global' });
 const isLoggedIn = useAuthStore().isAuthenticated;
 const pageWrapper = isLoggedIn ? AppLayout : 'div';
 const previousIsFullscreen = isFullscreen.value;
@@ -164,7 +166,7 @@ async function fetchChannels() {
     channelsList.value = res.data;
   } catch (err) {
     console.error('Failed to fetch channels:', err);
-    errorMsg.value = 'Không thể kết nối đến máy chủ API để lấy thông tin van đường ống.';
+    errorMsg.value = t('chemicalCallClassic.errorFetchChannels');
   } finally {
     loading.value = false;
   }
@@ -189,7 +191,7 @@ async function callChemical(channel: ChemicalChannel) {
     await fetchChannels();
   } catch (err: any) {
     channel.current_request = previousRequest;
-    errorMsg.value = err.response?.data?.message || 'Không thể gọi hóa chất cho thùng này.';
+    errorMsg.value = err.response?.data?.message || t('chemicalCallClassic.errorCallChemical');
   } finally {
     actionLoading.value = null;
   }
@@ -210,7 +212,7 @@ async function markDone(channel: ChemicalChannel) {
     await fetchChannels();
   } catch (err: any) {
     channel.current_request = previousRequest;
-    errorMsg.value = err.response?.data?.message || 'Không thể xác nhận xong cho thùng này.';
+    errorMsg.value = err.response?.data?.message || t('chemicalCallClassic.errorMarkDone');
   } finally {
     actionLoading.value = null;
   }

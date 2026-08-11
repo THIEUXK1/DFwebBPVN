@@ -3,18 +3,18 @@
     <div class="station-banner">
       <div class="banner-left">
         <span class="station-badge">ADMIN — BPDB / JIT</span>
-        <h2>Máy VD — Trạng thái vận hành</h2>
-        <p class="text-muted font-sm">Chỉ đọc — không sửa BPDB/Windows Service/SCCM/JIT/DLV.</p>
+        <h2>{{ $t('bpdbMachines.pageTitle') }}</h2>
+        <p class="text-muted font-sm">{{ $t('bpdbMachines.readOnlyNotice') }}</p>
       </div>
       <div class="banner-right status-board font-sm">
         <div class="status-indicator">
-          🔌 Kết nối BPDB:
+          {{ $t('bpdbMachines.bpdbConnectionLabel') }}
           <strong :class="bpdbConnected ? 'text-success' : 'text-error'">
-            {{ bpdbConnected ? 'ONLINE' : 'MẤT KẾT NỐI' }}
+            {{ bpdbConnected ? $t('bpdbMachines.connOnline') : $t('bpdbMachines.connOffline') }}
           </strong>
         </div>
         <button class="btn btn-secondary btn-sm" @click="fetchAll" :disabled="loading">
-          {{ loading ? 'Đang tải...' : '🔄 Làm mới' }}
+          {{ loading ? $t('bpdbMachines.loading') : $t('bpdbMachines.refreshBtn') }}
         </button>
       </div>
     </div>
@@ -22,32 +22,32 @@
     <p v-if="errorMsg" class="text-error mt-2">❌ {{ errorMsg }}</p>
 
     <div v-if="!bpdbConnected" class="stale-banner error-banner mt-2">
-      ⚠️ BPDB mất kết nối — đang hiển thị dữ liệu cache gần nhất (lúc {{ formatTime(lastSyncedAt) }}). Không phải mọi máy đều "Offline", chỉ là chưa đọc được trạng thái mới.
+      {{ $t('bpdbMachines.bpdbOfflineBanner', { time: formatTime(lastSyncedAt) }) }}
     </div>
     <div v-else-if="dataStale" class="stale-banner mt-2">
-      ⏱️ Dữ liệu có thể đã cũ — lần đồng bộ gần nhất lúc {{ formatTime(lastSyncedAt) }} ({{ dataAgeSeconds }}s trước).
+      {{ $t('bpdbMachines.staleBanner', { time: formatTime(lastSyncedAt), age: dataAgeSeconds }) }}
     </div>
 
     <div class="summary-grid mt-3" v-if="machineSummary">
-      <div class="summary-card"><div class="summary-label">Tổng số máy VD</div><div class="summary-value">{{ machineSummary.total }}</div></div>
-      <div class="summary-card"><div class="summary-label">Đang xử lý</div><div class="summary-value" style="color:#2563eb">{{ machineSummary.processing }}</div></div>
-      <div class="summary-card"><div class="summary-label">Đang chờ</div><div class="summary-value" style="color:#ca8a04">{{ machineSummary.waiting }}</div></div>
-      <div class="summary-card"><div class="summary-label">Đang chuyển trạng thái</div><div class="summary-value" style="color:#9333ea">{{ machineSummary.transitioning }}</div></div>
-      <div class="summary-card"><div class="summary-label">Nhàn rỗi</div><div class="summary-value text-muted">{{ machineSummary.idle }}</div></div>
-      <div class="summary-card"><div class="summary-label">Lỗi/Hủy</div><div class="summary-value text-error">{{ machineSummary.error + machineSummary.cancelledRecent }}</div></div>
-      <div class="summary-card"><div class="summary-label">Task bị kẹt</div><div class="summary-value" :class="stuckMachineCount ? 'text-error' : ''">{{ stuckMachineCount }}</div></div>
+      <div class="summary-card"><div class="summary-label">{{ $t('bpdbMachines.summaryTotal') }}</div><div class="summary-value">{{ machineSummary.total }}</div></div>
+      <div class="summary-card"><div class="summary-label">{{ $t('bpdbMachines.summaryProcessing') }}</div><div class="summary-value" style="color:#2563eb">{{ machineSummary.processing }}</div></div>
+      <div class="summary-card"><div class="summary-label">{{ $t('bpdbMachines.summaryWaiting') }}</div><div class="summary-value" style="color:#ca8a04">{{ machineSummary.waiting }}</div></div>
+      <div class="summary-card"><div class="summary-label">{{ $t('bpdbMachines.summaryTransitioning') }}</div><div class="summary-value" style="color:#9333ea">{{ machineSummary.transitioning }}</div></div>
+      <div class="summary-card"><div class="summary-label">{{ $t('bpdbMachines.summaryIdle') }}</div><div class="summary-value text-muted">{{ machineSummary.idle }}</div></div>
+      <div class="summary-card"><div class="summary-label">{{ $t('bpdbMachines.summaryError') }}</div><div class="summary-value text-error">{{ machineSummary.error + machineSummary.cancelledRecent }}</div></div>
+      <div class="summary-card"><div class="summary-label">{{ $t('bpdbMachines.summaryStuck') }}</div><div class="summary-value" :class="stuckMachineCount ? 'text-error' : ''">{{ stuckMachineCount }}</div></div>
     </div>
     <p class="text-muted font-xs mt-1">
-      Cập nhật gần nhất: <strong>{{ formatTime(lastSyncedAt) }}</strong> · Nguồn: <strong>BPDB — Chỉ đọc</strong>
-      <span v-if="dataStale" class="text-error"> · Dữ liệu có thể đã cũ</span>
+      {{ $t('bpdbMachines.lastUpdatedPrefix') }} <strong>{{ formatTime(lastSyncedAt) }}</strong> · {{ $t('bpdbMachines.sourcePrefix') }} <strong>{{ $t('bpdbMachines.sourceValue') }}</strong>
+      <span v-if="dataStale" class="text-error">{{ $t('bpdbMachines.dataMaybeStale') }}</span>
     </p>
     <div class="connection-disclaimer font-xs">
-      ℹ️ BPDB hiện không cung cấp trạng thái kết nối trực tiếp theo từng máy VD. Trạng thái hiển thị là trạng thái nghiệp vụ suy ra từ lệnh sản xuất.
+      {{ $t('bpdbMachines.connectionDisclaimer') }}
     </div>
 
     <div class="filter-row mt-2">
       <select v-model="machineStatusFilter" class="form-select font-xs">
-        <option value="">Tất cả trạng thái</option>
+        <option value="">{{ $t('bpdbMachines.filterAllStatus') }}</option>
         <option value="PROCESSING">PROCESSING</option>
         <option value="WAITING">WAITING</option>
         <option value="TRANSITIONING">TRANSITIONING</option>
@@ -65,18 +65,18 @@
           <span class="op-status-badge" :class="'status-' + m.operationalStatus.toLowerCase()">{{ m.operationalStatus }}</span>
         </div>
         <div class="machine-card-body font-xs" v-if="m.currentTask">
-          <div>Tank {{ m.currentTask.tank || '—' }} · JIT {{ m.currentTask.jitQueue || '—' }}</div>
+          <div>{{ $t('bpdbMachines.tankLabel') }} {{ m.currentTask.tank || '—' }} · {{ $t('bpdbMachines.jitLabel') }} {{ m.currentTask.jitQueue || '—' }}</div>
           <div class="mono-text-sm">{{ m.currentTask.taskTitle }}</div>
-          <div v-if="m.currentTask.workStartTime">Bắt đầu: {{ formatTime(m.currentTask.workStartTime) }}</div>
+          <div v-if="m.currentTask.workStartTime">{{ $t('bpdbMachines.startedAtPrefix') }} {{ formatTime(m.currentTask.workStartTime) }}</div>
         </div>
-        <div class="machine-card-body font-xs text-muted" v-else>Không có lệnh đang hoạt động</div>
+        <div class="machine-card-body font-xs text-muted" v-else>{{ $t('bpdbMachines.noActiveTask') }}</div>
         <div class="machine-card-footer font-xs">
-          <span>Kết nối: <strong class="text-muted">NOT_AVAILABLE</strong></span>
-          <span v-if="m.activeTaskCount > 1" class="text-error"> · {{ m.activeTaskCount }} task đồng thời ⚠️</span>
+          <span>{{ $t('bpdbMachines.connectionLabel') }} <strong class="text-muted">NOT_AVAILABLE</strong></span>
+          <span v-if="m.activeTaskCount > 1" class="text-error"> · {{ m.activeTaskCount }}{{ $t('bpdbMachines.concurrentTasksSuffix') }}</span>
         </div>
-        <p v-if="m.stuckWarning" class="text-error font-xs mt-1">⚠️ {{ m.stuckWarning.code }}<span v-if="m.stuckWarning.minutes"> ({{ m.stuckWarning.minutes }}p &gt; ngưỡng {{ m.stuckWarning.threshold }}p)</span></p>
+        <p v-if="m.stuckWarning" class="text-error font-xs mt-1">⚠️ {{ m.stuckWarning.code }}<span v-if="m.stuckWarning.minutes"> ({{ m.stuckWarning.minutes }}{{ $t('bpdbMachines.stuckMinutesSuffix', { threshold: m.stuckWarning.threshold }) }})</span></p>
       </div>
-      <p v-if="!filteredMachines.length" class="text-muted font-sm">Không có máy nào khớp bộ lọc.</p>
+      <p v-if="!filteredMachines.length" class="text-muted font-sm">{{ $t('bpdbMachines.noMachineMatch') }}</p>
     </div>
 
     <!-- Machine detail drawer -->
@@ -84,13 +84,13 @@
       <div class="detail-drawer">
         <div class="flex-header">
           <h3>{{ selectedMachine.machineCode }}</h3>
-          <button class="btn btn-secondary btn-sm" @click="selectedMachine = null">Đóng</button>
+          <button class="btn btn-secondary btn-sm" @click="selectedMachine = null">{{ $t('bpdbMachines.closeBtn') }}</button>
         </div>
-        <p class="font-xs text-muted">Trạng thái: <strong :class="'op-status-badge status-' + (selectedMachine.status?.operationalStatus || '').toLowerCase()">{{ selectedMachine.status?.operationalStatus }}</strong> · Kết nối: NOT_AVAILABLE</p>
+        <p class="font-xs text-muted">{{ $t('bpdbMachines.statusLabel') }} <strong :class="'op-status-badge status-' + (selectedMachine.status?.operationalStatus || '').toLowerCase()">{{ selectedMachine.status?.operationalStatus }}</strong> · {{ $t('bpdbMachines.connectionLabel') }} NOT_AVAILABLE</p>
 
-        <h4 class="font-sm mt-2">Các tổ hợp Tank/Mức nước</h4>
+        <h4 class="font-sm mt-2">{{ $t('bpdbMachines.tankVariantsTitle') }}</h4>
         <table class="data-table">
-          <thead><tr><th>MachineName</th><th>Tank</th><th>Dung tích</th></tr></thead>
+          <thead><tr><th>MachineName</th><th>{{ $t('bpdbMachines.tankLabel') }}</th><th>{{ $t('bpdbMachines.colCapacity') }}</th></tr></thead>
           <tbody>
             <tr v-for="v in selectedMachine.variants" :key="v.machine_id">
               <td>{{ v.machine_name }}</td>
@@ -100,9 +100,9 @@
           </tbody>
         </table>
 
-        <h4 class="font-sm mt-2">Task gần đây ({{ selectedMachine.recentTasks?.length || 0 }})</h4>
+        <h4 class="font-sm mt-2">{{ $t('bpdbMachines.recentTasksTitle', { count: selectedMachine.recentTasks?.length || 0 }) }}</h4>
         <table class="data-table">
-          <thead><tr><th>TaskTitle</th><th>Status</th><th>Bắt đầu</th><th>Kết thúc</th><th>Lỗi</th></tr></thead>
+          <thead><tr><th>TaskTitle</th><th>Status</th><th>{{ $t('bpdbMachines.colStart') }}</th><th>{{ $t('bpdbMachines.colEnd') }}</th><th>{{ $t('bpdbMachines.colError') }}</th></tr></thead>
           <tbody>
             <tr v-for="t in selectedMachine.recentTasks" :key="t.Id">
               <td class="mono-text-sm">{{ t.TaskTitle }}</td>
@@ -114,9 +114,9 @@
           </tbody>
         </table>
 
-        <h4 class="font-sm mt-2">Lịch sử hoàn thành gần đây</h4>
+        <h4 class="font-sm mt-2">{{ $t('bpdbMachines.recentHistoryTitle') }}</h4>
         <table class="data-table">
-          <thead><tr><th>TaskTitle</th><th>Hóa chất</th><th>Khối lượng</th><th>Kết thúc</th></tr></thead>
+          <thead><tr><th>TaskTitle</th><th>{{ $t('bpdbMachines.colChemical') }}</th><th>{{ $t('bpdbMachines.colWeight') }}</th><th>{{ $t('bpdbMachines.colEnd') }}</th></tr></thead>
           <tbody>
             <tr v-for="h in selectedMachine.recentHistory" :key="h.ID">
               <td class="mono-text-sm">{{ h.TaskTitle }}</td>
@@ -133,21 +133,25 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
+
+const { t } = useI18n({ useScope: 'global' });
 
 // Nhãn trung tính cho SUP_Tasks.TaskStatus thô (10/20/30/40/99) — khớp
 // App\Services\ColorService\BpdbTaskStatusLabels ở backend (yêu cầu 2026-07-21, "CHỐT
 // NGUỒN DỮ LIỆU").
 const RAW_TASK_STATUS_LABELS: Record<string, string> = {
-  '10': 'Chờ hệ thống xử lý',
-  '20': 'Đang chuyển trạng thái',
-  '30': 'Đang được hệ thống xử lý',
-  '40': 'Task đã kết thúc',
-  '99': 'Task bị hủy/xóa',
+  '10': 'bpdbMachines.rawStatus10',
+  '20': 'bpdbMachines.rawStatus20',
+  '30': 'bpdbMachines.rawStatus30',
+  '40': 'bpdbMachines.rawStatus40',
+  '99': 'bpdbMachines.rawStatus99',
 };
 const rawTaskStatusLabel = (status: string | number | null | undefined) => {
   if (status === null || status === undefined || status === '') return '—';
-  return RAW_TASK_STATUS_LABELS[String(status)] || `Không xác định (${status})`;
+  const key = RAW_TASK_STATUS_LABELS[String(status)];
+  return key ? t(key) : t('bpdbMachines.rawStatusUnknown', { status });
 };
 
 const machines = ref<any[]>([]);
@@ -203,7 +207,7 @@ const fetchAll = async () => {
   try {
     await Promise.all([fetchMachines(), fetchMachineSummary()]);
   } catch (e: any) {
-    errorMsg.value = e.response?.data?.message || 'Không tải được dữ liệu Máy VD.';
+    errorMsg.value = e.response?.data?.message || t('bpdbMachines.errorLoadFailed');
   } finally {
     loading.value = false;
   }

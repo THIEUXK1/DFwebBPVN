@@ -2,18 +2,18 @@
   <div class="ws-admin-container">
     <div class="panel-header mb-4 d-flex justify-between align-center">
       <div>
-        <h3>🖥️ Quản lý &amp; Thiết lập Trạm vận hành (Operations Clients)</h3>
-        <p class="text-muted">Cấu hình capabilities nghiệp vụ, liên kết thiết bị cân/in, cấp link kiosk và giám sát trạng thái máy trạm.</p>
+        <h3>{{ $t('workstationAdmin.pageTitle') }}</h3>
+        <p class="text-muted">{{ $t('workstationAdmin.pageSubtitle') }}</p>
       </div>
       <button class="btn btn-primary" @click="openRegisterModal">
-        🆕 Đăng ký trạm mới
+        {{ $t('workstationAdmin.registerNewBtn') }}
       </button>
     </div>
 
     <div v-if="errorMessage" class="card error-card mb-4">{{ errorMessage }}</div>
     <div v-if="successMessage" class="card success-card mb-4">{{ successMessage }}</div>
 
-    <div v-if="loading" class="card text-center padding-xl text-muted">Đang tải danh sách máy trạm vận hành...</div>
+    <div v-if="loading" class="card text-center padding-xl text-muted">{{ $t('workstationAdmin.loadingList') }}</div>
 
     <div v-else class="ws-grid">
       <div v-for="ws in workstations" :key="ws.id" class="card ws-card">
@@ -30,38 +30,38 @@
         
         <div class="ws-info-grid font-sm mb-3">
           <div class="info-item">
-            <strong>Capabilities:</strong> 
+            <strong>{{ $t('workstationAdmin.capabilitiesLabel') }}</strong>
             <div class="flex-wrap gap-1 mt-1 d-flex">
               <span v-for="c in getBusinessCaps(ws)" :key="c.code" class="badge badge-blue font-xs">{{ c.name }}</span>
               <span v-for="c in getDeviceCaps(ws)" :key="c.code" class="badge badge-purple font-xs">{{ c.name }}</span>
             </div>
           </div>
-          <div class="info-item mt-2"><strong>Vị trí:</strong> {{ ws.location || 'Chưa gán' }}</div>
-          <div class="info-item"><strong>Cân:</strong> ⚖️ {{ getDefaultDeviceCode(ws, 'SCALE') || 'Chưa cấu hình' }}</div>
-          <div class="info-item"><strong>Máy in:</strong> 🖨️ {{ getDefaultDeviceCode(ws, 'PRINTER') || 'Chưa cấu hình' }}</div>
-          <div class="info-item"><strong>Agent:</strong> 🔌 <code>{{ ws.agent_version || 'N/A' }}</code></div>
-          <div class="info-item"><strong>Heartbeat:</strong> <span class="font-xs">{{ formatTime(ws.last_seen_at) }}</span></div>
-          <div class="info-item"><strong>Kiosk Mode:</strong> <span class="badge font-xs" :class="ws.kiosk_mode ? 'badge-green' : 'badge-grey'">{{ ws.kiosk_mode ? 'Bật (Không Login)' : 'Tắt' }}</span></div>
-          <div class="info-item"><strong>Mặc định:</strong> <code>{{ ws.default_capability || 'Chưa chọn' }}</code></div>
-          <div class="info-item"><strong>Trạng thái:</strong> <span :class="ws.suspended ? 'text-danger font-semibold' : 'text-success'">{{ ws.suspended ? '⚠️ TẠM DỪNG' : '🟢 Đang hoạt động' }}</span></div>
+          <div class="info-item mt-2"><strong>{{ $t('workstationAdmin.locationLabel') }}</strong> {{ ws.location || $t('workstationAdmin.notAssigned') }}</div>
+          <div class="info-item"><strong>{{ $t('workstationAdmin.scaleLabel') }}</strong> ⚖️ {{ getDefaultDeviceCode(ws, 'SCALE') || $t('workstationAdmin.notConfigured') }}</div>
+          <div class="info-item"><strong>{{ $t('workstationAdmin.printerLabel') }}</strong> 🖨️ {{ getDefaultDeviceCode(ws, 'PRINTER') || $t('workstationAdmin.notConfigured') }}</div>
+          <div class="info-item"><strong>{{ $t('workstationAdmin.agentLabel') }}</strong> 🔌 <code>{{ ws.agent_version || 'N/A' }}</code></div>
+          <div class="info-item"><strong>{{ $t('workstationAdmin.heartbeatLabel') }}</strong> <span class="font-xs">{{ formatTime(ws.last_seen_at) }}</span></div>
+          <div class="info-item"><strong>{{ $t('workstationAdmin.kioskModeLabel') }}</strong> <span class="badge font-xs" :class="ws.kiosk_mode ? 'badge-green' : 'badge-grey'">{{ ws.kiosk_mode ? $t('workstationAdmin.kioskOn') : $t('workstationAdmin.kioskOff') }}</span></div>
+          <div class="info-item"><strong>{{ $t('workstationAdmin.defaultLabel') }}</strong> <code>{{ ws.default_capability || $t('workstationAdmin.notChosen') }}</code></div>
+          <div class="info-item"><strong>{{ $t('common.status') }}:</strong> <span :class="ws.suspended ? 'text-danger font-semibold' : 'text-success'">{{ ws.suspended ? $t('workstationAdmin.suspendedState') : $t('workstationAdmin.activeState') }}</span></div>
         </div>
 
         <div class="ws-card-footer mt-auto pt-2 border-t">
           <div class="btn-action-group">
             <button class="btn btn-primary btn-sm btn-action flex-1" @click="operateClient(ws)" :disabled="ws.suspended">
-              🚀 View Kiosk
+              {{ $t('workstationAdmin.viewKioskBtn') }}
             </button>
             <button class="btn btn-secondary btn-sm btn-action" @click="openEditModal(ws)">
-              ⚙️ Cấu hình
+              {{ $t('workstationAdmin.configBtn') }}
             </button>
             <button class="btn btn-warning btn-sm btn-action" @click="toggleSuspend(ws)">
-              {{ ws.suspended ? '▶️ Hoạt động' : '⏸️ Tạm dừng' }}
+              {{ ws.suspended ? $t('workstationAdmin.resumeBtn') : $t('workstationAdmin.suspendBtn') }}
             </button>
             <button class="btn btn-secondary btn-sm btn-action" @click="openProvisionModal(ws)">
-              👤 Tạo User
+              {{ $t('workstationAdmin.createUserBtn') }}
             </button>
             <button class="btn btn-success btn-sm btn-action" @click="openKioskLinkModal(ws)">
-              🔗 Kiosk Link
+              {{ $t('workstationAdmin.kioskLinkBtn') }}
             </button>
           </div>
         </div>
@@ -72,15 +72,15 @@
     <div v-if="editingWorkstation" class="modal-overlay" @click.self="closeEditModal">
       <div class="ws-modal-card modal-lg">
         <div class="modal-header">
-          <h3>⚙️ Cấu hình máy trạm vận hành — {{ editingWorkstation.code }}</h3>
+          <h3>{{ $t('workstationAdmin.editModalTitle', { code: editingWorkstation.code }) }}</h3>
           <button @click="closeEditModal" class="close-btn">&times;</button>
         </div>
         
         <!-- Tabs -->
         <div class="modal-tabs">
-          <button class="tab-btn" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">Thông tin</button>
-          <button class="tab-btn" :class="{ active: activeTab === 'capabilities' }" @click="activeTab = 'capabilities'">Capabilities</button>
-          <button class="tab-btn" :class="{ active: activeTab === 'devices' }" @click="activeTab = 'devices'">Thiết bị</button>
+          <button class="tab-btn" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">{{ $t('workstationAdmin.tabGeneral') }}</button>
+          <button class="tab-btn" :class="{ active: activeTab === 'capabilities' }" @click="activeTab = 'capabilities'">{{ $t('workstationAdmin.tabCapabilities') }}</button>
+          <button class="tab-btn" :class="{ active: activeTab === 'devices' }" @click="activeTab = 'devices'">{{ $t('workstationAdmin.tabDevices') }}</button>
         </div>
 
         <div class="modal-body">
@@ -90,37 +90,37 @@
           <!-- General Tab -->
           <div v-if="activeTab === 'general'">
             <div class="form-group mb-3">
-              <label>Tên trạm vận hành</label>
+              <label>{{ $t('workstationAdmin.fieldStationName') }}</label>
               <input v-model="editForm.name" type="text" class="form-input" required />
             </div>
 
             <div class="form-group mb-3">
-              <label>Vị trí lắp đặt</label>
+              <label>{{ $t('workstationAdmin.fieldLocation') }}</label>
               <input v-model="editForm.location" type="text" class="form-input" />
             </div>
 
             <div class="form-group mb-3">
-              <label>Capability mặc định khi vào trạm</label>
+              <label>{{ $t('workstationAdmin.fieldDefaultCapability') }}</label>
               <select v-model="editForm.default_capability" class="form-select" @change="autoSetRoute">
-                <option value="">-- Không có (Hiện menu chọn) --</option>
-                <option value="PRODUCTION_ORDER">PRODUCTION_ORDER — Tạo đơn sản xuất</option>
-                <option value="QR_LABEL_PRINTING">QR_LABEL_PRINTING — Nhận đơn & In tem QR</option>
-                <option value="SMALL_SCALE">SMALL_SCALE — Trạm cân nhỏ</option>
-                <option value="LARGE_SCALE">LARGE_SCALE — Trạm cân lớn</option>
-                <option value="CHEMICAL_CALL">CHEMICAL_CALL — Gọi hóa chất</option>
+                <option value="">{{ $t('workstationAdmin.optionNoneMenu') }}</option>
+                <option value="PRODUCTION_ORDER">PRODUCTION_ORDER — {{ $t('workstationAdmin.capProductionOrder') }}</option>
+                <option value="QR_LABEL_PRINTING">QR_LABEL_PRINTING — {{ $t('workstationAdmin.capQrLabelPrinting') }}</option>
+                <option value="SMALL_SCALE">SMALL_SCALE — {{ $t('workstationAdmin.capSmallScale') }}</option>
+                <option value="LARGE_SCALE">LARGE_SCALE — {{ $t('workstationAdmin.capLargeScale') }}</option>
+                <option value="CHEMICAL_CALL">CHEMICAL_CALL — {{ $t('workstationAdmin.capChemicalCall') }}</option>
               </select>
             </div>
 
             <div class="form-group mb-3">
-              <label>Màn hình mặc định (Route Path)</label>
-              <input v-model="editForm.default_route" type="text" class="form-input" placeholder="VD: /weighing-station" />
+              <label>{{ $t('workstationAdmin.fieldDefaultRoute') }}</label>
+              <input v-model="editForm.default_route" type="text" class="form-input" :placeholder="$t('workstationAdmin.placeholderRoute')" />
             </div>
           </div>
 
           <!-- Capabilities Tab -->
           <div v-if="activeTab === 'capabilities'">
             <div class="form-group mb-4">
-              <label class="d-block font-semibold mb-2">Capabilities Nghiệp Vụ (Business capabilities)</label>
+              <label class="d-block font-semibold mb-2">{{ $t('workstationAdmin.businessCapsLabel') }}</label>
               <div class="checkbox-group grid-2">
                 <div v-for="cap in allCapabilities.filter(c => c.category === 'BUSINESS')" :key="cap.code" class="d-flex align-center mb-2">
                   <input v-model="editForm.capabilities" type="checkbox" :id="'cap_'+cap.code" :value="cap.code" class="form-checkbox mr-2" />
@@ -133,7 +133,7 @@
             </div>
 
             <div class="form-group">
-              <label class="d-block font-semibold mb-2">Capabilities Thiết Bị (Device capabilities)</label>
+              <label class="d-block font-semibold mb-2">{{ $t('workstationAdmin.deviceCapsLabel') }}</label>
               <div class="checkbox-group grid-2">
                 <div v-for="cap in allCapabilities.filter(c => c.category === 'DEVICE')" :key="cap.code" class="d-flex align-center mb-2">
                   <input v-model="editForm.capabilities" type="checkbox" :id="'cap_'+cap.code" :value="cap.code" class="form-checkbox mr-2" />
@@ -148,13 +148,13 @@
 
           <!-- Devices Tab -->
           <div v-if="activeTab === 'devices'">
-            <p class="text-muted font-sm mb-3">Chọn các thiết bị (printer, scale, scanner) được gán và kết nối với máy trạm này.</p>
+            <p class="text-muted font-sm mb-3">{{ $t('workstationAdmin.devicesTabDesc') }}</p>
             
             <div v-for="(mapping, idx) in editForm.devices" :key="idx" class="device-mapping-row mb-3 d-flex gap-2 align-center">
               <div class="form-group flex-1">
-                <label v-if="idx === 0">Thiết bị</label>
+                <label v-if="idx === 0">{{ $t('workstationAdmin.colDevice') }}</label>
                 <select v-model="mapping.device_id" class="form-select font-mono">
-                  <option value="">-- Chọn thiết bị --</option>
+                  <option value="">{{ $t('workstationAdmin.optionChooseDevice') }}</option>
                   <option v-for="d in allDevices" :key="d.id" :value="d.id">
                     [{{ d.device_type }}] {{ d.code }} - {{ d.status }}
                   </option>
@@ -162,24 +162,24 @@
               </div>
 
               <div class="form-group" style="width: 150px;">
-                <label v-if="idx === 0">Vai trò</label>
+                <label v-if="idx === 0">{{ $t('workstationAdmin.colRole') }}</label>
                 <select v-model="mapping.device_role" class="form-select">
-                  <option value="PRIMARY_SCALE">Cân chính</option>
-                  <option value="SECONDARY_SCALE">Cân dự phòng</option>
-                  <option value="PRIMARY_PRINTER">Máy in chính</option>
-                  <option value="BACKUP_PRINTER">Máy in dự phòng</option>
-                  <option value="SCANNER">Máy quét QR</option>
-                  <option value="LOCAL_AGENT">Local Agent</option>
+                  <option value="PRIMARY_SCALE">{{ $t('workstationAdmin.rolePrimaryScale') }}</option>
+                  <option value="SECONDARY_SCALE">{{ $t('workstationAdmin.roleSecondaryScale') }}</option>
+                  <option value="PRIMARY_PRINTER">{{ $t('workstationAdmin.rolePrimaryPrinter') }}</option>
+                  <option value="BACKUP_PRINTER">{{ $t('workstationAdmin.roleBackupPrinter') }}</option>
+                  <option value="SCANNER">{{ $t('workstationAdmin.roleScanner') }}</option>
+                  <option value="LOCAL_AGENT">{{ $t('workstationAdmin.roleLocalAgent') }}</option>
                 </select>
               </div>
 
               <div class="form-group text-center" style="width: 80px;">
-                <label v-if="idx === 0" class="d-block">Mặc định</label>
+                <label v-if="idx === 0" class="d-block">{{ $t('workstationAdmin.colDefault') }}</label>
                 <input v-model="mapping.is_default" type="checkbox" class="form-checkbox" />
               </div>
 
               <div class="form-group text-center" style="width: 80px;">
-                <label v-if="idx === 0" class="d-block">Priority</label>
+                <label v-if="idx === 0" class="d-block">{{ $t('workstationAdmin.colPriority') }}</label>
                 <input v-model="mapping.priority" type="number" class="form-input text-center" style="padding: 4px;" />
               </div>
 
@@ -189,15 +189,15 @@
             </div>
 
             <button class="btn btn-secondary btn-sm mt-2" @click="addDeviceRow">
-              ➕ Thêm thiết bị liên kết
+              {{ $t('workstationAdmin.addDeviceBtn') }}
             </button>
           </div>
         </div>
 
         <div class="modal-footer d-flex justify-end gap-2">
-          <button class="btn btn-secondary" @click="closeEditModal" :disabled="submitting">Đóng</button>
+          <button class="btn btn-secondary" @click="closeEditModal" :disabled="submitting">{{ $t('common.close') }}</button>
           <button class="btn btn-primary" @click="submitEditConfig" :disabled="submitting">
-            {{ submitting ? 'Đang lưu...' : '💾 Lưu cấu hình' }}
+            {{ submitting ? $t('workstationAdmin.savingLabel') : $t('workstationAdmin.saveConfigBtn') }}
           </button>
         </div>
       </div>
@@ -207,40 +207,40 @@
     <div v-if="kioskLinkWorkstation" class="modal-overlay" @click.self="closeKioskLinkModal">
       <div class="ws-modal-card">
         <div class="modal-header">
-          <h3>🔗 Đường dẫn vận hành Kiosk — {{ kioskLinkWorkstation.code }}</h3>
+          <h3>{{ $t('workstationAdmin.kioskModalTitle', { code: kioskLinkWorkstation.code }) }}</h3>
           <button @click="closeKioskLinkModal" class="close-btn">&times;</button>
         </div>
         <div class="modal-body">
           <p class="font-sm text-muted mb-3">
-            Admin có thể cấp đường dẫn vận hành trực tiếp cho máy tính này. Trạm sẽ truy cập trực tiếp giao diện nghiệp vụ mà không cần đăng nhập tài khoản.
+            {{ $t('workstationAdmin.kioskDesc') }}
           </p>
 
           <div v-if="kioskError" class="card error-card mb-3">{{ kioskError }}</div>
           
           <div v-if="generatedKioskUrl" class="card success-card mb-3">
-            <h5 class="mb-2">⚠️ Chú ý bảo mật:</h5>
+            <h5 class="mb-2">{{ $t('workstationAdmin.securityNoticeTitle') }}</h5>
             <p class="font-xs mb-3 text-dark">
-              Token được bảo mật và ẩn trong CSDL. URL dưới đây chứa token rõ và **chỉ hiển thị MỘT LẦN duy nhất**. Vui lòng copy và lưu trữ cẩn thận.
+              {{ $t('workstationAdmin.kioskTokenWarning') }}
             </p>
             <div class="kiosk-url-box d-flex gap-2">
               <!-- Bỏ ref="kioskUrlInput": nút copy dùng navigator.clipboard đọc thẳng
                    generatedKioskUrl, không đụng tới thẻ input này. -->
               <input type="text" class="form-input font-mono font-xs flex-1" readonly :value="generatedKioskUrl" />
-              <button class="btn btn-primary btn-sm" @click="copyKioskUrl">Copy</button>
+              <button class="btn btn-primary btn-sm" @click="copyKioskUrl">{{ $t('workstationAdmin.copyBtn') }}</button>
             </div>
-            <p v-if="copied" class="text-success font-xs mt-1 font-semibold">✓ Đã copy link vào clipboard!</p>
+            <p v-if="copied" class="text-success font-xs mt-1 font-semibold">{{ $t('workstationAdmin.copiedMsg') }}</p>
           </div>
 
           <div class="kiosk-token-meta font-sm mb-3">
-            <div><strong>Trạng thái Token:</strong> {{ kioskLinkWorkstation.kiosk_token_active ? '🟢 Hoạt động (Active)' : '🔴 Đã thu hồi/Chưa tạo' }}</div>
+            <div><strong>{{ $t('workstationAdmin.tokenStatusLabel') }}</strong> {{ kioskLinkWorkstation.kiosk_token_active ? $t('workstationAdmin.tokenActive') : $t('workstationAdmin.tokenRevoked') }}</div>
             <div v-if="kioskLinkWorkstation.kiosk_token_expires_at">
-              <strong>Hạn dùng:</strong> {{ formatDate(kioskLinkWorkstation.kiosk_token_expires_at) }}
+              <strong>{{ $t('workstationAdmin.tokenExpiryLabel') }}</strong> {{ formatDate(kioskLinkWorkstation.kiosk_token_expires_at) }}
             </div>
           </div>
 
           <div class="kiosk-actions d-flex gap-2">
             <button class="btn btn-primary flex-1 py-2" @click="generateKioskLink" :disabled="kioskSubmitting">
-              ⚡ {{ kioskLinkWorkstation.kiosk_token_active ? 'Rotate Token (Tạo link mới)' : 'Tạo Link Kiosk Mới' }}
+              ⚡ {{ kioskLinkWorkstation.kiosk_token_active ? $t('workstationAdmin.rotateTokenBtn') : $t('workstationAdmin.createKioskLinkBtn') }}
             </button>
             <button 
               v-if="kioskLinkWorkstation.kiosk_token_active" 
@@ -248,7 +248,7 @@
               @click="revokeKioskLink" 
               :disabled="kioskSubmitting"
             >
-               Revoke (Thu hồi link)
+               {{ $t('workstationAdmin.revokeBtn') }}
             </button>
           </div>
         </div>
@@ -259,7 +259,7 @@
     <div v-if="activeWorkstation" class="modal-overlay" @click.self="closeModal">
       <div class="ws-modal-card">
         <div class="modal-header">
-          <h3>👤 Tạo tài khoản vận hành trạm</h3>
+          <h3>{{ $t('workstationAdmin.provisionModalTitle') }}</h3>
           <button @click="closeModal" class="close-btn">&times;</button>
         </div>
         <div class="modal-body">
@@ -268,27 +268,27 @@
 
           <form @submit.prevent="submitProvision">
             <div class="form-group mb-3">
-              <label>Tên đăng nhập (Username)</label>
-              <input v-model="form.username" type="text" class="form-input" required placeholder="VD: op_weight_01" />
+              <label>{{ $t('workstationAdmin.fieldUsername') }}</label>
+              <input v-model="form.username" type="text" class="form-input" required :placeholder="$t('workstationAdmin.placeholderUsername')" />
             </div>
             <div class="form-group mb-3">
-              <label>Tên hiển thị</label>
-              <input v-model="form.display_name" type="text" class="form-input" required placeholder="VD: Nguyễn Văn A" />
+              <label>{{ $t('workstationAdmin.fieldDisplayName') }}</label>
+              <input v-model="form.display_name" type="text" class="form-input" required :placeholder="$t('workstationAdmin.placeholderDisplayName')" />
             </div>
             <div class="form-group mb-3">
-              <label>Mật khẩu</label>
-              <input v-model="form.password" type="password" class="form-input" required placeholder="Tối thiểu 6 ký tự" />
+              <label>{{ $t('workstationAdmin.fieldPassword') }}</label>
+              <input v-model="form.password" type="password" class="form-input" required :placeholder="$t('workstationAdmin.placeholderPassword')" />
             </div>
             <div class="form-group mb-4">
-              <label>Vai trò chính</label>
+              <label>{{ $t('workstationAdmin.fieldMainRole') }}</label>
               <select v-model="form.role" class="form-select">
-                <option value="OPERATOR">OPERATOR — Vận hành viên</option>
-                <option value="SUPERVISOR">SUPERVISOR — Trưởng ca (Duyệt Override)</option>
-                <option value="TECHNOLOGIST">TECHNOLOGIST — Kỹ thuật viên</option>
+                <option value="OPERATOR">OPERATOR — {{ $t('workstationAdmin.roleOperator') }}</option>
+                <option value="SUPERVISOR">SUPERVISOR — {{ $t('workstationAdmin.roleSupervisor') }}</option>
+                <option value="TECHNOLOGIST">TECHNOLOGIST — {{ $t('workstationAdmin.roleTechnologist') }}</option>
               </select>
             </div>
             <button type="submit" class="btn btn-primary w-full py-2" :disabled="submitting">
-              {{ submitting ? 'Đang tạo...' : 'Tạo tài khoản' }}
+              {{ submitting ? $t('workstationAdmin.creatingLabel') : $t('workstationAdmin.createAccountBtn') }}
             </button>
           </form>
         </div>
@@ -299,7 +299,7 @@
     <div v-if="showRegisterModal" class="modal-overlay" @click.self="closeRegisterModal">
       <div class="ws-modal-card">
         <div class="modal-header">
-          <h3>🖥️ Đăng ký trạm vận hành vật lý mới</h3>
+          <h3>{{ $t('workstationAdmin.registerModalTitle') }}</h3>
           <button @click="closeRegisterModal" class="close-btn">&times;</button>
         </div>
         <div class="modal-body">
@@ -307,29 +307,29 @@
 
           <form @submit.prevent="submitRegister">
             <div class="form-group mb-3">
-              <label>Mã định danh trạm (Code)</label>
-              <input v-model="regForm.code" type="text" class="form-input font-mono" required placeholder="VD: CLIENT-PRINT-01" />
+              <label>{{ $t('workstationAdmin.fieldStationCode') }}</label>
+              <input v-model="regForm.code" type="text" class="form-input font-mono" required :placeholder="$t('workstationAdmin.placeholderStationCode')" />
             </div>
             <div class="form-group mb-3">
-              <label>Tên hiển thị trạm</label>
-              <input v-model="regForm.name" type="text" class="form-input" required placeholder="VD: Máy In Nhãn Trạm Cân Phẩm" />
+              <label>{{ $t('workstationAdmin.fieldStationDisplayName') }}</label>
+              <input v-model="regForm.name" type="text" class="form-input" required :placeholder="$t('workstationAdmin.placeholderStationDisplayName')" />
             </div>
             <div class="form-group mb-3">
-              <label>Capability chính</label>
+              <label>{{ $t('workstationAdmin.fieldMainCapability') }}</label>
               <select v-model="regForm.default_capability" class="form-select">
-                <option value="PRODUCTION_ORDER">PRODUCTION_ORDER — Tạo đơn sản xuất</option>
-                <option value="QR_LABEL_PRINTING">QR_LABEL_PRINTING — Nhận đơn & In tem QR</option>
-                <option value="SMALL_SCALE">SMALL_SCALE — Trạm cân nhỏ</option>
-                <option value="LARGE_SCALE">LARGE_SCALE — Trạm cân lớn</option>
-                <option value="CHEMICAL_CALL">CHEMICAL_CALL — Gọi hóa chất</option>
+                <option value="PRODUCTION_ORDER">PRODUCTION_ORDER — {{ $t('workstationAdmin.capProductionOrder') }}</option>
+                <option value="QR_LABEL_PRINTING">QR_LABEL_PRINTING — {{ $t('workstationAdmin.capQrLabelPrinting') }}</option>
+                <option value="SMALL_SCALE">SMALL_SCALE — {{ $t('workstationAdmin.capSmallScale') }}</option>
+                <option value="LARGE_SCALE">LARGE_SCALE — {{ $t('workstationAdmin.capLargeScale') }}</option>
+                <option value="CHEMICAL_CALL">CHEMICAL_CALL — {{ $t('workstationAdmin.capChemicalCall') }}</option>
               </select>
             </div>
             <div class="form-group mb-4">
-              <label>Vị trí khu vực xưởng</label>
-              <input v-model="regForm.location" type="text" class="form-input" placeholder="VD: Lab nhuộm tầng 1" />
+              <label>{{ $t('workstationAdmin.fieldWorkshopArea') }}</label>
+              <input v-model="regForm.location" type="text" class="form-input" :placeholder="$t('workstationAdmin.placeholderWorkshopArea')" />
             </div>
             <button type="submit" class="btn btn-primary w-full py-2" :disabled="submitting">
-              {{ submitting ? 'Đang đăng ký...' : '🚀 Hoàn thành đăng ký' }}
+              {{ submitting ? $t('workstationAdmin.registeringLabel') : $t('workstationAdmin.finishRegisterBtn') }}
             </button>
           </form>
         </div>
@@ -339,9 +339,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 
+const { t } = useI18n({ useScope: 'global' });
 const workstations = ref<any[]>([]);
 const allDevices = ref<any[]>([]);
 const loading = ref(false);
@@ -363,18 +365,24 @@ const generatedKioskUrl = ref('');
 const kioskError = ref('');
 const copied = ref(false);
 
-const allCapabilities = [
-  { code: 'CHEMICAL_CALL', name: 'Gọi hóa chất', category: 'BUSINESS' },
-  { code: 'PRODUCTION_ORDER', name: 'Tạo đơn sản xuất', category: 'BUSINESS' },
-  { code: 'QR_LABEL_PRINTING', name: 'Nhận đơn & In tem QR', category: 'BUSINESS' },
-  { code: 'SMALL_SCALE', name: 'Trạm cân nhỏ', category: 'BUSINESS' },
-  { code: 'LARGE_SCALE', name: 'Trạm cân lớn', category: 'BUSINESS' },
-  { code: 'PRINT', name: 'In ấn', category: 'DEVICE' },
-  { code: 'WEIGH', name: 'Cân đo', category: 'DEVICE' },
-  { code: 'SCAN_QR', name: 'Quét mã QR', category: 'DEVICE' },
-  { code: 'LOCAL_AGENT', name: 'Local Agent', category: 'DEVICE' },
-  { code: 'REMOTE_VIEW', name: 'Xem từ xa', category: 'DEVICE' },
+const allCapabilitiesRaw = [
+  { code: 'CHEMICAL_CALL', nameKey: 'capChemicalCall', category: 'BUSINESS' },
+  { code: 'PRODUCTION_ORDER', nameKey: 'capProductionOrder', category: 'BUSINESS' },
+  { code: 'QR_LABEL_PRINTING', nameKey: 'capQrLabelPrinting', category: 'BUSINESS' },
+  { code: 'SMALL_SCALE', nameKey: 'capSmallScale', category: 'BUSINESS' },
+  { code: 'LARGE_SCALE', nameKey: 'capLargeScale', category: 'BUSINESS' },
+  { code: 'PRINT', nameKey: 'capPrint', category: 'DEVICE' },
+  { code: 'WEIGH', nameKey: 'capWeigh', category: 'DEVICE' },
+  { code: 'SCAN_QR', nameKey: 'capScanQr', category: 'DEVICE' },
+  { code: 'LOCAL_AGENT', nameKey: 'capLocalAgent', category: 'DEVICE' },
+  { code: 'REMOTE_VIEW', nameKey: 'capRemoteView', category: 'DEVICE' },
 ];
+// computed để đổi tên capability theo ngôn ngữ đang chọn.
+const allCapabilities = computed(() => allCapabilitiesRaw.map(c => ({
+  code: c.code,
+  category: c.category,
+  name: t(`workstationAdmin.${c.nameKey}`),
+})));
 
 const form = reactive({
   username: '',
@@ -389,7 +397,7 @@ const regForm = reactive({
   code: '',
   name: '',
   default_capability: 'SMALL_SCALE',
-  location: 'Khu vực sản xuất',
+  location: t('workstationAdmin.defaultLocation'),
   default_route: '',
 });
 const regError = ref('');
@@ -409,7 +417,7 @@ async function loadWorkstations() {
     const res = await axios.get('/api/admin/workstations');
     workstations.value = res.data.data;
   } catch (err: any) {
-    errorMessage.value = err.response?.data?.message || 'Không thể tải danh sách máy trạm.';
+    errorMessage.value = err.response?.data?.message || t('workstationAdmin.errListLoadFailed');
   } finally {
     loading.value = false;
   }
@@ -446,7 +454,7 @@ function isOnline(ws: any) {
 }
 
 function formatTime(dStr: string) {
-  if (!dStr) return 'Chưa kết nối';
+  if (!dStr) return t('workstationAdmin.notConnected');
   return new Date(dStr).toLocaleTimeString('vi-VN', { hour12: false });
 }
 
@@ -472,7 +480,7 @@ async function toggleSuspend(ws: any) {
     successMessage.value = res.data.message;
     await loadWorkstations();
   } catch (err: any) {
-    errorMessage.value = err.response?.data?.message || 'Thao tác thất bại.';
+    errorMessage.value = err.response?.data?.message || t('workstationAdmin.errActionFailed');
   }
 }
 
@@ -502,7 +510,7 @@ async function submitProvision() {
     form.display_name = '';
     form.password = '';
   } catch (err: any) {
-    formError.value = err.response?.data?.message || 'Không thể tạo tài khoản.';
+    formError.value = err.response?.data?.message || t('workstationAdmin.errCreateAccount');
   } finally {
     submitting.value = false;
   }
@@ -533,7 +541,7 @@ async function generateKioskLink() {
       kioskLinkWorkstation.value = workstations.value.find(w => w.id === kioskLinkWorkstation.value.id);
     }
   } catch (err: any) {
-    kioskError.value = err.response?.data?.message || 'Không thể tạo token kiosk.';
+    kioskError.value = err.response?.data?.message || t('workstationAdmin.errGenerateToken');
   } finally {
     kioskSubmitting.value = false;
   }
@@ -550,7 +558,7 @@ async function revokeKioskLink() {
       kioskLinkWorkstation.value = workstations.value.find(w => w.id === kioskLinkWorkstation.value.id);
     }
   } catch (err: any) {
-    kioskError.value = err.response?.data?.message || 'Không thể thu hồi token kiosk.';
+    kioskError.value = err.response?.data?.message || t('workstationAdmin.errRevokeToken');
   } finally {
     kioskSubmitting.value = false;
   }
@@ -629,7 +637,7 @@ async function submitEditConfig() {
     modalSuccess.value = res.data.message;
     await loadWorkstations();
   } catch (err: any) {
-    modalError.value = err.response?.data?.message || 'Cập nhật cấu hình trạm thất bại.';
+    modalError.value = err.response?.data?.message || t('workstationAdmin.errUpdateConfig');
   } finally {
     submitting.value = false;
   }
@@ -642,7 +650,7 @@ function openRegisterModal() {
   regForm.code = '';
   regForm.name = '';
   regForm.default_capability = 'SMALL_SCALE';
-  regForm.location = 'Khu vực sản xuất';
+  regForm.location = t('workstationAdmin.defaultLocation');
   regForm.default_route = '/weighing-station';
 }
 function closeRegisterModal() {
@@ -656,7 +664,7 @@ async function submitRegister() {
     await loadWorkstations();
     closeRegisterModal();
   } catch (err: any) {
-    regError.value = err.response?.data?.message || 'Đăng ký trạm thất bại.';
+    regError.value = err.response?.data?.message || t('workstationAdmin.errRegister');
   } finally {
     submitting.value = false;
   }

@@ -5,7 +5,7 @@
 
     <!-- Machine Grid (read-only) -->
     <div v-if="loading" class="card text-center padding-xl text-muted">
-      <span class="spinner">⏳</span> Đang tải thông tin van đường ống xưởng nhuộm...
+      <span class="spinner">⏳</span> {{ $t('chemicalCallMonitor.loadingChannels') }}
     </div>
 
     <div v-else class="machine-grid">
@@ -15,7 +15,7 @@
         class="card machine-card"
       >
         <div class="machine-card-header">
-          <span class="machine-name-title">🖥️ Máy {{ machineCode }}</span>
+          <span class="machine-name-title">{{ $t('chemicalCallMonitor.machineTitle', { code: machineCode }) }}</span>
         </div>
 
         <div class="machine-card-body">
@@ -31,7 +31,7 @@
           >
             <div class="channel-number-col">
               <span v-if="isChannelRed(c)" class="alert-dot" aria-hidden="true"></span>
-              <span class="channel-number-pill">Thùng {{ c.channel_number }}</span>
+              <span class="channel-number-pill">{{ $t('chemicalCallMonitor.channelPill', { number: c.channel_number }) }}</span>
             </div>
 
             <div class="chemical-name-col">
@@ -64,8 +64,8 @@
                 :class="isChannelRed(c) ? 'btn-danger' : 'btn-success'"
                 :disabled="actionLoading !== null"
               >
-                <span v-if="actionLoading === c.channel_id">⏳ Đang xử lý...</span>
-                <span v-else>{{ isChannelRed(c) ? '🔴 Bấm khi Xong' : '🟢 OK — Bấm để Gọi' }}</span>
+                <span v-if="actionLoading === c.channel_id">{{ $t('chemicalCallMonitor.processingLabel') }}</span>
+                <span v-else>{{ isChannelRed(c) ? $t('chemicalCallMonitor.toggleDoneLabel') : $t('chemicalCallMonitor.toggleCallLabel') }}</span>
               </button>
             </div>
           </div>
@@ -80,6 +80,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import echo from '../services/echo';
 import ChemicalCallQrThumb from '../components/ChemicalCallQrThumb.vue';
@@ -102,6 +103,8 @@ interface ChemicalChannel {
   formula_qr_text: string | null;
   current_request: RequestInfo | null;
 }
+
+const { t } = useI18n({ useScope: 'global' });
 
 const channelsList = ref<ChemicalChannel[]>([]);
 const loading = ref(true);
@@ -153,7 +156,7 @@ async function fetchChannels() {
     channelsList.value = res.data;
   } catch (err) {
     console.error('Failed to fetch channels:', err);
-    errorMsg.value = 'Không thể kết nối đến máy chủ API để lấy thông tin van đường ống.';
+    errorMsg.value = t('chemicalCallMonitor.errorFetchChannels');
   } finally {
     loading.value = false;
   }
@@ -208,7 +211,7 @@ async function toggleChannel(channel: ChemicalChannel, event?: MouseEvent) {
     await fetchChannels();
   } catch (err: any) {
     channel.current_request = previousRequest;
-    errorMsg.value = err.response?.data?.message || 'Không thể đổi trạng thái kênh.';
+    errorMsg.value = err.response?.data?.message || t('chemicalCallMonitor.errorToggleChannel');
   } finally {
     actionLoading.value = null;
   }

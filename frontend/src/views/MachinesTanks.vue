@@ -13,37 +13,33 @@
                này CHỈ hiển thị dữ liệu, không nhập/lưu trực tiếp — mọi thao tác quét/Save
                thật vẫn ở /production-batches, tránh trùng lặp logic quét nhạy cảm. -->
           <router-link to="/production-batches" class="vba-open-form-btn">
-            📋 Mở Quét đơn sản xuất
+            {{ $t('machinesTanks.openScanForm') }}
           </router-link>
         </div>
 
         <div class="section-header mt-2">
-          <p class="section-desc">
-            Mỗi cột là 1 máy nhuộm (VD01–VD18...), các dòng bên dưới là thùng trộn (1A–4D) của máy
-            đó — đúng bố cục lưới cột-theo-máy trong <code>mainform</code> VBA gốc. Trang này chỉ để
-            xem, muốn nhập/lưu đơn mới bấm nút "Mở Quét đơn sản xuất" ở trên.
-          </p>
+          <p class="section-desc" v-html="$t('machinesTanks.gridDesc')"></p>
           <div class="header-actions">
             <input
               v-model="searchQuery"
               type="text"
-              placeholder="🔍 Tìm mã máy..."
+              :placeholder="$t('machinesTanks.searchPlaceholder')"
               class="form-input search-box"
             />
             <button class="refresh-btn" @click="fetchAll" :disabled="loading">
-              {{ loading ? 'Đang tải...' : '🔄 Làm mới' }}
+              {{ loading ? $t('machinesTanks.refreshingBtn') : $t('machinesTanks.refreshBtn') }}
             </button>
-            <button class="add-btn" @click="openAddModal">➕ Thêm máy mới</button>
+            <button class="add-btn" @click="openAddModal">{{ $t('machinesTanks.addMachineBtn') }}</button>
           </div>
         </div>
 
         <p v-if="errorMsg" class="text-error mt-2">❌ {{ errorMsg }}</p>
 
         <div class="age-legend">
-          <span class="legend-item"><span class="legend-swatch swatch-fresh"></span>Có lệnh &lt; 24h</span>
-          <span class="legend-item"><span class="legend-swatch swatch-warn"></span>Chờ gửi máy 24–48h</span>
-          <span class="legend-item"><span class="legend-swatch swatch-stale"></span>Tồn đọng &gt; 48h</span>
-          <span class="legend-item"><span class="legend-swatch swatch-none"></span>Không có lệnh đang chờ</span>
+          <span class="legend-item"><span class="legend-swatch swatch-fresh"></span>{{ $t('machinesTanks.legendFresh') }}</span>
+          <span class="legend-item"><span class="legend-swatch swatch-warn"></span>{{ $t('machinesTanks.legendWarn') }}</span>
+          <span class="legend-item"><span class="legend-swatch swatch-stale"></span>{{ $t('machinesTanks.legendStale') }}</span>
+          <span class="legend-item"><span class="legend-swatch swatch-none"></span>{{ $t('machinesTanks.legendNone') }}</span>
         </div>
 
         <div class="vd-grid-wrapper mt-2">
@@ -76,7 +72,7 @@
                       </span>
                       <span class="order-badge">{{ stateLabel(cellData[m.id][i - 1].dispatch.queue_state) }}</span>
                     </div>
-                    <div v-else class="tank-idle">— trống —</div>
+                    <div v-else class="tank-idle">{{ $t('machinesTanks.tankIdle') }}</div>
                   </template>
                 </td>
               </tr>
@@ -87,16 +83,11 @@
           </table>
 
           <div v-if="!loading && filteredMachines.length === 0" class="empty-state">
-            Không tìm thấy máy nào khớp "{{ searchQuery }}".
+            {{ $t('machinesTanks.emptySearch', { query: searchQuery }) }}
           </div>
         </div>
 
-        <p class="source-footnote mt-2">
-          📁 Nguồn dữ liệu gốc (VBA Access, tham khảo): <code>Z:\DF\data\record.accdb</code> · dự phòng
-          qua mạng: <code>\\10.0.55.3\Share\DF\DATA</code>. Trang web này đọc dữ liệu thật qua API
-          Postgres (<code>/api/machines</code>, <code>/api/tanks</code>, <code>/api/machine-dispatches</code>),
-          không kết nối trực tiếp file Access.
-        </p>
+        <p class="source-footnote mt-2" v-html="$t('machinesTanks.sourceFootnote')"></p>
       </section>
     </main>
 
@@ -104,24 +95,24 @@
     <div class="modal-backdrop" v-if="showAddModal">
       <div class="modal-card">
         <div class="modal-header">
-          <h4>➕ Thêm máy nhuộm mới</h4>
+          <h4>{{ $t('machinesTanks.addModalTitle') }}</h4>
           <button @click="closeAddModal" class="close-modal-btn">✕</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="new-machine-code">Mã máy (vd: VD19)</label>
+            <label for="new-machine-code">{{ $t('machinesTanks.fieldMachineCode') }}</label>
             <input id="new-machine-code" v-model="addForm.code" type="text" class="form-input" />
           </div>
           <div class="form-group">
-            <label for="new-machine-name">Tên máy</label>
+            <label for="new-machine-name">{{ $t('machinesTanks.fieldMachineName') }}</label>
             <input id="new-machine-name" v-model="addForm.name" type="text" class="form-input" />
           </div>
           <p v-if="addError" class="text-error font-xs">{{ addError }}</p>
         </div>
         <div class="modal-footer">
-          <button @click="closeAddModal" class="cancel-btn">Hủy</button>
+          <button @click="closeAddModal" class="cancel-btn">{{ $t('common.cancel') }}</button>
           <button @click="submitAddMachine" class="submit-btn" :disabled="saving">
-            {{ saving ? 'Đang lưu...' : 'Lưu máy mới' }}
+            {{ saving ? $t('machinesTanks.savingBtn') : $t('machinesTanks.saveNewBtn') }}
           </button>
         </div>
       </div>
@@ -131,10 +122,12 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '../stores/auth';
 import axios from 'axios';
 
 const authStore = useAuthStore();
+const { t } = useI18n({ useScope: 'global' });
 
 const machines = ref<any[]>([]);
 const tanks = ref<any[]>([]);
@@ -181,7 +174,7 @@ const fetchAll = async () => {
     await Promise.all([fetchMachines(), fetchTanks(), fetchDispatches()]);
   } catch (error) {
     console.error('Fetch machines/tanks error:', error);
-    errorMsg.value = 'Không tải được danh mục Máy/Thùng trộn.';
+    errorMsg.value = t('machinesTanks.errLoadFailed');
   } finally {
     loading.value = false;
   }
@@ -241,8 +234,8 @@ const dispatchAgeClass = (machineId: number): string => {
 
 const dispatchAgeTitle = (machineId: number): string => {
   const hours = dispatchAgeHours(machineId);
-  if (hours === null) return 'Không có lệnh nào đang chờ gửi máy';
-  return `Lệnh chờ cũ nhất: ${hours.toFixed(1)}h trước`;
+  if (hours === null) return t('machinesTanks.noPendingOrder');
+  return t('machinesTanks.oldestOrderAge', { hours: hours.toFixed(1) });
 };
 
 // Đơn/lô đang chạy trên từng thùng cụ thể — đúng ý mainform hiển thị color/code
@@ -283,20 +276,20 @@ const cellData = computed(() => {
 
 const stateLabel = (state: string): string => {
   const labels: Record<string, string> = {
-    INPUT: 'Mới nhập',
-    WAITING: 'Đang chờ',
-    TO_SEND: 'Chờ gửi máy',
-    PROCESSING: 'Đang chạy',
-    ERROR: 'Lỗi',
-    CONFIRMED: 'Đã duyệt',
-    SENT: 'Đã gửi máy'
+    INPUT: t('machinesTanks.stateInput'),
+    WAITING: t('machinesTanks.stateWaiting'),
+    TO_SEND: t('machinesTanks.stateToSend'),
+    PROCESSING: t('machinesTanks.stateProcessing'),
+    ERROR: t('machinesTanks.stateError'),
+    CONFIRMED: t('machinesTanks.stateConfirmed'),
+    SENT: t('machinesTanks.stateSent')
   };
   return labels[state] || state;
 };
 
 const orderTooltip = (dispatch: any): string => {
   const hours = (Date.now() - new Date(dispatch.created_at).getTime()) / 3600000;
-  return `${dispatch.batch?.color} · ${dispatch.batch?.product_code} — ${stateLabel(dispatch.queue_state)} (${hours.toFixed(1)}h trước)`;
+  return t('machinesTanks.orderTooltip', { color: dispatch.batch?.color, product: dispatch.batch?.product_code, state: stateLabel(dispatch.queue_state), hours: hours.toFixed(1) });
 };
 
 const openAddModal = () => {
@@ -312,7 +305,7 @@ const closeAddModal = () => {
 const submitAddMachine = async () => {
   addError.value = '';
   if (!addForm.value.code.trim() || !addForm.value.name.trim()) {
-    addError.value = 'Nhập đủ Mã máy và Tên máy.';
+    addError.value = t('machinesTanks.errRequiredFields');
     return;
   }
 
@@ -322,7 +315,7 @@ const submitAddMachine = async () => {
     await fetchMachines();
     closeAddModal();
   } catch (error: any) {
-    addError.value = error.response?.data?.message || 'Không thêm được máy mới (mã có thể đã tồn tại).';
+    addError.value = error.response?.data?.message || t('machinesTanks.errAddMachineFailed');
   } finally {
     saving.value = false;
   }

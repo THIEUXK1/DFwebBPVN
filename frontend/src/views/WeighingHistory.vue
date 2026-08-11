@@ -24,8 +24,7 @@
            vì đây là lý do trực tiếp khiến bộ lọc "không tìm ra" — người dùng cần thấy nó dù đã
            thu gọn khối lọc hay đang cuộn xuống cuối bảng. -->
       <p v-if="truncated && !loading && !errorMsg" class="wh-msg warn">
-        ⚠ Chỉ đang xem <strong>{{ allRounds.length }} vòng cân gần nhất</strong> — còn nữa ở phía
-        trước. Thu hẹp khoảng ngày, hoặc bấm “Tìm trên toàn bộ lịch sử”.
+        {{ $t('weighingHistory.truncatedPrefix') }}<strong>{{ $t('weighingHistory.truncatedStrong', { count: allRounds.length }) }}</strong>{{ $t('weighingHistory.truncatedSuffix') }}
       </p>
 
       <div v-show="!filtersCollapsed" class="wh-filters-body">
@@ -41,44 +40,44 @@
             class="wh-stat"
             :class="[freqLevel(g.freq), { active: freqFilter === g.freq }]"
             :aria-pressed="freqFilter === g.freq"
-            :title="`Lọc các vòng cân của đơn (trùng Màu + Mã hàng + Máy + LV) cân ${g.freq} lần`"
+            :title="$t('weighingHistory.statFilterTitle', { freq: g.freq })"
             @click="toggleFreq(g.freq)"
           >
             <span class="wh-stat-num">{{ g.products }}</span>
-            <span class="wh-stat-lbl">đơn cân <strong>{{ g.freq }} lần</strong></span>
+            <span class="wh-stat-lbl">{{ $t('weighingHistory.statLabelPrefix') }}<strong>{{ g.freq }}{{ $t('weighingHistory.statLabelSuffix') }}</strong></span>
           </button>
           <p v-if="freqGroups.length === 0" class="wh-stat-none">
-            Không có đơn nào bị cân trùng trong {{ allRounds.length }} vòng đang xem.
+            {{ $t('weighingHistory.statNoneEmpty', { count: allRounds.length }) }}
           </p>
           <p v-else class="wh-stat-none">
-            Trùng = giống cả 4: Màu, Mã hàng, Máy, LV.
+            {{ $t('weighingHistory.statNoneHint') }}
           </p>
         </div>
 
         <div class="wh-bar">
           <div class="wh-field">
-            <label>Từ ngày</label>
+            <label>{{ $t('weighingHistory.fieldFrom') }}</label>
             <input type="date" v-model="filters.from" @change="reload" />
           </div>
           <div class="wh-field">
-            <label>Đến ngày</label>
+            <label>{{ $t('weighingHistory.fieldTo') }}</label>
             <input type="date" v-model="filters.to" @change="reload" />
           </div>
           <div class="wh-field wh-grow">
             <!-- Ô này KHÔNG gọi server: lọc ngay trên cửa sổ dữ liệu đã tải, hiện kết quả theo
                  từng ký tự gõ. Muốn với ra ngoài cửa sổ đó thì có nút riêng bên cạnh. -->
-            <label>Tìm nhanh (không cần chờ)</label>
-            <input type="text" v-model="search" placeholder="Màu / mã hàng / mã lô / máy / LV…" />
+            <label>{{ $t('weighingHistory.fieldQuickSearch') }}</label>
+            <input type="text" v-model="search" :placeholder="$t('weighingHistory.quickSearchPlaceholder')" />
           </div>
           <!-- Đường thoát khi thứ cần tìm nằm NGOÀI cửa sổ đã tải. Luôn hiện khi có chữ trong ô
                tìm, không đợi tới lúc "không thấy gì": lọc ra 2 dòng cũng không có nghĩa là chỉ có
                2. -->
           <button v-if="search.trim()" class="wh-btn" @click="searchOnServer" :disabled="loading">
-            🔎 Tìm trên toàn bộ lịch sử
+            {{ $t('weighingHistory.searchOnServerButton') }}
           </button>
-          <button class="wh-btn ghost" @click="resetFilters" :disabled="loading">Xoá lọc</button>
-          <button class="wh-btn ghost" @click="reload" :disabled="loading" title="Tải lại dữ liệu mới nhất">
-            ⟳ Làm mới
+          <button class="wh-btn ghost" @click="resetFilters" :disabled="loading">{{ $t('weighingHistory.clearFiltersButton') }}</button>
+          <button class="wh-btn ghost" @click="reload" :disabled="loading" :title="$t('weighingHistory.refreshButtonTitle')">
+            {{ $t('weighingHistory.refreshButtonLabel') }}
           </button>
         </div>
 
@@ -87,92 +86,90 @@
              Máy và LV để ô chọn vì tập giá trị hữu hạn, chọn nhanh hơn gõ. -->
         <div class="wh-bar wh-cols">
           <div class="wh-field">
-            <label>Màu</label>
-            <input type="text" v-model="col.color" list="wh-colors" placeholder="Tất cả" />
+            <label>{{ $t('weighingHistory.fieldColor') }}</label>
+            <input type="text" v-model="col.color" list="wh-colors" :placeholder="$t('weighingHistory.colFilterPlaceholder')" />
             <datalist id="wh-colors">
               <option v-for="o in colorOptions" :key="o" :value="o" />
             </datalist>
           </div>
           <div class="wh-field">
-            <label>Mã hàng</label>
-            <input type="text" v-model="col.product" list="wh-products" placeholder="Tất cả" />
+            <label>{{ $t('weighingHistory.fieldProduct') }}</label>
+            <input type="text" v-model="col.product" list="wh-products" :placeholder="$t('weighingHistory.colFilterPlaceholder')" />
             <datalist id="wh-products">
               <option v-for="o in productOptions" :key="o" :value="o" />
             </datalist>
           </div>
           <div class="wh-field">
-            <label>Máy</label>
+            <label>{{ $t('weighingHistory.fieldMachine') }}</label>
             <select v-model="col.machine">
-              <option value="">— Tất cả máy —</option>
+              <option value="">{{ $t('weighingHistory.optionAllMachines') }}</option>
               <option v-for="o in machineOptions" :key="o" :value="o">{{ o }}</option>
             </select>
           </div>
           <div class="wh-field">
-            <label>LV</label>
+            <label>{{ $t('weighingHistory.fieldLv') }}</label>
             <select v-model="col.lv">
-              <option value="">— Tất cả LV —</option>
+              <option value="">{{ $t('weighingHistory.optionAllLv') }}</option>
               <option v-for="o in lvOptions" :key="o" :value="o">{{ o }}</option>
             </select>
           </div>
           <div class="wh-field">
-            <label>Cân</label>
+            <label>{{ $t('weighingHistory.fieldScale') }}</label>
             <select v-model="col.scale">
-              <option value="">— Cả 2 cân —</option>
-              <option value="LARGE">Cân to</option>
-              <option value="SMALL">Cân nhỏ</option>
-              <option value="NONE">Không rõ</option>
+              <option value="">{{ $t('weighingHistory.optionBothScales') }}</option>
+              <option value="LARGE">{{ $t('weighingHistory.optionScaleLarge') }}</option>
+              <option value="SMALL">{{ $t('weighingHistory.optionScaleSmall') }}</option>
+              <option value="NONE">{{ $t('weighingHistory.optionScaleNone') }}</option>
             </select>
           </div>
           <div class="wh-field">
-            <label>Kết quả</label>
+            <label>{{ $t('weighingHistory.fieldResult') }}</label>
             <select v-model="col.result">
-              <option value="">— Tất cả —</option>
-              <option value="BAD">Có dòng KHÔNG ĐẠT</option>
-              <option value="OK">Toàn bộ ĐẠT</option>
+              <option value="">{{ $t('weighingHistory.optionAllResults') }}</option>
+              <option value="BAD">{{ $t('weighingHistory.optionResultBad') }}</option>
+              <option value="OK">{{ $t('weighingHistory.optionResultOk') }}</option>
             </select>
           </div>
           <div class="wh-field">
-            <label>Mỗi trang</label>
+            <label>{{ $t('weighingHistory.fieldPageSize') }}</label>
             <select v-model.number="pageSize">
               <option :value="20">20</option>
               <option :value="50">50</option>
               <option :value="100">100</option>
-              <option :value="0">Tất cả</option>
+              <option :value="0">{{ $t('weighingHistory.optionAll') }}</option>
             </select>
           </div>
         </div>
       </div>
     </div>
 
-    <p v-if="loading" class="wh-msg">Đang tải…</p>
+    <p v-if="loading" class="wh-msg">{{ $t('weighingHistory.loading') }}</p>
     <p v-else-if="errorMsg" class="wh-msg err">{{ errorMsg }}</p>
 
     <template v-else>
       <!-- Cảnh báo cửa sổ bị cắt giờ nằm trong khối lọc sticky ở trên (xem "Cửa sổ bị cắt") để
            luôn nhìn thấy khi cuộn — chỗ này chỉ còn thông báo tìm-trên-toàn-bộ-lịch-sử. -->
       <p v-if="serverSearch" class="wh-msg warn">
-        🔎 Kết quả tìm <strong>trên toàn bộ lịch sử</strong> cho “{{ serverSearch }}” —
-        <button class="wh-link" @click="resetFilters">quay lại danh sách gần nhất</button>
+        {{ $t('weighingHistory.resultPrefix') }}<strong>{{ $t('weighingHistory.resultStrong') }}</strong>{{ $t('weighingHistory.resultMiddle') }}{{ serverSearch }}{{ $t('weighingHistory.resultSuffix') }}
+        <button class="wh-link" @click="resetFilters">{{ $t('weighingHistory.backToRecentButton') }}</button>
       </p>
 
       <!-- Đang lọc theo thẻ: bảng KHÔNG còn xếp thuần theo thời gian nữa mà xếp theo cụm trùng.
            Phải nói ra, nếu không người dùng sẽ tưởng cột thời gian bị sai thứ tự. -->
       <p v-if="freqFilter !== null && filtered.length > 0" class="wh-msg group-note">
-        Đang xem <strong>{{ groupCount }} đơn</strong> bị cân {{ freqFilter }} lần
-        ({{ filtered.length }} vòng) — các vòng của cùng một đơn được xếp liền nhau, mỗi cụm một
-        nền riêng. <button class="wh-link" @click="toggleFreq(freqFilter)">Bỏ lọc</button>
+        {{ $t('weighingHistory.groupNotePrefix') }}<strong>{{ $t('weighingHistory.groupNoteStrong', { count: groupCount }) }}</strong>{{ $t('weighingHistory.groupNoteSuffix', { freq: freqFilter, count: filtered.length }) }}
+        <button class="wh-link" @click="toggleFreq(freqFilter)">{{ $t('weighingHistory.clearFreqFilterButton') }}</button>
       </p>
 
       <p v-if="filtered.length === 0" class="wh-msg">
         <template v-if="freqFilter !== null">
-          Không có vòng cân nào của đơn cân {{ freqFilter }} lần khớp điều kiện còn lại —
-          <button class="wh-link" @click="toggleFreq(freqFilter)">bỏ lọc tần suất</button>.
+          {{ $t('weighingHistory.emptyFreqPrefix', { freq: freqFilter }) }}
+          <button class="wh-link" @click="toggleFreq(freqFilter)">{{ $t('weighingHistory.emptyFreqLink') }}</button>.
         </template>
         <template v-else-if="search.trim()">
-          Không có vòng cân nào khớp “{{ search }}” trong {{ allRounds.length }} vòng đã tải —
-          thử nút <strong>🔎 Tìm trên toàn bộ lịch sử</strong> ở trên.
+          {{ $t('weighingHistory.emptySearchPrefix', { query: search, count: allRounds.length }) }}<strong>{{ $t('weighingHistory.emptySearchStrong') }}</strong>{{ $t('weighingHistory.emptySearchSuffix') }}
         </template>
-        <template v-else>Không có vòng cân nào khớp điều kiện lọc.</template>
+        <template v-else>{{ $t('weighingHistory.emptyDefault') }}</template>
       </p>
     </template>
 
@@ -184,15 +181,15 @@
     <table class="wh-table">
       <thead>
         <tr>
-          <th class="c-time">Thời điểm cân</th>
-          <th class="c-scale">Cân</th>
-          <th>Màu</th>
-          <th>Mã hàng</th>
-          <th>Máy</th>
-          <th>LV</th>
-          <th class="c-num">Số dòng</th>
-          <th class="c-num">Đạt</th>
-          <th class="c-num">Không đạt</th>
+          <th class="c-time">{{ $t('weighingHistory.colTime') }}</th>
+          <th class="c-scale">{{ $t('weighingHistory.colScale') }}</th>
+          <th>{{ $t('weighingHistory.colColor') }}</th>
+          <th>{{ $t('weighingHistory.colProduct') }}</th>
+          <th>{{ $t('weighingHistory.colMachine') }}</th>
+          <th>{{ $t('weighingHistory.colLv') }}</th>
+          <th class="c-num">{{ $t('weighingHistory.colLineCount') }}</th>
+          <th class="c-num">{{ $t('weighingHistory.colAccepted') }}</th>
+          <th class="c-num">{{ $t('weighingHistory.colRejected') }}</th>
           <th class="c-act"></th>
         </tr>
       </thead>
@@ -215,7 +212,7 @@
               <span
                 class="scale-tag"
                 :class="scaleClass(job)"
-                :title="job.workstation_code ? `Trạm ${job.workstation_code}` : 'Không xác định được trạm đã cân'"
+                :title="job.workstation_code ? $t('weighingHistory.scaleTitleKnown', { code: job.workstation_code }) : $t('weighingHistory.scaleTitleUnknown')"
               >{{ scaleLabel(job) }}</span>
             </td>
             <td class="strong">{{ job.batch?.color || '—' }}</td>
@@ -230,7 +227,7 @@
               <button
                 class="wh-print"
                 :disabled="reprintingId === job.id"
-                title="In lại phiếu cân của vòng này"
+                :title="$t('weighingHistory.reprintButtonTitle')"
                 @click.stop="reprint(job)"
               >
                 {{ reprintingId === job.id ? '…' : '🖨' }}
@@ -247,10 +244,10 @@
                     <th class="c-num">#</th>
                     <th>RACK</th>
                     <th>DYE CODE</th>
-                    <th class="c-num">WEIGHT (mục tiêu)</th>
-                    <th class="c-num">PROCESS (thực cân)</th>
-                    <th class="c-num">Lệch</th>
-                    <th>Kết quả</th>
+                    <th class="c-num">{{ $t('weighingHistory.detailColWeightTarget') }}</th>
+                    <th class="c-num">{{ $t('weighingHistory.detailColWeightActual') }}</th>
+                    <th class="c-num">{{ $t('weighingHistory.detailColDeviation') }}</th>
+                    <th>{{ $t('weighingHistory.detailColResult') }}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -265,9 +262,9 @@
                     <td class="c-num" :class="deviationClass(item)">{{ deviation(item) }}</td>
                     <td>
                       <span class="tag" :class="item.process_status === 'ACCEPTED' ? 'ok' : 'bad'">
-                        {{ item.process_status === 'ACCEPTED' ? 'ĐẠT' : 'KHÔNG ĐẠT' }}
+                        {{ item.process_status === 'ACCEPTED' ? $t('weighingHistory.resultAccepted') : $t('weighingHistory.resultRejected') }}
                       </span>
-                      <span v-if="item.actual_weight === null" class="note">chưa cân</span>
+                      <span v-if="item.actual_weight === null" class="note">{{ $t('weighingHistory.notWeighedYet') }}</span>
                     </td>
                   </tr>
                 </tbody>
@@ -283,12 +280,11 @@
          chờ nào cả. Nằm NGOÀI .wh-table-scroll (chân khung, không cuộn theo bảng) nên luôn hiện. -->
     <div class="wh-pager">
       <span class="wh-pager-info">
-        Hiển thị <strong>{{ pageStart + 1 }}–{{ pageStart + paged.length }}</strong> /
-        {{ filtered.length }} vòng cân<template v-if="hasRowFilter"> khớp</template>
+        {{ $t('weighingHistory.pagerPrefix') }}<strong>{{ pageStart + 1 }}–{{ pageStart + paged.length }}</strong>{{ $t('weighingHistory.pagerSuffix', { total: filtered.length }) }}<template v-if="hasRowFilter">{{ $t('weighingHistory.pagerMatchedSuffix') }}</template>
       </span>
       <div class="wh-pager-ctrl">
-        <button class="wh-btn ghost" :disabled="page <= 1" @click="page = 1" title="Trang đầu">«</button>
-        <button class="wh-btn ghost" :disabled="page <= 1" @click="page -= 1">‹ Trước</button>
+        <button class="wh-btn ghost" :disabled="page <= 1" @click="page = 1" :title="$t('weighingHistory.firstPageTitle')">«</button>
+        <button class="wh-btn ghost" :disabled="page <= 1" @click="page -= 1">{{ $t('weighingHistory.prevPageLabel') }}</button>
         <button
           v-for="p in pageWindow"
           :key="p"
@@ -296,9 +292,9 @@
           :class="{ active: p === page }"
           @click="page = p"
         >{{ p }}</button>
-        <button class="wh-btn ghost" :disabled="page >= lastPage" @click="page += 1">Sau ›</button>
-        <button class="wh-btn ghost" :disabled="page >= lastPage" @click="page = lastPage" title="Trang cuối">»</button>
-        <span class="wh-pager-total">Trang {{ page }}/{{ lastPage }}</span>
+        <button class="wh-btn ghost" :disabled="page >= lastPage" @click="page += 1">{{ $t('weighingHistory.nextPageLabel') }}</button>
+        <button class="wh-btn ghost" :disabled="page >= lastPage" @click="page = lastPage" :title="$t('weighingHistory.lastPageTitle')">»</button>
+        <span class="wh-pager-total">{{ $t('weighingHistory.pageOfLabel', { page, last: lastPage }) }}</span>
       </div>
     </div>
     </div>
@@ -314,6 +310,7 @@
 // khi đối soát, gom theo lô sẽ giấu mất chúng.
 
 import { ref, reactive, computed, watch, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import { inPhieuTrongTrang } from '../utils/slipPrint';
 
@@ -330,6 +327,8 @@ import { inPhieuTrongTrang } from '../utils/slipPrint';
  * không có dữ liệu.
  */
 const WINDOW_LIMIT = 200;
+
+const { t } = useI18n({ useScope: 'global' });
 
 const allRounds = ref<any[]>([]);
 const truncated = ref(false);
@@ -375,7 +374,9 @@ function ganChuoiTim(job: any) {
     // Gõ thẳng "cân to" / "cân nhỏ" vào ô tìm nhanh cũng ra — không bắt người dùng nhớ rằng
     // muốn lọc theo loại cân thì phải xuống ô chọn riêng ở hàng dưới.
     job.workstation_code,
-    job.scale_kind === 'LARGE' ? 'cân to canto' : job.scale_kind === 'SMALL' ? 'cân nhỏ cannho' : '',
+    job.scale_kind === 'LARGE'
+      ? t('weighingHistory.scaleSearchAliasLarge')
+      : job.scale_kind === 'SMALL' ? t('weighingHistory.scaleSearchAliasSmall') : '',
   ].filter(Boolean).join(' ').toLowerCase();
   // Khóa trùng tính sẵn luôn tại đây, cùng lý do với `__hay` ở trên: để trong computed thì mỗi
   // ký tự gõ vào ô tìm là tính lại cho toàn bộ cửa sổ dữ liệu.
@@ -477,14 +478,14 @@ const filtersCollapsed = ref(false);
 const activeFilterSummary = computed(() => {
   const parts: string[] = [];
   if (filters.from || filters.to) parts.push(`${filters.from || '…'} → ${filters.to || '…'}`);
-  if (search.value.trim()) parts.push(`tìm “${search.value.trim()}”`);
-  if (freqFilter.value !== null) parts.push(`cân ${freqFilter.value} lần`);
-  if (col.color) parts.push(`màu ${col.color}`);
-  if (col.product) parts.push(`mã ${col.product}`);
-  if (col.machine) parts.push(`máy ${col.machine}`);
-  if (col.lv) parts.push(`LV ${col.lv}`);
-  if (col.scale) parts.push('cân riêng');
-  if (col.result) parts.push(col.result === 'BAD' ? 'có KHÔNG ĐẠT' : 'toàn ĐẠT');
+  if (search.value.trim()) parts.push(t('weighingHistory.summarySearch', { query: search.value.trim() }));
+  if (freqFilter.value !== null) parts.push(t('weighingHistory.summaryFreq', { freq: freqFilter.value }));
+  if (col.color) parts.push(t('weighingHistory.summaryColor', { value: col.color }));
+  if (col.product) parts.push(t('weighingHistory.summaryProduct', { value: col.product }));
+  if (col.machine) parts.push(t('weighingHistory.summaryMachine', { value: col.machine }));
+  if (col.lv) parts.push(t('weighingHistory.summaryLv', { value: col.lv }));
+  if (col.scale) parts.push(t('weighingHistory.summaryScale'));
+  if (col.result) parts.push(col.result === 'BAD' ? t('weighingHistory.summaryResultBad') : t('weighingHistory.summaryResultOk'));
   return parts.join(' · ');
 });
 
@@ -494,9 +495,9 @@ const activeFilterSummary = computed(() => {
  * WeighingJobController::suyLoaiCan) — null nghĩa là không đủ căn cứ, hiện "—" chứ không đoán bừa.
  */
 function scaleLabel(job: any): string {
-  if (job.scale_kind === 'LARGE') return 'TO';
-  if (job.scale_kind === 'SMALL') return 'NHỎ';
-  return '—';
+  if (job.scale_kind === 'LARGE') return t('weighingHistory.scaleTagLarge');
+  if (job.scale_kind === 'SMALL') return t('weighingHistory.scaleTagSmall');
+  return t('weighingHistory.scaleTagUnknown');
 }
 
 function scaleClass(job: any): string {
@@ -702,7 +703,7 @@ async function load(q = '') {
     serverSearch.value = q;
     page.value = 1;
   } catch (err: any) {
-    errorMsg.value = err.response?.data?.message || 'Không tải được lịch sử cân.';
+    errorMsg.value = err.response?.data?.message || t('weighingHistory.errorLoadFailed');
     allRounds.value = [];
     truncated.value = false;
   } finally {
@@ -764,7 +765,7 @@ async function reprint(job: any) {
     const res = await axios.post(`/api/weighing-jobs/${job.id}/print-slip`, {});
     inPhieuTrongTrang(res.data?.data?.label_payload || '');
   } catch (err: any) {
-    alert(err.response?.data?.message || 'Không in lại được phiếu cân.');
+    alert(err.response?.data?.message || t('weighingHistory.errorReprintFailed'));
   } finally {
     reprintingId.value = null;
   }

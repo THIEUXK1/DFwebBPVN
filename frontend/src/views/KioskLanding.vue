@@ -2,16 +2,16 @@
   <div class="kiosk-landing-container">
     <div class="loading-card" v-if="loading">
       <div class="spinner"></div>
-      <h3>Đang kết nối thiết bị...</h3>
-      <p class="text-muted">Đang thiết lập phiên làm việc an toàn (kiosk session)</p>
+      <h3>{{ $t('kioskLanding.connectingTitle') }}</h3>
+      <p class="text-muted">{{ $t('kioskLanding.connectingDesc') }}</p>
     </div>
 
     <div class="error-card" v-else-if="error">
       <div class="error-icon">❌</div>
-      <h2>Kết nối thất bại</h2>
+      <h2>{{ $t('kioskLanding.failedTitle') }}</h2>
       <p class="error-message">{{ error }}</p>
       <div class="actions">
-        <router-link to="/login" class="btn btn-secondary">Về trang đăng nhập</router-link>
+        <router-link to="/login" class="btn btn-secondary">{{ $t('kioskLanding.backToLoginButton') }}</router-link>
       </div>
     </div>
   </div>
@@ -20,9 +20,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '../stores/auth';
 import axios from 'axios';
 
+const { t } = useI18n({ useScope: 'global' });
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
@@ -35,7 +37,7 @@ async function initializeKiosk() {
   const kioskToken = route.params.kioskToken as string;
 
   if (!clientCode || !kioskToken) {
-    error.value = 'Mã trạm hoặc mã token không hợp lệ trong URL.';
+    error.value = t('kioskLanding.invalidUrlError');
     loading.value = false;
     return;
   }
@@ -70,11 +72,11 @@ async function initializeKiosk() {
         }
       }, 800);
     } else {
-      error.value = res.data.message || 'Không thể xác thực trạm vận hành.';
+      error.value = res.data.message || t('kioskLanding.authFailedError');
       loading.value = false;
     }
   } catch (err: any) {
-    error.value = err.response?.data?.message || 'Lỗi kết nối đến máy chủ. Vui lòng kiểm tra mạng.';
+    error.value = err.response?.data?.message || t('kioskLanding.networkError');
     loading.value = false;
   }
 }

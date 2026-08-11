@@ -3,23 +3,23 @@
     <!-- Main Content -->
     <main class="main-content">
       <div class="tabs-control">
-        <button @click="activeTab = 'diagnose'" :class="['tab-btn', activeTab === 'diagnose' ? 'tab-active' : '']">🔬 Chẩn Đoán Lỗi Mới</button>
-        <button @click="activeTab = 'history'" :class="['tab-btn', activeTab === 'history' ? 'tab-active' : '']">📜 Lịch Sử Chẩn Đoán</button>
+        <button @click="activeTab = 'diagnose'" :class="['tab-btn', activeTab === 'diagnose' ? 'tab-active' : '']">{{ $t('troubleshooting.tabDiagnose') }}</button>
+        <button @click="activeTab = 'history'" :class="['tab-btn', activeTab === 'history' ? 'tab-active' : '']">{{ $t('troubleshooting.tabHistory') }}</button>
       </div>
 
       <!-- Diagnose Tab -->
       <div v-if="activeTab === 'diagnose'" class="trouble-grid">
         <!-- Input Form -->
         <section class="section diagnose-form-sec">
-          <h3>🔬 Nhập Hiện Tượng & Thông Số</h3>
-          <p class="section-desc">Khai báo các hiện tượng bất thường quan sát được và giá trị đo lường thực tế tại hiện trường để phân tích nguyên nhân.</p>
+          <h3>{{ $t('troubleshooting.formTitle') }}</h3>
+          <p class="section-desc">{{ $t('troubleshooting.formDesc') }}</p>
 
           <form @submit.prevent="runDiagnosis" class="diagnose-form">
             <!-- Batch Select -->
             <div class="form-group">
-              <label for="batch-select">📦 Lô sản xuất (Tùy chọn):</label>
+              <label for="batch-select">{{ $t('troubleshooting.batchLabel') }}</label>
               <select id="batch-select" v-model="form.batch_id" class="form-select">
-                <option value="">-- Không chọn / Không có lô --</option>
+                <option value="">{{ $t('troubleshooting.optNoBatch') }}</option>
                 <option v-for="b in batches" :key="b.id" :value="b.id">
                   {{ b.legacy_batch_id }} - {{ b.color }} ({{ b.product_code }})
                 </option>
@@ -28,9 +28,9 @@
 
             <!-- Process Stage -->
             <div class="form-group">
-              <label for="stage-select">⚙️ Công đoạn hiện tại <span class="required">*</span>:</label>
+              <label for="stage-select">{{ $t('troubleshooting.stageLabel') }} <span class="required">*</span>:</label>
               <select id="stage-select" v-model="form.stage_id" required class="form-select">
-                <option value="">-- Chọn công đoạn --</option>
+                <option value="">{{ $t('troubleshooting.optSelectStage') }}</option>
                 <option v-for="p in processes" :key="p.id" :value="p.id">
                   {{ p.id }} - {{ p.process_name }}
                 </option>
@@ -39,7 +39,7 @@
 
             <!-- Problem / Symptoms Checkbox Grid -->
             <div class="form-group">
-              <label class="group-label">⚠️ Hiện tượng lỗi quan sát được (Chọn ít nhất 1) <span class="required">*</span>:</label>
+              <label class="group-label">{{ $t('troubleshooting.problemsLabel') }} <span class="required">*</span>:</label>
               <div class="problems-grid">
                 <div v-for="prob in problems" :key="prob.id" class="checkbox-card" :class="{ 'card-checked': form.problems.includes(prob.id) }">
                   <input type="checkbox" :id="'prob-' + prob.id" :value="prob.id" v-model="form.problems" />
@@ -52,7 +52,7 @@
 
             <!-- Numeric Parameters Input -->
             <div class="form-group">
-              <label class="group-label">🌡️ Thông số đo lường vật lý thực tế:</label>
+              <label class="group-label">{{ $t('troubleshooting.parametersLabel') }}</label>
               <div class="numeric-inputs-grid">
                 <div v-for="param in numericParams" :key="param.name" class="param-card">
                   <div class="param-header">
@@ -61,16 +61,16 @@
                   </div>
                   <div class="param-body">
                     <div class="input-subgroup">
-                      <label>Setpoint:</label>
-                      <input type="number" step="any" v-model.number="form.parameters[param.name].set" placeholder="Ví dụ: 105" class="form-control" />
+                      <label>{{ $t('troubleshooting.setpointLabel') }}</label>
+                      <input type="number" step="any" v-model.number="form.parameters[param.name].set" :placeholder="$t('troubleshooting.setpointPlaceholder')" class="form-control" />
                     </div>
                     <div class="input-subgroup">
-                      <label>Thực tế:</label>
-                      <input type="number" step="any" v-model.number="form.parameters[param.name].actual" placeholder="Ví dụ: 95" class="form-control" />
+                      <label>{{ $t('troubleshooting.actualLabel') }}</label>
+                      <input type="number" step="any" v-model.number="form.parameters[param.name].actual" :placeholder="$t('troubleshooting.actualPlaceholder')" class="form-control" />
                     </div>
                   </div>
                   <div class="param-spec-info" v-if="param.lsl || param.usl">
-                    Lệch spec nếu: &lt; Setpoint - {{ param.lsl }} hoặc &gt; Setpoint + {{ param.usl }}
+                    {{ $t('troubleshooting.specDeviation', { lsl: param.lsl, usl: param.usl }) }}
                   </div>
                 </div>
               </div>
@@ -78,14 +78,14 @@
 
             <!-- Categorical Parameters Selectors -->
             <div class="form-group">
-              <label class="group-label">🌫️ Các trạng thái môi trường & thiết bị khác:</label>
+              <label class="group-label">{{ $t('troubleshooting.envLabel') }}</label>
               <div class="categorical-inputs-grid">
                 <div v-for="param in categoricalParams" :key="param.name" class="categorical-card">
-                  <label :for="'cat-' + param.name">{{ param.label }}:</label>
+                  <label :for="'cat-' + param.name">{{ $t(param.labelKey) }}:</label>
                   <select :id="'cat-' + param.name" v-model="form.parameters[param.name]" class="form-select">
-                    <option value="NORMAL">NORMAL (Bình thường)</option>
-                    <option value="LOW">LOW (Thấp / Kém)</option>
-                    <option value="HIGH">HIGH (Cao / Ẩm)</option>
+                    <option value="NORMAL">{{ $t('troubleshooting.optNormal') }}</option>
+                    <option value="LOW">{{ $t('troubleshooting.optLow') }}</option>
+                    <option value="HIGH">{{ $t('troubleshooting.optHigh') }}</option>
                   </select>
                 </div>
               </div>
@@ -94,7 +94,7 @@
             <!-- Submit Button -->
             <div class="form-actions">
               <button type="submit" class="submit-btn" :disabled="loading">
-                {{ loading ? '⏳ Đang phân tích...' : '🔬 Bắt Đầu Suy Luận Chẩn Đoán' }}
+                {{ loading ? $t('troubleshooting.analyzingBtn') : $t('troubleshooting.startDiagnoseBtn') }}
               </button>
             </div>
           </form>
@@ -103,15 +103,15 @@
         <!-- Diagnosis Result Panel -->
         <section class="section result-panel-sec">
           <div class="section-header-row">
-            <h3>📊 Kết Quả Chẩn Đoán Nguyên Nhân Gợi Ý</h3>
-            <span class="badge" v-if="results.length > 0">Tìm thấy {{ results.length }} nguyên nhân tiềm ẩn</span>
+            <h3>{{ $t('troubleshooting.resultTitle') }}</h3>
+            <span class="badge" v-if="results.length > 0">{{ $t('troubleshooting.resultFoundBadge', { count: results.length }) }}</span>
           </div>
 
           <!-- Empty State -->
           <div v-if="results.length === 0" class="empty-results-state">
             <span class="empty-icon">🔍</span>
-            <p>Chưa có kết quả chẩn đoán.</p>
-            <p class="empty-sub">Hãy chọn hiện tượng, điền các thông số vật lý và bấm "Bắt Đầu Suy Luận Chẩn Đoán" để nhận gợi ý xếp hạng nguyên nhân.</p>
+            <p>{{ $t('troubleshooting.emptyResultText') }}</p>
+            <p class="empty-sub">{{ $t('troubleshooting.emptyResultSub') }}</p>
           </div>
 
           <!-- Recommendations list -->
@@ -123,22 +123,22 @@
                   <h4>{{ res.cause_id }} - {{ res.cause_name }}</h4>
                   <div class="tags-row">
                     <span class="tag-badge cat-badge">{{ res.category }}</span>
-                    <span class="tag-badge sev-badge">Độ nghiêm trọng: {{ res.severity || 'Trung bình' }}</span>
-                    <span class="tag-badge prio-badge">Sửa chữa ưu tiên: {{ res.repair_priority || 'Bình thường' }}</span>
+                    <span class="tag-badge sev-badge">{{ $t('troubleshooting.severityLabel', { value: res.severity || $t('troubleshooting.severityDefault') }) }}</span>
+                    <span class="tag-badge prio-badge">{{ $t('troubleshooting.repairPriorityLabel', { value: res.repair_priority || $t('troubleshooting.repairPriorityDefault') }) }}</span>
                   </div>
                 </div>
                 <div class="score-display">
                   <span class="score-number">{{ res.score }}</span>
-                  <span class="score-label">điểm</span>
+                  <span class="score-label">{{ $t('troubleshooting.scoreUnit') }}</span>
                 </div>
               </div>
 
               <!-- Details Breakdown -->
               <div class="cause-breakdown-details">
                 <div class="breakdown-summary">
-                  <span>Trọng số hiện tượng: <strong>{{ res.breakdown.problem_score }}</strong></span>
-                  <span>Trọng số công đoạn: <strong>{{ res.breakdown.process_score }}</strong></span>
-                  <span>Trọng số thông số: <strong>{{ res.breakdown.parameter_score }}</strong></span>
+                  <span>{{ $t('troubleshooting.breakdownProblem') }} <strong>{{ res.breakdown.problem_score }}</strong></span>
+                  <span>{{ $t('troubleshooting.breakdownProcess') }} <strong>{{ res.breakdown.process_score }}</strong></span>
+                  <span>{{ $t('troubleshooting.breakdownParameter') }} <strong>{{ res.breakdown.parameter_score }}</strong></span>
                 </div>
                 <ul class="breakdown-details-list">
                   <li v-for="(detail, index) in res.breakdown.details" :key="index">
@@ -150,7 +150,7 @@
               <!-- Action to resolve -->
               <div class="cause-card-actions">
                 <button @click="openResolveModal(res)" class="action-btn resolve-trigger-btn">
-                  ✅ Xác nhận đây là nguyên nhân thực tế
+                  {{ $t('troubleshooting.confirmCauseBtn') }}
                 </button>
               </div>
             </div>
@@ -161,21 +161,21 @@
       <!-- History Tab -->
       <div v-if="activeTab === 'history'" class="history-container">
         <section class="section">
-          <h3>📜 Nhật Ký Các Ca Sự Cố Đã Ghi Nhận</h3>
+          <h3>{{ $t('troubleshooting.historyTitle') }}</h3>
           <div class="table-responsive">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Mã Ca</th>
-                  <th>Thời Gian</th>
-                  <th>Mẻ Sản Xuất</th>
-                  <th>Công Đoạn</th>
-                  <th>Người Báo Cáo</th>
-                  <th>Trạng Thái</th>
-                  <th>Nguyên Nhân Thực Tế</th>
-                  <th>Biện Pháp Xử Lý</th>
-                  <th>Hiệu Quả</th>
-                  <th>Thao Tác</th>
+                  <th>{{ $t('troubleshooting.colCaseId') }}</th>
+                  <th>{{ $t('troubleshooting.colTime') }}</th>
+                  <th>{{ $t('troubleshooting.colBatch') }}</th>
+                  <th>{{ $t('troubleshooting.colStage') }}</th>
+                  <th>{{ $t('troubleshooting.colReporter') }}</th>
+                  <th>{{ $t('troubleshooting.colStatus') }}</th>
+                  <th>{{ $t('troubleshooting.colActualCause') }}</th>
+                  <th>{{ $t('troubleshooting.colResolution') }}</th>
+                  <th>{{ $t('troubleshooting.colEffectiveness') }}</th>
+                  <th>{{ $t('troubleshooting.colActions') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -184,7 +184,7 @@
                   <td>{{ formatDate(c.created_at) }}</td>
                   <td>{{ c.batch ? c.batch.legacy_batch_id : 'N/A' }}</td>
                   <td>{{ c.stage ? c.stage.process_name : 'N/A' }}</td>
-                  <td>{{ c.reporter ? c.reporter.display_name : 'Hệ thống' }}</td>
+                  <td>{{ c.reporter ? c.reporter.display_name : $t('troubleshooting.systemReporter') }}</td>
                   <td>
                     <span :class="['status-badge', c.status === 'CLOSED' ? 'status-closed' : 'status-open']">
                       {{ c.status }}
@@ -192,7 +192,7 @@
                   </td>
                   <td>
                     <strong v-if="c.actual_cause">{{ c.actual_cause.id }} - {{ c.actual_cause.cause_name }}</strong>
-                    <span v-else class="text-muted">Chưa xác định</span>
+                    <span v-else class="text-muted">{{ $t('troubleshooting.notDetermined') }}</span>
                   </td>
                   <td>
                     <span class="truncate-text" :title="c.resolution_notes">{{ c.resolution_notes || 'N/A' }}</span>
@@ -204,7 +204,7 @@
                     <span v-else>N/A</span>
                   </td>
                   <td>
-                    <button @click="viewCaseDetails(c.id)" class="action-btn details-btn">👁️ Xem Chi Tiết</button>
+                    <button @click="viewCaseDetails(c.id)" class="action-btn details-btn">{{ $t('troubleshooting.viewDetailsBtn') }}</button>
                   </td>
                 </tr>
               </tbody>
@@ -218,42 +218,42 @@
     <div v-if="detailModal.show" class="modal-overlay" @click.self="detailModal.show = false">
       <div class="modal-card detail-modal-card">
         <div class="modal-header">
-          <h3>🔍 Chi Tiết Ca Sự Cố #{{ detailModal.case.id.substring(0, 8) }}</h3>
+          <h3>{{ $t('troubleshooting.detailModalTitle', { id: detailModal.case.id.substring(0, 8) }) }}</h3>
           <button @click="detailModal.show = false" class="close-modal-btn">&times;</button>
         </div>
         <div class="modal-body" v-if="detailModal.case">
           <div class="meta-info-grid">
-            <div><strong>Mẻ Nhuộm:</strong> {{ detailModal.case.batch ? detailModal.case.batch.legacy_batch_id : 'N/A' }}</div>
-            <div><strong>Công Đoạn:</strong> {{ detailModal.case.stage ? detailModal.case.stage.process_name : 'N/A' }}</div>
-            <div><strong>Thời Gian:</strong> {{ formatDate(detailModal.case.created_at) }}</div>
-            <div><strong>Kỹ Thuật Viên:</strong> {{ detailModal.case.reporter ? detailModal.case.reporter.display_name : 'N/A' }}</div>
+            <div><strong>{{ $t('troubleshooting.detailBatch') }}</strong> {{ detailModal.case.batch ? detailModal.case.batch.legacy_batch_id : 'N/A' }}</div>
+            <div><strong>{{ $t('troubleshooting.detailStage') }}</strong> {{ detailModal.case.stage ? detailModal.case.stage.process_name : 'N/A' }}</div>
+            <div><strong>{{ $t('troubleshooting.detailTime') }}</strong> {{ formatDate(detailModal.case.created_at) }}</div>
+            <div><strong>{{ $t('troubleshooting.detailTech') }}</strong> {{ detailModal.case.reporter ? detailModal.case.reporter.display_name : 'N/A' }}</div>
           </div>
 
-          <h5 class="modal-section-title">⚠️ Hiện tượng lỗi được báo cáo:</h5>
+          <h5 class="modal-section-title">{{ $t('troubleshooting.reportedSymptomsTitle') }}</h5>
           <div class="symptoms-tags">
             <span v-for="prob in detailModal.case.problems" :key="prob.id" class="symptom-tag">
               {{ prob.id }} - {{ prob.problem_name }}
             </span>
           </div>
 
-          <h5 class="modal-section-title">📊 Minh chứng & Giá trị đo lường:</h5>
+          <h5 class="modal-section-title">{{ $t('troubleshooting.evidenceTitle') }}</h5>
           <div class="evidence-grid">
             <div v-for="ev in detailModal.case.evidences" :key="ev.id" class="evidence-card" :class="'ev-' + (ev.status || 'NORMAL').toLowerCase()">
               <div class="ev-name">{{ ev.parameter ? ev.parameter.parameter_name : 'N/A' }}</div>
               <div class="ev-values" v-if="ev.actual_value !== null">
-                Thực tế: <strong>{{ ev.actual_value }}</strong> / Setpoint: {{ ev.setpoint_value }}
+                {{ $t('troubleshooting.evidenceActualSetpoint', { actual: ev.actual_value, setpoint: ev.setpoint_value }) }}
               </div>
-              <div class="ev-status">Trạng thái: <strong>{{ ev.status }}</strong></div>
+              <div class="ev-status">{{ $t('troubleshooting.evidenceStatus', { status: ev.status }) }}</div>
             </div>
           </div>
 
           <div v-if="detailModal.case.status === 'CLOSED'" class="resolution-panel">
-            <h5 class="modal-section-title">✅ Kết quả xử lý sự cố thực tế:</h5>
+            <h5 class="modal-section-title">{{ $t('troubleshooting.resolutionTitle') }}</h5>
             <div class="closed-info-card">
-              <div><strong>Nguyên Nhân Xác Định:</strong> {{ detailModal.case.actual_cause.id }} - {{ detailModal.case.actual_cause.cause_name }}</div>
-              <div class="mt-2"><strong>Biện Pháp Khắc Phục:</strong></div>
+              <div><strong>{{ $t('troubleshooting.resolutionCause') }}</strong> {{ detailModal.case.actual_cause.id }} - {{ detailModal.case.actual_cause.cause_name }}</div>
+              <div class="mt-2"><strong>{{ $t('troubleshooting.resolutionMeasures') }}</strong></div>
               <p class="notes-p">{{ detailModal.case.resolution_notes }}</p>
-              <div class="mt-2"><strong>Đánh giá độ hiệu quả:</strong></div>
+              <div class="mt-2"><strong>{{ $t('troubleshooting.resolutionEffectiveness') }}</strong></div>
               <div class="stars-display large-stars">
                 <span v-for="star in 5" :key="star" class="star" :class="{ 'star-filled': star <= detailModal.case.effectiveness_rating }">★</span>
               </div>
@@ -267,25 +267,25 @@
     <div v-if="resolveModal.show" class="modal-overlay" @click.self="resolveModal.show = false">
       <div class="modal-card resolve-modal-card">
         <div class="modal-header">
-          <h3>✅ Xác Nhận Kết Quả Xử Lý Sự Cố</h3>
+          <h3>{{ $t('troubleshooting.resolveModalTitle') }}</h3>
           <button @click="resolveModal.show = false" class="close-modal-btn">&times;</button>
         </div>
         <form @submit.prevent="submitResolution" class="resolve-form">
           <div class="modal-body">
-            <p class="modal-desc">Đóng case chẩn đoán bằng cách cập nhật nguyên nhân thực tế tìm thấy và biện pháp xử lý để tối ưu hóa tri thức hệ thống.</p>
-            
+            <p class="modal-desc">{{ $t('troubleshooting.resolveModalDesc') }}</p>
+
             <div class="form-group">
-              <label>Nguyên nhân tìm thấy thực tế:</label>
+              <label>{{ $t('troubleshooting.resolveCauseFoundLabel') }}</label>
               <input type="text" readonly :value="resolveModal.cause.cause_id + ' - ' + resolveModal.cause.cause_name" class="form-control readonly-control" />
             </div>
 
             <div class="form-group">
-              <label for="res-notes">🛠️ Biện pháp khắc phục / Nhật ký sửa chữa:</label>
-              <textarea id="res-notes" v-model="resolveModal.notes" required placeholder="Ghi chú chi tiết thiết bị hỏng, cách sửa chữa để lưu trữ tri thức..." rows="4" class="form-control"></textarea>
+              <label for="res-notes">{{ $t('troubleshooting.resolveNotesLabel') }}</label>
+              <textarea id="res-notes" v-model="resolveModal.notes" required :placeholder="$t('troubleshooting.resolveNotesPlaceholder')" rows="4" class="form-control"></textarea>
             </div>
 
             <div class="form-group">
-              <label>⭐ Đánh giá độ hiệu quả của chẩn đoán:</label>
+              <label>{{ $t('troubleshooting.resolveRatingLabel') }}</label>
               <div class="rating-stars-interactive">
                 <span v-for="star in 5" :key="star" @click="resolveModal.rating = star" class="star-interactive" :class="{ 'star-selected': star <= resolveModal.rating }">★</span>
               </div>
@@ -293,8 +293,8 @@
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" @click="resolveModal.show = false" class="modal-btn-cancel">Hủy</button>
-            <button type="submit" class="modal-btn-submit">💾 Lưu & Đóng Ca Chẩn Đoán</button>
+            <button type="button" @click="resolveModal.show = false" class="modal-btn-cancel">{{ $t('common.cancel') }}</button>
+            <button type="submit" class="modal-btn-submit">{{ $t('troubleshooting.resolveSaveBtn') }}</button>
           </div>
         </form>
       </div>
@@ -304,7 +304,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
+
+const { t } = useI18n({ useScope: 'global' });
 
 // `ref([])` để trần bị suy ra `never[]`, mọi chỗ đọc phần tử sau đó đều báo lỗi. Dùng `any[]`
 // cho đồng nhất với các màn khác trong dự án (dữ liệu tới thẳng từ API, chưa có DTO chung).
@@ -324,10 +327,10 @@ const numericParams = [
 ];
 
 const categoricalParams = [
-  { name: 'Humidity', label: '🌫️ Độ ẩm phòng dệt/ép nóng' },
-  { name: 'Steam', label: '💨 Chất lượng hơi cấp (Steam Dancer)' },
-  { name: 'Washing', label: '💧 Nước xả giặt sạch' },
-  { name: 'Dryer', label: '🔥 Máy sấy khô hoạt động' }
+  { name: 'Humidity', labelKey: 'troubleshooting.envHumidity' },
+  { name: 'Steam', labelKey: 'troubleshooting.envSteam' },
+  { name: 'Washing', labelKey: 'troubleshooting.envWashing' },
+  { name: 'Dryer', labelKey: 'troubleshooting.envDryer' }
 ];
 
 // Diagnose Form state
@@ -408,7 +411,7 @@ const fetchCases = async () => {
 
 const runDiagnosis = async () => {
   if (form.problems.length === 0) {
-    alert('Vui lòng chọn ít nhất một hiện tượng lỗi để chẩn đoán!');
+    alert(t('troubleshooting.errNoProblemsSelected'));
     return;
   }
   
@@ -446,7 +449,7 @@ const runDiagnosis = async () => {
     await fetchCases();
   } catch (err) {
     console.error('Lỗi chẩn đoán:', err);
-    alert('Không thể thực hiện chẩn đoán. Vui lòng kiểm tra lại dữ liệu.');
+    alert(t('troubleshooting.errDiagnoseAlert'));
   } finally {
     loading.value = false;
   }
@@ -461,7 +464,7 @@ const openResolveModal = (res: any) => {
 
 const submitResolution = async () => {
   if (!resolveModal.caseId) {
-    alert('Mã sự cố không hợp lệ.');
+    alert(t('troubleshooting.errInvalidCase'));
     return;
   }
 
@@ -473,7 +476,7 @@ const submitResolution = async () => {
     });
 
     resolveModal.show = false;
-    alert('Đã đóng ca chẩn đoán sự cố và cập nhật phản hồi hiệu quả thành công!');
+    alert(t('troubleshooting.msgResolveSuccess'));
     
     // Reset results & fetch history
     results.value = [];
@@ -481,7 +484,7 @@ const submitResolution = async () => {
     await fetchCases();
   } catch (err) {
     console.error('Lỗi đóng case:', err);
-    alert('Không thể hoàn tất đóng case sự cố.');
+    alert(t('troubleshooting.errResolveAlert'));
   }
 };
 
@@ -497,11 +500,11 @@ const viewCaseDetails = async (caseId: string) => {
 
 const getRatingHint = (rating: number) => {
   const hints: Record<number, string> = {
-    1: 'Rất kém (Không đúng nguyên nhân)',
-    2: 'Kém (Gợi ý sai lệch lớn)',
-    3: 'Bình thường (Đúng nguyên nhân nhưng hạng thấp)',
-    4: 'Tốt (Đúng nguyên nhân trong Top 3)',
-    5: 'Xuất sắc (Chẩn đoán chính xác nguyên nhân ở hạng #1)'
+    1: t('troubleshooting.ratingHint1'),
+    2: t('troubleshooting.ratingHint2'),
+    3: t('troubleshooting.ratingHint3'),
+    4: t('troubleshooting.ratingHint4'),
+    5: t('troubleshooting.ratingHint5')
   };
   return hints[rating] || '';
 };

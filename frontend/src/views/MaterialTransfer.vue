@@ -4,12 +4,12 @@
     <div class="station-banner">
       <div class="banner-left">
         <span class="station-badge">MATERIAL TRANSFER</span>
-        <h2>{{ currentWorkstation ? currentWorkstation.name : 'Chưa đăng ký trạm' }}</h2>
-        <p class="text-muted font-sm">Mã trạm: <code>{{ currentWorkstation?.code }}</code> | Vị trí: {{ currentWorkstation?.location }}</p>
+        <h2>{{ currentWorkstation ? currentWorkstation.name : $t('materialTransfer.notRegisteredStation') }}</h2>
+        <p class="text-muted font-sm">{{ $t('materialTransfer.stationCodeLabel') }} <code>{{ currentWorkstation?.code }}</code> | {{ $t('materialTransfer.stationLocationLabel') }} {{ currentWorkstation?.location }}</p>
       </div>
       <div class="banner-right">
         <button @click="fetchTransports" class="btn btn-secondary btn-sm">
-          🔄 Làm mới dữ liệu
+          {{ $t('materialTransfer.refreshBtn') }}
         </button>
       </div>
     </div>
@@ -18,42 +18,42 @@
     <div v-if="lastReceived" class="card-sec confirm-banner mb-4">
       <div class="confirm-icon">✅</div>
       <div class="confirm-body">
-        <h3>Đã tiếp nhận vận chuyển</h3>
+        <h3>{{ $t('materialTransfer.receivedTitle') }}</h3>
         <div class="confirm-details">
-          <span>Lô: <strong>{{ lastReceived.batch?.legacy_batch_id }}</strong></span>
-          <span>Đưa tới Máy: <strong class="machine-tag">{{ lastReceived.batch?.machine?.code || 'N/A' }}</strong></span>
-          <span v-if="lastReceived.batch?.tank">Thùng: <strong>{{ lastReceived.batch.tank.code }}</strong></span>
+          <span>{{ $t('materialTransfer.receivedBatchLabel') }} <strong>{{ lastReceived.batch?.legacy_batch_id }}</strong></span>
+          <span>{{ $t('materialTransfer.receivedMachineLabel') }} <strong class="machine-tag">{{ lastReceived.batch?.machine?.code || 'N/A' }}</strong></span>
+          <span v-if="lastReceived.batch?.tank">{{ $t('materialTransfer.receivedTankLabel') }} <strong>{{ lastReceived.batch.tank.code }}</strong></span>
         </div>
       </div>
-      <button class="btn btn-secondary btn-sm" @click="lastReceived = null">Đóng</button>
+      <button class="btn btn-secondary btn-sm" @click="lastReceived = null">{{ $t('common.close') }}</button>
     </div>
 
     <!-- Scanner wait view -->
     <div class="scanning-wait-screen card-sec text-center mb-4">
       <div class="scanner-anim-icon">🚚</div>
-      <h3>QUÉT QR TEM VẬT TƯ SAU CÂN ĐỂ BẮT ĐẦU VẬN CHUYỂN</h3>
-      <p class="text-muted">Hệ thống sẽ ghi nhận điểm bắt đầu, định thời gian SLA và cập nhật trạng thái lô sang IN_TRANSIT.</p>
+      <h3>{{ $t('materialTransfer.scanPrompt') }}</h3>
+      <p class="text-muted">{{ $t('materialTransfer.scanHint') }}</p>
 
       <!-- Manual entry fallback: scanner hardware unavailable/broken -->
       <div class="manual-entry-widget mt-5">
-        <h4>⌨️ Nhập mã Lô thủ công (khi máy quét lỗi)</h4>
+        <h4>{{ $t('materialTransfer.manualEntryTitle') }}</h4>
         <div class="manual-input-row">
           <input
             v-model="manualQuery"
             @keyup.enter="searchManual"
             type="text"
             class="form-input manual-input"
-            placeholder="Nhập mã Lô, ví dụ: B260716"
+            :placeholder="$t('materialTransfer.manualInputPlaceholder')"
           />
           <button @click="searchManual" class="btn btn-secondary" :disabled="!manualQuery.trim() || searching">
-            {{ searching ? 'Đang tìm...' : 'Tìm' }}
+            {{ searching ? $t('materialTransfer.searchingBtn') : $t('materialTransfer.searchBtn') }}
           </button>
         </div>
 
         <div v-if="manualError" class="manual-error mt-2">{{ manualError }}</div>
 
         <div v-if="manualResults.length" class="manual-results mt-3">
-          <p class="text-muted font-sm">Tìm thấy {{ manualResults.length }} tem khớp — chọn đúng tem:</p>
+          <p class="text-muted font-sm">{{ $t('materialTransfer.manualResultsHint', { count: manualResults.length }) }}</p>
           <button
             v-for="l in manualResults"
             :key="l.id"
@@ -69,25 +69,25 @@
     <!-- Active Transports Monitor -->
     <div class="section card-sec">
       <div class="section-header">
-        <h3>📦 Hành trình Vận chuyển Thực tế &amp; SLA</h3>
+        <h3>{{ $t('materialTransfer.sectionTitle') }}</h3>
       </div>
       <div class="table-container mt-3">
         <table class="data-table">
           <thead>
             <tr>
-              <th>Mã Lô (Batch ID)</th>
-              <th>Mã màu / Máy nhuộm</th>
-              <th>Trạng thái</th>
-              <th>Thời gian di chuyển (SLA)</th>
-              <th>Thông tin Tem vật tư</th>
+              <th>{{ $t('materialTransfer.colBatchId') }}</th>
+              <th>{{ $t('materialTransfer.colColorMachine') }}</th>
+              <th>{{ $t('common.status') }}</th>
+              <th>{{ $t('materialTransfer.colTransitTime') }}</th>
+              <th>{{ $t('materialTransfer.colLabelInfo') }}</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="t in transports" :key="t.id">
               <td class="bold-text highlight-code">{{ t.batch?.legacy_batch_id }}</td>
               <td>
-                <div>Màu: {{ t.batch?.color }}</div>
-                <span class="machine-tag mt-1 d-inline-block">Máy: {{ t.batch?.machine?.code || 'N/A' }}</span>
+                <div>{{ $t('materialTransfer.rowColorLabel') }} {{ t.batch?.color }}</div>
+                <span class="machine-tag mt-1 d-inline-block">{{ $t('materialTransfer.rowMachineLabel') }} {{ t.batch?.machine?.code || 'N/A' }}</span>
               </td>
               <td>
                 <span :class="['status-badge', t.status.toLowerCase()]">
@@ -96,21 +96,21 @@
               </td>
               <td>
                 <div class="sla-time-box">
-                  <div>🚀 Bắt đầu: {{ formatTime(t.started_at) }}</div>
-                  <div v-if="t.arrived_at" class="text-success">📥 Đến bồn: {{ formatTime(t.arrived_at) }}</div>
+                  <div>{{ $t('materialTransfer.slaStartedLabel') }} {{ formatTime(t.started_at) }}</div>
+                  <div v-if="t.arrived_at" class="text-success">{{ $t('materialTransfer.slaArrivedLabel') }} {{ formatTime(t.arrived_at) }}</div>
                   <div v-if="t.status === 'IN_TRANSIT'" :class="['countdown', getSlaStatusClass(t)]">
-                    ⌛ Đã trôi qua: {{ getElapsedMinutes(t.started_at) }} phút / SLA: {{ t.sla_minutes }} phút
+                    {{ $t('materialTransfer.slaElapsed', { minutes: getElapsedMinutes(t.started_at), sla: t.sla_minutes }) }}
                   </div>
                 </div>
               </td>
               <td>
-                <div>Cân nặng: {{ (t.material_label?.weight/1000).toFixed(2) }} kg</div>
-                <div class="font-sm text-muted">Mã QR: <code>DF:MATERIAL_LABEL:{{ t.material_label_id }}</code></div>
+                <div>{{ $t('materialTransfer.rowWeightLabel') }} {{ (t.material_label?.weight/1000).toFixed(2) }} kg</div>
+                <div class="font-sm text-muted">{{ $t('materialTransfer.rowQrLabel') }} <code>DF:MATERIAL_LABEL:{{ t.material_label_id }}</code></div>
               </td>
             </tr>
             <tr v-if="transports.length === 0">
               <td colspan="5" class="text-center text-muted pad-empty-row">
-                Không có nhiệm vụ vận chuyển nào đang hoạt động.
+                {{ $t('materialTransfer.emptyMsg') }}
               </td>
             </tr>
           </tbody>
@@ -122,9 +122,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import { currentWorkstation } from '../services/workstation';
 import { scannerService } from '../services/scanner';
+
+// Đặt tên `translate` thay vì `t` vì `t` đã là biến lặp của v-for trong template (một dòng
+// material_transport) — trùng tên sẽ gây nhầm lẫn khi đọc.
+const { t: translate } = useI18n({ useScope: 'global' });
 
 const transports = ref<any[]>([]);
 const lastReceived = ref<any>(null);
@@ -155,7 +160,7 @@ const fetchTransports = async () => {
 const handleBarcodeScan = async (token: string) => {
   if (!currentWorkstation.value) return;
   if (!token.startsWith('DF:MATERIAL_LABEL:')) {
-    manualError.value = 'Mã quét không phải mã QR tem vật tư hợp lệ.';
+    manualError.value = translate('materialTransfer.errorInvalidQr');
     return;
   }
 
@@ -175,7 +180,7 @@ const handleBarcodeScan = async (token: string) => {
     }
   } catch (err: any) {
     scannerService.playBeep(600, 400); // Error sound
-    manualError.value = err.response?.data?.message || 'Có lỗi xảy ra khi quét tem vận chuyển.';
+    manualError.value = err.response?.data?.message || translate('materialTransfer.errorScanFailed');
   }
 };
 
@@ -189,14 +194,14 @@ const searchManual = async () => {
     const res = await axios.get('/api/material-labels/search', { params: { q: query } });
     const rows = res.data?.data || [];
     if (rows.length === 0) {
-      manualError.value = `Không tìm thấy tem nào khớp mã "${query}".`;
+      manualError.value = translate('materialTransfer.errorNoLabelFound', { query });
     } else if (rows.length === 1) {
       scannerService.submitManualEntry(`DF:MATERIAL_LABEL:${rows[0].id}`);
     } else {
       manualResults.value = rows;
     }
   } catch (err: any) {
-    manualError.value = 'Không thể tìm kiếm tem vật tư. Vui lòng thử lại.';
+    manualError.value = translate('materialTransfer.errorSearchFailed');
   } finally {
     searching.value = false;
   }
@@ -208,13 +213,13 @@ const selectManualResult = (l: any) => {
 
 const getStatusLabel = (status: string) => {
   const mapping: Record<string, string> = {
-    'READY_FOR_TRANSFER': 'Chờ vận chuyển',
-    'IN_TRANSIT': 'Đang di chuyển',
-    'ARRIVED_AT_TANK': 'Đã tới thùng bồn',
-    'ACCEPTED': 'Đã nghiệm thu',
-    'REJECTED': 'Từ chối'
+    'READY_FOR_TRANSFER': 'materialTransfer.statusReadyForTransfer',
+    'IN_TRANSIT': 'materialTransfer.statusInTransit',
+    'ARRIVED_AT_TANK': 'materialTransfer.statusArrivedAtTank',
+    'ACCEPTED': 'materialTransfer.statusAccepted',
+    'REJECTED': 'materialTransfer.statusRejected'
   };
-  return mapping[status] || status;
+  return mapping[status] ? translate(mapping[status]) : status;
 };
 
 const formatTime = (timeStr: string) => {

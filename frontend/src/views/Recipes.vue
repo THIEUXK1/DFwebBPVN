@@ -10,14 +10,14 @@
             @click="activeMode = 'list'" 
             :class="['mode-btn', activeMode === 'list' ? 'active' : '']"
           >
-            📋 Danh sách công thức
+            📋 {{ $t('recipes.tabList') }}
           </button>
           <button 
             id="create-mode-btn"
             @click="activeMode = 'create'" 
             :class="['mode-btn', activeMode === 'create' ? 'active' : '']"
           >
-            ➕ Soạn thảo công thức mới
+            ➕ {{ $t('recipes.tabCreate') }}
           </button>
         </div>
         
@@ -27,7 +27,7 @@
             v-model="searchQuery" 
             @input="handleSearch"
             type="text" 
-            placeholder="🔍 Tìm mã màu hoặc mã hàng..." 
+            :placeholder="$t('recipes.searchPlaceholder')"
             class="form-input search-box"
           />
         </div>
@@ -40,25 +40,25 @@
             <div class="recipe-card-header">
               <div class="recipe-title">
                 <span class="recipe-color-tag">{{ recipe.color_code }}</span>
-                <h4>Mã hàng: {{ recipe.product_code }}</h4>
+                <h4>{{ $t('recipes.productCodeLabel') }} {{ recipe.product_code }}</h4>
               </div>
               <span class="version-tag">v{{ recipe.latest_version?.version || 1 }}</span>
             </div>
             
             <div class="recipe-card-body">
-              <p class="recipe-desc">{{ recipe.description || 'Không có mô tả.' }}</p>
-              
+              <p class="recipe-desc">{{ recipe.description || $t('recipes.noDescription') }}</p>
+
               <div class="recipe-meta-row">
-                <span class="meta-item">🎯 Lực căng: <strong>{{ recipe.latest_version?.parameters?.tension_value || 'Mặc định' }}</strong></span>
-                <span class="meta-item">💧 Trùng nước: <strong>{{ recipe.latest_version?.parameters?.water_ratio_override ? '1:' + recipe.latest_version?.parameters?.water_ratio_override : 'Theo ma trận' }}</strong></span>
+                <span class="meta-item">🎯 {{ $t('recipes.tensionLabel') }} <strong>{{ recipe.latest_version?.parameters?.tension_value || $t('recipes.tensionDefault') }}</strong></span>
+                <span class="meta-item">💧 {{ $t('recipes.waterRatioLabel') }} <strong>{{ recipe.latest_version?.parameters?.water_ratio_override ? '1:' + recipe.latest_version?.parameters?.water_ratio_override : $t('recipes.waterRatioByMatrix') }}</strong></span>
               </div>
-              
+
               <!-- Materials list summary -->
               <div class="materials-list-summary">
-                <h5>🧪 Thành phần:</h5>
+                <h5>🧪 {{ $t('recipes.componentsTitle') }}</h5>
                 <ul>
                   <li v-for="mat in recipe.latest_version?.materials" :key="mat.id">
-                    <span class="mat-code">{{ mat.material_code }}</span> - {{ mat.material?.name || 'Vật tư' }}
+                    <span class="mat-code">{{ mat.material_code }}</span> - {{ mat.material?.name || $t('recipes.materialFallback') }}
                     <span class="mat-conc">({{ mat.concentration }} g/l) [{{ mat.process_code }}]</span>
                   </li>
                 </ul>
@@ -71,13 +71,13 @@
                 @click="openCalculator(recipe)" 
                 class="calc-action-btn"
               >
-                🧮 Tính thử lượng cân (Simulate)
+                🧮 {{ $t('recipes.simulateCardButton') }}
               </button>
             </div>
           </div>
           
           <div v-if="recipes.length === 0" class="empty-card">
-            Không tìm thấy công thức nào phù hợp.
+            {{ $t('recipes.emptyList') }}
           </div>
         </div>
         
@@ -89,16 +89,16 @@
             :disabled="currentPage === 1" 
             class="page-btn"
           >
-            ◀ Trước
+            ◀ {{ $t('recipes.prevPage') }}
           </button>
-          <span class="page-info">Trang {{ currentPage }} / {{ totalPages }}</span>
+          <span class="page-info">{{ $t('recipes.pageInfo', { current: currentPage, total: totalPages }) }}</span>
           <button 
             id="recipe-next-page-btn"
             @click="changePage(currentPage + 1)" 
             :disabled="currentPage === totalPages" 
             class="page-btn"
           >
-            Sau ▶
+            {{ $t('recipes.nextPage') }} ▶
           </button>
         </div>
       </div>
@@ -108,26 +108,26 @@
         <div class="two-col-grid">
           <!-- Col 1: Soạn thảo -->
           <div class="section card-sec">
-            <h3>📝 Bản thảo Công thức</h3>
+            <h3>📝 {{ $t('recipes.draftTitle') }}</h3>
             <div class="control-form">
               <div class="two-col-form-row">
                 <div class="form-group">
-                  <label for="new-color-code">Mã màu (Color Code)</label>
-                  <input 
+                  <label for="new-color-code">{{ $t('recipes.colorCodeLabel') }}</label>
+                  <input
                     id="new-color-code"
-                    v-model="newRecipe.color_code" 
-                    type="text" 
-                    placeholder="Ví dụ: A+110293, HS51250"
+                    v-model="newRecipe.color_code"
+                    type="text"
+                    :placeholder="$t('recipes.colorCodePlaceholder')"
                     class="form-input"
                   />
                 </div>
                 <div class="form-group">
-                  <label for="new-product-code">Mã sản phẩm (Product Code)</label>
-                  <input 
+                  <label for="new-product-code">{{ $t('recipes.productCodeFieldLabel') }}</label>
+                  <input
                     id="new-product-code"
-                    v-model="newRecipe.product_code" 
-                    type="text" 
-                    placeholder="Ví dụ: T7400, L19029"
+                    v-model="newRecipe.product_code"
+                    type="text"
+                    :placeholder="$t('recipes.productCodePlaceholder')"
                     class="form-input"
                   />
                 </div>
@@ -135,31 +135,31 @@
 
               <div class="two-col-form-row">
                 <div class="form-group">
-                  <label for="new-tension">Lực căng đai (Tension)</label>
-                  <input 
+                  <label for="new-tension">{{ $t('recipes.tensionFieldLabel') }}</label>
+                  <input
                     id="new-tension"
-                    v-model.number="newRecipe.tension_value" 
-                    type="number" 
+                    v-model.number="newRecipe.tension_value"
+                    type="number"
                     step="0.1"
-                    placeholder="Bỏ trống nếu mặc định"
+                    :placeholder="$t('recipes.tensionPlaceholder')"
                     class="form-input"
                   />
                 </div>
                 <div class="form-group">
-                  <label for="new-water-override">Ghi đè tỉ lệ nước (Dung tỉ 1:X)</label>
-                  <input 
+                  <label for="new-water-override">{{ $t('recipes.waterOverrideLabel') }}</label>
+                  <input
                     id="new-water-override"
-                    v-model.number="newRecipe.water_ratio_override" 
-                    type="number" 
+                    v-model.number="newRecipe.water_ratio_override"
+                    type="number"
                     step="0.1"
-                    placeholder="Ví dụ: 1.1 cho vải trắng"
+                    :placeholder="$t('recipes.waterOverridePlaceholder')"
                     class="form-input"
                   />
                 </div>
               </div>
 
               <div class="form-group">
-                <label for="new-desc">Mô tả / Ghi chú công nghệ</label>
+                <label for="new-desc">{{ $t('recipes.descriptionLabel') }}</label>
                 <textarea 
                   id="new-desc"
                   v-model="newRecipe.description" 
@@ -171,31 +171,31 @@
               <!-- Materials lines -->
               <div class="materials-form-section">
                 <div class="materials-header">
-                  <h5>🧪 Danh sách thành phần nguyên liệu</h5>
-                  <button @click="addMaterialRow" class="add-row-btn">+ Thêm dòng</button>
+                  <h5>🧪 {{ $t('recipes.materialsListTitle') }}</h5>
+                  <button @click="addMaterialRow" class="add-row-btn">{{ $t('recipes.addRowButton') }}</button>
                 </div>
                 
                 <div v-for="(row, idx) in newRecipe.materials" :key="idx" class="material-row">
                   <div class="form-group flex-1">
-                    <label>Mã nguyên liệu</label>
-                    <input 
-                      v-model="row.material_code" 
-                      type="text" 
-                      placeholder="Mã (Y1008A, AC68...)"
+                    <label>{{ $t('recipes.materialCodeLabel') }}</label>
+                    <input
+                      v-model="row.material_code"
+                      type="text"
+                      :placeholder="$t('recipes.materialCodePlaceholder')"
                       class="form-input"
                     />
                   </div>
                   <div class="form-group width-90">
-                    <label>Nồng độ (g/l)</label>
-                    <input 
-                      v-model.number="row.concentration" 
-                      type="number" 
+                    <label>{{ $t('recipes.concentrationLabel') }}</label>
+                    <input
+                      v-model.number="row.concentration"
+                      type="number"
                       step="0.0001"
                       class="form-input"
                     />
                   </div>
                   <div class="form-group width-90">
-                    <label>Công đoạn</label>
+                    <label>{{ $t('recipes.processLabel') }}</label>
                     <select v-model="row.process_code" class="form-select">
                       <option value="P">P</option>
                       <option value="S">S</option>
@@ -205,7 +205,7 @@
                     </select>
                   </div>
                   <div class="form-group width-60">
-                    <label>Thùng</label>
+                    <label>{{ $t('recipes.tankLabel') }}</label>
                     <input 
                       v-model.number="row.tank_number" 
                       type="number" 
@@ -219,7 +219,7 @@
               </div>
 
               <button id="save-recipe-btn" @click="saveRecipe" class="submit-btn" :disabled="saving">
-                {{ saving ? 'Đang lưu...' : '💾 Lưu và Kích hoạt Công thức' }}
+                {{ saving ? $t('recipes.savingText') : $t('recipes.saveButton') }}
               </button>
               <p v-if="message" class="text-success">{{ message }}</p>
             </div>
@@ -227,13 +227,13 @@
 
           <!-- Col 2: Calculator / Simulator -->
           <div class="section card-sec">
-            <h3>🧮 Trình Giả Lập Định Lượng (Simulate & Verify)</h3>
-            <p class="section-desc">Kiểm thử nhanh lượng nước và trọng lượng bột màu được làm tròn tự động bằng API.</p>
+            <h3>🧮 {{ $t('recipes.simulatorTitle') }}</h3>
+            <p class="section-desc">{{ $t('recipes.simulatorDesc') }}</p>
             
             <div class="control-form">
               <div class="two-col-form-row">
                 <div class="form-group">
-                  <label for="sim-weight">Khối lượng vải đai (kg)</label>
+                  <label for="sim-weight">{{ $t('recipes.simWeightLabel') }}</label>
                   <input 
                     id="sim-weight"
                     v-model.number="simForm.weight" 
@@ -243,7 +243,7 @@
                   />
                 </div>
                 <div class="form-group">
-                  <label for="sim-line">Dòng máy / Line</label>
+                  <label for="sim-line">{{ $t('recipes.simLineLabel') }}</label>
                   <select id="sim-line" v-model="simForm.machine_line" class="form-select">
                     <option value="L1">Line L1 (1:5)</option>
                     <option value="L2">Line L2 (1:4)</option>
@@ -258,7 +258,7 @@
               </div>
 
               <div class="form-group row-group">
-                <label for="sim-white">Nhuộm vải màu trắng (White)</label>
+                <label for="sim-white">{{ $t('recipes.simWhiteLabel') }}</label>
                 <input 
                   id="sim-white"
                   v-model="simForm.is_white" 
@@ -268,31 +268,31 @@
               </div>
 
               <button id="run-sim-btn" @click="runSimulation" class="sim-btn" :disabled="simulating">
-                {{ simulating ? 'Đang tính...' : '🧮 Tính toán Thể tích & Trọng lượng' }}
+                {{ simulating ? $t('recipes.simulatingText') : $t('recipes.calcButton') }}
               </button>
 
               <!-- Sim Results -->
               <div v-if="simResult" class="sim-result-card">
-                <h4>📊 Kết Quả Định Lượng:</h4>
+                <h4>📊 {{ $t('recipes.simResultTitle') }}</h4>
                 <div class="result-meta-grid">
                   <div class="meta-box">
-                    <span class="label">Mã công đoạn:</span>
+                    <span class="label">{{ $t('recipes.resultProcessCode') }}</span>
                     <span class="value">{{ simResult.process_code }}</span>
                   </div>
                   <div class="meta-box">
-                    <span class="label">Tổng thể tích nước:</span>
+                    <span class="label">{{ $t('recipes.resultWaterVolume') }}</span>
                     <span class="value text-glow-blue">{{ simResult.water_volume }} L</span>
                   </div>
                 </div>
 
                 <div class="materials-result-list">
-                  <h5>🧪 Lượng cân chi tiết nguyên liệu:</h5>
+                  <h5>🧪 {{ $t('recipes.resultMaterialsTitle') }}</h5>
                   <table class="result-table">
                     <thead>
                       <tr>
-                        <th>Mã vật tư</th>
-                        <th class="number-cell">Nồng độ (g/l)</th>
-                        <th class="number-cell">Trọng lượng cân (g)</th>
+                        <th>{{ $t('recipes.colMaterialCode') }}</th>
+                        <th class="number-cell">{{ $t('recipes.colConcentration') }}</th>
+                        <th class="number-cell">{{ $t('recipes.colTargetWeight') }}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -315,8 +315,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '../stores/auth';
 import axios from 'axios';
+
+const { t } = useI18n({ useScope: 'global' });
 
 const authStore = useAuthStore();
 
@@ -408,7 +411,7 @@ const saveRecipe = async () => {
     await axios.post('/api/recipes', newRecipe.value, {
       headers: { Authorization: `Bearer ${token}` }
     });
-    message.value = 'Lưu công thức thành công!';
+    message.value = t('recipes.saveSuccess');
     // Reset form
     newRecipe.value = {
       color_code: '',
@@ -425,7 +428,7 @@ const saveRecipe = async () => {
     activeMode.value = 'list';
   } catch (error) {
     console.error('Save recipe error:', error);
-    alert('Lỗi khi lưu công thức! Vui lòng kiểm tra lại mã nguyên liệu.');
+    alert(t('recipes.saveError'));
   } finally {
     saving.value = false;
   }
