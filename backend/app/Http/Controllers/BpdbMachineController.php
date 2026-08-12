@@ -15,6 +15,8 @@ use App\Events\BpdbMachineRunningAlert;
 use App\Models\FeatureFlag;
 use App\Services\ColorService\BpdbMachineMonitoringService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 class BpdbMachineController extends Controller
 {
@@ -136,14 +138,32 @@ class BpdbMachineController extends Controller
     }
 
     /**
+     * Khoá cache lưu danh sách alert "đang chạy" còn hiệu lực — mảng JSON gộp chung 1 key
+     * (yêu cầu 2026-08-12). Không dùng bảng DB riêng: đây vẫn chỉ là tín hiệu UI ngắn hạn,
+     * không phải dữ liệu nghiệp vụ cần audit/lịch sử (xem ghi chú notifyRunning() bên dưới).
+     * Gộp 1 key thay vì 1 key/máy vì cache driver mặc định của app là 'file' (CACHE_STORE
+     * trong .env) — không liệt kê được key theo prefix như Redis SCAN, nên phải tự đọc/lọc
+     * hết hạn thủ công mỗi lần thay vì để cache TTL từng phần tử tự dọn.
+     */
+    private const RUNNING_ALERTS_CACHE_KEY = 'bpdb_machine_running_alerts';
+    private const RUNNING_ALERT_TTL_SECONDS = 180; // khớp BLINK_DURATION_MS bên MachineIdBoard.vue.
+
+    /**
      * Nhận tín hiệu "1 mẻ VỪA chuyển sang đang chạy" từ trang test `/bpdb-machines/gantt-test`
      * (client tự phát hiện qua diff `newlyAppearedRunningIds`, xem BpdbMachinesGanttTest.vue)
      * và bắn broadcast để `/machine-id-board` nhấp nháy đỏ đúng mã máy đó.
      *
-     * Không ghi DB — đây là tín hiệu UI ngắn hạn, không phải hành động nghiệp vụ cần Audit
-     * Log (CLAUDE.md mục 5 chỉ bắt buộc với duyệt công thức/override dung sai/reprint/force
-     * unlock/troubleshooting KB). Endpoint public (không auth) nên validate chặt định dạng
-     * machineCode để chặn payload rác.
+     * Không ghi DB (bảng nghiệp vụ) — đây là tín hiệu UI ngắn hạn, không phải hành động
+     * nghiệp vụ cần Audit Log (CLAUDE.md mục 5 chỉ bắt buộc với duyệt công thức/override dung
+     * sai/reprint/force unlock/troubleshooting KB). Endpoint public (không auth) nên validate
+     * chặt định dạng machineCode để chặn payload rác.
+     *
+     * Đồng thời LƯU TẠM vào cache (yêu cầu 2026-08-12, báo cáo thực tế: "máy đang nhấp nháy
+     * bên machine-id-board nhưng mở gantt-test lên không thấy gì") — trước đây tín hiệu chỉ
+     * tồn tại trên kênh Reverb tại đúng khoảnh khắc bắn: tab nào mở SAU thời điểm đó (dù cùng
+     * đang trong "cửa sổ 3 phút" của 1 tab khác đã mở từ trước) sẽ không bao giờ nhận được
+     * sự kiện đó nữa, hoàn toàn không biết máy nào đang "trong cửa sổ nhấp nháy". Cache đóng
+     * vai trò "phát lại" cho các tab mở muộn — xem activeAlerts() bên dưới.
      */
     public function notifyRunning(Request $request)
     {
@@ -156,10 +176,38 @@ class BpdbMachineController extends Controller
         ]);
 
         $validated['occurredAt'] = now()->toIso8601String();
+        $expiresAt = now()->addSeconds(self::RUNNING_ALERT_TTL_SECONDS);
+
+        // Lọc hết hạn + bỏ bản ghi cũ trùng taskId (mẻ báo lại) trước khi thêm bản mới, rồi
+        // ghi đè nguyên mảng — TTL của chính key cache canh dư (không phải nguồn xác định hết
+        // hạn thật, field `expiresAt` trong từng phần tử mới là nguồn thật, lọc ở đây và ở
+        // activeAlerts() đều dựa vào field đó).
+        $alerts = collect(Cache::get(self::RUNNING_ALERTS_CACHE_KEY, []))
+            ->reject(fn ($a) => !isset($a['expiresAt']) || Carbon::parse($a['expiresAt'])->isPast())
+            ->reject(fn ($a) => $validated['taskId'] !== null && ($a['taskId'] ?? null) === $validated['taskId'])
+            ->push(array_merge($validated, ['expiresAt' => $expiresAt->toIso8601String()]))
+            ->values()
+            ->all();
+        Cache::put(self::RUNNING_ALERTS_CACHE_KEY, $alerts, self::RUNNING_ALERT_TTL_SECONDS + 30);
 
         event(new BpdbMachineRunningAlert($validated));
 
         return response()->noContent();
+    }
+
+    /**
+     * Danh sách alert "đang chạy" còn hiệu lực (yêu cầu 2026-08-12) — /machine-id-board và
+     * /bpdb-machines/gantt-test gọi lúc mount để "bắt kịp" trạng thái nhấp nháy hiện tại,
+     * bổ sung cho kênh Reverb (kênh chỉ báo được sự kiện xảy ra SAU khi đã kết nối, xem ghi
+     * chú notifyRunning()). Public, không auth — cùng nhóm với notifyRunning()/gantt().
+     */
+    public function activeAlerts(Request $request)
+    {
+        $alerts = collect(Cache::get(self::RUNNING_ALERTS_CACHE_KEY, []))
+            ->reject(fn ($a) => !isset($a['expiresAt']) || Carbon::parse($a['expiresAt'])->isPast())
+            ->values();
+
+        return response()->json(['data' => $alerts]);
     }
 
     /**

@@ -68,6 +68,10 @@ Route::get('/public/bpdb-machines-gantt/mes-batch', [BpdbMachineController::clas
 // vào đây để bắn broadcast, cho /machine-id-board nhấp nháy đỏ đúng mã máy — xem
 // BpdbMachineRunningAlert. Không ghi DB, không cần đăng nhập (cùng nhóm public đọc BPDB).
 Route::post('/public/bpdb-machines-gantt/notify-running', [BpdbMachineController::class, 'notifyRunning']);
+// Đọc lại danh sách alert "đang chạy" còn hiệu lực (yêu cầu 2026-08-12) — cho /machine-id-board
+// và /bpdb-machines/gantt-test gọi lúc mount, "bắt kịp" các alert đã bắn TRƯỚC khi tab đó mở
+// (kênh Reverb chỉ báo được sự kiện xảy ra sau khi đã kết nối) — xem BpdbMachineController::activeAlerts.
+Route::get('/public/bpdb-machines-gantt/active-alerts', [BpdbMachineController::class, 'activeAlerts']);
 
 // Public — 2 màn hình "Gọi hóa chất cổ điển" (/chemical-call/classic và
 // /chemical-call/pending-classic), theo yêu cầu 2026-08-04: mở màn hình treo xưởng không

@@ -24,24 +24,6 @@ class ReportController extends Controller
     }
 
     /**
-     * Shift is not tracked as a column anywhere in the legacy or target schema (see open-questions.md
-     * CH-BUS-002/CH-TECH-001). We derive it from time-of-day using the factory's standard 3-ca/8h pattern
-     * so "sản lượng theo ca" can be reported; this is a documented assumption, not a confirmed business rule.
-     */
-    private function shiftCaseSql(string $column): string
-    {
-        $hourExpr = DB::connection()->getDriverName() === 'sqlite'
-            ? "CAST(strftime('%H', $column) AS INTEGER)"
-            : "EXTRACT(HOUR FROM $column)";
-
-        return "CASE
-            WHEN $hourExpr >= 6 AND $hourExpr < 14 THEN 'Ca 1 (06h-14h)'
-            WHEN $hourExpr >= 14 AND $hourExpr < 22 THEN 'Ca 2 (14h-22h)'
-            ELSE 'Ca 3 (22h-06h)'
-        END";
-    }
-
-    /**
      * Loại vòng CÂN TAY khỏi báo cáo sản xuất (yêu cầu 2026-08-02).
      *
      * Cân tay là thợ dùng tạm cái cân, không quét đơn nào — không màu, không mã hàng, không định
@@ -261,14 +243,20 @@ class ReportController extends Controller
     }
 
     /**
-     * Report 3: Sản lượng máy nhuộm theo ngày/tháng/ca kíp sản xuất.
+     * Report 3: Sản lượng máy nhuộm theo ngày/tháng.
      * Uses feed_operations.completed_at as the "material actually fed into the dyeing machine" event,
      * and production_batches.cloth_weight as the output volume for that batch.
+     *
+     * KHÔNG gộp theo ca kíp (bỏ 12/08/2026). Ca không phải là cột có thật trong schema cũ lẫn mới, bản
+     * trước suy ra từ giờ trong ngày theo mẫu 3 ca/8h — mà xưởng chạy 24/24 bằng MỘT tài khoản dùng
+     * chung cho mỗi trạm cân, nên con số gom theo ca không quy được cho ca nào hay người nào. Giữ lại
+     * chỉ khiến người đọc báo cáo tưởng nó có ý nghĩa. Muốn xem sản lượng rải theo giờ thì làm một báo
+     * cáo "theo khung giờ" riêng, đừng gọi là ca.
      */
     public function machineOutput(Request $request)
     {
         [$from, $to] = $this->resolveRange($request);
-        $groupBy = $request->input('group_by', 'day'); // day | month | shift
+        $groupBy = $request->input('group_by', 'day'); // day | month
         $machineId = $request->input('machine_id');
 
         $query = DB::table('feed_operations as fo')
@@ -283,7 +271,6 @@ class ReportController extends Controller
 
         $periodExpr = match ($groupBy) {
             'month' => "TO_CHAR(fo.completed_at, 'YYYY-MM')",
-            'shift' => $this->shiftCaseSql('fo.completed_at'),
             default => "TO_CHAR(fo.completed_at, 'YYYY-MM-DD')",
         };
 

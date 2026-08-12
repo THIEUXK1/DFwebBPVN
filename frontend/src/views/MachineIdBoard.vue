@@ -312,9 +312,16 @@ const BLINK_DURATION_MS = 180_000; // khớp chu kỳ tự nạp lại 3 phút c
 const blinkingMachines = ref<Set<number>>(new Set());
 const blinkTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
-const onRunningAlert = (e: { machineCode?: string }) => {
+/**
+ * `remainingMs` optional — chỉ dùng khi GIEO LẠI (seed) từ /active-alerts lúc mount (xem
+ * seedActiveAlerts()), truyền đúng thời gian CÒN LẠI backend đã tính (Cache::put ở
+ * BpdbMachineController::notifyRunning()), không phải BLINK_DURATION_MS trọn vẹn mới — alert
+ * seed có thể đã bắn từ 2 phút trước, tab này chỉ "bắt kịp" phần còn lại. Alert LIVE nhận
+ * trực tiếp từ kênh Reverb luôn dùng trọn BLINK_DURATION_MS như cũ (gọi không kèm tham số).
+ */
+const onRunningAlert = (e: { machineCode?: string }, remainingMs: number = BLINK_DURATION_MS) => {
   const num = machineNum(e?.machineCode);
-  if (num === null) return;
+  if (num === null || remainingMs <= 0) return;
 
   const existingTimer = blinkTimers.get(num);
   if (existingTimer) clearTimeout(existingTimer);
@@ -325,7 +332,28 @@ const onRunningAlert = (e: { machineCode?: string }) => {
     const next = new Set(blinkingMachines.value);
     next.delete(num);
     blinkingMachines.value = next;
-  }, BLINK_DURATION_MS));
+  }, remainingMs));
+};
+
+/**
+ * Gọi 1 lần lúc mount — "bắt kịp" các alert đã bắn TRƯỚC khi tab này mở (yêu cầu 2026-08-12:
+ * đối xứng với gantt-test — xem seedActiveAlerts() trong BpdbMachinesGanttTest.vue và
+ * BpdbMachineController::activeAlerts). Kênh Reverb chỉ báo được sự kiện xảy ra SAU khi đã
+ * kết nối, nên máy nào bắt đầu nhấp nháy trước khi tab này mở sẽ bị bỏ lỡ nếu không seed.
+ * Best-effort — lỗi mạng ở đây không quan trọng bằng bản thân board vẫn phải hiển thị đúng.
+ */
+const seedActiveAlerts = async () => {
+  try {
+    const res = await axios.get('/api/public/bpdb-machines-gantt/active-alerts');
+    const alerts: any[] = res.data?.data ?? [];
+    for (const a of alerts) {
+      const expiresAtMs = a?.expiresAt ? new Date(a.expiresAt).getTime() : NaN;
+      if (!Number.isFinite(expiresAtMs)) continue;
+      onRunningAlert(a, expiresAtMs - Date.now());
+    }
+  } catch {
+    // im lặng bỏ qua — xem ghi chú hàm.
+  }
 };
 
 onMounted(() => {
@@ -342,7 +370,12 @@ onMounted(() => {
   loadAll();
   timer = setInterval(loadAll, 180_000);
   echo.channel('production-batches').listen('.updated', loadAll);
-  echo.channel('bpdb-machine-alerts').listen('.running', onRunningAlert);
+  // Bọc trong arrow function, KHÔNG truyền thẳng onRunningAlert: laravel-echo 2.x bind callback
+  // trực tiếp vào pusher-js, mà pusher-js gọi callback với (data, metadata) — truyền thẳng thì
+  // metadata rơi vào tham số `remainingMs`, setTimeout nhận object -> NaN -> coi như 0ms, máy
+  // vừa nhấp nháy đã tắt ngay. Bọc lại để alert live luôn dùng trọn BLINK_DURATION_MS.
+  echo.channel('bpdb-machine-alerts').listen('.running', (e: { machineCode?: string }) => onRunningAlert(e));
+  seedActiveAlerts();
 });
 
 onUnmounted(() => {

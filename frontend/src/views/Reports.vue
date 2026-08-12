@@ -38,7 +38,6 @@
         <select v-model="filters.group_by" class="form-select">
           <option value="day">{{ $t('reports.groupByDay') }}</option>
           <option value="month">{{ $t('reports.groupByMonth') }}</option>
-          <option value="shift">{{ $t('reports.groupByShift') }}</option>
         </select>
       </div>
 
@@ -394,7 +393,6 @@ function varianceClass(pct: number | null | undefined) {
 const groupByLabel = computed(() => ({
   day: t('reports.groupByLabelDay'),
   month: t('reports.groupByLabelMonth'),
-  shift: t('reports.groupByLabelShift'),
 }[filters.group_by] || t('reports.groupByLabelDay')));
 
 // Pivot the (machine, period) rows into a per-period category with one series per machine,

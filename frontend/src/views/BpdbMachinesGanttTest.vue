@@ -249,6 +249,7 @@ const DataSet = (visStandalone as unknown as { DataSet: typeof DataSetCtor }).Da
 import 'vis-timeline/styles/vis-timeline-graph2d.min.css';
 import { isFullscreen } from '../services/layout';
 import { theme, toggleTheme } from '../services/theme';
+import echo from '../services/echo';
 import SvgIcon from '../components/SvgIcon.vue';
 import AppLayout from '../components/AppLayout.vue';
 import { useAuthStore } from '../stores/auth';
@@ -427,6 +428,189 @@ let allItems: any[] = [];
 let previousUncompletedIds = new Set<string>();
 let isFirstFetch = true;
 let newlyAppearedRunningIds: string[] = [];
+
+/* ===== Nhấp nháy viền đỏ khi CHÍNH gantt-test nhận lại tín hiệu "mẻ vừa chạy" mà nó vừa bắn
+   đi cho /machine-id-board (yêu cầu 2026-08-12 — 2 bản trước gắn nhầm: bản 1 vào
+   production-batches/grid + tình trạng đồng bộ BPDB, bản 2 khớp theo taskId của TỪNG thanh
+   nên có thể tắt sớm hơn machine-id-board, đã bỏ). Nghe lại CHÍNH kênh Reverb PUBLIC
+   "bpdb-machine-alerts" (xem BpdbMachineRunningAlert.php + notifyNewlyRunning() bên dưới),
+   khớp và GIA HẠN đếm giờ theo machineCode — Y HỆT cơ chế onRunningAlert/blinkTimers trong
+   MachineIdBoard.vue: máy đó CÒN đang hiển thị nhấp nháy bên machine-id-board (tức có alert
+   mới liên tục reset lại đồng hồ 3 phút) thì bên gantt-test cũng phải CÒN nhấp nháy.
+   Áp lên thanh THẬT ĐANG CHẠY (uncompleted) của đúng máy — chỉ là lớp nhấp nháy PHỤ THÊM
+   đánh dấu "mẻ mới". Việc hiển thị nội dung hàng đợi của machine-id-board sang Gantt là chuyện
+   KHÁC, làm bằng fetchSentDispatches() bên dưới (từng có bản vẽ "thanh giả" từ payload alert ở
+   đây — đã bỏ vì trùng vai trò và dữ liệu nghèo hơn hẳn nguồn thật). */
+const ALERT_BLINK_MS = 180_000; // khớp BLINK_DURATION_MS bên machine-id-board (MachineIdBoard.vue).
+const alertBlinkExpiry = new Map<string, number>(); // machineCode -> hết hạn lúc nào (epoch ms).
+let alertBlinkTimer: ReturnType<typeof setTimeout> | null = null;
+
+const scheduleAlertBlinkCleanup = () => {
+  if (alertBlinkTimer) clearTimeout(alertBlinkTimer);
+  const expiries = Array.from(alertBlinkExpiry.values());
+  if (!expiries.length) return;
+  const soonest = Math.min(...expiries);
+  alertBlinkTimer = setTimeout(() => {
+    const now = Date.now();
+    for (const [machineCode, expiresAt] of alertBlinkExpiry) {
+      if (expiresAt <= now) alertBlinkExpiry.delete(machineCode);
+    }
+    applyMachineFilter();
+    scheduleAlertBlinkCleanup();
+  }, Math.max(0, soonest - Date.now()));
+};
+
+/** true nếu thanh này (ĐANG CHẠY, đúng máy) còn khớp 1 tín hiệu "mẻ vừa chạy" còn hiệu lực. */
+const isAlertBlinking = (item: { group: string; uncompleted: boolean }) => {
+  if (!item.uncompleted) return false;
+  const machineCode = String(item.group).split('::')[0];
+  const expiresAt = alertBlinkExpiry.get(machineCode);
+  return expiresAt !== undefined && expiresAt > Date.now();
+};
+
+/**
+ * `expiresAtMs` optional — chỉ dùng khi GIEO LẠI (seed) từ /active-alerts lúc mount (xem
+ * seedActiveAlerts()), lấy đúng hạn CÒN LẠI backend đã tính (Cache::put ở notifyRunning()),
+ * không phải ALERT_BLINK_MS trọn vẹn mới — alert seed có thể đã bắn từ 2 phút trước, tab này
+ * chỉ "bắt kịp" phần thời gian còn lại chứ không được tự ý cấp thêm 3 phút mới. Sự kiện live
+ * nhận trực tiếp từ kênh Reverb (onBpdbRunningAlert gọi KHÔNG kèm tham số này) luôn dùng trọn
+ * ALERT_BLINK_MS như cũ.
+ */
+const registerRunningAlert = (
+  e: { machineCode?: string; tankLabel?: string | null; color?: string | null; productCode?: string | null; taskId?: string },
+  expiresAtMs?: number
+) => {
+  if (!e?.machineCode) return;
+  const expiresAt = expiresAtMs ?? (Date.now() + ALERT_BLINK_MS);
+  // Map.set ghi đè thẳng — tự động "gia hạn" nếu máy này đã đang nhấp nháy từ alert trước,
+  // đúng hành vi reset đồng hồ của blinkTimers bên MachineIdBoard.vue. Khi seed nhiều alert
+  // của cùng máy lúc mount, LẤY HẠN MUỘN NHẤT (không ghi đè lùi lại) — máy đó vẫn còn "trong
+  // cửa sổ" cho tới alert gần nhất của nó.
+  const current = alertBlinkExpiry.get(e.machineCode);
+  if (current === undefined || expiresAt > current) alertBlinkExpiry.set(e.machineCode, expiresAt);
+};
+
+const onBpdbRunningAlert = (e: { machineCode?: string; tankLabel?: string | null; color?: string | null; productCode?: string | null; taskId?: string }) => {
+  registerRunningAlert(e);
+  scheduleAlertBlinkCleanup();
+  applyMachineFilter();
+};
+
+/* ===== Mẻ "ĐÃ GỬI" của /machine-id-board vẽ luôn lên Gantt (yêu cầu 2026-08-12) =====
+   Đây mới là điều người dùng cần từ đầu (3 lượt trước hiểu nhầm thành chuyện đồng bộ nhấp
+   nháy): "những cái đang hiển thị ở machine-id-board sẽ hiển thị bên gantt-test, những mẻ đấy
+   xuất hiện ở bên PHẢI kẻ đỏ". Tức là khối ô màu xanh/cam/đỏ của machine-id-board (mẻ đã gửi
+   xuống máy, ĐANG CHỜ chạy) phải hiện thành thanh trên đúng hàng Máy/Tank của Gantt, nằm sau
+   vạch giờ hiện tại — bên trái kim là việc đã chạy (BPDB), bên phải là việc sắp chạy (hàng đợi
+   nội bộ). Hai nguồn dữ liệu vẫn TÁCH BIỆT như kiến trúc đã chốt (xem BpdbMachineRunningAlert
+   .php) — chỉ vẽ chung một khung nhìn, không trộn/suy luận lẫn nhau.
+
+   Dùng ĐÚNG endpoint + ĐÚNG quy tắc lọc của MachineIdBoard.vue (loadSent) để 2 màn hình không
+   bao giờ lệch nhau: /api/public/machine-dispatches/history, mỗi (máy, thùng) giữ bản ghi mới
+   nhất còn trong 24h, mốc thời gian lấy print job đầu tiên rồi mới fallback created_at. Màu
+   thanh cũng giữ nguyên thang tuổi của bản gốc (sentBg) theo yêu cầu — nhìn sang Gantt là nhận
+   ra ngay đúng ô nào bên machine-id-board, khỏi đối chiếu lại. */
+const SENT_WINDOW_HOURS = 24;
+
+/**
+ * Mã máy 2 nguồn viết KHÁC nhau: dispatch trả "VD12", group Gantt/BPDB là "VD012" — quy về
+ * dạng chuẩn {CHỮ}{số bỏ 0 đệm} để bắc cầu: "VD12"/"VD012" đều ra "VD12".
+ *
+ * PHẢI giữ lại phần CHỮ (khác MachineIdBoard.vue::machineNum vốn chỉ lấy phần số): danh sách
+ * máy của Gantt có cả dãy "VDG01".."VDG08" bên cạnh "VD002".."VD018" — chỉ lấy số thì VDG01
+ * và VD001 cùng ra 1, VDG02 và VD002 cùng ra 2..., bảng tra bị đè và mẻ sẽ nhảy sang nhầm máy.
+ */
+const machineKeyOf = (code: any): string | null => {
+  const m = /^([A-Za-z]+)0*(\d+)$/.exec(String(code ?? '').trim());
+  if (!m) return null;
+  return `${m[1].toUpperCase()}${parseInt(m[2], 10)}`;
+};
+
+/** LoadAllVD_Sent: <6h xanh lá, <12h cam, còn lại đỏ (giữ nguyên từ MachineIdBoard.vue). */
+const sentAgeBg = (h: number) => (h < 6 ? '#00b050' : h < 12 ? '#ffc000' : '#ff0000');
+
+interface SentBar {
+  machineKey: string;
+  tankCode: string;
+  color: string;
+  productCode: string;
+  levelCode: string;
+  sentAtMs: number;
+  bg: string;
+}
+let sentBars: SentBar[] = [];
+
+const fetchSentDispatches = async () => {
+  try {
+    const res = await axios.get('/api/public/machine-dispatches/history');
+    const rows: any[] = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+    // Mỗi (máy, thùng) chỉ giữ bản ghi MỚI NHẤT — đúng ngữ nghĩa "ô hiện tại" của
+    // machine-id-board (1 ô cho mỗi thùng), không phải liệt kê toàn bộ lịch sử 24h.
+    const best = new Map<string, SentBar>();
+    for (const d of rows) {
+      const b = d.batch || {};
+      const machineKey = machineKeyOf(b.machine?.code);
+      const tankCode = String(b.tank?.code ?? '');
+      if (!machineKey || !tankCode) continue;
+
+      const ts = d.print_jobs?.[0]?.created_at ?? d.printJobs?.[0]?.created_at ?? d.created_at;
+      if (!ts) continue;
+      const sentAtMs = new Date(ts).getTime();
+      if (!Number.isFinite(sentAtMs)) continue;
+      const ageHours = (Date.now() - sentAtMs) / 3_600_000;
+      if (ageHours < 0 || ageHours >= SENT_WINDOW_HOURS) continue;
+
+      const key = `${machineKey}|${tankCode}`;
+      const prev = best.get(key);
+      if (prev && prev.sentAtMs >= sentAtMs) continue;
+      best.set(key, {
+        machineKey,
+        tankCode,
+        color: String(b.color ?? ''),
+        productCode: String(b.product_code ?? ''),
+        levelCode: String(b.level_code ?? ''),
+        sentAtMs,
+        bg: sentAgeBg(ageHours),
+      });
+    }
+    sentBars = Array.from(best.values());
+  } catch {
+    // Best-effort: hàng đợi nội bộ hỏng không được phép làm mất biểu đồ BPDB — giữ nguyên
+    // sentBars của lần tải trước thay vì xoá trắng, và không set errorMsg (lỗi tải Gantt
+    // thật quan trọng hơn, không được che mất).
+  }
+};
+
+/** Nạp lại RIÊNG hàng đợi nội bộ rồi vẽ lại — không gọi lại BPDB (nguồn nặng, 30s/lần là đủ). */
+const refreshSentBars = async () => {
+  await fetchSentDispatches();
+  applyMachineFilter();
+};
+
+/**
+ * Gọi 1 lần lúc mount — "bắt kịp" các alert đã bắn TRƯỚC khi tab này mở (yêu cầu 2026-08-12,
+ * báo cáo thực tế: máy còn nhấp nháy bên machine-id-board nhưng mở gantt-test lên không thấy
+ * gì, vì kênh Reverb chỉ báo được sự kiện xảy ra SAU khi đã kết nối — xem
+ * BpdbMachineController::activeAlerts). Best-effort: lỗi mạng ở đây không quan trọng bằng
+ * bản thân biểu đồ Gantt vẫn phải hiển thị đúng, nuốt lỗi im lặng như notifyNewlyRunning().
+ */
+const seedActiveAlerts = async () => {
+  try {
+    const res = await axios.get('/api/public/bpdb-machines-gantt/active-alerts');
+    const alerts: any[] = res.data?.data ?? [];
+    for (const a of alerts) {
+      const expiresAtMs = a?.expiresAt ? new Date(a.expiresAt).getTime() : NaN;
+      if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) continue;
+      registerRunningAlert(a, expiresAtMs);
+    }
+    if (alerts.length) {
+      scheduleAlertBlinkCleanup();
+      applyMachineFilter();
+    }
+  } catch {
+    // im lặng bỏ qua — xem ghi chú hàm.
+  }
+};
 
 // Mốc "hiện tại" dùng để vẽ kim đỏ + tự cuộn — chốt theo lần đồng bộ dữ liệu gần nhất
 // (lastSyncedAt trả về từ backend), KHÔNG dùng đồng hồ trình duyệt — nhất quán với cách
@@ -964,7 +1148,83 @@ const applyMachineFilter = () => {
     });
   }
   const visibleGroupIds = new Set(visibleGroups.map(g => g.id));
-  const visibleItems = allItems.filter(it => visibleGroupIds.has(it.group));
+  // .map() thay vì chỉ .filter(): lớp nhấp nháy "vừa chạy" (alertBlinkExpiry) gắn THÊM tuỳ
+  // thời điểm gọi hàm này (hết hạn là phải rớt lớp ra ngay ở lần gọi kế tiếp), nên phải tính
+  // lại mỗi lần, không được ghi đè trực tiếp lên className gốc trong allItems (item đó có thể
+  // hết hạn nhấp nháy nhưng vẫn còn className cũ nếu mutate thẳng — mutate xong không revert
+  // lại được).
+  const visibleItems = allItems
+    .filter(it => visibleGroupIds.has(it.group))
+    .map(it => isAlertBlinking(it)
+      ? { ...it, className: `${it.className} gantt-item-just-entered`.trim() }
+      : it);
+
+  // ===== Thanh "ĐÃ GỬI" lấy từ machine-id-board (xem ghi chú tại fetchSentDispatches) =====
+  // Vẽ sau kim đỏ, trên đúng hàng {máy}::{thùng}. Mã máy 2 nguồn viết khác nhau ("VD12" vs
+  // "VD012") nên bắc cầu qua phần số — dựng bảng tra từ chính group cha của Gantt thay vì tự
+  // ghép chuỗi "VD" + số, để không phụ thuộc vào quy ước 2 hay 3 chữ số của BPDB.
+  const nowMs = syncSnapshot.value.getTime();
+  const ganttMachineIdByKey = new Map<string, string>();
+  for (const g of allGroups) {
+    if (!g.nestedGroups) continue;
+    const k = machineKeyOf(g.id);
+    if (k) ganttMachineIdByKey.set(k, String(g.id));
+  }
+
+  for (const sb of sentBars) {
+    const machineId = ganttMachineIdByKey.get(sb.machineKey);
+    if (!machineId) continue;
+    const groupId = `${machineId}::${sb.tankCode}`;
+    // Thùng không có hàng trên Gantt (vd "FB" — Gantt chỉ dựng 4 thùng 1A/2B/3C/4D) hoặc đang
+    // bị lọc mất bởi ô "Tìm máy" thì bỏ qua, đúng như machine-id-board cũng chỉ vẽ 4 thùng đó.
+    if (!visibleGroupIds.has(groupId)) continue;
+
+    // Xếp SAU mọi mẻ đang chạy của cùng hàng: lượt 2 trong fetchGantt đã đẩy hết mẻ đang chạy
+    // sang bên phải kim, thanh "đã gửi" là việc CHƯA chạy nên phải nằm sau chúng — không thì
+    // 2 thanh chồng lên nhau (stack:false nên vis không tự tách hàng).
+    let startMs = nowMs;
+    for (const it of allItems) {
+      if (it.group !== groupId || !it.uncompleted) continue;
+      startMs = Math.max(startMs, it.end.getTime());
+    }
+
+    const id = `sent::${groupId}::${sb.sentAtMs}`;
+    const label = sb.color && sb.productCode ? `${sb.color}-${sb.productCode}` : (sb.color || sb.productCode || '—');
+    const textColor = labelColorOn(sb.bg);
+    const textShadow = labelShadowFor(textColor);
+    itemDetails.set(id, {
+      id,
+      group: groupId,
+      machineCode: machineId,
+      tankLabel: sb.tankCode,
+      color: sb.color || null,
+      productCode: sb.productCode || null,
+      taskTitle: '',
+      statusLabel: t('bpdbMachinesGanttTest.sentStatusLabel'),
+      uncompleted: false,
+      startText: formatTime(new Date(sb.sentAtMs).toISOString()),
+      endText: t('bpdbMachinesGanttTest.sentNotRunYet'),
+      endSource: 'QUEUE',
+      mesBatchNo: null,
+      mesLineNo: null,
+      errorMessage: t('bpdbMachinesGanttTest.sentNote', { level: sb.levelCode || '—' }),
+      barColor: sb.bg,
+      mergedCount: 1,
+    });
+    visibleItems.push({
+      id,
+      group: groupId,
+      start: new Date(startMs),
+      end: new Date(startMs + MIN_VISUAL_DURATION_MS),
+      className: 'gantt-item-sent',
+      style: `background-color: ${sb.bg}; color: ${textColor};`,
+      content: `<div class="gantt-item-label" style="background-color: ${sb.bg}; color: ${textColor}; text-shadow: ${textShadow};">${label}</div>`,
+      mergeKey: sb.color && sb.productCode ? `${sb.color}|${sb.productCode}` : '',
+      uncompleted: false,
+      realEnd: new Date(startMs),
+      mergedCount: 1,
+    });
+  }
 
   // CHỈ vẽ hàng Tank — hàng riêng của Máy VD (group cha có nestedGroups) đã bị bỏ hẳn khỏi
   // biểu đồ (yêu cầu 2026-08-05): nó không chứa thanh mẻ nào, chỉ tạo một dải trống ngăn giữa
@@ -1095,6 +1355,10 @@ const loadGantt = async () => {
   loading.value = true;
   errorMsg.value = '';
   try {
+    // TRƯỚC fetchGantt(): fetchGantt() kết thúc bằng applyMachineFilter() — sentBars phải sẵn
+    // sàng từ trước để lượt vẽ đó có luôn thanh "đã gửi", khỏi phải vẽ thêm lượt thứ hai.
+    // Không dùng Promise.all vì đúng lý do đó (thứ tự mới là cái cần, không phải tốc độ).
+    await fetchSentDispatches();
     await fetchGantt();
     if (!timeline) {
       await nextTick();
@@ -1303,6 +1567,11 @@ onMounted(async () => {
   fullscreenMedia.addEventListener('change', syncBrowserFullscreenState);
   document.addEventListener('mousedown', closeDetailOnOutsideClick);
   document.addEventListener('keydown', closeDetailOnEscape);
+  echo.channel('bpdb-machine-alerts').listen('.running', onBpdbRunningAlert);
+  // Cùng kênh machine-id-board đang nghe (loadAll) — hàng đợi nội bộ đổi (duyệt đơn, gửi máy)
+  // thì 2 màn hình cùng cập nhật ngay, không đợi lượt tải lại 30s, khỏi lệch nhau.
+  echo.channel('production-batches').listen('.updated', refreshSentBars);
+  seedActiveAlerts();
 });
 
 onUnmounted(() => {
@@ -1312,6 +1581,9 @@ onUnmounted(() => {
   fullscreenMedia.removeEventListener('change', syncBrowserFullscreenState);
   document.removeEventListener('mousedown', closeDetailOnOutsideClick);
   document.removeEventListener('keydown', closeDetailOnEscape);
+  echo.leaveChannel('bpdb-machine-alerts');
+  echo.leaveChannel('production-batches');
+  if (alertBlinkTimer) clearTimeout(alertBlinkTimer);
   stopClock();
   if (isAdminUser) isFullscreen.value = previousIsFullscreen;
   timeline?.destroy();
@@ -1931,6 +2203,24 @@ onUnmounted(() => {
 @keyframes ganttPulseMes {
   from { box-shadow: 0 0 2px rgba(37,99,235,0.3); opacity: 0.85; }
   to { box-shadow: 0 0 14px rgba(37,99,235,0.9); opacity: 1; }
+}
+/* Thanh đang chạy khớp tín hiệu "mẻ vừa chạy" nhận qua
+   kênh bpdb-machine-alerts (yêu cầu 2026-08-12) — CÙNG kiểu viền đỏ nhấp nháy với
+   .gantt-item-running ("chưa có giờ kết thúc"), đồng bộ đúng thời lượng với
+   /machine-id-board (xem onBpdbRunningAlert/isAlertBlinking, ALERT_BLINK_MS). Tách riêng
+   class (không gộp thẳng vào .gantt-item-running) vì áp dụng độc lập: thanh đã có endTime
+   thật vẫn có thể vừa nhận lại tín hiệu này trong 3 phút đầu. */
+:deep(.gantt-item-just-entered) {
+  border: 2px solid #ef4444 !important;
+  animation: ganttPulse 0.9s infinite alternate ease-in-out;
+}
+/* Mẻ "đã gửi" lấy từ /machine-id-board — chưa chạy, nằm sau vạch giờ (yêu cầu 2026-08-12,
+   xem fetchSentDispatches). Nền GIỮ NGUYÊN thang màu theo tuổi của machine-id-board (xanh lá
+   <6h / cam <12h / đỏ ≥12h) nên không đặt background ở đây — chỉ thêm viền ĐỨT NÉT để phân
+   biệt với mẻ BPDB thật (vẽ liền nét): cùng một khung nhìn nhưng 2 nguồn dữ liệu khác nhau,
+   nhìn vào phải biết ngay cái nào là việc đã/đang chạy thật, cái nào mới là dự kiến. */
+:deep(.gantt-item-sent) {
+  border: 2px dashed rgba(15, 23, 42, 0.55) !important;
 }
 :deep(.gantt-blink) { color: #f43f5e; font-weight: 700; }
 
