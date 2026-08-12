@@ -135,6 +135,8 @@ Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
     // Recipes
     Route::get('/recipes', [RecipeController::class, 'index']);
     Route::post('/recipes', [RecipeController::class, 'store']);
+    // Phải đứng TRƯỚC '/recipes/{id}' — nếu không Laravel khớp "lookup" vào {id} trước.
+    Route::get('/recipes/lookup', [RecipeController::class, 'lookup']);
     Route::get('/recipes/{id}', [RecipeController::class, 'show']);
 
     // Calculations

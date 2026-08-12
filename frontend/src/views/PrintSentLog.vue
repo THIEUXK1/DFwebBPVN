@@ -14,70 +14,91 @@
         </div>
       </div>
 
-      <!-- Bộ lọc chạy hoàn toàn phía trình duyệt trên tập /machine-dispatches/history đã trả về
-           (endpoint giới hạn 100 dòng gần nhất) — không gọi lại API khi đổi lọc. -->
-      <div class="filter-bar">
-        <label>
-          {{ $t('printSentLog.windowLabel') }}
-          <select v-model.number="windowHours" class="vba-select">
-            <option :value="24">{{ $t('printSentLog.window24h') }}</option>
-            <option :value="48">{{ $t('printSentLog.window48h') }}</option>
-            <option :value="168">{{ $t('printSentLog.window7d') }}</option>
-            <option :value="720">{{ $t('printSentLog.window30d') }}</option>
-            <option :value="0">{{ $t('common.all') }}</option>
-          </select>
-        </label>
+      <!-- Khối lọc thu gọn được (giống WeighingHistory.vue) — chạy hoàn toàn phía trình duyệt
+           trên tập /machine-dispatches/history đã trả về, không gọi lại API khi đổi lọc. -->
+      <div class="filters">
+        <div class="filters-head">
+          <button
+            type="button"
+            class="vba-btn filters-toggle"
+            @click="filtersCollapsed = !filtersCollapsed"
+            :aria-expanded="!filtersCollapsed"
+            :title="$t('printSentLog.filtersToggleTitle')"
+          >
+            <span class="filters-toggle-icon">{{ filtersCollapsed ? '▸' : '▾' }}</span>
+            {{ $t('printSentLog.filtersToggleLabel') }}
+          </button>
+          <!-- Chỉ hiện khi đã thu gọn: nhắc còn đang lọc gì, tránh tưởng bảng ngắn là hết dữ liệu. -->
+          <span v-if="filtersCollapsed && activeFilterSummary" class="filters-summary">
+            {{ activeFilterSummary }}
+          </span>
+        </div>
 
-        <label>
-          {{ $t('printSentLog.machineLabel') }}
-          <select v-model="machineFilter" class="vba-select">
-            <option value="">{{ $t('printSentLog.machineAllOption') }}</option>
-            <option v-for="m in machineOptions" :key="m" :value="m">{{ m }}</option>
-          </select>
-        </label>
+        <div v-show="!filtersCollapsed" class="filter-bar">
+          <label>
+            {{ $t('printSentLog.windowLabel') }}
+            <select v-model.number="windowHours" class="vba-select">
+              <option :value="24">{{ $t('printSentLog.window24h') }}</option>
+              <option :value="48">{{ $t('printSentLog.window48h') }}</option>
+              <option :value="168">{{ $t('printSentLog.window7d') }}</option>
+              <option :value="720">{{ $t('printSentLog.window30d') }}</option>
+              <option :value="0">{{ $t('common.all') }}</option>
+            </select>
+          </label>
 
-        <label>
-          {{ $t('printSentLog.tankLabel') }}
-          <select v-model="tankFilter" class="vba-select">
-            <option value="">{{ $t('printSentLog.tankAllOption') }}</option>
-            <option v-for="t in tankOptions" :key="t" :value="t">{{ t }}</option>
-          </select>
-        </label>
+          <label>
+            {{ $t('printSentLog.machineLabel') }}
+            <select v-model="machineFilter" class="vba-select">
+              <option value="">{{ $t('printSentLog.machineAllOption') }}</option>
+              <option v-for="m in machineOptions" :key="m" :value="m">{{ m }}</option>
+            </select>
+          </label>
 
-        <label>
-          {{ $t('printSentLog.checkLabel') }}
-          <select v-model="checkFilter" class="vba-select">
-            <option value="">{{ $t('printSentLog.checkAllOption') }}</option>
-            <option value="YES">{{ $t('printSentLog.checkYesOption') }}</option>
-            <option value="NO">{{ $t('printSentLog.checkNoOption') }}</option>
-          </select>
-        </label>
+          <label>
+            {{ $t('printSentLog.tankLabel') }}
+            <select v-model="tankFilter" class="vba-select">
+              <option value="">{{ $t('printSentLog.tankAllOption') }}</option>
+              <option v-for="t in tankOptions" :key="t" :value="t">{{ t }}</option>
+            </select>
+          </label>
 
-        <label>
-          {{ $t('printSentLog.printStatusLabel') }}
-          <select v-model="printFilter" class="vba-select">
-            <option value="">{{ $t('printSentLog.printStatusAllOption') }}</option>
-            <option value="PRINTED">{{ $t('printSentLog.printStatusPrintedOption') }}</option>
-            <option value="PENDING">{{ $t('printSentLog.printStatusPendingOption') }}</option>
-            <option value="FAILED">{{ $t('printSentLog.printStatusFailedOption') }}</option>
-            <option value="CANCELLED">{{ $t('printSentLog.printStatusCancelledOption') }}</option>
-            <option value="NONE">{{ $t('printSentLog.printStatusNoneOption') }}</option>
-          </select>
-        </label>
+          <label>
+            {{ $t('printSentLog.checkLabel') }}
+            <select v-model="checkFilter" class="vba-select">
+              <option value="">{{ $t('printSentLog.checkAllOption') }}</option>
+              <option value="YES">{{ $t('printSentLog.checkYesOption') }}</option>
+              <option value="NO">{{ $t('printSentLog.checkNoOption') }}</option>
+            </select>
+          </label>
 
-        <label>
-          {{ $t('printSentLog.stationLabel') }}
-          <select v-model="stationFilter" class="vba-select">
-            <option value="">{{ $t('printSentLog.stationAllOption') }}</option>
-            <option v-for="s in stationOptions" :key="s" :value="s">{{ s }}</option>
-          </select>
-        </label>
+          <label>
+            {{ $t('printSentLog.printStatusLabel') }}
+            <select v-model="printFilter" class="vba-select">
+              <option value="">{{ $t('printSentLog.printStatusAllOption') }}</option>
+              <option value="PRINTED">{{ $t('printSentLog.printStatusPrintedOption') }}</option>
+              <option value="PENDING">{{ $t('printSentLog.printStatusPendingOption') }}</option>
+              <option value="FAILED">{{ $t('printSentLog.printStatusFailedOption') }}</option>
+              <option value="CANCELLED">{{ $t('printSentLog.printStatusCancelledOption') }}</option>
+              <option value="NONE">{{ $t('printSentLog.printStatusNoneOption') }}</option>
+            </select>
+          </label>
 
-        <input v-model="search" class="vba-input" :placeholder="$t('printSentLog.searchPlaceholder')" />
+          <label>
+            {{ $t('printSentLog.stationLabel') }}
+            <select v-model="stationFilter" class="vba-select">
+              <option value="">{{ $t('printSentLog.stationAllOption') }}</option>
+              <option v-for="s in stationOptions" :key="s" :value="s">{{ s }}</option>
+            </select>
+          </label>
 
-        <button class="vba-btn" :disabled="!hasFilter" @click="resetFilters">{{ $t('printSentLog.clearFilterBtn') }}</button>
+          <input v-model="search" class="vba-input" :placeholder="$t('printSentLog.searchPlaceholder')" />
+
+          <button class="vba-btn" :disabled="!hasFilter" @click="resetFilters">{{ $t('printSentLog.clearFilterBtn') }}</button>
+        </div>
       </div>
 
+      <div class="table-card">
+      <div class="table-scroll">
       <table class="sent-tbl">
         <thead>
           <tr>
@@ -95,22 +116,123 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(d, i) in pageRows" :key="d.id">
-            <td>{{ pageStart + i + 1 }}</td>
-            <td>{{ d.batch?.legacy_batch_id || '' }}</td>
-            <td>{{ d.batch?.color || '' }}</td>
-            <td>{{ d.batch?.product_code || '' }}</td>
-            <td>{{ d.batch?.machine?.code || '' }}</td>
-            <td>{{ d.batch?.tank?.code || '' }}</td>
-            <td>{{ d.batch?.level_code || '' }}</td>
-            <td :class="d.scale_checked ? 'chk-yes' : 'chk-no'">{{ d.scale_checked ? '✓' : '—' }}</td>
-            <td>
-              <span class="print-badge" :class="'pb-' + printStatusOf(d)">{{ printLabel(printStatusOf(d)) }}</span>
-              <span v-if="printCountOf(d) > 1" class="print-count">×{{ printCountOf(d) }}</span>
-            </td>
-            <td>{{ d.originating_station_code || '' }}</td>
-            <td>{{ fmt(confirmTimeOf(d)) }}</td>
-          </tr>
+          <template v-for="(d, i) in pageRows" :key="d.id">
+            <!-- Ấn vào mẻ để xem công thức — xổ ngay dưới dòng, không rời trang. "Công thức" ở
+                 đây LÀ đúng 2 bảng DYE/CHEM đã in trên tem thật của mẻ này (xem VbaPrintForm.vue,
+                 nhãn gốc "dye stuff information"/"auxiliary information"), lấy thẳng từ
+                 raw_qr_dye/raw_qr_chemical đã có sẵn trong `d` — KHÔNG gọi thêm API, vì đây mới
+                 là dữ liệu công thức thật đã dùng để in, khác với bảng `recipes` (định mức chuẩn
+                 duyệt theo Màu+Mã hàng, có thể chưa nhập hoặc lệch với đợt cân thực tế này). -->
+            <!-- 'row-even' thay cho :nth-child(even) trong CSS: dòng công thức xổ ra chen thêm
+                 một <tr> vào giữa, làm lệch phép đếm nth-child kể từ đó — vằn ca-rô phải bám theo
+                 CHỈ SỐ DỮ LIỆU (i), không bám theo vị trí DOM. -->
+            <tr
+              class="sent-row"
+              :class="{ 'row-open': expandedId === d.id, 'row-even': i % 2 === 1 }"
+              @click="toggleRow(d)"
+            >
+              <td><span class="row-chevron">{{ expandedId === d.id ? '▾' : '▸' }}</span>{{ pageStart + i + 1 }}</td>
+              <td>{{ d.batch?.legacy_batch_id || '' }}</td>
+              <td>{{ d.batch?.color || '' }}</td>
+              <td>{{ d.batch?.product_code || '' }}</td>
+              <td>{{ d.batch?.machine?.code || '' }}</td>
+              <td>{{ d.batch?.tank?.code || '' }}</td>
+              <td>{{ d.batch?.level_code || '' }}</td>
+              <td :class="d.scale_checked ? 'chk-yes' : 'chk-no'">{{ d.scale_checked ? '✓' : '—' }}</td>
+              <td>
+                <span class="print-badge" :class="'pb-' + printStatusOf(d)">{{ printLabel(printStatusOf(d)) }}</span>
+                <span v-if="printCountOf(d) > 1" class="print-count">×{{ printCountOf(d) }}</span>
+              </td>
+              <td>{{ d.originating_station_code || '' }}</td>
+              <td>{{ fmt(confirmTimeOf(d)) }}</td>
+            </tr>
+
+            <tr v-if="expandedId === d.id" :key="d.id + '-recipe'" class="recipe-row">
+              <td colspan="11">
+                <div class="recipe-box">
+                  <template v-if="dyeLinesOf(d).length === 0 && chemLinesOf(d).length === 0">
+                    {{ $t('printSentLog.recipeNoQrData') }}
+                  </template>
+                  <div v-else class="recipe-cols">
+                    <table class="recipe-tbl">
+                      <caption>{{ $t('printSentLog.recipeDyeCaption') }}</caption>
+                      <thead>
+                        <tr>
+                          <th>{{ $t('printSentLog.recipeColRack') }}</th>
+                          <th>{{ $t('printSentLog.recipeColCode') }}</th>
+                          <th class="num">{{ $t('printSentLog.recipeColWeight') }}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="(ln, li) in dyeLinesOf(d)" :key="li">
+                          <td>{{ ln.rack }}</td>
+                          <td class="bold">{{ ln.code }}</td>
+                          <td class="num">{{ ln.weight }}</td>
+                        </tr>
+                        <tr v-if="dyeLinesOf(d).length === 0"><td colspan="3" class="recipe-empty">—</td></tr>
+                      </tbody>
+                    </table>
+                    <table class="recipe-tbl">
+                      <caption>{{ $t('printSentLog.recipeChemCaption') }}</caption>
+                      <thead>
+                        <tr>
+                          <th>{{ $t('printSentLog.recipeColRack') }}</th>
+                          <th>{{ $t('printSentLog.recipeColCode') }}</th>
+                          <th class="num">{{ $t('printSentLog.recipeColWeight') }}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="(ln, li) in chemLinesOf(d)" :key="li">
+                          <td>{{ ln.rack }}</td>
+                          <td class="bold">{{ ln.code }}</td>
+                          <td class="num">{{ ln.weight }}</td>
+                        </tr>
+                        <tr v-if="chemLinesOf(d).length === 0"><td colspan="3" class="recipe-empty">—</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <!-- In lại: nút → xổ ô nhập lý do (bắt buộc, ghi Audit Log) → bấm Xác nhận mới
+                       thật sự in + gọi API. Không dùng window.prompt() — bị chặn/im lặng trong
+                       một số webview nhúng (cùng lý do PrintJobHistoryTable.vue). -->
+                  <div class="recipe-actions" @click.stop>
+                    <button
+                      v-if="reprintReasonId !== d.id"
+                      type="button"
+                      class="vba-btn"
+                      @click="askReprint(d)"
+                    >🖨 {{ $t('printSentLog.reprintButton') }}</button>
+
+                    <div v-else class="reprint-prompt">
+                      <input
+                        v-model="reprintReason"
+                        class="vba-input reprint-reason-input"
+                        :placeholder="$t('printSentLog.reprintReasonPlaceholder')"
+                        :disabled="reprinting === d.id"
+                        autofocus
+                        @keyup.enter="confirmReprint(d)"
+                        @keyup.esc="cancelReprint"
+                      />
+                      <button
+                        type="button"
+                        class="vba-btn"
+                        :disabled="!reprintReason.trim() || reprinting === d.id"
+                        @click="confirmReprint(d)"
+                      >{{ reprinting === d.id ? '…' : $t('common.confirm') }}</button>
+                      <button
+                        type="button"
+                        class="vba-btn"
+                        :disabled="reprinting === d.id"
+                        @click="cancelReprint"
+                      >{{ $t('common.cancel') }}</button>
+                    </div>
+
+                    <span v-if="reprintError && reprintReasonId === d.id" class="reprint-error">⚠ {{ reprintError }}</span>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </template>
           <tr v-if="pageRows.length === 0">
             <td colspan="11" class="sent-empty">
               {{ loading ? $t('common.loading') : $t('printSentLog.noMatchMsg') }}
@@ -118,7 +240,10 @@
           </tr>
         </tbody>
       </table>
+      </div>
 
+      <!-- Chân khung, NGOÀI .table-scroll nên không cuộn theo bảng — luôn hiện ở mọi kích cỡ
+           màn hình (xem .table-card/.table-scroll bên dưới, cùng cách làm với WeighingHistory.vue). -->
       <div class="pager">
         <div class="pager-info">
           <template v-if="filtered.length">
@@ -150,6 +275,7 @@
           <span class="pager-total">{{ $t('printSentLog.pagerTotal', { page, totalPages }) }}</span>
         </div>
       </div>
+      </div>
 
       <p class="sent-note">
         {{ $t('printSentLog.noteOriginalPrefix') }} <code>tbl_sentlog WHERE TIME3 &gt;= DateAdd('h',-48,Now()) ORDER BY TIME3 ASC</code>
@@ -169,6 +295,8 @@ import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import echo from '../services/echo';
 import FullscreenButton from '../components/FullscreenButton.vue';
+import { parseRackLines } from '../utils/rackParser';
+import { writeDispatchSlipToWindow } from '../utils/dispatchSlipPrint';
 
 const { t } = useI18n({ useScope: 'global' });
 
@@ -243,6 +371,110 @@ const resetFilters = () => {
   stationFilter.value = '';
   search.value = '';
 };
+
+/** Thu gọn khối lọc — mặc định mở, giống WeighingHistory.vue. */
+const filtersCollapsed = ref(false);
+
+const WINDOW_LABEL_KEY: Record<number, string> = {
+  24: 'printSentLog.window24h',
+  48: 'printSentLog.window48h',
+  168: 'printSentLog.window7d',
+  720: 'printSentLog.window30d',
+  0: 'common.all',
+};
+
+/** Tóm tắt các lọc đang bật — chỉ dùng khi đã thu gọn khối lọc (xem `filtersCollapsed`). */
+const activeFilterSummary = computed(() => {
+  const parts: string[] = [];
+  if (windowHours.value !== 48) parts.push(t(WINDOW_LABEL_KEY[windowHours.value] ?? 'printSentLog.window48h'));
+  if (machineFilter.value) parts.push(t('printSentLog.summaryMachine', { value: machineFilter.value }));
+  if (tankFilter.value) parts.push(t('printSentLog.summaryTank', { value: tankFilter.value }));
+  if (checkFilter.value) parts.push(checkFilter.value === 'YES' ? t('printSentLog.checkYesOption') : t('printSentLog.checkNoOption'));
+  if (printFilter.value) parts.push(printLabel(printFilter.value));
+  if (stationFilter.value) parts.push(t('printSentLog.summaryStation', { value: stationFilter.value }));
+  if (search.value.trim()) parts.push(t('printSentLog.summarySearch', { value: search.value.trim() }));
+  return parts.join(' · ');
+});
+
+// Ấn vào 1 mẻ (dòng) để xem công thức — xổ ngay dưới dòng (yêu cầu 2026-08-11), không mở
+// tab/trang riêng. Đọc trực tiếp raw_qr_dye/raw_qr_chemical đã có sẵn trong từng dòng (cùng
+// nguồn dữ liệu đã dựng tem DF_WEIGHING_SLIP thật — xem VbaPrintForm.vue/PrintOrderEntry.vue),
+// nên KHÔNG cần gọi API hay giữ trạng thái loading: parse chuỗi là xong ngay trong lúc render.
+const expandedId = ref<string | null>(null);
+const toggleRow = (d: any) => {
+  expandedId.value = expandedId.value === d.id ? null : d.id;
+};
+
+// Dispatch có thể tự có raw_qr_dye/raw_qr_chemical (đã ghi lúc gửi lệnh), hoặc phải lấy từ batch
+// gốc nếu dòng này chưa từng ghi riêng — cùng thứ tự ưu tiên với onSendPrint() ở
+// PrintOrderEntry.vue để hai nơi luôn hiện đúng một dữ liệu.
+const dyeLinesOf = (d: any) => parseRackLines(d.raw_qr_dye || d.batch?.raw_qr_dye);
+const chemLinesOf = (d: any) => parseRackLines(d.raw_qr_chemical || d.batch?.raw_qr_chemical);
+
+/**
+ * In lại — theo ĐÚNG quy ước đã có sẵn trong app, không bịa quy trình mới:
+ *  1) In ngay qua trình duyệt bằng chính hàm dựng tem đang dùng ở PrintOrderEntry.vue
+ *     (`writeDispatchSlipToWindow`) — người bấm thấy kết quả ngay trên máy họ đang đứng.
+ *  2) Gọi `POST /machine-dispatches/{id}/reprint` kèm lý do bắt buộc — đây là hành động
+ *     Reprint phải ghi Audit Log bất biến theo CLAUDE.md mục 5. `printed_via_browser: true`
+ *     đánh dấu PrintJob PRINTED ngay (giống hệt cách onConfirm() ở PrintOrderEntry.vue làm
+ *     cho lần in đầu), KHÔNG đẩy job xuống hàng chờ Local Agent — nếu không Agent sẽ tưởng
+ *     còn job PENDING và in TSPL trùng thêm lần nữa xuống máy in vật lý của trạm đó.
+ *
+ * Lý do nhập ngay trong dòng công thức đang mở (không dùng window.prompt() — bị chặn/im lặng
+ * trong một số webview nhúng, xem ghi chú tương tự ở PrintJobHistoryTable.vue).
+ */
+const reprintReasonId = ref<string | null>(null);
+const reprintReason = ref('');
+const reprinting = ref<string | null>(null);
+const reprintError = ref('');
+
+function askReprint(d: any) {
+  reprintReasonId.value = d.id;
+  reprintReason.value = '';
+  reprintError.value = '';
+}
+
+function cancelReprint() {
+  reprintReasonId.value = null;
+}
+
+async function confirmReprint(d: any) {
+  const reason = reprintReason.value.trim();
+  if (!reason || reprinting.value) return;
+
+  // window.open() PHẢI đồng bộ ngay trong handler click (đây là click nút "Xác nhận" của
+  // ô nhập lý do) — gọi sau bất kỳ await nào thì mất "user gesture", Chrome/Edge chặn popup.
+  const win = window.open('', '_blank', 'width=780,height=980');
+  reprinting.value = d.id;
+  try {
+    if (win) {
+      await writeDispatchSlipToWindow(win, {
+        color: d.batch?.color || '',
+        productCode: d.batch?.product_code || '',
+        machineCode: d.batch?.machine?.code || '',
+        tankCode: d.batch?.tank?.code || '',
+        levelCode: d.batch?.level_code || '',
+        rawQrDye: d.raw_qr_dye || d.batch?.raw_qr_dye || '',
+        rawQrChem: d.raw_qr_chemical || d.batch?.raw_qr_chemical || '',
+        batchId: d.batch?.legacy_batch_id || '',
+      });
+    } else {
+      reprintError.value = t('printSentLog.reprintPopupBlocked');
+    }
+
+    await axios.post(`/api/machine-dispatches/${d.id}/reprint`, {
+      reason,
+      printed_via_browser: true,
+    });
+    reprintReasonId.value = null;
+    fetchSentLog(); // cột IN cần cập nhật số lần in (×N) ngay
+  } catch (e: any) {
+    reprintError.value = e.response?.data?.message || t('printSentLog.reprintFailed');
+  } finally {
+    reprinting.value = null;
+  }
+}
 
 // MỚI NHẤT LÊN ĐẦU (yêu cầu 2026-08-06) — LỆCH CÓ CHỦ Ý so với bản gốc, vốn là
 // "ORDER BY TIME3 ASC" (cũ nhất trước). Đây là màn tra cứu chứ không phải hàng đợi thao tác:
@@ -325,14 +557,25 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* Trang không tự cuộn nữa — chiếm đúng chiều cao vùng nội dung của AppLayout (.content-container,
+   flex item có chiều cao xác định) và chia thành cột flex. Chỉ .table-scroll bên trong cuộn, nên
+   chân khung (.pager) luôn nằm trong tầm nhìn ở mọi kích cỡ màn hình — cùng cách làm với
+   WeighingHistory.vue (xem `.wh-page`/`.wh-table-scroll` ở đó). */
 .vba-scroll {
-  overflow: auto;
+  overflow: hidden;
   padding: 8px;
   background-color: #808080;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .vba-form {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   background-color: #f0f0f0;
   border: 1px solid;
   border-color: #ffffff #808080 #808080 #ffffff;
@@ -349,6 +592,7 @@ onUnmounted(() => {
   gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 6px;
+  flex-shrink: 0;
 }
 
 .sent-log-title { font-weight: bold; font-size: 9pt; }
@@ -360,6 +604,45 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
+/* Khối lọc: không co (flex-shrink: 0) trong điều kiện bình thường — phần nhường chỗ khi thiếu
+   chiều cao là vùng cuộn của bảng (.table-scroll), không phải các ô lọc đang chọn dở. Chỉ khi màn
+   hình quá thấp để lọt cả khối lọc, .filter-bar mới tự cuộn trong chính nó (xem bên dưới). */
+.filters {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex-shrink: 0;
+  margin-bottom: 6px;
+}
+
+.filters-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.filters-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.filters-toggle-icon {
+  font-size: 7pt;
+  opacity: 0.7;
+}
+
+/* Tóm tắt các lọc đang bật, chỉ hiện khi đã thu gọn — nhắc bảng đang bị lọc chứ không phải trống
+   trơn, để khỏi tưởng nhầm mất dữ liệu. */
+.filters-summary {
+  font-size: 7.5pt;
+  color: #404040;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .filter-bar {
   display: flex;
   align-items: center;
@@ -369,7 +652,8 @@ onUnmounted(() => {
   border: 1px solid;
   border-color: #ffffff #808080 #808080 #ffffff;
   padding: 6px 8px;
-  margin-bottom: 6px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .filter-bar label {
@@ -405,6 +689,26 @@ onUnmounted(() => {
 .vba-btn:disabled { color: #808080; cursor: default; }
 .vba-link { display: inline-block; }
 
+/* Khung bảng: viền + bản thân bảng cuộn RIÊNG bên trong (.table-scroll) thay vì kéo dài cả trang
+   — nhờ vậy .pager (chân khung, ngoài .table-scroll) luôn đứng nguyên chỗ, không bị đẩy ra ngoài
+   màn hình khi danh sách dài. min-height là sàn tối thiểu: đủ chỗ cho tiêu đề + vài dòng + chân
+   khung khi màn hình quá thấp và khối lọc đang mở hết cỡ. */
+.table-card {
+  flex: 1;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  background-color: #ffffff;
+}
+
+.table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .sent-tbl {
   width: 100%;
   border-collapse: collapse;
@@ -428,7 +732,26 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.sent-tbl tbody tr:nth-child(even) td { background-color: #f7f7f7; }
+.sent-row.row-even td { background-color: #f7f7f7; }
+
+/* Ấn vào mẻ để xem công thức — cả hàng bấm được, không phải chỉ một nút. */
+.sent-row {
+  cursor: pointer;
+}
+
+.sent-row:hover td {
+  background-color: #dceaf7;
+}
+
+.sent-row.row-open td {
+  background-color: #cfe4f7;
+}
+
+.row-chevron {
+  display: inline-block;
+  width: 10px;
+  color: #404040;
+}
 
 .chk-yes { color: #008000; font-weight: bold; text-align: center; }
 .chk-no { color: #a00000; text-align: center; }
@@ -450,13 +773,95 @@ onUnmounted(() => {
 
 .sent-empty { text-align: center; color: #606060; padding: 16px 0; }
 
+/* Dòng công thức xổ ra dưới mẻ đang mở — nền vàng nhạt để tách hẳn khỏi các dòng dữ liệu bình
+   thường, không lẫn với vằn ca-rô của bảng chính. */
+.recipe-row td {
+  background-color: #ffffe0;
+  padding: 6px 8px;
+  cursor: default;
+  white-space: normal;
+}
+
+.recipe-box {
+  font: 8pt Tahoma, 'MS Sans Serif', sans-serif;
+  color: #000000;
+}
+
+/* 2 bảng DYE/CHEM cạnh nhau — đúng bố cục "dye stuff information" (trái) / "auxiliary
+   information" (phải) trên tem thật (xem VbaPrintForm.vue), chỉ khác là xếp ngang thay vì
+   trong khung 306pt cố định vì ở đây có cả chiều rộng bảng SENT LOG để dùng. */
+.recipe-cols {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.recipe-tbl {
+  flex: 1;
+  min-width: 220px;
+  max-width: 420px;
+  border-collapse: collapse;
+  background-color: #ffffff;
+}
+
+.recipe-tbl caption {
+  text-align: left;
+  font-weight: bold;
+  padding: 2px 0 4px;
+  caption-side: top;
+}
+
+.recipe-tbl th {
+  background-color: #f0f0f0;
+  border: 1px solid #808080;
+  padding: 2px 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.recipe-tbl td {
+  border: 1px solid #c0c0c0;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.recipe-tbl .num { text-align: right; }
+.recipe-tbl td.bold { font-weight: bold; color: hsl(210, 60%, 30%); }
+.recipe-empty { text-align: center; color: #808080; }
+
+.recipe-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #d8d0a0;
+}
+
+.reprint-prompt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.reprint-reason-input { width: 260px; }
+
+.reprint-error { color: #a00000; font-weight: bold; }
+
+/* Chân khung .table-card — flex-shrink: 0 để không bao giờ bị co mất: đây chính là phần phải
+   luôn nhìn thấy dù màn hình cao hay thấp. Nền + viền trên tách hẳn khỏi bảng phía trên. */
 .pager {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 6px;
+  flex-shrink: 0;
+  padding: 4px 6px;
+  border-top: 1px solid #808080;
+  background-color: #f0f0f0;
 }
 
 .pager-info { color: #303030; }
@@ -481,6 +886,7 @@ onUnmounted(() => {
 .pager-total { margin-left: 6px; color: #303030; }
 
 .sent-note {
+  flex-shrink: 0;
   margin-top: 8px;
   color: #404040;
   font-size: 7.5pt;

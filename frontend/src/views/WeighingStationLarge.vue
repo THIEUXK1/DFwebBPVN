@@ -1,8 +1,10 @@
 <template>
   <div class="wsl-root" ref="rootRef" :style="rootH ? { height: rootH + 'px' } : undefined">
     <!-- ===== BẢN SAO ĐÚNG TỈ LỆ CỦA UserForm `scaleform` =====
-         Khung 734.26 x 546.01 pt (= 979 x 728 px) đúng bằng form gốc; mọi control đặt tuyệt đối
-         theo toạ độ/kích thước thật đọc từ chính file .xlsm. Cả khung được thu/phóng bằng MỘT
+         Khung gốc 734.26 x 546.01 pt (= 979 x 728 px) đúng bằng form VBA; mọi control đặt tuyệt
+         đối theo toạ độ/kích thước thật đọc từ chính file .xlsm (riêng cột nút bên phải đã được
+         nới rộng theo BTN_ZOOM nên khổ ngang thực tế rộng hơn 734.26pt — xem chú thích BTN_COL_L).
+         Cả khung được thu/phóng bằng MỘT
          phép transform: scale() nên tỉ lệ giữa các control, cỡ chữ, độ dày viền không bao giờ
          lệch so với bản VBA dù màn hình to nhỏ thế nào. -->
     <div class="stage-wrap" :class="{ zoomed: heSoPhong > 1 }" ref="wrapRef">
@@ -10,7 +12,10 @@
            của phần tử, nên thiếu lớp này thì lúc phóng to > 1 mặt form tràn ra ngoài vùng cuộn và
            bị cắt mất mép. -->
       <div class="stage-fit" :style="{ width: `${STAGE_W * scale}px`, height: `${STAGE_H * scale}px` }">
-        <div class="stage" :style="{ transform: `scale(${scale})` }">
+        <div
+          class="stage"
+          :style="{ width: `${STAGE_W}px`, height: `${STAGE_H}px`, transform: `scale(${scale})` }"
+        >
 
         <!-- Nhãn tiêu đề cột -->
         <div v-for="h in HEADERS" :key="h.text" class="vv-head" :style="box(h)">{{ $t(h.text!) }}</div>
@@ -248,12 +253,9 @@
       </div>
     </div>
 
-    <!-- z-index 40: dưới lớp phủ bảng hàng đợi (.queue-overlay = 60) -->
     <!-- Hộp thoại thay alert/confirm — xem composables/useHopThoai.ts. Không dùng hộp thoại gốc
          vì Chrome đá màn hình khỏi F11 mỗi lần nó bật lên. -->
     <HopThoaiVba :thoai="thoai" @dong="dongThoai" />
-
-    <FullscreenButton variant="vba" :z-index="40" @change="refit" />
   </div>
 </template>
 
@@ -287,7 +289,6 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
-import FullscreenButton from '../components/FullscreenButton.vue';
 import HopThoaiVba from '../components/HopThoaiVba.vue';
 import { useHopThoai } from '../composables/useHopThoai';
 import { currentWorkstation, adoptLocalWorkstation } from '../services/workstation';
@@ -308,8 +309,35 @@ import {
  * BỐ CỤC GỐC — mọi số đo theo POINT, đúng như trong scaleform.frm
  * ========================================================================== */
 
-/** Khổ form gốc (pt). ClientWidth/ClientHeight trong VBFrame là twip, đã chia 20. */
-const FORM_W_PT = 734.26;
+/**
+ * Cột nút bên phải (từ x=551.99pt — DEL/PRINT/CHECK, bàn phím số, CLOSE, OUT/IN, CLEAR/SAVE/
+ * NEXT) được nới rộng thêm hệ số BTN_ZOOM quanh mép trái cột (BTN_COL_L) theo yêu cầu người dùng
+ * 2026-08-11: 6 NÚT CHÍNH (PRINT/CHECK/CLOSE/CLEAR/SAVE/NEXT) to ra cho dễ bấm (đeo găng tay), và
+ * cả form "vuông vức" gần khổ màn hình rộng hơn nên margin 2 bên do letterbox (cả khung vẫn
+ * scale() đồng nhất theo đúng tỉ lệ) cũng nhỏ lại. LƯỚI SỐ (RACK/DYE/WEIGHT/PROCESS,
+ * COLOR/MACHINE/CODE/LV/DELTA, cột x <= 552pt) không đổi. btn_del/btn_out/btn_in (bàn phím số +
+ * OUT/IN) không nằm trong yêu cầu nhưng vẫn nới CÙNG hệ số — nếu không thì cột nút có mép phải
+ * lởm chởm (numpad/OUT/IN dừng ở mép cũ trong khi 6 nút chính vươn ra mép mới), để hở một
+ * khoảng chữ nhật ngay giữa cột trông như vỡ layout.
+ */
+const BTN_COL_L = 551.99;
+const BTN_ZOOM = 1.8;
+/** l gốc -> l mới (nới quanh BTN_COL_L). Chỉ dùng cho box trong cột nút, KHÔNG dùng cho lưới số. */
+function widenX(l: number): number {
+  return BTN_COL_L + (l - BTN_COL_L) * BTN_ZOOM;
+}
+/** w gốc -> w mới (nới theo BTN_ZOOM). */
+function widenW(w: number): number {
+  return w * BTN_ZOOM;
+}
+
+/**
+ * Khổ form gốc (pt) là 734.26 x 546.01 — ClientWidth/ClientHeight trong VBFrame là twip, đã chia
+ * 20. FORM_W_PT ở đây đã KHÔNG còn đúng số đó nữa: mép phải mới của cột nút sau khi nới
+ * (widenX(732) — 732 = mép phải cột nút bản gốc) cộng đúng khoảng lề phải gốc (734.26-732=2.26pt)
+ * để form mới cũng có cùng lề phải như form gốc.
+ */
+const FORM_W_PT = widenX(732) + 2.26;
 const FORM_H_PT = 546.01;
 /** 1 pt = 4/3 px ở 96 dpi — khung dựng bằng px rồi thu/phóng bằng transform. */
 const PX = 4 / 3;
@@ -348,32 +376,46 @@ const LEGENDS: Box[] = [
   { l: 162, t: 441, w: 384.01, h: 8.4, f: 6.4, text: 'weighingStationLarge.legendDelta' },
 ];
 
-/** Bàn phím số: 3 cột x 3 hàng + phím 0. Trùng khít btn_1..btn_9, btn_0. */
+/**
+ * Bàn phím số: 3 cột x 3 hàng + phím 0. Trùng khít btn_1..btn_9, btn_0.
+ * l/w đã nhân BTN_ZOOM quanh mép BTN_COL_L (xem ghi chú ở FORM_W_PT) — t/h/f giữ nguyên, chỉ nới
+ * theo chiều ngang, không đổi cỡ chữ hay chiều cao phím.
+ */
 const NUMPAD: (Box & { d: string })[] = [
-  { d: '1', l: 551.99, t: 65.99, w: 48.02, h: 42.01, f: 16.2 },
-  { d: '2', l: 612, t: 65.99, w: 48.02, h: 42.01, f: 16.2 },
-  { d: '3', l: 672.01, t: 65.99, w: 48.02, h: 42.01, f: 16.2 },
-  { d: '4', l: 551.99, t: 114.01, w: 48.02, h: 42.01, f: 16.2 },
-  { d: '5', l: 612, t: 114.01, w: 48.02, h: 42.01, f: 16.2 },
-  { d: '6', l: 672.01, t: 114.01, w: 48.02, h: 42.01, f: 16.2 },
-  { d: '7', l: 551.99, t: 162, w: 48.02, h: 41.98, f: 16.2 },
-  { d: '8', l: 612, t: 162, w: 48.02, h: 41.98, f: 16.2 },
-  { d: '9', l: 672.01, t: 162, w: 48.02, h: 41.98, f: 16.2 },
-  { d: '0', l: 551.99, t: 209.99, w: 47.99, h: 42.01, f: 16.2 },
+  { d: '1', l: widenX(551.99), t: 65.99, w: widenW(48.02), h: 42.01, f: 16.2 },
+  { d: '2', l: widenX(612), t: 65.99, w: widenW(48.02), h: 42.01, f: 16.2 },
+  { d: '3', l: widenX(672.01), t: 65.99, w: widenW(48.02), h: 42.01, f: 16.2 },
+  { d: '4', l: widenX(551.99), t: 114.01, w: widenW(48.02), h: 42.01, f: 16.2 },
+  { d: '5', l: widenX(612), t: 114.01, w: widenW(48.02), h: 42.01, f: 16.2 },
+  { d: '6', l: widenX(672.01), t: 114.01, w: widenW(48.02), h: 42.01, f: 16.2 },
+  { d: '7', l: widenX(551.99), t: 162, w: widenW(48.02), h: 41.98, f: 16.2 },
+  { d: '8', l: widenX(612), t: 162, w: widenW(48.02), h: 41.98, f: 16.2 },
+  { d: '9', l: widenX(672.01), t: 162, w: widenW(48.02), h: 41.98, f: 16.2 },
+  { d: '0', l: widenX(551.99), t: 209.99, w: widenW(47.99), h: 42.01, f: 16.2 },
 ];
 
+// btn_del/btnPrint/btnCheck/btnClose/btn_out/btn_in/btnCLEAR/btnSAVE/btnNext: l/w đã nhân
+// BTN_ZOOM=1.8 quanh mép BTN_COL_L=551.99 (xem ghi chú FORM_W_PT) — 6 NÚT CHÍNH (PRINT/CHECK/
+// CLOSE/CLEAR/SAVE/NEXT) to ra theo đúng yêu cầu người dùng 2026-08-11; btn_del/btn_out/btn_in
+// nới CÙNG hệ số để mép phải cột nút thẳng hàng, không để hở khoảng trống giữa cột (xem ghi chú
+// dài ở FORM_W_PT). t/h/f giữ nguyên — không đổi chiều cao hay cỡ chữ, chỉ nới chiều ngang.
 const C: Record<string, Box> = {
-  btn_del:    { l: 551.99, t: 6.01, w: 48.02, h: 54, f: 16.2 },
+  btn_del:    { l: widenX(551.99), t: 6.01, w: widenW(48.02), h: 54, f: 16.2 },
   // 16.2pt thay cho 12pt của bản gốc: PRINT nằm giữa DEL và CHECK vốn đều 16.2pt, để nguyên 12pt
-  // thì riêng nó trông như bị hụt. Kích thước nút không đổi.
-  btnPrint:   { l: 605.99, t: 6.01, w: 60.01, h: 54, f: 16.2 },
-  btnCheck:   { l: 672.01, t: 6.01, w: 59.98, h: 54, f: 16.2 },
-  btnClose:   { l: 612, t: 209.99, w: 119.99, h: 42.01, f: 24 },
-  btn_out:    { l: 551.99, t: 258.01, w: 90, h: 83.99, f: 36 },
-  btn_in:     { l: 648, t: 258.01, w: 84.02, h: 83.99, f: 36 },
-  btnCLEAR:   { l: 551.99, t: 348.01, w: 180, h: 57.63, f: 36 },
-  btnSAVE:    { l: 551.99, t: 407.99, w: 180, h: 54, f: 36 },
-  btnNext:    { l: 551.99, t: 468, w: 180, h: 72, f: 36 },
+  // thì riêng nó trông như bị hụt. Kích thước nút không đổi (trước khi nới BTN_ZOOM).
+  btnPrint:   { l: widenX(605.99), t: 6.01, w: widenW(60.01), h: 54, f: 16.2 },
+  btnCheck:   { l: widenX(672.01), t: 6.01, w: widenW(59.98), h: 54, f: 16.2 },
+  btnClose:   { l: widenX(612), t: 209.99, w: widenW(119.99), h: 42.01, f: 24 },
+  btn_out:    { l: widenX(551.99), t: 258.01, w: widenW(90), h: 83.99, f: 36 },
+  btn_in:     { l: widenX(648), t: 258.01, w: widenW(84.02), h: 83.99, f: 36 },
+  // CLEAR/SAVE xếp TRÁI-PHẢI cùng một hàng thay vì chồng lên nhau như bản VBA (yêu cầu người
+  // dùng 2026-08-11), dùng đúng l/w của cặp OUT/IN ngay trên để hai hàng thẳng mép và thẳng khe.
+  // Chiều cao lấy ĐÚNG bằng OUT/IN (83.99) nên bốn nút thành một khối 2x2 đều tăm tắp. Phần dọc
+  // dôi ra sau khi gộp hai hàng cũ (57.63+54) dồn hết cho NEXT (72 -> 101.99) theo yêu cầu người
+  // dùng 2026-08-11 — NEXT là nút bấm nhiều nhất cả mẻ nên đáng được to nhất cột.
+  btnCLEAR:   { l: widenX(551.99), t: 348.01, w: widenW(90), h: 83.99, f: 36 },
+  btnSAVE:    { l: widenX(648), t: 348.01, w: widenW(84.02), h: 83.99, f: 36 },
+  btnNext:    { l: widenX(551.99), t: 438.01, w: widenW(180), h: 101.99, f: 36 },
   txt_COLOR:  { l: 11.99, t: 450, w: 90, h: 25.2, f: 16.2 },
   txt_MACHINE:{ l: 108, t: 450, w: 47.99, h: 25.2, f: 12 },
   txt_CODE:   { l: 11.99, t: 479.99, w: 90, h: 25.8, f: 16.2 },
@@ -548,10 +590,6 @@ function fitAll() {
   // và mặt form bị thu nhỏ hơn mức cần thiết đúng một nhịp.
   nextTick(fitStage);
 }
-
-// Bật/tắt Toàn màn hình: đợi trình duyệt vẽ lại xong khung mới rồi mới đo, không thì đo trúng
-// kích thước cũ.
-const refit = () => requestAnimationFrame(fitAll);
 
 /* ============================================================================
  * TRẠNG THÁI
@@ -1986,8 +2024,10 @@ onUnmounted(() => {
 
 .stage-wrap.zoomed .stage-fit { margin: 0 auto; }
 
-/* Mặt form: khổ CỐ ĐỊNH bằng đúng form VBA, chỉ thu/phóng bằng transform nên mọi tỉ lệ bên
-   trong không đổi. 979 x 728 px = 734.26 x 546.01 pt. */
+/* Mặt form: khổ CỐ ĐỊNH, chỉ thu/phóng bằng transform nên mọi tỉ lệ bên trong không đổi.
+   Bề rộng/cao KHÔNG đặt cứng ở đây mà bind từ STAGE_W/STAGE_H trong script: từ khi cột nút
+   được nới rộng (BTN_ZOOM) thì khổ form không còn là 979x728px của bản VBA gốc nữa, để số cũ
+   ở đây thì nền xám dừng ở mép cũ còn cụm nút vươn ra ngoài, nhìn như nút bị rơi khỏi form. */
 .stage-fit {
   position: relative;
   flex: 0 0 auto;
@@ -1997,8 +2037,6 @@ onUnmounted(() => {
   position: absolute;
   left: 0;
   top: 0;
-  width: 979px;
-  height: 728px;
   background: #eef1f6;
   border-radius: 16px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);

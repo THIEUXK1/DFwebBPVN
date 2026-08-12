@@ -2,7 +2,7 @@
   <!-- `zoom` phóng to CẢ màn hình cân theo nấc thợ chọn (xem doiCoManHinh). `--df-zoom` để các
        chỗ dùng vw/vh chia ngược lại — zoom nhân cả đơn vị theo màn hình, quên chia là hộp thoại
        rộng hơn màn hình thật. -->
-  <div class="ws2-root" :style="{ zoom: mucPhongTo, '--df-zoom': mucPhongTo }">
+  <div class="ws2-root" ref="rootRef" :style="{ zoom: zoomHienThi, '--df-zoom': zoomHienThi }">
     <!-- Form LUÔN hiện sẵn ngay khi vào màn, kể cả chưa có mẻ nào — đúng app VBA gốc: form
          mở là đứng đó với các ô trống, thao tác viên quét thẳng vào ô COLOR để nạp đơn
          (txt_color_AfterUpdate). Không còn màn quét riêng chắn phía trước. -->
@@ -76,7 +76,7 @@
         <div class="ws2-buttons">
           <!-- onClear() có ngoặc: nếu để "onClear" trần thì Vue truyền MouseEvent vào tham số
                skipConfirm (truthy) -> bỏ qua luôn hộp xác nhận. -->
-          <button class="vba-btn big danger" @click="onClear()" :disabled="saving">CLEAR</button>
+          <button class="vba-btn big danger" @click="onClear()" :disabled="saving">{{ $t('weighingStationV2.btnClear') }}</button>
           <!-- Không khoá theo "đã cân ô nào chưa": VBA cho SAVE bất cứ lúc nào, mọi dòng có
                WEIGHT mục tiêu đều được ghi (ô chưa cân -> REJECTED).
                Cũng KHÔNG khoá theo "đã có đơn chưa" (2026-08-02): cân tay lưu được, và chính điều
@@ -84,15 +84,15 @@
                `onSave` nói rõ từng trường hợp (mất tín hiệu / chưa đứng yên / cân rỗng) — nói ra
                được vẫn hơn một cái nút xám không giải thích gì. -->
           <button class="vba-btn big primary" @click="onSave" :disabled="saving">
-            {{ saving ? '…' : 'SAVE' }}
+            {{ saving ? '…' : $t('weighingStationV2.btnSave') }}
           </button>
           <!-- KHÔNG khoá theo "đã có đơn chưa": bấm NEXT trên form trắng là dùng màn hình như một
                cái cân thường (yêu cầu 2026-08-02). Không lưu gì cả, xem cảnh báo dưới lưới. -->
-          <button class="vba-btn big accent" @click="onNext" :disabled="saving || !canPressNext">NEXT</button>
-          <button class="vba-btn sm" @click="printSlip()">PRINT</button>
+          <button class="vba-btn big accent" @click="onNext" :disabled="saving || !canPressNext">{{ $t('weighingStationV2.btnNext') }}</button>
+          <button class="vba-btn sm" @click="printSlip()">{{ $t('weighingStationV2.btnPrint') }}</button>
           <!-- CHECK mở LỊCH SỬ CÂN sang tab mới (yêu cầu 07/08/2026) — xem moLichSuCan(). -->
-          <button class="vba-btn sm" @click="moLichSuCan()">CHECK</button>
-          <button class="vba-btn wide" @click="onClose">CLOSE</button>
+          <button class="vba-btn sm" @click="moLichSuCan()">{{ $t('weighingStationV2.btnCheck') }}</button>
+          <button class="vba-btn wide" @click="onClose">{{ $t('weighingStationV2.btnClose') }}</button>
         </div>
       </div>
 
@@ -157,9 +157,16 @@
 
         <!-- Cỡ hiển thị — để ở đây thay vì trong một trang cài đặt: thợ đứng cân, đeo găng, cần
              chỉnh được ngay tại chỗ khi đổi ca hoặc đổi người. -->
-        <span class="zoom-ctl" :title="$t('weighingStationV2.zoomCtlTitle')">
+        <span
+          class="zoom-ctl"
+          :title="zoomHienThi < mucPhongTo - 0.001
+            ? $t('weighingStationV2.zoomCtlAutoFitTitle', { percent: Math.round(mucPhongTo * 100) })
+            : $t('weighingStationV2.zoomCtlTitle')"
+        >
           <button class="vba-btn tiny" :disabled="mucPhongTo <= MUC_PHONG[0]" @click="doiCoManHinh(-1)">A−</button>
-          <b>{{ Math.round(mucPhongTo * 100) }}%</b>
+          <!-- Hiện đúng số % ĐANG VẼ RA MÀN, không phải nấc thợ chọn: lệch hai số này (khi màn
+               hình không đủ chỗ, xem doTranVuaKhit) mà vẫn hiện nấc cũ thì thợ tưởng máy bấm sai. -->
+          <b :class="{ 'zoom-shrunk': zoomHienThi < mucPhongTo - 0.001 }">{{ Math.round(zoomHienThi * 100) }}%</b>
           <button class="vba-btn tiny" :disabled="mucPhongTo >= MUC_PHONG[MUC_PHONG.length - 1]" @click="doiCoManHinh(1)">A+</button>
         </span>
 
@@ -197,13 +204,11 @@
         </template>
       </p>
       <p v-if="parallelNotice" class="ws2-notice">ℹ {{ parallelNotice }}</p>
+      <!-- Bỏ 2 đoạn gợi ý thao tác tĩnh (hintNoJob.../hintJob..., yêu cầu 12/08/2026) — bảng
+           RACK/DYE CODE/WEIGHT/PROCESS là item flex:1 duy nhất trong cột nên tự dài xuống chiếm
+           đúng phần cao vừa giải phóng, không cần sửa gì thêm ở CSS. Vẫn giữ 2 dòng cảnh báo
+           thật sự cần thiết (mẻ dở dang/lỗi) ở trên. -->
       <p v-if="errorMsg" class="ws2-error">❌ {{ errorMsg }}</p>
-      <p v-else-if="!activeJob" class="ws2-hint">
-        {{ $t('weighingStationV2.hintNoJobP1') }}<strong>COLOR</strong>{{ $t('weighingStationV2.hintNoJobP2') }}<strong>{{ $t('weighingStationV2.hintNoJobStrong') }}</strong>{{ $t('weighingStationV2.hintNoJobP3') }}<strong>RAW</strong>{{ $t('weighingStationV2.hintNoJobP4') }}<strong>SAVE</strong>{{ $t('weighingStationV2.hintNoJobP5') }}<strong>NEXT</strong>{{ $t('weighingStationV2.hintNoJobP6') }}
-      </p>
-      <p v-else class="ws2-hint">
-        {{ $t('weighingStationV2.hintJobP1') }}<strong>NEXT</strong>{{ $t('weighingStationV2.hintJobP2') }}<strong>SAVE</strong>{{ $t('weighingStationV2.hintJobP3') }}
-      </p>
 
     <!-- Bảng hàng đợi — chỉ mở khi thợ chủ động bấm, không tự bật lên chắn màn hình cân. -->
     <div v-if="showQueue" class="queue-overlay" @click.self="showQueue = false">
@@ -265,8 +270,6 @@
     <!-- Hộp thoại thay alert/confirm — xem composables/useHopThoai.ts. -->
     <HopThoaiVba :thoai="thoai" @dong="dongThoai" />
 
-    <!-- z-index 40: dưới lớp phủ bảng hàng đợi (.queue-overlay = 50) -->
-    <FullscreenButton variant="vba" :z-index="40" />
   </div>
 </template>
 
@@ -289,7 +292,6 @@ import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import VbaRackGrid from '../components/weighing/VbaRackGrid.vue';
-import FullscreenButton from '../components/FullscreenButton.vue';
 import HopThoaiVba from '../components/HopThoaiVba.vue';
 import { useHopThoai } from '../composables/useHopThoai';
 import { currentWorkstation, adoptLocalWorkstation } from '../services/workstation';
@@ -1440,6 +1442,71 @@ function doiCoManHinh(buoc: number) {
   localStorage.setItem(KHOA_MUC_PHONG, String(moi));
 }
 
+/**
+ * Tự co zoom xuống đúng vừa khít màn hình khi nấc thợ chọn (`mucPhongTo`) làm nội dung tràn khỏi
+ * khung hình thật — yêu cầu 12/08/2026 "màn hình tự thích nghi, không cuộn chuột nữa".
+ *
+ * KHÔNG sửa `mucPhongTo`/localStorage: đó vẫn là nấc thợ đã chọn ở nút A-/A+. `zoomHienThi` mới
+ * là số thật sự đem ra vẽ (`= min(mucPhongTo, tranVuaKhit)`) — màn hình rộng ra (đổi màn, tắt bớt
+ * dòng cảnh báo...) thì tự nới lại đúng nấc đã chọn, không kẹt mãi ở mức đã co.
+ *
+ * Vì sao đo bằng `getBoundingClientRect()` chứ không phải `offsetHeight`: `zoom` đặt ngay trên
+ * chính phần tử này — offsetHeight của nó đo trong hệ toạ độ CỤC BỘ (không nhân zoom), còn
+ * getBoundingClientRect() trả về kích thước ĐÃ VẼ ra màn hình thật (có nhân zoom). Suy ngược
+ * "cao tự nhiên ở zoom=1" bằng cách chia lại cho zoom ĐANG DÙNG lúc đo.
+ */
+const rootRef = ref<HTMLElement | null>(null);
+const tranVuaKhit = ref(Infinity);
+const zoomHienThi = computed(() => Math.min(mucPhongTo.value, tranVuaKhit.value));
+
+function doTranVuaKhit() {
+  const el = rootRef.value;
+  if (!el) return;
+  const caoVe = el.getBoundingClientRect().height;
+  const zoomLucDo = zoomHienThi.value;
+  if (!(caoVe > 0) || !(zoomLucDo > 0)) return;
+
+  // Khung THẬT SỰ cuộn là `.content-container` của AppLayout.vue (cha trực tiếp của div này khi
+  // đăng nhập bình thường — xem `<slot>` trong AppLayout.vue), KHÔNG phải `window.innerHeight`:
+  // topbar 70px + padding 24px x2 của khung đó đã ăn mất gần 120px, dùng thẳng innerHeight sẽ để
+  // hụt đúng khoảng ấy và trang vẫn cuộn dù đã "vừa khít" theo phép tính. Không có cha (trường hợp
+  // lạ) thì mới rơi về innerHeight.
+  const caoKhungCha = el.parentElement?.clientHeight;
+  const caoManHinh = caoKhungCha && caoKhungCha > 0 ? caoKhungCha : window.innerHeight;
+
+  const caoTuNhien = caoVe / zoomLucDo;
+  // 0.5% chừa hao làm tròn px — thiếu chừa này thì có khi vẫn thừa đúng 1px và sinh thanh cuộn.
+  const tran = (caoManHinh / caoTuNhien) * 0.995;
+
+  // Ngưỡng đổi nhỏ nhất trước khi ghi lại: không có ngưỡng này, mỗi lần zoomHienThi đổi làm
+  // ResizeObserver bắn lại, rồi lại đổi tiếp một chút do sai số làm tròn — rung giật liên tục.
+  // Lần đo ĐẦU TIÊN (còn Infinity) phải luôn ghi — Infinity làm phép so sánh dưới đây thành NaN
+  // (Infinity/Infinity) và NaN > 0.003 luôn false, tức là chưa từng co lần nào nếu bỏ qua nhánh này.
+  const chuaDoLanNao = !isFinite(tranVuaKhit.value);
+  if (chuaDoLanNao || Math.abs(tran - tranVuaKhit.value) / tranVuaKhit.value > 0.003) {
+    tranVuaKhit.value = Math.max(0.5, Math.min(MUC_PHONG[MUC_PHONG.length - 1], tran));
+  }
+}
+
+let quanSatCo: ResizeObserver | null = null;
+
+onMounted(() => {
+  // nextTick chưa chắc đủ: còn phải chờ trình duyệt vẽ xong khung mới rồi mới đo được đúng.
+  nextTick(() => requestAnimationFrame(doTranVuaKhit));
+  window.addEventListener('resize', doTranVuaKhit);
+  if (rootRef.value && typeof ResizeObserver !== 'undefined') {
+    // Bắt luôn các lần đổi CAO do đổi nội dung (dòng cảnh báo/hint hiện-ẩn, nạp đơn mới...),
+    // không chỉ lúc đổi kích thước cửa sổ.
+    quanSatCo = new ResizeObserver(() => doTranVuaKhit());
+    quanSatCo.observe(rootRef.value);
+  }
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', doTranVuaKhit);
+  quanSatCo?.disconnect();
+});
+
 /* ===================== HÀNG ĐỢI GỬI MẺ ===================== */
 
 // Bảng chỉ đọc lại danh sách khi thực sự cần nhìn (mở bảng, hoặc số lượng đổi) — không đọc
@@ -1562,9 +1629,12 @@ onUnmounted(() => {
 .ws2-root {
   background: #eef1f6;
   color: #0d1520;
-  /* Chia cho mức phóng: `zoom` nhân mọi chiều dài bên trong, để nguyên 100vh là nền cao hơn màn
-     hình đúng bằng hệ số phóng và trang luôn có thanh cuộn dọc thừa. */
-  min-height: calc(100vh / var(--df-zoom, 1));
+  /* `100%` chứ không phải `100vh`: cha trực tiếp là `.content-container` của AppLayout.vue, đã
+     nhỏ hơn viewport một khoảng topbar + padding — dùng 100vh thì nền tràn xuống dưới khung cha,
+     tự nó lại sinh thêm phần phải cuộn dù bảng 9 dòng đã vừa khít (xem doTranVuaKhit()).
+     Vẫn phải chia cho mức phóng: `zoom` nhân mọi chiều dài bên trong, không chia thì nền cao hơn
+     khung cha đúng bằng hệ số phóng. */
+  min-height: calc(100% / var(--df-zoom, 1));
   /* Lề và khoảng cách bóp lại (07/08/2026, yêu cầu "đẩy thông tin ở trên cao lên"): mỗi px tiết
      kiệm ở đây là một px BẢNG 9 DÒNG được đẩy lên — mà bảng mới là thứ thợ nhìn cả ca. */
   padding: 10px;
@@ -1585,13 +1655,13 @@ onUnmounted(() => {
 /* Bảng 9 dòng ăn HẾT phần cao còn lại sau băng trên / dải RAW / dòng gợi ý — xem VbaRackGrid.
    `min-height: 0` bắt buộc, nếu không thì trên màn thấp bảng không chịu co và tràn ra ngoài.
 
-   Trần 700px (~76px/dòng): không có nó thì trên màn 4K ở mức phóng 100% mỗi dòng cao hơn 200px,
-   bảng thành 4 dòng chữ khổng lồ. Chạm trần rồi thì phần thừa nằm dưới đáy trang, NGOÀI khung
-   bảng — chấp nhận được, hơn là một mảng trắng nằm bên trong khung. */
+   Bỏ trần 700px cũ (yêu cầu 12/08/2026 "bảng chưa chạm đáy màn"): cỡ chữ mỗi ô đã tự chặn trần
+   riêng bằng clamp() trong VbaRackGrid.vue (không quá 22px/30px bất kể dòng cao bao nhiêu), nên
+   bỏ trần ở đây không làm chữ phình to — chỉ khiến dòng cao thêm khoảng trắng đều nhau, và bảng
+   giờ luôn chạm đáy khung thay vì để lại một dải trống dưới đáy trang. */
 .ws2-grid {
   flex: 1 1 auto;
   min-height: 0;
-  max-height: 700px;
 }
 
 /* ===== Băng trên ===== */
@@ -2080,6 +2150,12 @@ onUnmounted(() => {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: #56617a;
+}
+
+/* Đang bị doTranVuaKhit() ép nhỏ hơn nấc thợ chọn (không đủ chỗ) — đổi màu để không âm thầm hiện
+   một số % lạ mà không giải thích, chi tiết đầy đủ nằm ở tooltip title của .zoom-ctl. */
+.zoom-ctl b.zoom-shrunk {
+  color: #b25e00;
 }
 
 .queue-head {

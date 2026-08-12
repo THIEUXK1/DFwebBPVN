@@ -132,6 +132,8 @@ const routes = [
   //
   // 2 trạm cân (/weighing-station-v2, /weighing-station-large) CỐ Ý giữ requiresAuth:true —
   // phải lưu được người cân và tài khoản duyệt override dung sai (CLAUDE.md mục 5).
+  // Cả 2 route mở thẳng vẫn qua được vì có AUTO_LOGIN_ROUTES ở trên tự đăng nhập ngầm bằng
+  // tài khoản `cannho`/`canto` thật — không phải bỏ auth, xem chú thích tại AUTO_LOGIN_ROUTES.
   {
     path: '/production-batches/grid',
     name: 'ProductionBatchesGrid',
@@ -212,6 +214,15 @@ const routes = [
     path: '/weighing-history',
     name: 'WeighingHistory',
     component: () => import('../views/WeighingHistory.vue'),
+    meta: { requiresAuth: true }
+  },
+  // Bản "giao diện cổ điển" (Windows Classic/MSForms) của route trên — yêu cầu 2026-08-11.
+  // Route riêng (không phải toggle tại chỗ) để dễ so sánh/rollback, cùng cấu trúc
+  // /chemical-call vs /chemical-call/classic. Xem WeighingHistoryClassic.vue.
+  {
+    path: '/weighing-history/classic',
+    name: 'WeighingHistoryClassic',
+    component: () => import('../views/WeighingHistoryClassic.vue'),
     meta: { requiresAuth: true }
   },
   {
@@ -331,13 +342,30 @@ const router = createRouter({
   routes
 });
 
-router.beforeEach((to, _from, next) => {
+// Tự đăng nhập ngầm cho 2 trạm cân khi mở thẳng URL chưa có phiên nào (yêu cầu 2026-08-12:
+// "vào không cần đăng nhập, giao diện y như tài khoản cân nhỏ/cân to"). ĐÂY VẪN LÀ 2 tài khoản
+// thật `cannho`/`canto` (xem `backend/database/seeders/ScaleOperatorUsersSeeder.php`) — không
+// đổi API sang public, không mất truy vết Audit Log override dung sai (CLAUDE.md mục 5). Chỉ bỏ
+// đúng bước bấm nút đăng nhập; sau khi login ngầm, mọi khoá "1 máy tính = 1 công đoạn" (WS-001)
+// vẫn áp dụng y như người dùng gõ tay username/password. Đổi mật khẩu 2 tài khoản này ở seeder
+// thì phải sửa lại đúng chỗ này.
+const AUTO_LOGIN_ROUTES: Record<string, { username: string; password: string }> = {
+  '/weighing-station-v2': { username: 'cannho', password: 'cannho@123' },
+  '/weighing-station-large': { username: 'canto', password: 'canto@123' },
+};
+
+router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore();
   authStore.initialize();
 
   if (to.name === 'KioskLanding') {
     next();
     return;
+  }
+
+  const autoLogin = AUTO_LOGIN_ROUTES[to.path];
+  if (autoLogin && !authStore.isAuthenticated) {
+    await authStore.login(autoLogin.username, autoLogin.password);
   }
 
   // Đã bỏ chặn bắt buộc "/workstation-setup" (nhập registration token do Admin cấp) —

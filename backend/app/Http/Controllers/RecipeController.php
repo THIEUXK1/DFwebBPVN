@@ -124,4 +124,29 @@ class RecipeController extends Controller
         $recipe = Recipe::with(['versions.materials.material', 'versions.parameters'])->findOrFail($id);
         return response()->json($recipe);
     }
+
+    /**
+     * Tra công thức ĐÚNG BẰNG theo cặp (color_code, product_code) — dùng cho màn hình xem nhanh
+     * (vd. bấm vào 1 mẻ ở SENT LOG). Khác với index(): ở đây khớp CHÍNH XÁC cả hai trường, không
+     * phải LIKE từng trường riêng lẻ, vì store() cũng coi (color_code, product_code) là khóa duy
+     * nhất của một Recipe (xem RecipeController::store).
+     */
+    public function lookup(Request $request)
+    {
+        $request->validate([
+            'color_code' => 'required|string',
+            'product_code' => 'required|string',
+        ]);
+
+        $recipe = Recipe::with(['latestVersion.materials.material', 'latestVersion.parameters'])
+            ->where('color_code', $request->input('color_code'))
+            ->where('product_code', $request->input('product_code'))
+            ->first();
+
+        if (!$recipe) {
+            return response()->json(['message' => 'Recipe not found for this color/product code.'], 404);
+        }
+
+        return response()->json($recipe);
+    }
 }

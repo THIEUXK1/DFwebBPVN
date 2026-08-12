@@ -1,9 +1,12 @@
 // src/locales/modules/WeighingStationLarge.ts — /weighing-station-large (TRẠM CÂN TO ≥6kg).
 //
 // vi = bản sao Y NGUYÊN chữ đang hiển thị trong WeighingStationLarge.vue (không diễn đạt lại).
-// Nhiều nhãn/nút (RACK, DYE CODE, WEIGHT, PROCESS, DEL, PRINT, CHECK, CLOSE, OUT, IN, CLEAR, SAVE,
-// NEXT, CODE, LV, RAW, COLOR, MACHINE) là bản sao Y HỆT caption của UserForm `scaleform` gốc (đã là
-// tiếng Anh sẵn) — giữ nguyên ở vi/en, chỉ thêm bản zh cho người vận hành đọc tiếng Trung.
+// Nhãn cột/nút phụ (RACK, DYE CODE, WEIGHT, PROCESS, DEL, OUT, IN, CODE, LV, RAW, COLOR, MACHINE)
+// vẫn là bản sao Y HỆT caption của UserForm `scaleform` gốc (đã là tiếng Anh sẵn) — giữ nguyên ở
+// vi/en. Trong 6 nút chính, 4 nút CLEAR/SAVE/NEXT/CLOSE đã dịch sang tiếng Việt (XOÁ/LƯU/TIẾP/
+// ĐÓNG) theo yêu cầu người dùng 2026-08-11 (đồng bộ với /weighing-station-v2). Riêng PRINT và
+// CHECK người dùng yêu cầu GIỮ NGUYÊN tiếng Anh (không đổi thành "IN PHIẾU"/"TRA CỨU" nữa) —
+// xem btnClear/btnSave/btnNext/btnPrint/btnCheck/btnClose bên dưới.
 export default {
   vi: {
     headerRack: 'RACK',
@@ -17,12 +20,12 @@ export default {
     btnDel: 'DEL',
     btnPrint: 'PRINT',
     btnCheck: 'CHECK',
-    btnClose: 'CLOSE',
+    btnClose: 'ĐÓNG',
     btnOut: 'OUT',
     btnIn: 'IN',
-    btnClear: 'CLEAR',
-    btnSave: 'SAVE',
-    btnNext: 'NEXT',
+    btnClear: 'XOÁ',
+    btnSave: 'LƯU',
+    btnNext: 'TIẾP',
 
     scanPlaceholder: 'quét QR',
     capCode: 'CODE',
@@ -70,8 +73,8 @@ export default {
 
     tipEdited: 'Mục tiêu đã sửa tay. Số in trên tem: {value}',
     tipEditedEmpty: '(trống)',
-    tipEditable: 'Sửa được mục tiêu tới khi bấm NEXT lần đầu (bàn phím số bên phải gõ được vào đây).',
-    tipLocked: 'Đã bắt đầu cân — không sửa mục tiêu giữa mẻ nữa. Bấm CLEAR rồi quét lại nếu cần đổi.',
+    tipEditable: 'Sửa được mục tiêu tới khi bấm TIẾP lần đầu (bàn phím số bên phải gõ được vào đây).',
+    tipLocked: 'Đã bắt đầu cân — không sửa mục tiêu giữa mẻ nữa. Bấm XOÁ rồi quét lại nếu cần đổi.',
 
     signalLostMsg: '⚠ MẤT TÍN HIỆU CÂN — kiểm tra Agent / dây cân',
     signalLostAgeSuffix: ' (số cân cũ {sec}s)',
@@ -84,25 +87,25 @@ export default {
     rackCopySuccess: 'Đã chép lô 1 ra clipboard — dán sang hệ pha màu bằng Ctrl+V.',
     rackCopyFail: 'Trình duyệt không cho chép clipboard — chép tay từ dải thông tin bên dưới.',
 
-    resumeMismatch: 'Đĩa cân đã thay đổi trong lúc tải lại trang ({from} → {to}). Các ô đã cân vẫn còn nguyên — bấm NEXT để cân tiếp ô kế và lấy bì mới.',
+    resumeMismatch: 'Đĩa cân đã thay đổi trong lúc tải lại trang ({from} → {to}). Các ô đã cân vẫn còn nguyên — bấm TIẾP để cân tiếp ô kế và lấy bì mới.',
 
     noWorkstationDialog: 'Máy này CHƯA nhận được trạm cân nào nên chưa quét được.\n\nXem cột bên phải: đang hiện "chưa gán trạm" thay vì mã trạm.\n\nKiểm tra Agent "Cân to" (service DFAgentLarge) còn chạy trên chính máy này không, đợi khoảng một phút cho nó báo danh, rồi tải lại trang.',
     scanParseFail: 'Mã quét thiếu COLOR hoặc CODE nên không mở được mẻ — kiểm tra lại đầu đọc hoặc mã tem. (Thiếu MACHINE/LV thì vẫn nạp được, để trống ô đó.)\n\nChuỗi đọc được: {token}',
     scanOpenFail: 'Không thể mở lệnh sản xuất này.',
 
-    clearConfirmUnsaved: 'CLEAR sẽ xoá sạch màn hình, kể cả số đã cân nhưng CHƯA bấm SAVE.\n\nVẫn xoá?',
-    clearConfirmOrder: 'CLEAR sẽ xoá đơn đang mở khỏi màn hình. Quét lại mã QR để cân từ đầu.\n\nVẫn xoá?',
+    clearConfirmUnsaved: 'XOÁ sẽ xoá sạch màn hình, kể cả số đã cân nhưng CHƯA bấm LƯU.\n\nVẫn xoá?',
+    clearConfirmOrder: 'XOÁ sẽ xoá đơn đang mở khỏi màn hình. Quét lại mã QR để cân từ đầu.\n\nVẫn xoá?',
 
     saveNoRows: 'Không có dòng nào để lưu.',
     saveSignalLost: 'Mất tín hiệu cân — số đang hiện là số cũ, không lưu được. Kiểm tra Agent / dây cân.',
-    saveNotStable: 'Số cân chưa đứng yên — chờ cân ổn định rồi bấm SAVE lại.',
-    saveEmptyScale: 'Cân đang rỗng (0.00) — đặt vật tư lên cân rồi bấm SAVE.',
+    saveNotStable: 'Số cân chưa đứng yên — chờ cân ổn định rồi bấm LƯU lại.',
+    saveEmptyScale: 'Cân đang rỗng (0.00) — đặt vật tư lên cân rồi bấm LƯU.',
     unweighedConfirm: 'Còn {count} dòng CHƯA CÂN. Lưu bây giờ sẽ chốt các dòng đó là KHÔNG ĐẠT và không cân lại được nữa.\n\nVẫn lưu?',
     manualBatchLabel: 'Cân tay · {count} dòng',
     serverRejectFallback: 'Máy chủ từ chối mẻ này (HTTP {status}).',
     saveRejected: 'Máy chủ TỪ CHỐI mẻ này: {reason} Phiếu đã in, mẻ vẫn nằm trong hàng đợi.',
     saveQueuedOffline: 'Chưa gửi được lên máy chủ — mẻ đang nằm trong HÀNG ĐỢI của máy này và sẽ tự gửi khi có mạng. Phiếu đã in. Cứ quét mẻ tiếp theo bình thường, ĐỪNG xoá dữ liệu trình duyệt.',
-    saveFailedFallback: 'Không lưu được mẻ cân. Số đã cân vẫn còn trên màn hình — thử SAVE lại.',
+    saveFailedFallback: 'Không lưu được mẻ cân. Số đã cân vẫn còn trên màn hình — thử LƯU lại.',
 
     printSlipFail: 'Không thể in phiếu cân.',
   },
