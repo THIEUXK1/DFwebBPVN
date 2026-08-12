@@ -63,6 +63,9 @@ Route::get('/public/bpdb-machines-gantt/lot-total', [BpdbMachineController::clas
 // Cùng trang Gantt public: toàn bộ thông tin mẻ trong MES (khách, đơn/MO, công thức, SL/khối
 // lượng, người+giờ, ngày giao, ghi chú SX...) — gọi khi bấm vào 1 thanh đã ghép được với MES.
 Route::get('/public/bpdb-machines-gantt/mes-batch', [BpdbMachineController::class, 'mesBatch']);
+// Bảng liệu của mẻ: SONG SONG công thức MES (thuốc nhuộm + hóa chất, G/L) và cân thật BPDB
+// (rack + gram từ SUP_Storico) — gọi khi bấm vào 1 thanh Gantt.
+Route::get('/public/bpdb-machines-gantt/batch-recipe', [BpdbMachineController::class, 'batchRecipe']);
 // Chỉ dùng bởi view TEST /bpdb-machines/gantt-test (KHÔNG dùng bởi Gantt production ở trên):
 // trình duyệt tự phát hiện 1 mẻ vừa chuyển "đang chạy" (diff newlyAppearedRunningIds) rồi gọi
 // vào đây để bắn broadcast, cho /machine-id-board nhấp nháy đỏ đúng mã máy — xem
@@ -296,6 +299,7 @@ Route::middleware(KioskAuthenticationMiddleware::class)->group(function () {
         Route::get('/admin/bpdb/machines/status-summary', [BpdbMachineController::class, 'statusSummary']);
         Route::get('/admin/bpdb/machines/gantt', [BpdbMachineController::class, 'gantt']);
         Route::get('/admin/bpdb/machines/gantt/mes-batch', [BpdbMachineController::class, 'mesBatch']);
+        Route::get('/admin/bpdb/machines/gantt/batch-recipe', [BpdbMachineController::class, 'batchRecipe']);
         Route::get('/admin/bpdb/machines/{machineCode}/status', [BpdbMachineController::class, 'show']);
         Route::get('/admin/bpdb/machines/{machineCode}/timeline', [BpdbMachineController::class, 'timeline']);
 

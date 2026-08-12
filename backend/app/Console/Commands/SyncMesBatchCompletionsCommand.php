@@ -4,6 +4,7 @@
 namespace App\Console\Commands;
 
 use App\Models\MesBatchCompletion;
+use App\Models\MesFormula;
 use App\Services\Mes\MesSedoClient;
 use App\Support\MachineCodeNormalizer;
 use Illuminate\Console\Command;
@@ -62,6 +63,7 @@ class SyncMesBatchCompletionsCommand extends Command
 
         $now = now();
         $payload = [];
+        $pfnos = [];
         $skippedNonVd = 0;
         $skippedNoKey = 0;
 
@@ -107,6 +109,12 @@ class SyncMesBatchCompletionsCommand extends Command
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
+
+            // Gom số công thức để đồng bộ bảng liệu (mes_formulas) sau khi ghi mẻ xong.
+            $pfno = trim((string) ($row['pfmPfno'] ?? ''));
+            if ($pfno !== '') {
+                $pfnos[] = $pfno;
+            }
         }
 
         $this->line(sprintf(
@@ -153,7 +161,98 @@ class SyncMesBatchCompletionsCommand extends Command
 
         $this->info('Đã ghi ' . count($payload) . ' mẻ VD vào mes_batch_completions.');
 
+        // Đồng bộ công thức (thuốc nhuộm + hóa chất) cho các mẻ vừa ghi — chỉ lấy công thức
+        // còn thiếu/cũ để giới hạn số lần gọi MES mỗi lần chạy. Bọc riêng: lỗi ở đây (vd bảng
+        // mes_formulas chưa migrate) KHÔNG được làm hỏng việc ghi mẻ vốn đã thành công ở trên.
+        try {
+            $this->syncFormulas($client, $pfnos);
+        } catch (Throwable $e) {
+            $this->warn('Đồng bộ công thức lỗi (bỏ qua): ' . $e->getMessage());
+            Log::warning('mes:sync-batch-completions đồng bộ công thức lỗi tổng', ['error' => $e->getMessage()]);
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Đồng bộ công thức MES (mesPfM) cho các pfmPfno cho trước vào bảng mes_formulas.
+     * Chỉ gọi MES cho công thức CHƯA có hoặc đã đồng bộ quá 7 ngày — công thức gần như bất
+     * biến nên sau lần đổ đầu, mỗi lần chạy chỉ còn vài mã mới.
+     *
+     * @param array<int,string> $pfnos
+     */
+    private function syncFormulas(MesSedoClient $client, array $pfnos): void
+    {
+        $pfnos = array_values(array_filter(array_unique($pfnos)));
+        if ($pfnos === []) {
+            return;
+        }
+
+        $fresh = MesFormula::whereIn('pfm_pfno', $pfnos)
+            ->where('synced_at', '>=', now()->subDays(7))
+            ->pluck('pfm_pfno')
+            ->all();
+        $todo = array_values(array_diff($pfnos, $fresh));
+
+        $this->info(sprintf(
+            'Công thức: %d mã cần đồng bộ (bỏ qua %d mã đã mới trong 7 ngày).',
+            count($todo),
+            count($pfnos) - count($todo)
+        ));
+
+        if ($todo === []) {
+            return;
+        }
+
+        $now = now();
+        $ok = 0;
+        $miss = 0;
+
+        foreach ($todo as $pfno) {
+            try {
+                $f = $client->fetchFormulaByPfno($pfno);
+            } catch (Throwable $e) {
+                Log::warning('mes:sync-batch-completions đồng bộ công thức lỗi', [
+                    'pfmPfno' => $pfno,
+                    'error' => $e->getMessage(),
+                ]);
+                continue;
+            }
+
+            if ($f === null) {
+                $miss++;
+                continue;
+            }
+
+            $dye = 0;
+            $aux = 0;
+            foreach ($f['materials'] as $m) {
+                if (($m['kind'] ?? '') === 'aux') {
+                    $aux++;
+                } else {
+                    $dye++;
+                }
+            }
+
+            MesFormula::updateOrCreate(
+                ['pfm_pfno' => $pfno],
+                [
+                    'formula_id' => $this->str($f['formulaId'] ?? null, 64),
+                    'color_code' => $this->str($f['colorCode'] ?? null, 100),
+                    'article_code' => $this->str($f['articleCode'] ?? null, 100),
+                    'machine_code' => $this->str($f['machineCode'] ?? null, 32),
+                    'dye_count' => $dye,
+                    'aux_count' => $aux,
+                    'materials' => $f['materials'],
+                    'raw' => $f['raw'],
+                    'source' => 'MES_MESPFM',
+                    'synced_at' => $now,
+                ]
+            );
+            $ok++;
+        }
+
+        $this->info(sprintf('Công thức đã đồng bộ: %d ghi, %d không tìm thấy.', $ok, $miss));
     }
 
     /** Cắt độ dài an toàn để không vỡ cột varchar; trả null nếu rỗng. */

@@ -188,6 +188,51 @@
         <button type="button" class="gantt-detail-close" :aria-label="$t('common.close')" @click="mesPanelOpen = false">✕</button>
       </div>
       <div class="gantt-mes-panel-body">
+        <!-- Bảng liệu: SONG SONG công thức MES (nồng độ) + cân thật BPDB (rack + gram) -->
+        <section class="gantt-recipe">
+          <div class="gantt-recipe-title">{{ $t('bpdbMachinesGantt.recipeTitle') }}</div>
+          <div v-if="batchRecipe?.loading" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.recipeLoading') }}</div>
+          <template v-else>
+            <div class="gantt-recipe-sub">{{ $t('bpdbMachinesGantt.recipeMesTitle') }}</div>
+            <template v-if="batchRecipe?.mesFormula && (batchRecipe.mesFormula.dyes.length || batchRecipe.mesFormula.aux.length)">
+              <template v-if="batchRecipe.mesFormula.dyes.length">
+                <div class="gantt-recipe-group">{{ $t('bpdbMachinesGantt.recipeDyes') }}</div>
+                <table class="gantt-recipe-table">
+                  <thead><tr><th>{{ $t('bpdbMachinesGantt.recipeColCode') }}</th><th>{{ $t('bpdbMachinesGantt.recipeColName') }}</th><th class="num">{{ $t('bpdbMachinesGantt.recipeColAmount') }}</th></tr></thead>
+                  <tbody>
+                    <tr v-for="(m, i) in batchRecipe.mesFormula.dyes" :key="'d' + i">
+                      <td>{{ m.code }}</td><td class="name">{{ m.name }}</td><td class="num">{{ m.amount }} {{ m.unit }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </template>
+              <template v-if="batchRecipe.mesFormula.aux.length">
+                <div class="gantt-recipe-group">{{ $t('bpdbMachinesGantt.recipeAux') }}</div>
+                <table class="gantt-recipe-table">
+                  <thead><tr><th>{{ $t('bpdbMachinesGantt.recipeColCode') }}</th><th>{{ $t('bpdbMachinesGantt.recipeColName') }}</th><th class="num">{{ $t('bpdbMachinesGantt.recipeColAmount') }}</th></tr></thead>
+                  <tbody>
+                    <tr v-for="(m, i) in batchRecipe.mesFormula.aux" :key="'a' + i">
+                      <td>{{ m.code }}</td><td class="name">{{ m.name }}</td><td class="num">{{ m.amount }} {{ m.unit }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </template>
+            </template>
+            <div v-else class="gantt-detail-note">{{ $t('bpdbMachinesGantt.recipeMesEmpty') }}</div>
+
+            <div class="gantt-recipe-sub">{{ $t('bpdbMachinesGantt.recipeBpdbTitle') }}</div>
+            <table v-if="batchRecipe?.bpdbDosing?.available && batchRecipe.bpdbDosing.lines.length" class="gantt-recipe-table">
+              <thead><tr><th>{{ $t('bpdbMachinesGantt.recipeColRack') }}</th><th>{{ $t('bpdbMachinesGantt.recipeColCode') }}</th><th class="num">{{ $t('bpdbMachinesGantt.recipeColRequested') }}</th><th class="num">{{ $t('bpdbMachinesGantt.recipeColActual') }}</th></tr></thead>
+              <tbody>
+                <tr v-for="(l, i) in batchRecipe.bpdbDosing.lines" :key="'b' + i">
+                  <td>{{ l.tank }}</td><td>{{ l.materialCode }}</td><td class="num">{{ l.requestedGrams }}</td><td class="num">{{ l.actualGrams }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-else class="gantt-detail-note">{{ $t('bpdbMachinesGantt.recipeBpdbEmpty') }}</div>
+          </template>
+        </section>
+
         <template v-if="mesBatch?.loading">
           <div class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesLoading') }}</div>
         </template>
@@ -515,6 +560,11 @@ interface GanttDetail {
   barColor: string;
   /** Số mẻ đã xong liên tiếp giống nhau được gộp chung vào thanh này (1 = chưa gộp). */
   mergedCount: number;
+  /** Mã máy vật lý gốc (VD007...) = định dạng SUP_Storico.Macchina, để tra cân BPDB. */
+  bpdbMachineCode: string | null;
+  /** Mốc bắt đầu/kết thúc ISO của thanh — dùng làm khung giờ khớp cân BPDB. */
+  startIso: string | null;
+  endIso: string | null;
 }
 
 const buildDetail = (item: any, realEnd: Date, barColor: string): GanttDetail => {
@@ -539,6 +589,9 @@ const buildDetail = (item: any, realEnd: Date, barColor: string): GanttDetail =>
     errorMessage: item.errorMessage || null,
     barColor,
     mergedCount: 1,
+    bpdbMachineCode: item.machineCode ?? null,
+    startIso: item.start ?? null,
+    endIso: item.end ?? realEnd.toISOString(),
   };
 };
 
@@ -706,10 +759,65 @@ const loadMesBatch = async (detail: GanttDetail) => {
   }
 };
 
+// Bảng liệu (song song MES + BPDB) hiển thị trong panel bên phải khi bấm vào mẻ.
+interface RecipeMaterial {
+  code: string | null;
+  name: string | null;
+  amount: number | null;
+  amount3: number | null;
+  unit: string | null;
+  kind: string;
+}
+interface DosingLine {
+  materialCode: string | null;
+  tank: string | number | null;
+  requestedGrams: number | null;
+  actualGrams: number | null;
+}
+interface BatchRecipe {
+  key: string;
+  loading: boolean;
+  mesFormula: { pfmPfno: string; syncedAt: string | null; dyes: RecipeMaterial[]; aux: RecipeMaterial[] } | null;
+  bpdbDosing: { available: boolean; lineCount: number; lines: DosingLine[] } | null;
+}
+const batchRecipe = ref<BatchRecipe | null>(null);
+const batchRecipeCache = new Map<string, { mesFormula: BatchRecipe['mesFormula']; bpdbDosing: BatchRecipe['bpdbDosing'] }>();
+
+const loadBatchRecipe = async (detail: GanttDetail) => {
+  const key = detail.id;
+  const cached = batchRecipeCache.get(key);
+  if (cached) {
+    batchRecipe.value = { key, loading: false, ...cached };
+    return;
+  }
+  batchRecipe.value = { key, loading: true, mesFormula: null, bpdbDosing: null };
+  try {
+    const res = await axios.get('/api/public/bpdb-machines-gantt/batch-recipe', {
+      params: {
+        mesBatchNo: detail.mesBatchNo ?? '',
+        mesLineNo: detail.mesLineNo ?? '',
+        machineCode: detail.bpdbMachineCode ?? '',
+        taskTitle: detail.taskTitle ?? '',
+        start: detail.startIso ?? '',
+        end: detail.endIso ?? '',
+      },
+    });
+    const data = res.data?.data ?? {};
+    const payload = { mesFormula: data.mesFormula ?? null, bpdbDosing: data.bpdbDosing ?? null };
+    batchRecipeCache.set(key, payload);
+    if (batchRecipe.value?.key !== key) return;
+    batchRecipe.value = { key, loading: false, ...payload };
+  } catch {
+    if (batchRecipe.value?.key !== key) return;
+    batchRecipe.value = { key, loading: false, mesFormula: null, bpdbDosing: null };
+  }
+};
+
 const closeDetailPopup = () => {
   detailPopup.value = null;
   lotTotal.value = null;
   mesBatch.value = null;
+  batchRecipe.value = null;
   mesPanelOpen.value = false;
 };
 
@@ -732,6 +840,7 @@ const openDetailPopup = (id: string, pageX: number, pageY: number) => {
   detailPopup.value = detail;
   loadLotTotal(detail);
   loadMesBatch(detail);
+  loadBatchRecipe(detail);
   // Mở/đóng bảng MES bên phải theo việc mẻ có ghép được MES hay không.
   mesPanelOpen.value = !!detail.mesBatchNo;
 };
@@ -1861,6 +1970,52 @@ onUnmounted(() => {
 .gantt-mes-panel-body {
   padding: 10px 14px 20px;
   overflow-y: auto;
+}
+/* Bảng liệu (công thức MES + cân thật BPDB) — đặt trên cùng panel, nổi bật hơn phần trường MES. */
+.gantt-recipe {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--border-card, #eef2f7);
+}
+.gantt-recipe-title {
+  font-weight: 700;
+  font-size: 1.02rem;
+  margin-bottom: 6px;
+}
+.gantt-recipe-sub {
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  margin: 10px 0 4px;
+}
+.gantt-recipe-group {
+  font-weight: 600;
+  margin: 6px 0 2px;
+}
+.gantt-recipe-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 4px;
+}
+.gantt-recipe-table th,
+.gantt-recipe-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-card, #eef2f7);
+  font-size: 0.9rem;
+}
+.gantt-recipe-table th {
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  white-space: nowrap;
+}
+.gantt-recipe-table td.name {
+  overflow-wrap: anywhere;
+  color: var(--text-secondary, #6b7280);
+}
+.gantt-recipe-table th.num,
+.gantt-recipe-table td.num {
+  text-align: right;
+  white-space: nowrap;
 }
 .gantt-mes-table {
   width: 100%;

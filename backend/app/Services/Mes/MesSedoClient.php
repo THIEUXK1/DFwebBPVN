@@ -124,6 +124,99 @@ class MesSedoClient
     }
 
     /**
+     * Lấy công thức nhuộm (thuốc nhuộm + hóa chất phụ trợ) theo số công thức pfmPfno từ
+     * module 织带-配方 (mesPfM). Hai bước như trang thật: mesPfM/list để tra head id theo
+     * pfmPfno, rồi mesPfM/infoByHeadId để lấy pfMPfList (các dòng liệu).
+     *
+     * Trả null nếu không tìm thấy công thức. Materials đã chuẩn hóa: mỗi phần tử
+     * {code,name,amount,amount3,unit,order,typeId,kind} với kind='dye'|'aux'
+     * (defRltypeId bắt đầu 'AC' = hóa chất phụ trợ 助剂, còn lại = thuốc nhuộm 染料).
+     *
+     * @return array{pfmPfno:string, formulaId:string, colorCode:?string, articleCode:?string, machineCode:?string, materials:array<int,array<string,mixed>>, raw:array}|null
+     */
+    public function fetchFormulaByPfno(string $pfno): ?array
+    {
+        $pfno = trim($pfno);
+        if ($pfno === '') {
+            return null;
+        }
+
+        $profile = $this->profile('batch');
+        $jar = new CookieJar();
+        $this->login($jar, $profile);
+
+        $listBody = json_encode([
+            'pfmPfno' => $pfno,
+            'isLike' => 'like',
+            'firstSearch' => false,
+            'pageNumber' => 1,
+            'pageSize' => 10,
+            'sortName' => 'pfmPfno',
+            'sortOrder' => 'ASC',
+        ], JSON_UNESCAPED_UNICODE);
+
+        $list = $this->postJson('rbase/mesPfM/list', $jar, $listBody, $profile['base_url']);
+        $rows = $list['rows'] ?? [];
+        if (!is_array($rows) || $rows === []) {
+            return null;
+        }
+
+        // Ưu tiên dòng khớp CHÍNH XÁC pfmPfno (list dùng isLike='like' nên có thể trả thêm
+        // công thức khác cùng tiền tố); nếu không có thì lấy dòng đầu.
+        $head = null;
+        foreach ($rows as $r) {
+            if (is_array($r) && (string) ($r['pfmPfno'] ?? '') === $pfno) {
+                $head = $r;
+                break;
+            }
+        }
+        $head ??= (is_array($rows[0]) ? $rows[0] : null);
+        $headId = $head !== null ? (string) ($head['id'] ?? '') : '';
+        if ($headId === '') {
+            return null;
+        }
+
+        // infoByHeadId: $.SetForm gửi raw param = id -> body JSON là chuỗi id có ngoặc kép.
+        $info = $this->postJson('rbase/mesPfM/infoByHeadId', $jar, json_encode($headId), $profile['base_url']);
+        $data = $info['rows'] ?? null;
+        if (!is_array($data)) {
+            return null;
+        }
+
+        $pfList = $data['pfMPfList'] ?? [];
+        $materials = [];
+        if (is_array($pfList)) {
+            foreach ($pfList as $m) {
+                if (!is_array($m)) {
+                    continue;
+                }
+                $typeId = strtoupper(trim((string) ($m['defRltypeId'] ?? '')));
+                $materials[] = [
+                    'code' => $m['pfMtid'] ?? null,
+                    'name' => $m['defRlidDesc'] ?? null,
+                    'amount' => isset($m['pfNum']) ? (float) $m['pfNum'] : null,
+                    'amount3' => isset($m['pfNum3l']) ? (float) $m['pfNum3l'] : null,
+                    'unit' => $m['pfUnit'] ?? null,
+                    'order' => isset($m['pfOrder']) ? (int) $m['pfOrder'] : null,
+                    'typeId' => $typeId !== '' ? $typeId : null,
+                    // 'AC*' = 助剂 (hóa chất phụ trợ); còn lại (A/B/...) = 染料 (thuốc nhuộm).
+                    'kind' => str_starts_with($typeId, 'AC') ? 'aux' : 'dye',
+                ];
+            }
+        }
+
+        return [
+            'pfmPfno' => $pfno,
+            'formulaId' => $headId,
+            'colorCode' => $head['colorCode'] ?? ($data['colorCode'] ?? null),
+            'articleCode' => $head['artCode'] ?? ($data['artCode'] ?? null),
+            'machineCode' => $head['macCdoe'] ?? ($data['macCdoe'] ?? null),
+            'materials' => $materials,
+            'raw' => $pfList,
+        ];
+    }
+
+    /**
      * MES đóng gói màu theo BGR (chuẩn Windows COLORREF), KHÔNG phải RGB thường:
      * byte thấp nhất là ĐỎ. Công thức lấy nguyên từ getRGBByNum() trong
      * ganttDrawerSVG.js của MES để không lệch với màu người dùng thấy bên đó.

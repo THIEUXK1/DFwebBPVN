@@ -138,6 +138,29 @@ class BpdbMachineController extends Controller
     }
 
     /**
+     * Bảng liệu của 1 mẻ (khi bấm vào thanh Gantt): SONG SONG công thức MES (thuốc nhuộm +
+     * hóa chất, G/L) và cân thật BPDB (rack + gram). Nhận định danh mà frontend đã có sẵn
+     * trên item Gantt: mesBatchNo/mesLineNo (để tra công thức MES) + machineCode/taskTitle/
+     * start/end (để tra SUP_Storico). Chỉ đọc.
+     */
+    public function batchRecipe(Request $request, BpdbMachineMonitoringService $service)
+    {
+        $recipe = $service->getBatchRecipe(
+            $request->query('mesBatchNo') ?: null,
+            $request->query('mesLineNo') ?: null,
+            $request->query('machineCode') ?: null,
+            $request->query('taskTitle') ?: null,
+            $request->query('start') ?: null,
+            $request->query('end') ?: null,
+        );
+
+        return response()->json([
+            'data' => $recipe,
+            'readOnly' => true,
+        ]);
+    }
+
+    /**
      * Khoá cache lưu danh sách alert "đang chạy" còn hiệu lực — mảng JSON gộp chung 1 key
      * (yêu cầu 2026-08-12). Không dùng bảng DB riêng: đây vẫn chỉ là tín hiệu UI ngắn hạn,
      * không phải dữ liệu nghiệp vụ cần audit/lịch sử (xem ghi chú notifyRunning() bên dưới).

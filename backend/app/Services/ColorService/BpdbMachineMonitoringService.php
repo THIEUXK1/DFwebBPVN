@@ -22,6 +22,7 @@ namespace App\Services\ColorService;
 use App\Models\FeatureFlag;
 use App\Models\JitRoutingRule;
 use App\Models\MesBatchCompletion;
+use App\Models\MesFormula;
 use App\Services\ColorService\TankCodeMapper;
 use App\Support\MachineCodeNormalizer;
 use Illuminate\Support\Carbon;
@@ -60,6 +61,7 @@ class BpdbMachineMonitoringService
     public function __construct(
         private readonly BpdbReadOnlyClient $client,
         private readonly ColorCodePalette $palette,
+        private readonly BpdbSupStoricoService $supStorico,
     ) {
     }
 
@@ -354,6 +356,9 @@ class BpdbMachineMonitoringService
                     'id' => $row['Id'],
                     'group' => $tankGroupId,
                     'taskTitle' => $row['TaskTitle'],
+                    // Mã máy vật lý gốc (VD007...) — đúng định dạng SUP_Storico.Macchina,
+                    // frontend gửi lại khi bấm mẻ để tra bảng cân thật (getBatchRecipe).
+                    'machineCode' => $machineIdToCode[$row['Machine']] ?? null,
                     'color' => $color,
                     // Màu ĐẠI DIỆN họ màu suy từ mã màu — BPDB không lưu RGB thật.
                     // Xem ColorCodePalette để biết vì sao phải suy ra và độ chính xác tới đâu.
@@ -522,6 +527,93 @@ class BpdbMachineMonitoringService
             'syncedAt' => $rec->synced_at?->toIso8601String(),
             'raw' => $rec->raw,
         ];
+    }
+
+    /**
+     * Bảng liệu khi bấm vào 1 mẻ trên Gantt — trả SONG SONG 2 nguồn:
+     *   - mesFormula: công thức MES (thuốc nhuộm + hóa chất, G/L) từ cache mes_formulas,
+     *     tra theo pfmPfno lấy trong mes_batch_completions.raw của mẻ đã ghép.
+     *   - bpdbDosing: cân THẬT (rack + gram) từ BPVN2025.SUP_Storico, khớp theo mã máy +
+     *     lô (suy từ taskTitle) + khung giờ mẻ.
+     * Mỗi nhánh tự bọc lỗi: thiếu bảng/không ghép được thì trả rỗng, không làm hỏng nhánh kia.
+     *
+     * @return array{mesFormula: ?array, bpdbDosing: array}
+     */
+    public function getBatchRecipe(
+        ?string $mesBatchNo,
+        ?string $mesLineNo,
+        ?string $machineCode,
+        ?string $taskTitle,
+        ?string $startIso,
+        ?string $endIso,
+    ): array {
+        return [
+            'mesFormula' => $this->mesFormulaForBatch($mesBatchNo, $mesLineNo),
+            'bpdbDosing' => $this->bpdbDosingForTask($machineCode, $taskTitle, $startIso, $endIso),
+        ];
+    }
+
+    /** Công thức MES (chia sẵn thuốc nhuộm/hóa chất) cho 1 mẻ đã ghép; null nếu chưa có. */
+    private function mesFormulaForBatch(?string $mesBatchNo, ?string $mesLineNo): ?array
+    {
+        if ($mesBatchNo === null || $mesBatchNo === '') {
+            return null;
+        }
+
+        try {
+            $rec = MesBatchCompletion::where('batch_no', $mesBatchNo)
+                ->where('line_no', $mesLineNo !== null && $mesLineNo !== '' ? $mesLineNo : '1')
+                ->first();
+
+            $pfno = is_array($rec?->raw) ? trim((string) ($rec->raw['pfmPfno'] ?? '')) : '';
+            if ($pfno === '') {
+                return null;
+            }
+
+            $f = MesFormula::where('pfm_pfno', $pfno)->first();
+            if ($f === null) {
+                return null;
+            }
+
+            $materials = is_array($f->materials) ? $f->materials : [];
+            $dyes = array_values(array_filter($materials, fn ($m) => ($m['kind'] ?? '') !== 'aux'));
+            $aux = array_values(array_filter($materials, fn ($m) => ($m['kind'] ?? '') === 'aux'));
+
+            return [
+                'pfmPfno' => $f->pfm_pfno,
+                'colorCode' => $f->color_code,
+                'articleCode' => $f->article_code,
+                'machineCode' => $f->machine_code,
+                'syncedAt' => $f->synced_at?->toIso8601String(),
+                'dyes' => $dyes,
+                'aux' => $aux,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('getBatchRecipe: không lấy được công thức MES', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
+    /** Cân thật (rack+gram) từ SUP_Storico cho 1 task; luôn trả cấu trúc chuẩn kể cả khi rỗng. */
+    private function bpdbDosingForTask(?string $machineCode, ?string $taskTitle, ?string $startIso, ?string $endIso): array
+    {
+        $empty = ['available' => false, 'source' => 'BPVN2025.SUP_Storico', 'lineCount' => 0, 'latestDosingAt' => null, 'lines' => []];
+
+        if ($machineCode === null || $machineCode === '' || $taskTitle === null || $taskTitle === '') {
+            return $empty;
+        }
+
+        try {
+            $start = $startIso ? Carbon::parse($startIso) : null;
+            $end = $endIso ? Carbon::parse($endIso) : null;
+
+            return $this->supStorico->getDosingEvidence($machineCode, $taskTitle, $start, $end);
+        } catch (\Throwable $e) {
+            Log::warning('getBatchRecipe: không lấy được cân BPDB', ['error' => $e->getMessage()]);
+
+            return $empty;
+        }
     }
 
     /** @return array{0: ?string, 1: ?string} [color, productCode] — null nếu không tách được. */
