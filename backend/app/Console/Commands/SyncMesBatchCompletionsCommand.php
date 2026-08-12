@@ -9,6 +9,7 @@ use App\Services\Mes\MesSedoClient;
 use App\Support\MachineCodeNormalizer;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -183,24 +184,45 @@ class SyncMesBatchCompletionsCommand extends Command
      */
     private function syncFormulas(MesSedoClient $client, array $pfnos): void
     {
-        $pfnos = array_values(array_filter(array_unique($pfnos)));
-        if ($pfnos === []) {
+        $fromRun = array_values(array_filter(array_unique($pfnos)));
+
+        // Ứng viên = công thức của mẻ vừa đồng bộ + công thức của MỌI mẻ đã lưu (Gantt hiển
+        // thị dải rộng hơn cửa sổ 3 ngày, nên phải backfill dần cho mẻ cũ mới đủ phủ).
+        $allInBatches = DB::table('mes_batch_completions')
+            ->selectRaw("DISTINCT NULLIF(trim(raw->>'pfmPfno'), '') AS pfno")
+            ->whereRaw("NULLIF(trim(raw->>'pfmPfno'), '') IS NOT NULL")
+            ->pluck('pfno')
+            ->all();
+
+        $candidates = array_values(array_unique(array_merge($fromRun, $allInBatches)));
+        if ($candidates === []) {
             return;
         }
 
-        $fresh = MesFormula::whereIn('pfm_pfno', $pfnos)
+        // Bỏ công thức đã đồng bộ trong 7 ngày (gần như bất biến, khỏi gọi lại MES).
+        $fresh = MesFormula::whereIn('pfm_pfno', $candidates)
             ->where('synced_at', '>=', now()->subDays(7))
             ->pluck('pfm_pfno')
             ->all();
-        $todo = array_values(array_diff($pfnos, $fresh));
+        $todo = array_values(array_diff($candidates, $fresh));
+
+        // Ưu tiên công thức của mẻ vừa đồng bộ trước, rồi tới backfill; giới hạn mỗi lần chạy
+        // để không nện MES quá lâu (các lần chạy 15 phút sau sẽ backfill tiếp phần còn lại).
+        $todo = array_values(array_unique(array_merge(
+            array_values(array_intersect($fromRun, $todo)),
+            $todo
+        )));
+        $cap = 80;
+        $capped = array_slice($todo, 0, $cap);
 
         $this->info(sprintf(
-            'Công thức: %d mã cần đồng bộ (bỏ qua %d mã đã mới trong 7 ngày).',
+            'Công thức: %d mã cần đồng bộ (làm %d lần này, còn %d để lần sau).',
             count($todo),
-            count($pfnos) - count($todo)
+            count($capped),
+            max(0, count($todo) - count($capped))
         ));
 
-        if ($todo === []) {
+        if ($capped === []) {
             return;
         }
 
@@ -208,7 +230,7 @@ class SyncMesBatchCompletionsCommand extends Command
         $ok = 0;
         $miss = 0;
 
-        foreach ($todo as $pfno) {
+        foreach ($capped as $pfno) {
             try {
                 $f = $client->fetchFormulaByPfno($pfno);
             } catch (Throwable $e) {
