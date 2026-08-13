@@ -2023,18 +2023,20 @@ onUnmounted(() => {
 .gantt-recipe-table {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border-strong, #cbd5e1);
 }
 .gantt-recipe-table th,
 .gantt-recipe-table td {
   text-align: left;
   padding: 4px 8px;
-  border-bottom: 1px solid var(--border-card, #eef2f7);
+  border: 1px solid var(--border-strong, #cbd5e1);
   font-size: 0.9rem;
 }
 .gantt-recipe-table th {
   font-weight: 600;
   color: var(--text-secondary, #6b7280);
+  background: var(--bg-subtle, #f1f5f9);
   white-space: nowrap;
 }
 .gantt-recipe-table td.name {
