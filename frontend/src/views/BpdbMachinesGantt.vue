@@ -188,9 +188,48 @@
         <button type="button" class="gantt-detail-close" :aria-label="$t('common.close')" @click="mesPanelOpen = false">✕</button>
       </div>
       <div class="gantt-mes-panel-body">
-        <!-- Bảng liệu: SONG SONG công thức MES (nồng độ) + cân thật BPDB (rack + gram) -->
+        <template v-if="mesBatch?.loading">
+          <div class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesLoading') }}</div>
+        </template>
+        <template v-else-if="mesBatch?.failed">
+          <div class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesFailed') }}</div>
+        </template>
+        <template v-else-if="mesBatch?.raw">
+          <table class="gantt-mes-table">
+            <tbody>
+              <tr v-for="row in mesFieldRows" :key="row.label">
+                <th>{{ row.label }}</th>
+                <td>{{ row.value }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <details v-if="mesFieldRowsRest.length" class="gantt-mes-all">
+            <summary>{{ $t('bpdbMachinesGantt.allFieldsSummary', { count: mesFieldRowsRest.length }) }}</summary>
+            <table class="gantt-mes-table">
+              <tbody>
+                <tr v-for="row in mesFieldRowsRest" :key="row.label">
+                  <th>{{ row.label }}</th>
+                  <td>{{ row.value }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </details>
+          <div v-if="mesBatch.syncedAt" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesSyncedAtPrefix') }}{{ formatTime(mesBatch.syncedAt) }}</div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Panel bảng liệu RIÊNG — đặt sát bên trái panel MES (nhích về phía giữa màn hình). -->
+    <div v-if="mesPanelOpen && detailPopup?.mesBatchNo" class="gantt-recipe-panel">
+      <div class="gantt-mes-panel-head">
+        <div class="gantt-mes-panel-title">
+          {{ $t('bpdbMachinesGantt.recipeTitle') }}
+          <span class="gantt-mes-panel-batch">{{ detailPopup.mesBatchNo }}</span>
+        </div>
+        <button type="button" class="gantt-detail-close" :aria-label="$t('common.close')" @click="mesPanelOpen = false">✕</button>
+      </div>
+      <div class="gantt-mes-panel-body">
         <section class="gantt-recipe">
-          <div class="gantt-recipe-title">{{ $t('bpdbMachinesGantt.recipeTitle') }}</div>
           <div v-if="batchRecipe?.loading" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.recipeLoading') }}</div>
           <template v-else>
             <div class="gantt-recipe-sub">{{ $t('bpdbMachinesGantt.recipeMesTitle') }}</div>
@@ -232,35 +271,6 @@
             <div v-else class="gantt-detail-note">{{ $t('bpdbMachinesGantt.recipeBpdbEmpty') }}</div>
           </template>
         </section>
-
-        <template v-if="mesBatch?.loading">
-          <div class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesLoading') }}</div>
-        </template>
-        <template v-else-if="mesBatch?.failed">
-          <div class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesFailed') }}</div>
-        </template>
-        <template v-else-if="mesBatch?.raw">
-          <table class="gantt-mes-table">
-            <tbody>
-              <tr v-for="row in mesFieldRows" :key="row.label">
-                <th>{{ row.label }}</th>
-                <td>{{ row.value }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <details v-if="mesFieldRowsRest.length" class="gantt-mes-all">
-            <summary>{{ $t('bpdbMachinesGantt.allFieldsSummary', { count: mesFieldRowsRest.length }) }}</summary>
-            <table class="gantt-mes-table">
-              <tbody>
-                <tr v-for="row in mesFieldRowsRest" :key="row.label">
-                  <th>{{ row.label }}</th>
-                  <td>{{ row.value }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </details>
-          <div v-if="mesBatch.syncedAt" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesSyncedAtPrefix') }}{{ formatTime(mesBatch.syncedAt) }}</div>
-        </template>
       </div>
     </div>
   </div>
@@ -853,6 +863,7 @@ const closeDetailOnOutsideClick = (event: MouseEvent) => {
   if (!target) return;
   if (target.closest('.gantt-detail-popup')) return;
   if (target.closest('.gantt-mes-panel')) return;
+  if (target.closest('.gantt-recipe-panel')) return;
   if (timelineEl.value?.contains(target)) return;
   closeDetailPopup();
 };
@@ -1934,6 +1945,24 @@ onUnmounted(() => {
   margin-bottom: 4px;
 }
 /* Bảng thông tin mẻ MES cố định bên phải màn hình. */
+/* Panel bảng liệu riêng — nằm SÁT BÊN TRÁI panel MES (right = đúng bề rộng panel MES),
+   nên nhích về phía giữa màn hình như yêu cầu. z-index thấp hơn panel MES 1 bậc. */
+.gantt-recipe-panel {
+  position: fixed;
+  top: 0;
+  right: 400px;
+  height: 100vh;
+  width: 380px;
+  max-width: 46vw;
+  z-index: 3049;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card, #fff);
+  color: var(--text-title, #111827);
+  border-left: 1px solid var(--border-card, #e2e8f0);
+  box-shadow: -12px 0 30px rgba(0,0,0,0.18);
+  font-size: 0.82rem;
+}
 .gantt-mes-panel {
   position: fixed;
   top: 0;
