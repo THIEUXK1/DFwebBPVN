@@ -29,7 +29,14 @@ class DashboardController extends Controller
         $machines = Machine::where('is_active', true)->get();
         // `khongPhaiCanTay`: lô cân tay không phải lệnh sản xuất (không màu/mã hàng/máy) — để lọt
         // vào đây là bảng điều khiển đầy những dòng trống trơn. Xem ProductionBatch::MANUAL_BATCH_PREFIX.
-        $batches = ProductionBatch::with(['machine', 'tank'])->khongPhaiCanTay()->whereIn('status', ['NEW', 'READY_TO_WEIGH', 'WEIGHING', 'WEIGHED', 'SENT'])->get();
+        //
+        // APPROVED thêm vào 2026-08-12: lô đã duyệt (ApproveProductionOrderService, tạo
+        // MachineDispatch queue_state=WAITING) đang chờ điều phối/gửi máy — VẪN LÀ lô đang hoạt
+        // động, không phải trạng thái chờ ẩn. Thiếu dòng này khiến toàn bộ lô đã duyệt (65% tổng
+        // số lô không hủy lúc phát hiện lỗi) biến mất khỏi Dashboard dù DB có đủ dữ liệu — người
+        // dùng mở "/" tưởng hệ thống trống. ProductionBatchController::index() (màn Lệnh sản xuất)
+        // vốn đã hiển thị APPROVED, Dashboard giờ khớp lại đúng logic đó.
+        $batches = ProductionBatch::with(['machine', 'tank'])->khongPhaiCanTay()->whereIn('status', ['NEW', 'APPROVED', 'READY_TO_WEIGH', 'WEIGHING', 'WEIGHED', 'SENT'])->get();
         $alertsCount = Alert::whereIn('status', ['OPEN', 'ACKNOWLEDGED'])->count();
 
         $overviewData = $machines->map(function ($machine) use ($batches) {
@@ -75,9 +82,11 @@ class DashboardController extends Controller
     public function weighing(Request $request)
     {
         // Get all batches in queue for weighing
+        // APPROVED thêm 2026-08-12 — xem ghi chú ở overview(): lô đã duyệt chờ điều phối vẫn
+        // phải hiện ở "Phòng cân" vì đó chính là hàng chờ TRƯỚC khi tới bước cân.
         $batches = ProductionBatch::with(['machine', 'tank'])
             ->khongPhaiCanTay()
-            ->whereIn('status', ['READY_TO_WEIGH', 'WEIGHING', 'WEIGHED'])
+            ->whereIn('status', ['APPROVED', 'READY_TO_WEIGH', 'WEIGHING', 'WEIGHED'])
             ->get();
 
         $weighingData = $batches->map(function ($batch) {
@@ -113,7 +122,9 @@ class DashboardController extends Controller
     public function machines(Request $request)
     {
         $machines = Machine::where('is_active', true)->get();
-        $batches = ProductionBatch::with(['machine', 'tank'])->khongPhaiCanTay()->whereIn('status', ['WEIGHED', 'SENT', 'DONE'])->get();
+        // APPROVED thêm 2026-08-12 — xem ghi chú ở overview(): người dùng chọn hiện lô đã duyệt
+        // trên cả 4 tab Dashboard, kể cả tab "Máy nhuộm" dù lô còn ở hàng chờ điều phối.
+        $batches = ProductionBatch::with(['machine', 'tank'])->khongPhaiCanTay()->whereIn('status', ['APPROVED', 'WEIGHED', 'SENT', 'DONE'])->get();
 
         $data = $machines->map(function ($m) use ($batches) {
             $batch = $batches->firstWhere('machine_id', $m->id);
@@ -162,7 +173,9 @@ class DashboardController extends Controller
             ->where('completed_at', '>=', $today)
             ->count();
 
-        $activeBatches = ProductionBatch::khongPhaiCanTay()->whereIn('status', ['WEIGHING', 'WEIGHED', 'SENT'])->count();
+        // APPROVED thêm 2026-08-12 — xem ghi chú ở overview(): lô đã duyệt vẫn tính là đang
+        // hoạt động, không phải lô "chưa làm gì".
+        $activeBatches = ProductionBatch::khongPhaiCanTay()->whereIn('status', ['APPROVED', 'WEIGHING', 'WEIGHED', 'SENT'])->count();
 
         $machinesRunning = ProductionBatch::khongPhaiCanTay()->where('status', 'SENT')->count();
         $machinesWaiting = MaterialTransport::where('status', 'IN_TRANSIT')->count();

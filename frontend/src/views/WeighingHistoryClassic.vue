@@ -20,13 +20,6 @@
         </span>
       </div>
 
-      <!-- Cửa sổ bị cắt: phải nói ra ngay trong khối lọc (không phải trôi theo bảng xuống dưới),
-           vì đây là lý do trực tiếp khiến bộ lọc "không tìm ra" — người dùng cần thấy nó dù đã
-           thu gọn khối lọc hay đang cuộn xuống cuối bảng. -->
-      <p v-if="truncated && !loading && !errorMsg" class="wh-msg warn">
-        {{ $t('weighingHistory.truncatedPrefix') }}<strong>{{ $t('weighingHistory.truncatedStrong', { count: allRounds.length }) }}</strong>{{ $t('weighingHistory.truncatedSuffix') }}
-      </p>
-
       <div v-show="!filtersCollapsed" class="wh-filters-body">
         <!-- Thống kê cân trùng: mỗi thẻ = "có bao nhiêu ĐƠN bị cân đúng N lần", trong đó hai vòng
              chỉ là cùng một đơn khi trùng cả 4 trường Màu + Mã hàng + Máy + LV (xem khoaTrung).

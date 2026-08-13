@@ -20,13 +20,6 @@
         </span>
       </div>
 
-      <!-- Cửa sổ bị cắt: phải nói ra ngay trong khối lọc (không phải trôi theo bảng xuống dưới),
-           vì đây là lý do trực tiếp khiến bộ lọc "không tìm ra" — người dùng cần thấy nó dù đã
-           thu gọn khối lọc hay đang cuộn xuống cuối bảng. -->
-      <p v-if="truncated && !loading && !errorMsg" class="wh-msg warn">
-        {{ $t('weighingHistory.truncatedPrefix') }}<strong>{{ $t('weighingHistory.truncatedStrong', { count: allRounds.length }) }}</strong>{{ $t('weighingHistory.truncatedSuffix') }}
-      </p>
-
       <div v-show="!filtersCollapsed" class="wh-filters-body">
         <!-- Thống kê cân trùng: mỗi thẻ = "có bao nhiêu ĐƠN bị cân đúng N lần", trong đó hai vòng
              chỉ là cùng một đơn khi trùng cả 4 trường Màu + Mã hàng + Máy + LV (xem khoaTrung).
@@ -54,7 +47,13 @@
           </p>
         </div>
 
-        <div class="wh-bar">
+        <!-- Một hàng lọc duy nhất cho TẤT CẢ điều kiện (khoảng ngày, lọc theo cột, tìm nhanh,
+             nút lệnh): để trình duyệt tự xuống dòng theo bề ngang màn hình thay vì chia sẵn
+             thành nhiều hàng cố định — khối lọc chiếm ít chiều cao nhất có thể, nhường chỗ cho
+             bảng. Lọc theo cột chạy thuần trên cửa sổ đã tải như ô tìm nhanh, gõ/chọn tới đâu
+             bảng đổi tới đó. Màu và Mã hàng để ô gõ kèm gợi ý (datalist) vì số giá trị nhiều;
+             Máy và LV để ô chọn vì tập giá trị hữu hạn, chọn nhanh hơn gõ. -->
+        <div class="wh-bar wh-cols">
           <div class="wh-field">
             <label>{{ $t('weighingHistory.fieldFrom') }}</label>
             <input type="date" v-model="filters.from" @change="reload" />
@@ -63,28 +62,6 @@
             <label>{{ $t('weighingHistory.fieldTo') }}</label>
             <input type="date" v-model="filters.to" @change="reload" />
           </div>
-          <div class="wh-field wh-grow">
-            <!-- Ô này KHÔNG gọi server: lọc ngay trên cửa sổ dữ liệu đã tải, hiện kết quả theo
-                 từng ký tự gõ. Muốn với ra ngoài cửa sổ đó thì có nút riêng bên cạnh. -->
-            <label>{{ $t('weighingHistory.fieldQuickSearch') }}</label>
-            <input type="text" v-model="search" :placeholder="$t('weighingHistory.quickSearchPlaceholder')" />
-          </div>
-          <!-- Đường thoát khi thứ cần tìm nằm NGOÀI cửa sổ đã tải. Luôn hiện khi có chữ trong ô
-               tìm, không đợi tới lúc "không thấy gì": lọc ra 2 dòng cũng không có nghĩa là chỉ có
-               2. -->
-          <button v-if="search.trim()" class="wh-btn" @click="searchOnServer" :disabled="loading">
-            {{ $t('weighingHistory.searchOnServerButton') }}
-          </button>
-          <button class="wh-btn ghost" @click="resetFilters" :disabled="loading">{{ $t('weighingHistory.clearFiltersButton') }}</button>
-          <button class="wh-btn ghost" @click="reload" :disabled="loading" :title="$t('weighingHistory.refreshButtonTitle')">
-            {{ $t('weighingHistory.refreshButtonLabel') }}
-          </button>
-        </div>
-
-        <!-- Lọc theo từng CỘT — cũng chạy thuần trên cửa sổ đã tải như ô tìm nhanh, gõ/chọn tới
-             đâu bảng đổi tới đó. Màu và Mã hàng để ô gõ kèm gợi ý (datalist) vì số giá trị nhiều;
-             Máy và LV để ô chọn vì tập giá trị hữu hạn, chọn nhanh hơn gõ. -->
-        <div class="wh-bar wh-cols">
           <div class="wh-field">
             <label>{{ $t('weighingHistory.fieldColor') }}</label>
             <input type="text" v-model="col.color" list="wh-colors" :placeholder="$t('weighingHistory.colFilterPlaceholder')" />
@@ -139,6 +116,22 @@
               <option :value="0">{{ $t('weighingHistory.optionAll') }}</option>
             </select>
           </div>
+          <div class="wh-field wh-grow">
+            <!-- Ô này KHÔNG gọi server: lọc ngay trên cửa sổ dữ liệu đã tải, hiện kết quả theo
+                 từng ký tự gõ. Muốn với ra ngoài cửa sổ đó thì có nút riêng bên cạnh. -->
+            <label>{{ $t('weighingHistory.fieldQuickSearch') }}</label>
+            <input type="text" v-model="search" :placeholder="$t('weighingHistory.quickSearchPlaceholder')" />
+          </div>
+          <!-- Đường thoát khi thứ cần tìm nằm NGOÀI cửa sổ đã tải. Luôn hiện khi có chữ trong ô
+               tìm, không đợi tới lúc "không thấy gì": lọc ra 2 dòng cũng không có nghĩa là chỉ có
+               2. -->
+          <button v-if="search.trim()" class="wh-btn" @click="searchOnServer" :disabled="loading">
+            {{ $t('weighingHistory.searchOnServerButton') }}
+          </button>
+          <button class="wh-btn ghost" @click="resetFilters" :disabled="loading">{{ $t('weighingHistory.clearFiltersButton') }}</button>
+          <button class="wh-btn ghost" @click="reload" :disabled="loading" :title="$t('weighingHistory.refreshButtonTitle')">
+            {{ $t('weighingHistory.refreshButtonLabel') }}
+          </button>
         </div>
       </div>
     </div>
@@ -806,20 +799,21 @@ onMounted(() => load());
 .wh-filters-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding-bottom: 6px;
+  gap: 8px;
+  padding-bottom: 4px;
 }
 
 .wh-filters-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 2px 8px;
   border: 1px solid var(--border-color, #c9c9c9);
   border-radius: 6px;
   background: transparent;
   color: inherit;
   font: inherit;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -846,16 +840,16 @@ onMounted(() => load());
 .wh-stats {
   display: flex;
   align-items: stretch;
-  gap: 10px;
+  gap: 6px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
 
 .wh-stat {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 8px 14px;
+  gap: 6px;
+  padding: 3px 10px;
   border: 1px solid var(--border-color, #c9c9c9);
   border-radius: 8px;
   background: transparent;
@@ -871,13 +865,13 @@ onMounted(() => load());
 }
 
 .wh-stat-num {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
 .wh-stat-lbl {
-  font-size: 12px;
+  font-size: 11px;
   opacity: 0.85;
 }
 
@@ -908,7 +902,7 @@ onMounted(() => load());
 /* Đang lọc theo thẻ nào phải nhìn ra ngay từ xa — viền đậm + nền đặc, không chỉ đổi sắc nhẹ. */
 .wh-stat.active {
   border-width: 2px;
-  padding: 7px 13px;
+  padding: 2px 9px;
   box-shadow: inset 0 0 0 1px currentColor;
 }
 
@@ -930,55 +924,63 @@ onMounted(() => load());
 .wh-stat-none {
   margin: 0;
   align-self: center;
-  font-size: 12px;
+  font-size: 11px;
   opacity: 0.6;
 }
 
 .wh-bar {
   display: flex;
   align-items: flex-end;
-  gap: 12px;
+  gap: 6px;
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: 6px;
 }
 
 .wh-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 1px;
 }
 
 .wh-grow {
   flex: 1;
-  min-width: 220px;
+  min-width: 180px;
 }
 
 .wh-field label {
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
+  line-height: 1.2;
   opacity: 0.75;
 }
 
 .wh-field input,
 .wh-field select {
-  height: 36px;
-  padding: 0 10px;
+  height: 26px;
+  padding: 0 6px;
   border: 1px solid var(--border-color, #c9c9c9);
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--input-bg, #fff);
   color: inherit;
-  font-size: 14px;
+  font-size: 12px;
 }
 
-/* Hàng lọc theo cột: mỗi ô co giãn nhưng không hẹp tới mức không đọc được giá trị đang chọn. */
+/* Hàng lọc: mỗi ô co giãn nhưng không hẹp tới mức không đọc được giá trị đang chọn. */
 .wh-cols .wh-field {
   flex: 1;
-  min-width: 130px;
+  min-width: 96px;
+}
+
+/* Ô ngày do trình duyệt tự vẽ (dd/mm/yyyy + icon lịch) nên không co được như ô chữ — giữ đủ
+   rộng, nếu không phần năm bị cắt mất. */
+.wh-field input[type='date'] {
+  min-width: 118px;
 }
 
 .wh-btn {
-  height: 36px;
-  padding: 0 16px;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
   border: none;
   border-radius: 6px;
   background: #0a5cff;
