@@ -267,6 +267,7 @@ class SyncMesBatchCompletionsCommand extends Command
                     'aux_count' => $aux,
                     'materials' => $f['materials'],
                     'raw' => $f['raw'],
+                    'process' => $f['process'] ?? null,
                     'source' => 'MES_MESPFM',
                     'synced_at' => $now,
                 ]

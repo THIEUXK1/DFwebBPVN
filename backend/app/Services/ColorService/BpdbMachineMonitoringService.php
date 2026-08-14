@@ -226,6 +226,10 @@ class BpdbMachineMonitoringService
         $machineIdToTankGroup = [];
         // machine_id (DyeMachines) -> mã máy vật lý (VD003...) — cần để ghép với MES theo máy.
         $machineIdToCode = [];
+        // Chiều ngược: mã máy đã chuẩn hoá (MachineCodeNormalizer) -> mã máy vật lý gốc trong
+        // registry — cần để gắn mẻ CHỈ CÓ trên MES (không có machine_id BPDB) vào đúng dòng
+        // "MES" của máy đó (xem vòng lặp thêm mẻ MES-only phía dưới).
+        $rawCodeByNorm = [];
         $groups = [];
         $order = 0;
 
@@ -233,6 +237,8 @@ class BpdbMachineMonitoringService
             if (in_array($code, self::GANTT_HIDDEN_MACHINES, true)) {
                 continue;
             }
+
+            $rawCodeByNorm[MachineCodeNormalizer::normalize($code)] = $code;
 
             $tankGroupIds = [];
             $seenTankGroups = [];
@@ -247,6 +253,17 @@ class BpdbMachineMonitoringService
                 $tankGroupIds[] = $tankGroupId;
                 $groups[] = ['id' => $tankGroupId, 'content' => $tankLabel, 'order' => ++$order];
             }
+
+            // Dòng riêng "MES" (yêu cầu 2026-08-13) — chứa các mẻ CÓ trên MES nhưng KHÔNG khớp
+            // được với bất kỳ task BPDB nào trong khung Gantt đang xem. MES (Runxin) không lưu
+            // khái niệm Tank/rack cho dây chuyền VD (đã kiểm chứng: quét hết field batchView +
+            // mesPfM, không có trường nào tương ứng) nên KHÔNG thể xếp vào 1 trong 4 tank thật —
+            // xếp nhầm sẽ hiểu lầm là dữ liệu Tank có thật từ BPDB. Luôn dựng dòng này (kể cả
+            // đang trống) để layout ổn định giữa các lần tải, cùng triết lý với khung 4 tank cố
+            // định ở trên.
+            $mesOnlyGroupId = $code . '::MES';
+            $tankGroupIds[] = $mesOnlyGroupId;
+            $groups[] = ['id' => $mesOnlyGroupId, 'content' => 'MES', 'order' => ++$order];
 
             foreach ($variant['variants'] as $v) {
                 $tankLabel = TankCodeMapper::toLetterCode($v['tank']) ?? ('Tank #' . $v['tank']);
@@ -281,10 +298,16 @@ class BpdbMachineMonitoringService
         foreach (array_values($machineIdToCode) as $rawCode) {
             $mesNormCodes[MachineCodeNormalizer::normalize($rawCode)] = true;
         }
-        $mesIndex = $this->loadMesCompletionIndex(array_keys($mesNormCodes), $fromDt, $toDt);
+        $mesData = $this->loadMesCompletionIndex(array_keys($mesNormCodes), $fromDt, $toDt);
+        $mesIndex = $mesData['index'];
+        $mesFlat = $mesData['flat'];
 
         $bpdbConnected = true;
         $items = [];
+        // Khoá (batchNo|lineNo) của các mẻ MES đã được DÙNG để ghép giờ kết thúc thật cho 1
+        // task BPDB (nhánh endSource='MES' bên dưới) — mẻ MES nào KHÔNG lọt vào tập này sau
+        // khi quét hết task BPDB thì coi là "chỉ có trên MES", dựng thêm thanh riêng cho nó.
+        $consumedMesKeys = [];
 
         try {
             $placeholders = implode(',', array_fill(0, count($allMachineIds), '?'));
@@ -334,6 +357,7 @@ class BpdbMachineMonitoringService
                     // Khóa mẻ MES để frontend tra toàn bộ thông tin khi bấm vào thanh.
                     $mesBatchNo = $mesMatch['batchNo'];
                     $mesLineNo = $mesMatch['lineNo'];
+                    $consumedMesKeys[$mesMatch['batchNo'] . '|' . $mesMatch['lineNo']] = true;
                 } elseif ($bpdbUncompleted) {
                     // Không có bằng chứng kết thúc từ cả MES lẫn BPDB -> vẫn coi đang chạy (vẽ
                     // tới now()); ẩn nếu treo quá ngưỡng (giữ nguyên hành vi cũ).
@@ -377,6 +401,59 @@ class BpdbMachineMonitoringService
                     'errorMessage' => $row['ErrorMsg'] ?: null,
                     'start' => $startCarbon->toIso8601String(),
                     'end' => $end->toIso8601String(),
+                ];
+            }
+
+            // Mẻ CÓ trên MES nhưng KHÔNG khớp được với bất kỳ task BPDB nào ở trên (yêu cầu
+            // 2026-08-13) — vẽ thêm 1 thanh riêng vào dòng con "MES" của đúng máy, viền xanh lá
+            // nhấp nháy phía frontend (endSource='MES_ONLY'). Chỉ chạy trong try này (đã có
+            // $consumedMesKeys đầy đủ từ vòng quét BPDB ở trên) — nếu BPDB lỗi ở vòng trên thì
+            // nhánh catch bên dưới bỏ qua CẢ hai loại thanh, không suy diễn "mọi mẻ MES đều
+            // thiếu" chỉ vì BPDB đang tạm mất kết nối.
+            foreach ($mesFlat as $mc) {
+                $consumedKey = $mc['batchNo'] . '|' . $mc['lineNo'];
+                if (isset($consumedMesKeys[$consumedKey])) {
+                    continue;
+                }
+
+                $rawCode = $rawCodeByNorm[$mc['machineNorm']] ?? null;
+                if ($rawCode === null) {
+                    // Máy không còn trong danh mục hiện hành (đã bị ẩn hoặc rời DyeMachines)
+                    // -> không có dòng "MES" nào để gắn vào, bỏ qua thay vì đoán.
+                    continue;
+                }
+
+                $mStart = $mc['begin'];
+                $mEnd = $mc['end'];
+                if ($mStart === null || $mEnd === null || $mEnd->lt($mStart)) {
+                    continue;
+                }
+
+                $color = $mc['colorCode'] !== null ? trim((string) $mc['colorCode']) : null;
+                $productCode = $mc['articleCode'] !== null
+                    ? strtoupper(trim(explode('/', (string) $mc['articleCode'])[0]))
+                    : null;
+
+                $items[] = [
+                    'id' => 'mes-' . $mc['batchNo'] . '-' . $mc['lineNo'],
+                    'group' => $rawCode . '::MES',
+                    'taskTitle' => trim(($color ?? '') . '-' . ($productCode ?? '')) ?: ($mc['batchNo'] ?? ''),
+                    'machineCode' => $rawCode,
+                    'color' => $color !== '' ? $color : null,
+                    'colorHex' => $this->palette->hexFor($color),
+                    'productCode' => $productCode !== '' ? $productCode : null,
+                    'taskStatus' => null,
+                    'isDeleted' => false,
+                    'uncompleted' => false,
+                    // MES_ONLY: không có bằng chứng BPDB nào (cân/pha/task) cho mẻ này trong
+                    // khung Gantt đang xem — khác hẳn 'MES' (task BPDB có thật, chỉ mượn giờ
+                    // kết thúc từ MES) hay 'BPDB'/'BPDB_RUNNING'.
+                    'endSource' => 'MES_ONLY',
+                    'mesBatchNo' => $mc['batchNo'],
+                    'mesLineNo' => $mc['lineNo'],
+                    'errorMessage' => null,
+                    'start' => $mStart->toIso8601String(),
+                    'end' => $mEnd->toIso8601String(),
                 ];
             }
         } catch (\Throwable $e) {
@@ -587,6 +664,9 @@ class BpdbMachineMonitoringService
                 'syncedAt' => $f->synced_at?->toIso8601String(),
                 'dyes' => $dyes,
                 'aux' => $aux,
+                // Quy trình nhuộm (bước + nhiệt độ + cờ kỹ thuật) — null nếu công thức không
+                // kèm quy trình hoặc chưa được đồng bộ lại từ khi thêm tính năng này.
+                'process' => is_array($f->process) ? $f->process : null,
             ];
         } catch (\Throwable $e) {
             Log::warning('getBatchRecipe: không lấy được công thức MES', ['error' => $e->getMessage()]);
@@ -638,13 +718,20 @@ class BpdbMachineMonitoringService
      * Bọc try/catch: bảng chưa migrate hoặc DB lỗi thì trả rỗng -> Gantt vẫn chạy như cũ
      * (tính năng bất hoạt, không làm sập màn hình).
      *
+     * Trả kèm cả `flat` (danh sách phẳng, GIỮ NGUYÊN machine_code chuẩn hoá của từng dòng) —
+     * `index` (gộp theo lotKey) chỉ đủ cho việc TÌM mẻ MES khớp 1 task BPDB; còn để dựng thanh
+     * "mẻ chỉ có trên MES" (yêu cầu 2026-08-13) cần lặp lại TỪNG mẻ MES riêng lẻ kèm máy của
+     * nó, lotKey không giữ lại thông tin đó (đã băm chung màu+mã hàng+máy vào 1 chuỗi).
+     *
      * @param  array<int, string>  $normCodes  Mã máy đã chuẩn hoá (VD5, VD202...)
-     * @return array<string, array<int, array{begin: Carbon, end: Carbon}>>
+     * @return array{index: array<string, array<int, array{begin: Carbon, end: Carbon, batchNo: ?string, lineNo: ?string}>>, flat: array<int, array{machineNorm: string, batchNo: ?string, lineNo: ?string, colorCode: ?string, articleCode: ?string, begin: ?Carbon, end: ?Carbon}>}
      */
     private function loadMesCompletionIndex(array $normCodes, Carbon $fromDt, Carbon $toDt): array
     {
+        $empty = ['index' => [], 'flat' => []];
+
         if (empty($normCodes)) {
-            return [];
+            return $empty;
         }
 
         try {
@@ -663,10 +750,11 @@ class BpdbMachineMonitoringService
                 'error' => $e->getMessage(),
             ]);
 
-            return [];
+            return $empty;
         }
 
         $index = [];
+        $flat = [];
         foreach ($rows as $r) {
             $key = $this->lotKey($r->machine_code, $r->color_code, $r->article_code);
             // begin_time/end_time đã được model cast sang Carbon. Kèm batch_no/line_no để
@@ -677,9 +765,18 @@ class BpdbMachineMonitoringService
                 'batchNo' => $r->batch_no,
                 'lineNo' => $r->line_no,
             ];
+            $flat[] = [
+                'machineNorm' => $r->machine_code,
+                'batchNo' => $r->batch_no,
+                'lineNo' => $r->line_no,
+                'colorCode' => $r->color_code,
+                'articleCode' => $r->article_code,
+                'begin' => $r->begin_time,
+                'end' => $r->end_time,
+            ];
         }
 
-        return $index;
+        return ['index' => $index, 'flat' => $flat];
     }
 
     /**

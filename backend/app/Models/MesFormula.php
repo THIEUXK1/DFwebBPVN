@@ -23,6 +23,7 @@ class MesFormula extends Model
         'aux_count',
         'materials',
         'raw',
+        'process',
         'source',
         'synced_at',
     ];
@@ -30,6 +31,7 @@ class MesFormula extends Model
     protected $casts = [
         'materials' => 'array',
         'raw' => 'array',
+        'process' => 'array',
         'synced_at' => 'datetime',
     ];
 }

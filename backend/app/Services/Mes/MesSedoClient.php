@@ -205,6 +205,8 @@ class MesSedoClient
             }
         }
 
+        $process = $this->extractProcess($data);
+
         return [
             'pfmPfno' => $pfno,
             'formulaId' => $headId,
@@ -212,8 +214,80 @@ class MesSedoClient
             'articleCode' => $head['artCode'] ?? ($data['artCode'] ?? null),
             'machineCode' => $head['macCdoe'] ?? ($data['macCdoe'] ?? null),
             'materials' => $materials,
+            'process' => $process,
             'raw' => $pfList,
         ];
+    }
+
+    /**
+     * Trích quy trình nhuộm (工艺) từ head công thức mesPfM/infoByHeadId:
+     *   - pfMScgyList = các bước công đoạn: dfPfScgyScid (thứ tự bước), dfPfScgyWd (nhiệt độ),
+     *     dfPfScgyZjnd (nồng độ/khối lượng phụ trợ cho ở bước), dfPfScgyRlid/Rlname (phụ trợ nào).
+     *   - pfMTechList = cờ kỹ thuật bật/tắt: dfPfTechid (tên, vd 固色/防黄), selYn ('1'=bật).
+     *   - head: gtwd (nhiệt độ đặt), shaftType (kiểu trục).
+     * Trả về null nếu không có dữ liệu bước lẫn cờ (công thức không kèm quy trình) để phía
+     * hiển thị biết mà ẩn hẳn khối, không hiện khối rỗng.
+     *
+     * @param  array<string, mixed>  $data  head rows từ infoByHeadId
+     * @return array{gtwd:?string, shaftType:?string, steps:array<int,array<string,mixed>>, tech:array<int,array<string,mixed>>}|null
+     */
+    private function extractProcess(array $data): ?array
+    {
+        $steps = [];
+        $scgy = $data['pfMScgyList'] ?? [];
+        if (is_array($scgy)) {
+            foreach ($scgy as $s) {
+                if (!is_array($s)) {
+                    continue;
+                }
+                $steps[] = [
+                    'seq' => isset($s['dfPfScgyScid']) ? (int) $s['dfPfScgyScid'] : null,
+                    'temp' => $this->trimOrNull($s['dfPfScgyWd'] ?? null),
+                    'additiveConc' => $this->trimOrNull($s['dfPfScgyZjnd'] ?? null),
+                    'materialCode' => $this->trimOrNull($s['dfPfScgyRlid'] ?? null),
+                    'materialName' => $this->trimOrNull($s['dfPfScgyRlname'] ?? null),
+                ];
+            }
+        }
+        // Giữ đúng thứ tự bước theo seq (MES có thể trả không theo thứ tự khi 1 bước có nhiều
+        // phụ trợ — vd 2 dòng cùng scid=7); seq null xếp cuối.
+        usort($steps, fn ($a, $b) => ($a['seq'] ?? PHP_INT_MAX) <=> ($b['seq'] ?? PHP_INT_MAX));
+
+        $tech = [];
+        $techList = $data['pfMTechList'] ?? [];
+        if (is_array($techList)) {
+            foreach ($techList as $t) {
+                if (!is_array($t)) {
+                    continue;
+                }
+                $name = $this->trimOrNull($t['dfPfTechid'] ?? null);
+                if ($name === null) {
+                    continue;
+                }
+                $tech[] = [
+                    'name' => $name,
+                    'selected' => (string) ($t['selYn'] ?? '') === '1',
+                ];
+            }
+        }
+
+        if ($steps === [] && $tech === []) {
+            return null;
+        }
+
+        return [
+            'gtwd' => $this->trimOrNull($data['gtwd'] ?? null),
+            'shaftType' => $this->trimOrNull($data['shaftType'] ?? null),
+            'steps' => $steps,
+            'tech' => $tech,
+        ];
+    }
+
+    private function trimOrNull(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+
+        return $value === '' ? null : $value;
     }
 
     /**

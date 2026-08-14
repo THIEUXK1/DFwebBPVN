@@ -75,7 +75,62 @@
       </div>
     </div>
 
-    <div class="gantt-container mt-2">
+    <!-- Chú thích màu (yêu cầu 2026-08-13) — v-show (không v-if) để giữ layout ổn định khi ẩn
+         hiện cùng toolbar lúc vào/ra toàn màn hình. 3 mục viền BẤM ĐƯỢC để bật/tắt riêng loại
+         đó (mờ đi + gạch ngang khi đang tắt); nút riêng bên phải tắt/bật CẢ BA cùng lúc. -->
+    <div class="gantt-legend mt-2" v-show="!isBrowserFullscreen">
+      <span class="gantt-legend-title">{{ $t('bpdbMachinesGantt.legendTitle') }}</span>
+      <span class="gantt-legend-item">
+        <span class="gantt-legend-swatch gantt-legend-swatch-fill" aria-hidden="true">🎨</span>
+        {{ $t('bpdbMachinesGantt.legendFillColor') }}
+      </span>
+      <button
+        type="button"
+        class="gantt-legend-item gantt-legend-toggle"
+        :class="{ 'is-off': borderHidden.running }"
+        :title="$t('bpdbMachinesGantt.legendToggleHint')"
+        @click="toggleBorderType('running')"
+      >
+        <span class="gantt-legend-swatch gantt-legend-border-running"></span>
+        {{ $t('bpdbMachinesGantt.legendRunning') }}
+      </button>
+      <button
+        type="button"
+        class="gantt-legend-item gantt-legend-toggle"
+        :class="{ 'is-off': borderHidden.mes }"
+        :title="$t('bpdbMachinesGantt.legendToggleHint')"
+        @click="toggleBorderType('mes')"
+      >
+        <span class="gantt-legend-swatch gantt-legend-border-mes"></span>
+        {{ $t('bpdbMachinesGantt.legendMesMatched') }}
+      </button>
+      <button
+        type="button"
+        class="gantt-legend-item gantt-legend-toggle"
+        :class="{ 'is-off': borderHidden.mesOnly }"
+        :title="$t('bpdbMachinesGantt.legendToggleHint')"
+        @click="toggleBorderType('mesOnly')"
+      >
+        <span class="gantt-legend-swatch gantt-legend-border-mes-only"></span>
+        {{ $t('bpdbMachinesGantt.legendMesOnly') }}
+      </button>
+      <span class="gantt-legend-item">
+        <span class="gantt-legend-swatch gantt-legend-swatch-plain"></span>
+        {{ $t('bpdbMachinesGantt.legendPlain') }}
+      </span>
+      <button type="button" class="btn btn-secondary btn-sm gantt-legend-master-btn" @click="toggleAllBorders">
+        {{ allBordersHidden ? $t('bpdbMachinesGantt.showAllBordersButton') : $t('bpdbMachinesGantt.hideAllBordersButton') }}
+      </button>
+    </div>
+
+    <div
+      class="gantt-container mt-2"
+      :class="{
+        'hide-border-running': borderHidden.running,
+        'hide-border-mes': borderHidden.mes,
+        'hide-border-mes-only': borderHidden.mesOnly,
+      }"
+    >
       <div id="ganttNeedle" class="gantt-needle" :style="needleStyle" :data-time="needleLabel" v-show="needleVisible"></div>
       <div ref="timelineEl" class="gantt-canvas"></div>
       <p v-if="!loading && totalRecords === 0" class="gantt-empty">{{ $t('bpdbMachinesGantt.emptyState') }}</p>
@@ -169,6 +224,10 @@
           <span v-if="detailPopup.endSource === 'MES'" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesRealTimeNote') }}</span>
           <span v-else-if="detailPopup.endSource === 'BPDB'" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesEstimateNote') }}</span>
         </dd>
+        <template v-if="detailPopup.endSource === 'MES_ONLY'">
+          <dt></dt>
+          <dd class="gantt-mes-only-warning">{{ $t('bpdbMachinesGantt.mesOnlyNote') }}</dd>
+        </template>
         <template v-if="detailPopup.errorMessage">
           <dt class="text-error">{{ $t('common.error') }}</dt>
           <dd class="text-error">{{ detailPopup.errorMessage }}</dd>
@@ -179,7 +238,7 @@
 
     <!-- Bảng thông tin mẻ MES cố định bên PHẢI (yêu cầu 2026-08-08) — rộng rãi, cuộn được,
          hiện khi bấm vào thanh đã ghép với MES. Tách khỏi popup nhỏ để đủ chỗ xem đầy đủ. -->
-    <div v-if="mesPanelOpen && detailPopup?.mesBatchNo" class="gantt-mes-panel">
+    <div v-if="mesPanelOpen && detailPopup?.mesBatchNo" class="gantt-mes-panel gantt-mes-panel-wide">
       <div class="gantt-mes-panel-head">
         <div class="gantt-mes-panel-title">
           {{ $t('bpdbMachinesGantt.mesPanelTitle') }}
@@ -187,90 +246,116 @@
         </div>
         <button type="button" class="gantt-detail-close" :aria-label="$t('common.close')" @click="mesPanelOpen = false">✕</button>
       </div>
-      <div class="gantt-mes-panel-body">
-        <template v-if="mesBatch?.loading">
-          <div class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesLoading') }}</div>
-        </template>
-        <template v-else-if="mesBatch?.failed">
-          <div class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesFailed') }}</div>
-        </template>
-        <template v-else-if="mesBatch?.raw">
-          <table class="gantt-mes-table">
-            <tbody>
-              <tr v-for="row in mesFieldRows" :key="row.label">
-                <th>{{ row.label }}</th>
-                <td>{{ row.value }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <details v-if="mesFieldRowsRest.length" class="gantt-mes-all">
-            <summary>{{ $t('bpdbMachinesGantt.allFieldsSummary', { count: mesFieldRowsRest.length }) }}</summary>
+      <div class="gantt-mes-panel-body gantt-mes-2col">
+        <!-- Cột 1: Bảng liệu (công thức MES + cân thật BPDB) -->
+        <div class="gantt-panel-col">
+          <div class="gantt-recipe-title">{{ $t('bpdbMachinesGantt.recipeTitle') }}</div>
+          <section class="gantt-recipe">
+            <div v-if="batchRecipe?.loading" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.recipeLoading') }}</div>
+            <template v-else>
+              <div class="gantt-recipe-sub">{{ $t('bpdbMachinesGantt.recipeMesTitle') }}</div>
+              <template v-if="batchRecipe?.mesFormula && (batchRecipe.mesFormula.dyes.length || batchRecipe.mesFormula.aux.length)">
+                <template v-if="batchRecipe.mesFormula.dyes.length">
+                  <div class="gantt-recipe-group">{{ $t('bpdbMachinesGantt.recipeDyes') }}</div>
+                  <table class="gantt-recipe-table">
+                    <thead><tr><th>{{ $t('bpdbMachinesGantt.recipeColCode') }}</th><th>{{ $t('bpdbMachinesGantt.recipeColName') }}</th><th class="num">{{ $t('bpdbMachinesGantt.recipeColAmount') }}</th></tr></thead>
+                    <tbody>
+                      <tr v-for="(m, i) in batchRecipe.mesFormula.dyes" :key="'d' + i">
+                        <td>{{ m.code }}</td><td class="name">{{ m.name }}</td><td class="num">{{ m.amount }} {{ m.unit }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </template>
+                <template v-if="batchRecipe.mesFormula.aux.length">
+                  <div class="gantt-recipe-group">{{ $t('bpdbMachinesGantt.recipeAux') }}</div>
+                  <table class="gantt-recipe-table">
+                    <thead><tr><th>{{ $t('bpdbMachinesGantt.recipeColCode') }}</th><th>{{ $t('bpdbMachinesGantt.recipeColName') }}</th><th class="num">{{ $t('bpdbMachinesGantt.recipeColAmount') }}</th></tr></thead>
+                    <tbody>
+                      <tr v-for="(m, i) in batchRecipe.mesFormula.aux" :key="'a' + i">
+                        <td>{{ m.code }}</td><td class="name">{{ m.name }}</td><td class="num">{{ m.amount }} {{ m.unit }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </template>
+              </template>
+              <div v-else class="gantt-detail-note">{{ $t('bpdbMachinesGantt.recipeMesEmpty') }}</div>
+
+              <template v-if="batchRecipe?.mesFormula?.process">
+                <div class="gantt-recipe-sub">{{ $t('bpdbMachinesGantt.recipeProcessTitle') }}</div>
+                <div v-if="batchRecipe.mesFormula.process.tech.length" class="gantt-recipe-tech">
+                  <span
+                    v-for="(t, i) in batchRecipe.mesFormula.process.tech"
+                    :key="'t' + i"
+                    class="gantt-tech-flag"
+                    :class="{ on: t.selected }"
+                  >{{ t.name }}: {{ t.selected ? $t('bpdbMachinesGantt.recipeProcessOn') : $t('bpdbMachinesGantt.recipeProcessOff') }}</span>
+                </div>
+                <table v-if="batchRecipe.mesFormula.process.steps.length" class="gantt-recipe-table">
+                  <thead>
+                    <tr>
+                      <th class="num">{{ $t('bpdbMachinesGantt.recipeProcessColStep') }}</th>
+                      <th class="num">{{ $t('bpdbMachinesGantt.recipeProcessColTemp') }}</th>
+                      <th>{{ $t('bpdbMachinesGantt.recipeProcessColAdditive') }}</th>
+                      <th class="num">{{ $t('bpdbMachinesGantt.recipeProcessColConc') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(s, i) in batchRecipe.mesFormula.process.steps" :key="'s' + i">
+                      <td class="num">{{ s.seq ?? '—' }}</td>
+                      <td class="num">{{ s.temp ? s.temp + '°C' : '—' }}</td>
+                      <td class="name">{{ s.materialName || '—' }}</td>
+                      <td class="num">{{ s.additiveConc ?? '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </template>
+
+              <div class="gantt-recipe-sub">{{ $t('bpdbMachinesGantt.recipeBpdbTitle') }}</div>
+              <table v-if="batchRecipe?.bpdbDosing?.available && batchRecipe.bpdbDosing.lines.length" class="gantt-recipe-table">
+                <thead><tr><th>{{ $t('bpdbMachinesGantt.recipeColRack') }}</th><th>{{ $t('bpdbMachinesGantt.recipeColCode') }}</th><th class="num">{{ $t('bpdbMachinesGantt.recipeColRequested') }}</th><th class="num">{{ $t('bpdbMachinesGantt.recipeColActual') }}</th></tr></thead>
+                <tbody>
+                  <tr v-for="(l, i) in batchRecipe.bpdbDosing.lines" :key="'b' + i">
+                    <td>{{ l.tank }}</td><td>{{ l.materialCode }}</td><td class="num">{{ l.requestedGrams }}</td><td class="num">{{ l.actualGrams }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-else class="gantt-detail-note">{{ $t('bpdbMachinesGantt.recipeBpdbEmpty') }}</div>
+            </template>
+          </section>
+        </div>
+
+        <!-- Cột 2: Thông tin mẻ MES -->
+        <div class="gantt-panel-col">
+          <div class="gantt-recipe-title">{{ $t('bpdbMachinesGantt.mesPanelTitle') }}</div>
+          <template v-if="mesBatch?.loading">
+            <div class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesLoading') }}</div>
+          </template>
+          <template v-else-if="mesBatch?.failed">
+            <div class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesFailed') }}</div>
+          </template>
+          <template v-else-if="mesBatch?.raw">
             <table class="gantt-mes-table">
               <tbody>
-                <tr v-for="row in mesFieldRowsRest" :key="row.label">
+                <tr v-for="row in mesFieldRows" :key="row.label">
                   <th>{{ row.label }}</th>
                   <td>{{ row.value }}</td>
                 </tr>
               </tbody>
             </table>
-          </details>
-          <div v-if="mesBatch.syncedAt" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesSyncedAtPrefix') }}{{ formatTime(mesBatch.syncedAt) }}</div>
-        </template>
-      </div>
-    </div>
-
-    <!-- Panel bảng liệu RIÊNG — đặt sát bên trái panel MES (nhích về phía giữa màn hình). -->
-    <div v-if="mesPanelOpen && detailPopup?.mesBatchNo" class="gantt-recipe-panel">
-      <div class="gantt-mes-panel-head">
-        <div class="gantt-mes-panel-title">
-          {{ $t('bpdbMachinesGantt.recipeTitle') }}
-          <span class="gantt-mes-panel-batch">{{ detailPopup.mesBatchNo }}</span>
-        </div>
-        <button type="button" class="gantt-detail-close" :aria-label="$t('common.close')" @click="mesPanelOpen = false">✕</button>
-      </div>
-      <div class="gantt-mes-panel-body">
-        <section class="gantt-recipe">
-          <div v-if="batchRecipe?.loading" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.recipeLoading') }}</div>
-          <template v-else>
-            <div class="gantt-recipe-sub">{{ $t('bpdbMachinesGantt.recipeMesTitle') }}</div>
-            <template v-if="batchRecipe?.mesFormula && (batchRecipe.mesFormula.dyes.length || batchRecipe.mesFormula.aux.length)">
-              <template v-if="batchRecipe.mesFormula.dyes.length">
-                <div class="gantt-recipe-group">{{ $t('bpdbMachinesGantt.recipeDyes') }}</div>
-                <table class="gantt-recipe-table">
-                  <thead><tr><th>{{ $t('bpdbMachinesGantt.recipeColCode') }}</th><th>{{ $t('bpdbMachinesGantt.recipeColName') }}</th><th class="num">{{ $t('bpdbMachinesGantt.recipeColAmount') }}</th></tr></thead>
-                  <tbody>
-                    <tr v-for="(m, i) in batchRecipe.mesFormula.dyes" :key="'d' + i">
-                      <td>{{ m.code }}</td><td class="name">{{ m.name }}</td><td class="num">{{ m.amount }} {{ m.unit }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </template>
-              <template v-if="batchRecipe.mesFormula.aux.length">
-                <div class="gantt-recipe-group">{{ $t('bpdbMachinesGantt.recipeAux') }}</div>
-                <table class="gantt-recipe-table">
-                  <thead><tr><th>{{ $t('bpdbMachinesGantt.recipeColCode') }}</th><th>{{ $t('bpdbMachinesGantt.recipeColName') }}</th><th class="num">{{ $t('bpdbMachinesGantt.recipeColAmount') }}</th></tr></thead>
-                  <tbody>
-                    <tr v-for="(m, i) in batchRecipe.mesFormula.aux" :key="'a' + i">
-                      <td>{{ m.code }}</td><td class="name">{{ m.name }}</td><td class="num">{{ m.amount }} {{ m.unit }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </template>
-            </template>
-            <div v-else class="gantt-detail-note">{{ $t('bpdbMachinesGantt.recipeMesEmpty') }}</div>
-
-            <div class="gantt-recipe-sub">{{ $t('bpdbMachinesGantt.recipeBpdbTitle') }}</div>
-            <table v-if="batchRecipe?.bpdbDosing?.available && batchRecipe.bpdbDosing.lines.length" class="gantt-recipe-table">
-              <thead><tr><th>{{ $t('bpdbMachinesGantt.recipeColRack') }}</th><th>{{ $t('bpdbMachinesGantt.recipeColCode') }}</th><th class="num">{{ $t('bpdbMachinesGantt.recipeColRequested') }}</th><th class="num">{{ $t('bpdbMachinesGantt.recipeColActual') }}</th></tr></thead>
-              <tbody>
-                <tr v-for="(l, i) in batchRecipe.bpdbDosing.lines" :key="'b' + i">
-                  <td>{{ l.tank }}</td><td>{{ l.materialCode }}</td><td class="num">{{ l.requestedGrams }}</td><td class="num">{{ l.actualGrams }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="gantt-detail-note">{{ $t('bpdbMachinesGantt.recipeBpdbEmpty') }}</div>
+            <details v-if="mesFieldRowsRest.length" class="gantt-mes-all">
+              <summary>{{ $t('bpdbMachinesGantt.allFieldsSummary', { count: mesFieldRowsRest.length }) }}</summary>
+              <table class="gantt-mes-table">
+                <tbody>
+                  <tr v-for="row in mesFieldRowsRest" :key="row.label">
+                    <th>{{ row.label }}</th>
+                    <td>{{ row.value }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </details>
+            <div v-if="mesBatch.syncedAt" class="gantt-detail-note">{{ $t('bpdbMachinesGantt.mesSyncedAtPrefix') }}{{ formatTime(mesBatch.syncedAt) }}</div>
           </template>
-        </section>
+        </div>
       </div>
     </div>
   </div>
@@ -278,7 +363,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import axios from 'axios';
 import { Timeline } from 'vis-timeline/standalone';
 import * as visStandalone from 'vis-timeline/standalone';
@@ -461,6 +546,22 @@ const autoRefresh = ref(true);
 const autoJumpNew = ref(true);
 const machineSearch = ref('');
 
+// Bật/tắt viền nhấp nháy theo từng loại (yêu cầu 2026-08-13: "có nút để ẩn luôn viền") — chỉ
+// ẩn VIỀN + hiệu ứng nhấp nháy, KHÔNG ẩn cả thanh (thanh vẫn hiện màu nền/nhãn bình thường,
+// chỉ đỡ nhấp nháy gây rối mắt khi có quá nhiều mẻ cùng loại, ví dụ mẻ MES_ONLY). Bấm vào
+// từng dòng chú thích để bật/tắt riêng loại đó; nút riêng để tắt/bật CẢ BA cùng lúc.
+const borderHidden = reactive({ running: false, mes: false, mesOnly: false });
+const allBordersHidden = computed(() => borderHidden.running && borderHidden.mes && borderHidden.mesOnly);
+const toggleBorderType = (type: 'running' | 'mes' | 'mesOnly') => {
+  borderHidden[type] = !borderHidden[type];
+};
+const toggleAllBorders = () => {
+  const hide = !allBordersHidden.value;
+  borderHidden.running = hide;
+  borderHidden.mes = hide;
+  borderHidden.mesOnly = hide;
+};
+
 const timelineEl = ref<HTMLDivElement | null>(null);
 let timeline: any = null;
 const groupsDataSet = new DataSet<any>();
@@ -589,7 +690,9 @@ const buildDetail = (item: any, realEnd: Date, barColor: string): GanttDetail =>
     color: item.color ?? null,
     productCode: item.productCode ?? null,
     taskTitle: item.taskTitle ?? '',
-    statusLabel: rawTaskStatusLabel(item.taskStatus),
+    // Mẻ MES_ONLY không có task BPDB nên không có taskStatus (null) — nhãn riêng thay vì rơi
+    // vào "Không xác định (null)" của rawTaskStatusLabel (dành cho mã trạng thái BPDB thật).
+    statusLabel: item.taskStatus == null ? t('bpdbMachinesGantt.mesOnlyStatusLabel') : rawTaskStatusLabel(item.taskStatus),
     uncompleted: !!item.uncompleted,
     startText: formatTime(item.start),
     endText: item.uncompleted ? t('bpdbMachinesGantt.endTextNotFinished') : formatTime(realEnd.toISOString()),
@@ -784,10 +887,29 @@ interface DosingLine {
   requestedGrams: number | null;
   actualGrams: number | null;
 }
+// Quy trình nhuộm (bước + nhiệt độ + cờ kỹ thuật) trích từ head công thức MES — xem
+// MesSedoClient::extractProcess(). null nếu công thức không kèm quy trình.
+interface RecipeProcessStep {
+  seq: number | null;
+  temp: string | null;
+  additiveConc: string | null;
+  materialCode: string | null;
+  materialName: string | null;
+}
+interface RecipeProcessTech {
+  name: string;
+  selected: boolean;
+}
+interface RecipeProcess {
+  gtwd: string | null;
+  shaftType: string | null;
+  steps: RecipeProcessStep[];
+  tech: RecipeProcessTech[];
+}
 interface BatchRecipe {
   key: string;
   loading: boolean;
-  mesFormula: { pfmPfno: string; syncedAt: string | null; dyes: RecipeMaterial[]; aux: RecipeMaterial[] } | null;
+  mesFormula: { pfmPfno: string; syncedAt: string | null; dyes: RecipeMaterial[]; aux: RecipeMaterial[]; process: RecipeProcess | null } | null;
   bpdbDosing: { available: boolean; lineCount: number; lines: DosingLine[] } | null;
 }
 const batchRecipe = ref<BatchRecipe | null>(null);
@@ -863,7 +985,6 @@ const closeDetailOnOutsideClick = (event: MouseEvent) => {
   if (!target) return;
   if (target.closest('.gantt-detail-popup')) return;
   if (target.closest('.gantt-mes-panel')) return;
-  if (target.closest('.gantt-recipe-panel')) return;
   if (timelineEl.value?.contains(target)) return;
   closeDetailPopup();
 };
@@ -914,9 +1035,11 @@ const fetchGantt = async () => {
       start,
       end: displayEnd,
       // Đang chạy = viền đỏ nhấp nháy; đã ghép được giờ kết thúc THẬT từ MES = viền xanh
-      // dương nhấp nháy (yêu cầu 2026-08-08). Hai trạng thái loại trừ nhau (mẻ ghép MES
-      // luôn uncompleted=false).
-      className: it.uncompleted ? 'gantt-item-running' : (it.endSource === 'MES' ? 'gantt-item-mes' : ''),
+      // dương nhấp nháy (yêu cầu 2026-08-08); mẻ CHỈ CÓ trên MES (không khớp task BPDB nào) =
+      // viền xanh lá nhấp nháy (yêu cầu 2026-08-13). Ba trạng thái loại trừ nhau.
+      className: it.uncompleted
+        ? 'gantt-item-running'
+        : (it.endSource === 'MES' ? 'gantt-item-mes' : (it.endSource === 'MES_ONLY' ? 'gantt-item-mes-only' : '')),
       style: `background-color: ${color}; color: ${textColor};`,
       // Nền màu đặt luôn trên nhãn (thẻ) chứ không chỉ trên thanh ngoài — nhãn nay bị cắt gọn
       // trong lòng thanh (xem CSS .gantt-item-label), tô cùng màu để không lộ vệt nền khác
@@ -1552,6 +1675,66 @@ onUnmounted(() => {
   height: 34px;
 }
 
+.gantt-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 10px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.78rem;
+  color: var(--text-body, #374151);
+}
+.gantt-legend-title {
+  font-weight: 700;
+  color: var(--text-heading, #111827);
+}
+.gantt-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.gantt-legend-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex: none;
+}
+.gantt-legend-swatch-fill {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+.gantt-legend-swatch-plain {
+  background: var(--bg-hover, #cbd5e1);
+  border: 1px solid var(--border-color, #94a3b8);
+}
+.gantt-legend-border-running { border: 2px solid #ef4444; }
+.gantt-legend-border-mes { border: 2px solid #2563eb; }
+.gantt-legend-border-mes-only { border: 2px solid #16a34a; }
+.gantt-legend-toggle {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.gantt-legend-toggle:hover { background: var(--bg-hover, rgba(148, 163, 184, 0.18)); }
+.gantt-legend-toggle.is-off {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.gantt-legend-master-btn {
+  margin-left: auto;
+}
+
 .gantt-container {
   background: var(--bg-card, #fff);
   border: 1px solid var(--border-color, #e2e8f0);
@@ -1926,6 +2109,12 @@ onUnmounted(() => {
   color: var(--text-secondary, #6b7280);
   font-size: 0.72rem;
 }
+.gantt-mes-only-warning {
+  display: block;
+  color: #15803d;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
 .gantt-mes-block {
   margin-top: 8px;
   padding-top: 8px;
@@ -1945,24 +2134,6 @@ onUnmounted(() => {
   margin-bottom: 4px;
 }
 /* Bảng thông tin mẻ MES cố định bên phải màn hình. */
-/* Panel bảng liệu riêng — nằm SÁT BÊN TRÁI panel MES (right = đúng bề rộng panel MES),
-   nên nhích về phía giữa màn hình như yêu cầu. z-index thấp hơn panel MES 1 bậc. */
-.gantt-recipe-panel {
-  position: fixed;
-  top: 0;
-  right: 400px;
-  height: 100vh;
-  width: 380px;
-  max-width: 46vw;
-  z-index: 3049;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-card, #fff);
-  color: var(--text-title, #111827);
-  border-left: 1px solid var(--border-card, #e2e8f0);
-  box-shadow: -12px 0 30px rgba(0,0,0,0.18);
-  font-size: 0.82rem;
-}
 .gantt-mes-panel {
   position: fixed;
   top: 0;
@@ -2000,6 +2171,39 @@ onUnmounted(() => {
   padding: 10px 14px 20px;
   overflow-y: auto;
 }
+/* Khối gộp: 1 panel rộng chia 2 cột (Bảng liệu | Thông tin MES). */
+.gantt-mes-panel-wide {
+  width: 760px;
+  max-width: 96vw;
+}
+.gantt-mes-2col {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.gantt-panel-col {
+  flex: 1 1 50%;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 10px 14px 20px;
+}
+.gantt-panel-col + .gantt-panel-col {
+  border-left: 1px solid var(--border-card, #e2e8f0);
+}
+.gantt-panel-col > .gantt-recipe-title {
+  position: sticky;
+  top: -10px;
+  background: var(--bg-card, #fff);
+  padding-top: 4px;
+  margin-top: -4px;
+  z-index: 1;
+}
+@media (max-width: 820px) {
+  .gantt-mes-2col { flex-direction: column; }
+  .gantt-panel-col + .gantt-panel-col { border-left: 0; border-top: 1px solid var(--border-card, #e2e8f0); }
+}
 /* Bảng liệu (công thức MES + cân thật BPDB) — đặt trên cùng panel, nổi bật hơn phần trường MES. */
 .gantt-recipe {
   margin-bottom: 14px;
@@ -2015,6 +2219,25 @@ onUnmounted(() => {
   font-weight: 600;
   color: var(--text-secondary, #6b7280);
   margin: 10px 0 4px;
+}
+.gantt-recipe-tech {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.gantt-tech-flag {
+  font-size: 0.78rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong, #cbd5e1);
+  color: var(--text-secondary, #6b7280);
+  background: var(--bg-subtle, #f1f5f9);
+}
+.gantt-tech-flag.on {
+  color: #065f46;
+  background: #d1fae5;
+  border-color: #6ee7b7;
 }
 .gantt-recipe-group {
   font-weight: 600;
@@ -2101,6 +2324,37 @@ onUnmounted(() => {
   from { box-shadow: 0 0 2px rgba(37,99,235,0.3); opacity: 0.85; }
   to { box-shadow: 0 0 14px rgba(37,99,235,0.9); opacity: 1; }
 }
+/* Mẻ CHỈ CÓ trên MES, không khớp được với bất kỳ task BPDB nào trong khung Gantt đang xem
+   (yêu cầu 2026-08-13) — viền xanh lá nhấp nháy để phân biệt rõ với mẻ thường (không có viền)
+   và mẻ đã ghép giờ MES (viền xanh dương, xem .gantt-item-mes ở trên). */
+:deep(.gantt-item-mes-only) {
+  border: 2px solid #16a34a !important;
+  animation: ganttPulseMesOnly 0.9s infinite alternate ease-in-out;
+}
+@keyframes ganttPulseMesOnly {
+  from { box-shadow: 0 0 2px rgba(22,163,74,0.35); opacity: 0.85; }
+  to { box-shadow: 0 0 14px rgba(22,163,74,0.95); opacity: 1; }
+}
 :deep(.gantt-blink) { color: #f43f5e; font-weight: 700; }
+
+/* Bật/tắt viền theo loại (yêu cầu 2026-08-13) — chỉ bỏ VIỀN + hiệu ứng nhấp nháy, KHÔNG ẩn
+   cả thanh: thanh vẫn hiện màu nền/nhãn bình thường, chỉ đỡ nhấp nháy gây rối mắt. Đặt SAU 3
+   khối :deep() ở trên để thắng độ ưu tiên CSS khi cả 2 cùng khớp (cùng !important, cùng độ
+   cụ thể selector gần nhau -> luật khai báo sau thắng). */
+.gantt-container.hide-border-running :deep(.gantt-item-running) {
+  border: none !important;
+  animation: none !important;
+  box-shadow: none !important;
+}
+.gantt-container.hide-border-mes :deep(.gantt-item-mes) {
+  border: none !important;
+  animation: none !important;
+  box-shadow: none !important;
+}
+.gantt-container.hide-border-mes-only :deep(.gantt-item-mes-only) {
+  border: none !important;
+  animation: none !important;
+  box-shadow: none !important;
+}
 
 </style>
