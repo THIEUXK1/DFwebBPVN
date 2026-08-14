@@ -451,7 +451,15 @@ function uniqSorted(vals: any[]): string[] {
 
 const colorOptions = computed(() => uniqSorted(allRounds.value.map((j) => j.batch?.color)));
 const productOptions = computed(() => uniqSorted(allRounds.value.map((j) => j.batch?.product_code)));
-const machineOptions = computed(() => uniqSorted(allRounds.value.map((j) => j.batch?.machine?.code)));
+/**
+ * Máy nhuộm mã "VD..." là nhóm dùng hằng ngày nên xếp lên đầu danh sách chọn; các mã còn lại
+ * (VS, TJ, mã lạ...) vẫn giữ nguyên, chỉ nằm dưới. Trong từng nhóm vẫn sắp theo thứ tự tự nhiên.
+ */
+const machineOptions = computed(() => {
+  const all = uniqSorted(allRounds.value.map((j) => j.batch?.machine?.code));
+  const isVd = (c: string) => c.toUpperCase().startsWith('VD');
+  return [...all.filter(isVd), ...all.filter((c) => !isVd(c))];
+});
 const lvOptions = computed(() => uniqSorted(allRounds.value.map((j) => j.batch?.level_code)));
 
 /** Có đang lọc dòng nào không — dùng cho chữ "khớp" ở thanh phân trang. */

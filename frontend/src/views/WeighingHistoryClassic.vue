@@ -461,7 +461,12 @@ function uniqSorted(vals: any[]): string[] {
 
 const colorOptions = computed(() => uniqSorted(allRounds.value.map((j) => j.batch?.color)));
 const productOptions = computed(() => uniqSorted(allRounds.value.map((j) => j.batch?.product_code)));
-const machineOptions = computed(() => uniqSorted(allRounds.value.map((j) => j.batch?.machine?.code)));
+/** Máy "VD..." xếp lên đầu danh sách chọn (xem WeighingHistory.vue), phần còn lại giữ nguyên. */
+const machineOptions = computed(() => {
+  const all = uniqSorted(allRounds.value.map((j) => j.batch?.machine?.code));
+  const isVd = (c: string) => c.toUpperCase().startsWith('VD');
+  return [...all.filter(isVd), ...all.filter((c) => !isVd(c))];
+});
 const lvOptions = computed(() => uniqSorted(allRounds.value.map((j) => j.batch?.level_code)));
 
 /** Có đang lọc dòng nào không — dùng cho chữ "khớp" ở thanh phân trang. */
