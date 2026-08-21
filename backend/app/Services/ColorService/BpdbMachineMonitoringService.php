@@ -34,6 +34,14 @@ class BpdbMachineMonitoringService
     private const REGISTRY_CACHE_TTL = 300; // 5 phút — danh mục máy đổi rất chậm
     private const STATUS_CACHE_TTL = 4;     // giây — tránh mỗi trình duyệt tự query BPDB
 
+    // Task active (10/20/30) treo quá ngưỡng này thì KHÔNG còn được coi là bằng chứng "máy
+    // đang chạy". BPDB có task orphan không bao giờ đóng (ca thật: task PROCESSING treo 268
+    // ngày) mà query trạng thái lại lấy task active KHÔNG giới hạn thời gian, nên task chết
+    // luôn thắng task mới ở bảng ưu tiên -> máy bị gán PROCESSING và cột "đã kéo dài" đếm từ
+    // mốc của task chết (báo cáo 2026-08-21: số ra hàng tháng). Cùng ý nghĩa với ngưỡng
+    // bpdb_gantt_hide_uncompleted_after_minutes vốn đã áp cho Gantt.
+    private const STALE_ACTIVE_TASK_DEFAULT_MINUTES = 24 * 60;
+
     // Mốc "máy nhàn rỗi từ bao giờ" — query gộp riêng vì query trạng thái chính chỉ lấy
     // task active + 24h gần nhất, không đủ để biết máy IDLE đã trống bao lâu. Cache dài
     // hơn (60s) vì độ chính xác từng giây không có ý nghĩa với máy đang trống, trong khi
@@ -50,6 +58,10 @@ class BpdbMachineMonitoringService
     // liệu. Cache ngắn để các màn hình dùng chung 1 lần query; 15s vẫn thấp hơn nhiều
     // ngưỡng "stale" mặc định 60s của envelope nên không làm dữ liệu bị coi là cũ.
     private const GANTT_CACHE_TTL = 15;
+
+    // Lịch sử trạng thái 1 máy (modal trên Dashboard): mỗi lần mở là 1 lượt quét SUP_Tasks
+    // qua ODBC — cache ngắn để đổi khoảng 2/7/30 ngày qua lại không phải chờ lại từ đầu.
+    private const TIMELINE_CACHE_TTL = 30;
 
     // Máy KHÔNG vẽ trên biểu đồ Gantt (yêu cầu 2026-08-05: ẩn VD001). Lọc ở ĐÂY chứ không
     // lọc ở getMachineRegistry(): danh mục máy còn dùng chung cho màn hình trạng thái máy và
@@ -833,7 +845,14 @@ class BpdbMachineMonitoringService
         return $best;
     }
 
-    /** Timeline hoạt động — chỉ đọc khi người dùng yêu cầu, giới hạn khoảng thời gian. */
+    /**
+     * Timeline hoạt động — chỉ đọc khi người dùng yêu cầu, giới hạn khoảng thời gian.
+     *
+     * Cache ngắn theo (máy, khoảng, limit): màn hình lịch sử trạng thái cho phép đổi qua
+     * lại 2/7/30 ngày và người dùng thường mở lại cùng một máy vài lần liên tiếp — mỗi lần
+     * là một lượt quét SUP_Tasks qua ODBC tới SQL Server nhà máy (chậm nhất trong luồng).
+     * 30 giây đủ để các lần bấm liên tiếp dùng chung một kết quả mà vẫn coi là dữ liệu mới.
+     */
     public function getMachineTimeline(string $machineCode, ?string $from, ?string $to, int $limit = 50): array
     {
         $registry = $this->getMachineRegistry();
@@ -851,13 +870,24 @@ class BpdbMachineMonitoringService
         $from = $from ?: now('Asia/Ho_Chi_Minh')->subDays(2)->format('Y-m-d H:i:s');
         $to = $to ?: now('Asia/Ho_Chi_Minh')->format('Y-m-d H:i:s');
 
-        return $this->client->select(
+        // Mốc `to` gần như luôn là "bây giờ" nên nếu đưa nguyên vào khóa cache thì mỗi
+        // request một khóa khác nhau -> cache không bao giờ trúng. Làm tròn xuống theo
+        // đúng TTL để các lần bấm trong cùng một cửa sổ 30 giây dùng chung khóa.
+        $cacheKey = sprintf(
+            'bpdb_machine_timeline:%s:%s:%s:%d',
+            $machineCode,
+            $from,
+            (int) floor(Carbon::parse($to, 'Asia/Ho_Chi_Minh')->timestamp / self::TIMELINE_CACHE_TTL),
+            $limit
+        );
+
+        return Cache::remember($cacheKey, self::TIMELINE_CACHE_TTL, fn () => $this->client->select(
             "SELECT TOP " . max(1, min($limit, 200)) . " Id, TaskTitle, TaskStatus, IsDeleted, CreateTime, WorkStartTime, FinishTime, ErrorMsg
              FROM dbo.SUP_Tasks
              WHERE Machine IN ($placeholders) AND CreateTime BETWEEN ? AND ?
              ORDER BY CreateTime DESC",
             [...$machineIds, $from, $to]
-        );
+        ));
     }
 
     private function computeAllMachineStatuses(): array
@@ -998,6 +1028,48 @@ class BpdbMachineMonitoringService
             return $this->buildResult($machineCode, $variant, 'IDLE', null, null, 0, 0, null, null, $idleSince, 'LAST_ACTIVITY');
         }
 
+        // Loại task treo quá hạn TRƯỚC khi xếp ưu tiên — xem STALE_ACTIVE_TASK_DEFAULT_MINUTES.
+        $liveTasks = [];
+        $staleTasks = [];
+        foreach ($tasks as $t) {
+            if ($this->isStaleActiveTask($t)) {
+                $staleTasks[] = $t;
+            } else {
+                $liveTasks[] = $t;
+            }
+        }
+
+        if (empty($liveTasks)) {
+            // Mọi task còn mở đều đã treo quá hạn -> không có bằng chứng máy đang chạy. Đếm
+            // từ mốc hoạt động gần nhất (chính task treo đó) và gắn cảnh báo để admin biết
+            // BPDB còn task chưa đóng, thay vì im lặng báo PROCESSING suốt nhiều tháng.
+            $anchor = $idleSince;
+            foreach ($staleTasks as $t) {
+                foreach (['FinishTime', 'WorkStartTime', 'CreateTime'] as $field) {
+                    $candidate = $t[$field] ?? null;
+                    if (!empty($candidate) && ($anchor === null || strcmp((string) $candidate, (string) $anchor) > 0)) {
+                        $anchor = $candidate;
+                    }
+                }
+            }
+
+            return $this->buildResult(
+                $machineCode,
+                $variant,
+                'IDLE',
+                null,
+                null,
+                0,
+                0,
+                $anchor,
+                ['code' => 'ABORTED_OR_STALE', 'minutes' => null, 'threshold' => null],
+                $anchor,
+                'LAST_ACTIVITY'
+            );
+        }
+
+        $tasks = $liveTasks;
+
         $priorityRank = fn (array $t) => match (true) {
             (int) $t['TaskStatus'] === 30 && !($t['IsDeleted'] ?? false) => 0, // PROCESSING
             (int) $t['TaskStatus'] === 20 => 1, // TRANSITIONING
@@ -1093,6 +1165,34 @@ class BpdbMachineMonitoringService
     {
         $flag = FeatureFlag::where('key', $key)->first();
         return $flag && is_numeric($flag->value) ? (int) $flag->value : $default;
+    }
+
+    /**
+     * Task còn mở nhưng đã treo quá lâu -> coi như dữ liệu chết, không dùng để suy ra trạng
+     * thái máy hay mốc "đã kéo dài". Public để phần Gantt/nhu cầu hóa chất dùng chung một
+     * định nghĩa duy nhất.
+     */
+    public function isStaleActiveTask(array $task): bool
+    {
+        $status = (int) $task['TaskStatus'];
+        if (!in_array($status, [10, 20, 30], true) || !empty($task['FinishTime'])) {
+            return false;
+        }
+
+        // Task active nhưng đã bị đánh dấu xoá: BPDB không đóng nó, nhưng chắc chắn không
+        // phải việc đang chạy.
+        if ($task['IsDeleted'] ?? false) {
+            return true;
+        }
+
+        $anchor = $task['WorkStartTime'] ?: $task['CreateTime'];
+        if (empty($anchor)) {
+            return false;
+        }
+
+        $minutes = now()->diffInMinutes(Carbon::parse($anchor, 'Asia/Ho_Chi_Minh'), true);
+
+        return $minutes >= $this->stuckThresholdMinutes('bpdb_stale_task_minutes', self::STALE_ACTIVE_TASK_DEFAULT_MINUTES);
     }
 
     /**

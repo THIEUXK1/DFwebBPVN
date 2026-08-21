@@ -37,12 +37,21 @@ class DashboardController extends Controller
         // dùng mở "/" tưởng hệ thống trống. ProductionBatchController::index() (màn Lệnh sản xuất)
         // vốn đã hiển thị APPROVED, Dashboard giờ khớp lại đúng logic đó.
         $batches = ProductionBatch::with(['machine', 'tank'])->khongPhaiCanTay()->whereIn('status', ['NEW', 'APPROVED', 'READY_TO_WEIGH', 'WEIGHING', 'WEIGHED', 'SENT'])->get();
+
+        // 1 query gộp thay vì 1 query/máy (N+1) — đo thật 2026-08-13 trên DB production: vòng lặp
+        // cũ tốn ~800ms cho 24 máy (24 round-trip riêng lẻ), chiếm 2/3 tổng thời gian overview().
+        // Round-trip DB qua VPN của máy dev hiện dao động vài trăm ms tới vài giây/lần — gộp lại
+        // còn 1 round-trip là khoản tiết kiệm không phụ thuộc VPN tốt hay xấu.
+        $activeAlertsByMachine = Alert::whereIn('status', ['OPEN', 'ACKNOWLEDGED'])
+            ->whereNotNull('machine_id')
+            ->get()
+            ->groupBy('machine_id');
         $alertsCount = Alert::whereIn('status', ['OPEN', 'ACKNOWLEDGED'])->count();
 
-        $overviewData = $machines->map(function ($machine) use ($batches) {
+        $overviewData = $machines->map(function ($machine) use ($batches, $activeAlertsByMachine) {
             $currentBatch = $batches->firstWhere('machine_id', $machine->id);
-            $activeAlerts = Alert::where('machine_id', $machine->id)->whereIn('status', ['OPEN', 'ACKNOWLEDGED'])->get();
-            
+            $activeAlerts = $activeAlertsByMachine->get($machine->id, collect());
+
             return [
                 'machine_id' => $machine->id,
                 'machine_code' => $machine->code,
@@ -89,12 +98,25 @@ class DashboardController extends Controller
             ->whereIn('status', ['APPROVED', 'READY_TO_WEIGH', 'WEIGHING', 'WEIGHED'])
             ->get();
 
-        $weighingData = $batches->map(function ($batch) {
-            // Find completed scale measurements
-            $measurements = ScaleMeasurement::where('legacy_batch_id', $batch->legacy_batch_id)->get();
-            
-            // Get material transport task if exists
-            $transport = MaterialTransport::where('batch_id', $batch->id)->first();
+        // Gộp 2 query cho TOÀN BỘ lô thay vì 2 query MỖI lô. Đo 2026-08-21 trên dữ liệu
+        // thật: bản N+1 cũ chạy 16.822 query mất 143 GIÂY (DB Postgres nằm trên server, mỗi
+        // round-trip ~17ms nên số lượng query mới là thứ quyết định, không phải độ nặng của
+        // từng câu) — đây là lý do cả Dashboard bị treo chứ không phải truy vấn BPDB.
+        $measurementStats = ScaleMeasurement::query()
+            ->whereIn('legacy_batch_id', $batches->pluck('legacy_batch_id')->filter()->unique())
+            ->selectRaw('legacy_batch_id, COUNT(*) AS weighed_count, MAX(measured_at) AS last_weighed_at')
+            ->groupBy('legacy_batch_id')
+            ->get()
+            ->keyBy('legacy_batch_id');
+
+        $transports = MaterialTransport::query()
+            ->whereIn('batch_id', $batches->pluck('id'))
+            ->get()
+            ->keyBy('batch_id');
+
+        $weighingData = $batches->map(function ($batch) use ($measurementStats, $transports) {
+            $stats = $measurementStats->get($batch->legacy_batch_id);
+            $transport = $transports->get($batch->id);
 
             return [
                 'batch_id' => $batch->id,
@@ -104,8 +126,8 @@ class DashboardController extends Controller
                 'machine_code' => $batch->machine ? $batch->machine->code : 'N/A',
                 'tank_code' => $batch->tank ? $batch->tank->code : 'N/A',
                 'status' => $batch->status,
-                'weighed_count' => $measurements->count(),
-                'last_weighed_at' => $measurements->max('measured_at'),
+                'weighed_count' => (int) ($stats->weighed_count ?? 0),
+                'last_weighed_at' => $stats->last_weighed_at ?? null,
                 'transport_status' => $transport ? $transport->status : 'NOT_STARTED',
             ];
         });
@@ -126,10 +148,16 @@ class DashboardController extends Controller
         // trên cả 4 tab Dashboard, kể cả tab "Máy nhuộm" dù lô còn ở hàng chờ điều phối.
         $batches = ProductionBatch::with(['machine', 'tank'])->khongPhaiCanTay()->whereIn('status', ['APPROVED', 'WEIGHED', 'SENT', 'DONE'])->get();
 
-        $data = $machines->map(function ($m) use ($batches) {
+        // Cùng lý do N+1 như weighing(): nạp trước feed/transport của mọi lô liên quan bằng
+        // 2 query, thay vì 2 query mỗi máy (đo 2026-08-21: 192 query / 1.565 ms).
+        $batchIds = $batches->pluck('id');
+        $feedOps = FeedOperation::whereIn('batch_id', $batchIds)->get()->keyBy('batch_id');
+        $transports = MaterialTransport::whereIn('batch_id', $batchIds)->get()->keyBy('batch_id');
+
+        $data = $machines->map(function ($m) use ($batches, $feedOps, $transports) {
             $batch = $batches->firstWhere('machine_id', $m->id);
-            $feedOp = $batch ? FeedOperation::where('batch_id', $batch->id)->first() : null;
-            $transport = $batch ? MaterialTransport::where('batch_id', $batch->id)->first() : null;
+            $feedOp = $batch ? $feedOps->get($batch->id) : null;
+            $transport = $batch ? $transports->get($batch->id) : null;
 
             return [
                 'machine' => $m,

@@ -7,24 +7,12 @@
       <span class="status-subtext" v-if="connectionStatus === 'FALLBACK'">{{ $t('dashboard.connectionFallbackSuffix') }}</span>
     </div>
 
-    <!-- Dashboard Main Navigation Tabs -->
-    <div class="tabs-nav-bar mb-4">
-      <button 
-        v-for="tab in tabs" 
-        :key="tab.id" 
-        @click="activeTab = tab.id" 
-        :class="['tab-nav-btn', { 'active': activeTab === tab.id }]"
-      >
-        <span class="tab-icon">{{ tab.icon }}</span>
-        <span class="tab-label">{{ tab.name }}</span>
-      </button>
-    </div>
-
-    <!-- Content Area Based on Active Tab -->
+    <!-- Nội dung chính -->
     <main class="dashboard-tab-content">
       
-      <!-- TAB 1: OVERALL OVERVIEW -->
-      <div v-if="activeTab === 'overview'" class="tab-panel">
+      <!-- Điều độ tổng thể — màn hình duy nhất của Dashboard (yêu cầu 2026-08-21: bỏ các
+           tab Phòng cân / Máy nhuộm / Cảnh báo / KPIs Quản lý). -->
+      <div class="tab-panel">
         <div class="panel-header mb-4">
           <h3>{{ $t('dashboard.overviewTitle') }}</h3>
           <p class="text-muted" v-if="authStore.isAdmin">{{ $t('dashboard.overviewSubtitleAdmin') }}</p>
@@ -40,8 +28,13 @@
             <div
               v-for="m in bpdbMachines"
               :key="m.machineCode"
-              class="machine-status-tile"
+              class="machine-status-tile machine-tile-clickable"
               :class="'bpdb-status-' + m.operationalStatus.toLowerCase()"
+              :title="$t('dashboard.machineHistoryHint')"
+              role="button"
+              tabindex="0"
+              @click="openMachineHistory(m.machineCode)"
+              @keydown.enter="openMachineHistory(m.machineCode)"
             >
               <span class="tile-icon">{{ bpdbStatusIcon(m.operationalStatus) }}</span>
               <span class="tile-code">{{ m.displayName }}</span>
@@ -120,7 +113,9 @@
                 <tr
                   v-for="row in statusDurationRows"
                   :key="row.code"
-                  :class="row.rowClass"
+                  :class="[row.rowClass, row.machineCode ? 'dur-row-clickable' : '']"
+                  :title="row.machineCode ? $t('dashboard.machineHistoryHint') : ''"
+                  @click="row.machineCode && openMachineHistory(row.machineCode)"
                 >
                   <td class="bold-text">{{ row.code }}</td>
                   <td>
@@ -144,193 +139,6 @@
             </table>
           </div>
         </section>
-      </div>
-
-      <!-- TAB 2: WEIGHING ROOM -->
-      <div v-if="activeTab === 'weighing'" class="tab-panel">
-        <div class="panel-header mb-4">
-          <h3>{{ $t('dashboard.weighingTitle') }}</h3>
-          <p class="text-muted">{{ $t('dashboard.weighingSubtitle') }}</p>
-        </div>
-
-        <div class="table-responsive">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>{{ $t('dashboard.thBatchId') }}</th>
-                <th>{{ $t('dashboard.thColor') }}</th>
-                <th>{{ $t('dashboard.thProduct') }}</th>
-                <th>{{ $t('dashboard.thDyeingMachine') }}</th>
-                <th>{{ $t('dashboard.thMixTank') }}</th>
-                <th>{{ $t('dashboard.thWeighingStatus') }}</th>
-                <th>{{ $t('dashboard.thWeighingAction') }}</th>
-                <th>{{ $t('dashboard.thTransport') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="w in weighingData" :key="w.batch_id">
-                <td class="bold-text highlight-code" @click="openBatchTimeline(w.batch_id)">
-                  <span class="code-link">{{ w.legacy_batch_id }}</span>
-                </td>
-                <td>{{ w.color }}</td>
-                <td>{{ w.product_code }}</td>
-                <td><span class="machine-tag">{{ w.machine_code }}</span></td>
-                <td><span class="tank-tag">{{ w.tank_code }}</span></td>
-                <td>
-                  <span :class="['badge', getStatusBadgeClass(w.status)]">{{ w.status }}</span>
-                </td>
-                <td>
-                  <div class="weighed-indicators">
-                    <span class="indicator-number">{{ $t('dashboard.weighedCountLabel', { count: w.weighed_count }) }}</span>
-                    <span class="indicator-time" v-if="w.last_weighed_at">{{ $t('dashboard.weighedDonePrefix') }}{{ formatTime(w.last_weighed_at) }}</span>
-                  </div>
-                </td>
-                <td>
-                  <span :class="['badge', getTransportBadgeClass(w.transport_status)]">
-                    {{ w.transport_status }}
-                  </span>
-                </td>
-              </tr>
-              <tr v-if="weighingData.length === 0">
-                <td colspan="8" class="text-center text-muted">{{ $t('dashboard.noWeighingToday') }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- TAB 3: DYEING MACHINE DETAIL -->
-      <div v-if="activeTab === 'dyeing'" class="tab-panel">
-        <div class="panel-header mb-4">
-          <h3>{{ $t('dashboard.dyeingTitle') }}</h3>
-          <p class="text-muted">{{ $t('dashboard.dyeingSubtitle') }}</p>
-        </div>
-
-        <div class="machine-status-list">
-          <div v-for="item in machinesData" :key="item.machine.id" class="machine-status-row card">
-            <div class="m-row-header">
-              <span class="m-row-code">{{ item.machine.code }}</span>
-              <span class="m-row-name">{{ item.machine.name }}</span>
-            </div>
-
-            <div class="m-row-body" v-if="item.active_batch">
-              <div class="m-row-info">
-                <div>{{ $t('dashboard.runningBatchPrefix') }}<strong class="code-link" @click="openBatchTimeline(item.active_batch.id)">{{ item.active_batch.legacy_batch_id }}</strong></div>
-                <div class="m-row-subtext">{{ $t('dashboard.batchStatusPrefix') }}{{ item.active_batch.status }}</div>
-              </div>
-
-              <!-- Interlock Checklist -->
-              <div class="interlock-checklist">
-                <div class="checklist-item" :class="{ 'check-success': item.feed_operation?.water_verified }">
-                  <span class="check-icon">{{ item.feed_operation?.water_verified ? '✓' : '✗' }}</span>
-                  <span class="check-label">{{ $t('dashboard.checkWaterOk') }}</span>
-                </div>
-                <div class="checklist-item" :class="{ 'check-success': item.feed_operation?.materials_verified }">
-                  <span class="check-icon">{{ item.feed_operation?.materials_verified ? '✓' : '✗' }}</span>
-                  <span class="check-label">{{ $t('dashboard.checkMaterialsVerified') }}</span>
-                </div>
-                <div class="checklist-item" :class="{ 'check-success': item.transport?.status === 'ARRIVED_AT_TANK' }">
-                  <span class="check-icon">{{ item.transport?.status === 'ARRIVED_AT_TANK' ? '✓' : '✗' }}</span>
-                  <span class="check-label">{{ $t('dashboard.checkTankArrived') }}</span>
-                </div>
-                <div class="checklist-item" :class="{ 'check-success': item.feed_operation?.completed_at }">
-                  <span class="check-icon">{{ item.feed_operation?.completed_at ? '✓' : '✗' }}</span>
-                  <span class="check-label">{{ $t('dashboard.checkValveOpen') }}</span>
-                </div>
-              </div>
-            </div>
-            <div v-else class="m-row-empty text-muted">
-              {{ $t('dashboard.machineIdleEmpty') }}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB 4: ALERTS PANEL -->
-      <div v-if="activeTab === 'alerts'" class="tab-panel">
-        <div class="panel-header mb-4">
-          <h3>{{ $t('dashboard.alertsTitle') }}</h3>
-          <p class="text-muted">{{ $t('dashboard.alertsSubtitle') }}</p>
-        </div>
-
-        <div class="alerts-container">
-          <div 
-            v-for="alert in alertsData" 
-            :key="alert.id" 
-            class="alert-action-card" 
-            :class="'alert-sev-' + alert.severity.toLowerCase()"
-          >
-            <div class="alert-head">
-              <span class="alert-badge-sev">{{ alert.severity }}</span>
-              <span class="alert-time">{{ formatTime(alert.created_at) }}</span>
-            </div>
-            
-            <div class="alert-body mt-2">
-              <p class="alert-message">{{ alert.message }}</p>
-              <div class="alert-meta-row mt-2" v-if="alert.batch || alert.machine">
-                <span class="meta-tag" v-if="alert.batch">{{ $t('dashboard.alertBatchPrefix') }}{{ alert.batch.legacy_batch_id }}</span>
-                <span class="meta-tag" v-if="alert.machine">{{ $t('dashboard.alertMachinePrefix') }}{{ alert.machine.code }}</span>
-              </div>
-            </div>
-
-            <div class="alert-actions-footer mt-4">
-              <span class="assignee-info" v-if="alert.status === 'ACKNOWLEDGED'">
-                {{ $t('dashboard.alertAssigneePrefix') }}<strong>{{ alert.assignee?.display_name }}</strong>
-              </span>
-              <div class="action-buttons">
-                <button 
-                  v-if="alert.status === 'OPEN'" 
-                  @click="openAlertModal(alert, 'ACKNOWLEDGE')" 
-                  class="btn btn-secondary btn-sm"
-                >
-                  {{ $t('dashboard.btnAcknowledge') }}
-                </button>
-                <button 
-                  @click="openAlertModal(alert, 'RESOLVE')" 
-                  class="btn btn-primary btn-sm"
-                >
-                  {{ $t('dashboard.btnResolve') }}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="alertsData.length === 0" class="text-center text-muted pad-empty-row card">
-            <div class="empty-state-icon">✅</div>
-            <p>{{ $t('dashboard.noOpenAlerts') }}</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB 5: MANAGEMENT KPIS -->
-      <div v-if="activeTab === 'management'" class="tab-panel">
-        <div class="panel-header mb-4">
-          <h3>{{ $t('dashboard.managementTitle') }}</h3>
-          <p class="text-muted">{{ $t('dashboard.managementSubtitle') }}</p>
-        </div>
-
-        <div class="kpi-detail-grid">
-          <div class="card kpi-detail-card">
-            <h4>{{ $t('dashboard.kpiCompletedTodayTitle') }}</h4>
-            <div class="kpi-detail-value text-success">{{ managementKpis.completed_today }}</div>
-            <p class="text-muted">{{ $t('dashboard.kpiCompletedTodayDesc') }}</p>
-          </div>
-          <div class="card kpi-detail-card">
-            <h4>{{ $t('dashboard.kpiActiveBatchesTitle') }}</h4>
-            <div class="kpi-detail-value text-warning">{{ managementKpis.active_batches }}</div>
-            <p class="text-muted">{{ $t('dashboard.kpiActiveBatchesDesc') }}</p>
-          </div>
-          <div class="card kpi-detail-card">
-            <h4>{{ $t('dashboard.kpiOverdueWeighingTitle') }}</h4>
-            <div class="kpi-detail-value text-error">{{ managementKpis.overdue_weighing_count }}</div>
-            <p class="text-muted">{{ $t('dashboard.kpiOverdueWeighingDesc') }}</p>
-          </div>
-          <div class="card kpi-detail-card">
-            <h4>{{ $t('dashboard.kpiAvgTransportTitle') }}</h4>
-            <div class="kpi-detail-value text-info">{{ managementKpis.average_transport_minutes }}{{ $t('dashboard.kpiAvgTransportSuffix') }}</div>
-            <p class="text-muted">{{ $t('dashboard.kpiAvgTransportDesc') }}</p>
-          </div>
-        </div>
       </div>
 
     </main>
@@ -385,61 +193,66 @@
       </div>
     </div>
 
-    <!-- Batch Timeline Modal Dialog -->
-    <div class="modal-backdrop" v-if="timelineOpen" @click.self="closeBatchTimeline">
+    <!-- Lịch sử trạng thái 1 máy VD (yêu cầu 2026-08-21: bấm vào máy ở lưới/bảng để xem).
+         Nguồn: /admin/bpdb/machines/{code}/timeline — mỗi task BPDB là một đoạn trạng thái
+         của máy, nên bảng này chính là lịch sử đổi trạng thái, không cần API mới. -->
+    <div class="modal-backdrop" v-if="machineHistoryOpen" @click.self="closeMachineHistory">
       <div class="timeline-modal">
         <div class="modal-header">
-          <h3>{{ $t('dashboard.timelineModalTitle') }}</h3>
-          <button @click="closeBatchTimeline" class="modal-close-btn">&times;</button>
+          <h3>{{ $t('dashboard.machineHistoryTitle', { code: machineHistoryCode }) }}</h3>
+          <button @click="closeMachineHistory" class="modal-close-btn">&times;</button>
         </div>
-        <div class="modal-body" v-if="activeTimelineData">
-          <div class="timeline-hero mb-4">
-            <h4>{{ $t('dashboard.timelineBatchPrefix') }}{{ activeTimelineData.batch.legacy_batch_id }}</h4>
-            <div class="text-muted">{{ $t('dashboard.timelineColorPrefix') }}{{ activeTimelineData.batch.color }}{{ $t('dashboard.timelineFabricMiddle') }}{{ activeTimelineData.batch.product_code }}</div>
-          </div>
-
-          <div class="timeline-steps">
-            <div 
-              v-for="(step, idx) in activeTimelineData.timeline" 
-              :key="'step-' + idx" 
-              class="timeline-step-item"
-              :class="'step-status-' + step.status.toLowerCase()"
-            >
-              <div class="step-dot"></div>
-              <div class="step-content">
-                <div class="step-header">
-                  <strong class="step-title">{{ step.milestone }}</strong>
-                  <span class="step-time">{{ formatTime(step.time) }}</span>
-                </div>
-                <div class="step-meta">{{ $t('dashboard.timelineActorPrefix') }}{{ step.actor }}</div>
-                <p class="step-notes">{{ step.notes }}</p>
-              </div>
+        <div class="modal-body">
+          <div class="history-toolbar">
+            <p class="text-muted font-sm mb-0">{{ $t('dashboard.machineHistorySub') }}</p>
+            <div class="history-range">
+              <button
+                v-for="d in [2, 7, 30]"
+                :key="'range-' + d"
+                class="btn btn-sm"
+                :class="machineHistoryDays === d ? 'btn-primary' : 'btn-secondary'"
+                @click="setMachineHistoryDays(d)"
+              >
+                {{ $t('dashboard.machineHistoryRangeDays', { days: d }) }}
+              </button>
             </div>
           </div>
-        </div>
-        <div class="modal-footer">
-          <button @click="closeBatchTimeline" class="btn btn-secondary">{{ $t('common.close') }}</button>
-        </div>
-      </div>
-    </div>
 
-    <!-- Alert Action Modal -->
-    <div class="modal-backdrop" v-if="alertModalOpen" @click.self="closeAlertModal">
-      <div class="action-modal">
-        <div class="modal-header">
-          <h3>{{ alertModalAction === 'ACKNOWLEDGE' ? $t('dashboard.alertModalTitleAck') : $t('dashboard.alertModalTitleResolve') }}</h3>
-          <button @click="closeAlertModal" class="modal-close-btn">&times;</button>
-        </div>
-        <div class="modal-body" v-if="selectedAlertForAction">
-          <p class="mb-4">{{ $t('dashboard.alertModalHandlingPrefix') }}<strong>{{ selectedAlertForAction.message }}</strong></p>
-          <div class="form-group">
-            <label>{{ alertModalAction === 'ACKNOWLEDGE' ? $t('dashboard.alertModalNotesLabelAck') : $t('dashboard.alertModalNotesLabelResolve') }}</label>
-            <textarea v-model="alertActionNotes" required class="form-control" style="height: 100px;"></textarea>
+          <p v-if="machineHistoryLoading" class="text-muted">{{ $t('common.loading') }}</p>
+          <p v-else-if="machineHistoryError" class="text-error">{{ $t('dashboard.machineHistoryError') }}</p>
+          <div v-else class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>{{ $t('dashboard.thTaskStatus') }}</th>
+                  <th>{{ $t('dashboard.thSince') }}</th>
+                  <th>{{ $t('dashboard.thUntil') }}</th>
+                  <th>{{ $t('dashboard.thTaskDuration') }}</th>
+                  <th>{{ $t('dashboard.thCurrentTask') }}</th>
+                  <th>{{ $t('dashboard.thTaskError') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in machineHistoryRows" :key="row.key" :class="row.rowClass">
+                  <td>
+                    <span class="dur-status">{{ row.icon }} {{ row.statusLabel }}</span>
+                    <span class="history-status-code">{{ row.status }}</span>
+                  </td>
+                  <td class="dur-since">{{ row.fromText }}</td>
+                  <td class="dur-since">{{ row.toText }}</td>
+                  <td class="dur-value">{{ row.durationText }}</td>
+                  <td class="dur-task">{{ row.title }}</td>
+                  <td class="text-error font-xs">{{ row.error }}</td>
+                </tr>
+                <tr v-if="machineHistoryRows.length === 0">
+                  <td colspan="6" class="text-center text-muted">{{ $t('dashboard.machineHistoryEmpty') }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
         <div class="modal-footer">
-          <button @click="closeAlertModal" class="btn btn-secondary">{{ $t('common.cancel') }}</button>
-          <button @click="submitAlertAction" class="btn btn-primary">{{ $t('common.confirm') }}</button>
+          <button @click="closeMachineHistory" class="btn btn-secondary">{{ $t('common.close') }}</button>
         </div>
       </div>
     </div>
@@ -457,15 +270,6 @@ import echo from '../services/echo';
 const { t } = useI18n({ useScope: 'global' });
 const authStore = useAuthStore();
 
-// Tab configuration
-const tabs = computed(() => [
-  { id: 'overview', name: t('dashboard.tabOverview'), icon: '📊' },
-  { id: 'weighing', name: t('dashboard.tabWeighing'), icon: '⚖️' },
-  { id: 'dyeing', name: t('dashboard.tabDyeing'), icon: '🌀' },
-  { id: 'alerts', name: t('dashboard.tabAlerts'), icon: '⚠️' },
-  { id: 'management', name: t('dashboard.tabManagement'), icon: '📈' }
-]);
-const activeTab = ref('overview');
 const showMockPanel = ref(false);
 
 // Connection Status banner
@@ -478,19 +282,8 @@ const workstations = ref([
   { id: 'WS-02', nameKey: 'dashboard.ws2Name', weight: 0.0, active: false, lastUpdated: t('dashboard.noDataShort') }
 ]);
 
-// Tab Snapshots
+// Dữ liệu màn hình
 const overviewData = ref<any[]>([]);
-const weighingData = ref<any[]>([]);
-const machinesData = ref<any[]>([]);
-const alertsData = ref<any[]>([]);
-const managementKpis = ref<any>({
-  completed_today: 0,
-  active_batches: 0,
-  machines_running: 0,
-  machines_waiting: 0,
-  overdue_weighing_count: 0,
-  average_transport_minutes: 0
-});
 
 // Printing mock form state
 const targetWorkstation = ref('WS-01');
@@ -548,6 +341,157 @@ const formatDuration = (totalSeconds: number | null): string => {
   return t('dashboard.durationSeconds', { seconds });
 };
 
+// --- Lịch sử trạng thái của 1 máy (modal khi bấm vào máy) ------------------------------
+// Chỉ Admin: endpoint /admin/bpdb/machines/... yêu cầu role ADMIN ở backend, tài khoản
+// thường không gọi được nên không bật click cho lưới fallback (app.machines).
+const machineHistoryOpen = ref(false);
+const machineHistoryCode = ref('');
+const machineHistoryDays = ref(7);
+const machineHistoryLoading = ref(false);
+const machineHistoryError = ref(false);
+const machineHistoryRaw = ref<any[]>([]);
+
+const fetchMachineHistory = async () => {
+  if (!machineHistoryCode.value) return;
+  machineHistoryLoading.value = true;
+  machineHistoryError.value = false;
+  try {
+    // BPDB chạy giờ Việt Nam còn máy trạm có thể lệch — gửi mốc theo giờ VN như backend
+    // vẫn tự làm khi thiếu tham số, chỉ khác là đổi được số ngày.
+    const res = await axios.get(
+      `/api/admin/bpdb/machines/${encodeURIComponent(machineHistoryCode.value)}/timeline`,
+      { params: { from: vnDateTimeDaysAgo(machineHistoryDays.value), to: vnDateTimeDaysAgo(0), limit: 200 } }
+    );
+    machineHistoryRaw.value = res.data.data || [];
+  } catch (err) {
+    console.error('Failed to load machine status history:', err);
+    machineHistoryError.value = true;
+    machineHistoryRaw.value = [];
+  } finally {
+    machineHistoryLoading.value = false;
+  }
+};
+
+// Mốc 'Y-m-d H:i:s' theo giờ Việt Nam, không phụ thuộc múi giờ máy trạm.
+const vnDateTimeDaysAgo = (days: number): string => {
+  const vnNow = new Date(Date.now() + 7 * 3600 * 1000 - days * 86400 * 1000);
+  return vnNow.toISOString().slice(0, 19).replace('T', ' ');
+};
+
+const openMachineHistory = (code: string) => {
+  if (!authStore.isAdmin || !code) return;
+  machineHistoryCode.value = code;
+  machineHistoryOpen.value = true;
+  fetchMachineHistory();
+};
+
+const closeMachineHistory = () => {
+  machineHistoryOpen.value = false;
+  machineHistoryRaw.value = [];
+};
+
+const setMachineHistoryDays = (days: number) => {
+  machineHistoryDays.value = days;
+  fetchMachineHistory();
+};
+
+// Nhãn tiếng người của 7 trạng thái vận hành — DÙNG LẠI đúng chuỗi của bảng "Chú thích
+// trạng thái" ngay trên Dashboard, để lịch sử và lưới máy không bao giờ gọi tên khác nhau
+// cho cùng một trạng thái.
+const OPERATIONAL_STATUS_LABEL_KEYS: Record<string, string> = {
+  PROCESSING: 'dashboard.legendBpdbProcessingLabel',
+  WAITING: 'dashboard.legendBpdbWaitingLabel',
+  TRANSITIONING: 'dashboard.legendBpdbTransitioningLabel',
+  COMPLETED_RECENTLY: 'dashboard.legendBpdbCompletedLabel',
+  CANCELLED: 'dashboard.legendBpdbCancelledLabel',
+  ERROR: 'dashboard.legendBpdbErrorLabel',
+  IDLE: 'dashboard.legendBpdbIdleLabel',
+};
+
+// Khoảng trống giữa 2 task ngắn hơn ngưỡng này thì không dựng dòng IDLE riêng — nếu không
+// bảng sẽ đầy những dòng "nhàn rỗi 12 giây" vô nghĩa giữa các lần pha liên tiếp.
+const IDLE_GAP_MIN_SECONDS = 60;
+
+// BPDB không lưu "lịch sử đổi trạng thái" — chỉ lưu các mốc của từng task. Lịch sử trạng
+// thái vì vậy được DỰNG LẠI từ các mốc đó, dùng đúng quy tắc mà backend dùng để suy trạng
+// thái hiện tại (xem BpdbMachineMonitoringService::reduceMachineStatus):
+//   CreateTime -> WorkStartTime : máy đang CHỜ task chạy
+//   WorkStartTime -> FinishTime : máy ĐANG XỬ LÝ (hoặc CHUYỂN TRẠNG THÁI / LỖI / ĐÃ HỦY)
+//   FinishTime -> task kế tiếp  : máy TRỐNG (vừa hoàn thành nếu trong 24h, sau đó nhàn rỗi)
+const machineHistoryRows = computed(() => {
+  const tasks = [...machineHistoryRaw.value]
+    .filter((task: any) => task.CreateTime)
+    .sort((a: any, b: any) => new Date(a.CreateTime).getTime() - new Date(b.CreateTime).getTime());
+
+  const segments: any[] = [];
+  const ms = (v: string | null | undefined) => (v ? new Date(v).getTime() : null);
+  let prevEnd: number | null = null;
+
+  const push = (status: string, fromMs: number, toMs: number | null, task: any, ongoing: boolean) => {
+    const endMs = toMs ?? nowTick.value;
+    const seconds = Math.max(0, Math.floor((endMs - fromMs) / 1000));
+    segments.push({
+      key: `${task?.Id ?? 'gap'}-${status}-${fromMs}`,
+      status,
+      icon: bpdbStatusIcon(status),
+      statusLabel: t(OPERATIONAL_STATUS_LABEL_KEYS[status] ?? status),
+      fromText: formatTime(new Date(fromMs).toISOString()),
+      toText: ongoing ? t('dashboard.historyOngoing') : formatTime(new Date(endMs).toISOString()),
+      durationText: formatDuration(seconds),
+      title: task?.TaskTitle || '—',
+      error: task?.ErrorMsg || '',
+      // Đoạn còn "đang tiếp diễn" quá 24h là dấu hiệu task BPDB chưa được đóng (task
+      // orphan) chứ không phải máy chạy thật — tô cảnh báo để không bị đọc nhầm.
+      rowClass: status === 'ERROR'
+        ? 'dur-row-danger'
+        : (status === 'CANCELLED' || (ongoing && seconds > 24 * 3600) ? 'dur-row-warn' : ''),
+    });
+  };
+
+  tasks.forEach((task: any) => {
+    const created = ms(task.CreateTime)!;
+    const started = ms(task.WorkStartTime);
+    const finished = ms(task.FinishTime);
+    const rawStatus = Number(task.TaskStatus);
+    const isDeleted = !!task.IsDeleted;
+
+    // Máy trống giữa task trước và task này.
+    if (prevEnd !== null && created - prevEnd >= IDLE_GAP_MIN_SECONDS * 1000) {
+      push(prevEnd >= nowTick.value - 24 * 3600 * 1000 ? 'COMPLETED_RECENTLY' : 'IDLE', prevEnd, created, null, false);
+    }
+
+    // Đoạn CHỜ: từ lúc tạo task tới lúc thật sự bắt đầu chạy.
+    const waitEnd = started ?? finished;
+    if (waitEnd === null) {
+      // Task chưa từng chạy và chưa đóng -> vẫn đang chờ tới bây giờ.
+      push(isDeleted || rawStatus === 99 ? 'CANCELLED' : 'WAITING', created, null, task, !isDeleted && rawStatus !== 99);
+      prevEnd = null;
+      return;
+    }
+    if (waitEnd - created >= IDLE_GAP_MIN_SECONDS * 1000) {
+      push('WAITING', created, waitEnd, task, false);
+    }
+
+    // Đoạn CHẠY: trạng thái lấy theo cùng thứ tự ưu tiên với backend — lỗi > hủy/xóa >
+    // mã trạng thái thô của BPDB.
+    const runFrom = started ?? created;
+    const runStatus = task.ErrorMsg
+      ? 'ERROR'
+      : (isDeleted || rawStatus === 99 ? 'CANCELLED' : (rawStatus === 20 ? 'TRANSITIONING' : 'PROCESSING'));
+    push(runStatus, runFrom, finished, task, finished === null);
+
+    prevEnd = finished;
+  });
+
+  // Máy trống từ task cuối cùng tới bây giờ.
+  if (prevEnd !== null && nowTick.value - prevEnd >= IDLE_GAP_MIN_SECONDS * 1000) {
+    push(nowTick.value - prevEnd <= 24 * 3600 * 1000 ? 'COMPLETED_RECENTLY' : 'IDLE', prevEnd, null, null, true);
+  }
+
+  // Mới nhất lên đầu — người vận hành quan tâm "vừa rồi máy làm gì" trước tiên.
+  return segments.reverse();
+});
+
 const anchorLabelKeys: Record<string, string> = {
   WORK_START: 'dashboard.anchorWorkStart',
   CREATE: 'dashboard.anchorCreate',
@@ -597,6 +541,7 @@ const statusDurationRows = computed(() => {
 
         return {
           code: m.displayName || m.machineCode,
+          machineCode: m.machineCode,
           status: m.operationalStatus,
           icon: bpdbStatusIcon(m.operationalStatus),
           durationText: idleNoData ? t('dashboard.durationOver30Days') : formatDuration(seconds),
@@ -617,6 +562,7 @@ const statusDurationRows = computed(() => {
 
         return {
           code: m.machine_code,
+          machineCode: null,
           status: m.status,
           icon: appStatusIcon(m.status),
           durationText: formatDuration(seconds),
@@ -685,13 +631,6 @@ const appStatusLegend = computed(() => [
   { status: 'DONE', icon: '🏁', label: t('dashboard.legendAppDoneLabel'), desc: t('dashboard.legendAppDoneDesc') },
 ]);
 
-// Modals State
-const timelineOpen = ref(false);
-const activeTimelineData = ref<any | null>(null);
-const alertModalOpen = ref(false);
-const alertModalAction = ref<'ACKNOWLEDGE' | 'RESOLVE'>('ACKNOWLEDGE');
-const selectedAlertForAction = ref<any | null>(null);
-const alertActionNotes = ref('');
 
 // Setup Realtime Connection — qua Reverb (kênh public "dashboard-events"), thay cho SSE
 // cũ (/api/realtime/stream) đã bị gỡ 2026-07-25 vì giữ 1 kết nối HTTP sống mãi khiến
@@ -735,10 +674,6 @@ const initRealtimeConnection = () => {
   // snapshot ngay khi có thay đổi thay vì đợi polling.
   echo.channel('dashboard-events').listen('.event', () => {
     fetchOverviewSnapshot();
-    fetchWeighingSnapshot();
-    fetchMachinesSnapshot();
-    fetchAlertsSnapshot();
-    fetchManagementKpiSnapshot();
   });
 
   // 3. Cân điện tử đọc trọng lượng live qua REST polling nhẹ (giống WeighingStation.vue),
@@ -761,12 +696,9 @@ const initRealtimeConnection = () => {
 let disposeRealtime: any = null;
 
 onMounted(() => {
-  // Pull initial snapshots
+  // Trạng thái máy cho tài khoản KHÔNG phải admin lấy từ bảng nội bộ app.machines —
+  // admin dùng nguồn BPDB ở dưới, nhưng cả hai đều cần snapshot này cho bảng "đã kéo dài".
   fetchOverviewSnapshot();
-  fetchWeighingSnapshot();
-  fetchMachinesSnapshot();
-  fetchAlertsSnapshot();
-  fetchManagementKpiSnapshot();
 
   if (authStore.isAdmin) {
     fetchBpdbMachines();
@@ -801,94 +733,6 @@ const fetchOverviewSnapshot = async () => {
   }
 };
 
-const fetchWeighingSnapshot = async () => {
-  try {
-    const res = await axios.get('/api/dashboard/weighing');
-    weighingData.value = res.data.data;
-  } catch (err) {
-    console.error('Failed to load weighing queue:', err);
-  }
-};
-
-const fetchMachinesSnapshot = async () => {
-  try {
-    const res = await axios.get('/api/dashboard/machines');
-    machinesData.value = res.data.data;
-  } catch (err) {
-    console.error('Failed to load machine list:', err);
-  }
-};
-
-const fetchAlertsSnapshot = async () => {
-  try {
-    const res = await axios.get('/api/dashboard/alerts');
-    alertsData.value = res.data.data;
-  } catch (err) {
-    console.error('Failed to load alerts:', err);
-  }
-};
-
-const fetchManagementKpiSnapshot = async () => {
-  try {
-    const res = await axios.get('/api/dashboard/management');
-    managementKpis.value = res.data.data;
-  } catch (err) {
-    console.error('Failed to load management KPIs:', err);
-  }
-};
-
-// Alert Handlers
-const openAlertModal = (alert: any, action: 'ACKNOWLEDGE' | 'RESOLVE') => {
-  selectedAlertForAction.value = alert;
-  alertModalAction.value = action;
-  alertActionNotes.value = '';
-  alertModalOpen.value = true;
-};
-
-const closeAlertModal = () => {
-  alertModalOpen.value = false;
-  selectedAlertForAction.value = null;
-};
-
-const submitAlertAction = async () => {
-  if (!selectedAlertForAction.value) return;
-  
-  if (alertModalAction.value === 'RESOLVE' && !alertActionNotes.value.trim()) {
-    alert(t('dashboard.alertNeedsRemedy'));
-    return;
-  }
-
-  try {
-    await axios.post(`/api/alerts/${selectedAlertForAction.value.id}/handle`, {
-      action: alertModalAction.value,
-      notes: alertActionNotes.value
-    });
-    
-    closeAlertModal();
-    // Refresh alerts snapshot
-    fetchAlertsSnapshot();
-    fetchManagementKpiSnapshot();
-  } catch (err) {
-    console.error('Failed to handle alert:', err);
-  }
-};
-
-// Batch Timeline handlers
-const openBatchTimeline = async (batchId: string) => {
-  try {
-    const res = await axios.get(`/api/batches/${batchId}/timeline`);
-    activeTimelineData.value = res.data.data;
-    timelineOpen.value = true;
-  } catch (err) {
-    console.error('Failed to load timeline:', err);
-  }
-};
-
-const closeBatchTimeline = () => {
-  timelineOpen.value = false;
-  activeTimelineData.value = null;
-};
-
 // Mock Printing simulation
 const triggerMockPrint = async () => {
   printing.value = true;
@@ -916,30 +760,6 @@ const triggerMockPrint = async () => {
   } finally {
     printing.value = false;
   }
-};
-
-// Helper status formatters
-const getStatusBadgeClass = (status: string) => {
-  const mapping: Record<string, string> = {
-    'NEW': 'badge-grey',
-    'READY_TO_WEIGH': 'badge-blue',
-    'WEIGHING': 'badge-yellow',
-    'WEIGHED': 'badge-green',
-    'SENT': 'badge-orange',
-    'DONE': 'badge-purple'
-  };
-  return mapping[status] || 'badge-grey';
-};
-
-const getTransportBadgeClass = (status: string) => {
-  const mapping: Record<string, string> = {
-    'READY_FOR_TRANSFER': 'badge-grey',
-    'IN_TRANSIT': 'badge-yellow',
-    'ARRIVED_AT_TANK': 'badge-green',
-    'ACCEPTED': 'badge-blue',
-    'REJECTED': 'badge-red'
-  };
-  return mapping[status] || 'badge-grey';
 };
 
 const formatTime = (dateStr: string) => {
@@ -1356,6 +1176,31 @@ const formatTime = (dateStr: string) => {
 }
 
 .dur-row-warn td { background-color: var(--status-yellow-bg); }
+
+/* Máy bấm được để mở lịch sử trạng thái — phải nhìn thấy rõ là bấm được, nếu không người
+   vận hành sẽ không biết có chức năng này. */
+.machine-tile-clickable { cursor: pointer; }
+.machine-tile-clickable:focus-visible { outline: 2px solid var(--color-primary, #2563eb); outline-offset: 2px; }
+.dur-row-clickable { cursor: pointer; }
+.dur-row-clickable:hover td { background-color: var(--bg-hover, rgba(0, 0, 0, 0.04)); }
+
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-md);
+}
+.history-range { display: flex; gap: 6px; }
+/* Mã trạng thái gốc đứng cạnh nhãn tiếng Việt — cùng cách trình bày với bảng chú thích,
+   để người dùng đối chiếu được với tài liệu/BPDB. */
+.history-status-code {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-muted, #6b7280);
+  letter-spacing: 0.03em;
+}
 
 .dur-row-danger td { background-color: var(--status-red-bg); }
 .dur-row-danger .dur-warn-tag {
