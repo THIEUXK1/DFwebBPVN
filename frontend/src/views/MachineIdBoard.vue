@@ -251,18 +251,53 @@ const loadSent = async () => {
   sentMap.value = next;
 };
 
-/** tbl_input_all: mỗi máy TOP 6 theo TIME1 tăng dần. */
+/** tbl_input_all: mỗi máy TOP 6 theo TIME1 tăng dần.
+ *
+ *  Nguồn ĐÚNG là đơn CHƯA duyệt (`production-batches?status=NEW` — tương đương tbl_input_all
+ *  của bản gốc), giống hệt `fetchWaiting()` bên /print-order-entry. Trước 2026-08-22 chỗ này
+ *  đọc nhầm `/machine-dispatches` (đơn ĐÃ duyệt, đang chờ in/gửi) nên bảng gần như rỗng:
+ *  máy có 41 đơn chờ duyệt mà chỉ có 1 dispatch. Vẫn gộp thêm các dispatch chưa CONFIRMED
+ *  (đã duyệt nhưng chưa gửi máy) để đơn không "biến mất" trong quãng giữa duyệt và gửi;
+ *  khử trùng theo batch id.
+ *  API chặn trần per_page=100 nên phải kéo nhiều trang, còn không thì các đơn CŨ NHẤT
+ *  (chính là 6 dòng bảng này cần) bị cắt mất vì API sắp xếp created_at giảm dần. */
+const MAX_WAIT_PAGES = 5;
+
+const fetchNewBatches = async (): Promise<any[]> => {
+  const out: any[] = [];
+  for (let page = 1; page <= MAX_WAIT_PAGES; page++) {
+    const res = await axios.get(`${API}/production-batches`, {
+      params: { status: 'NEW', per_page: 100, page },
+    });
+    const rows: any[] = res.data?.data ?? [];
+    out.push(...rows);
+    const last = res.data?.last_page ?? 1;
+    if (page >= last || rows.length === 0) break;
+  }
+  return out;
+};
+
 const loadWaiting = async () => {
-  const res = await axios.get(`${API}/machine-dispatches`);
-  const rows: any[] = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+  const [batches, dispRes] = await Promise.all([
+    fetchNewBatches(),
+    axios.get(`${API}/machine-dispatches`),
+  ]);
+
+  const dispRows: any[] = Array.isArray(dispRes.data) ? dispRes.data : (dispRes.data?.data ?? []);
+  const items = [
+    ...batches.map(b => ({ batch: b, ts: b.created_at })),
+    ...dispRows.map(d => ({ batch: d.batch || {}, ts: d.batch?.created_at ?? d.created_at })),
+  ];
+
+  const seen = new Set<string>();
   const buckets: Record<string, { ts: string; cell: Cell }[]> = {};
 
-  rows.forEach(d => {
-    const b = d.batch || {};
-    const num = machineNum(b.machine?.code);
-    if (num === null) return;
-    const ts = d.created_at;
-    if (!ts) return;
+  items.forEach(({ batch: b, ts }) => {
+    const num = machineNum(b?.machine?.code);
+    if (num === null || !ts) return;
+    const id = String(b.id ?? '');
+    if (id && seen.has(id)) return;
+    if (id) seen.add(id);
 
     (buckets[num] ||= []).push({
       ts,

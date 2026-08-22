@@ -881,13 +881,75 @@ class BpdbMachineMonitoringService
             $limit
         );
 
-        return Cache::remember($cacheKey, self::TIMELINE_CACHE_TTL, fn () => $this->client->select(
-            "SELECT TOP " . max(1, min($limit, 200)) . " Id, TaskTitle, TaskStatus, IsDeleted, CreateTime, WorkStartTime, FinishTime, ErrorMsg
-             FROM dbo.SUP_Tasks
-             WHERE Machine IN ($placeholders) AND CreateTime BETWEEN ? AND ?
-             ORDER BY CreateTime DESC",
-            [...$machineIds, $from, $to]
-        ));
+        return Cache::remember($cacheKey, self::TIMELINE_CACHE_TTL, function () use ($machineCode, $machineIds, $placeholders, $from, $to, $limit) {
+            $rows = $this->client->select(
+                "SELECT TOP " . max(1, min($limit, 200)) . " Id, TaskTitle, TaskStatus, IsDeleted, CreateTime, WorkStartTime, FinishTime, ErrorMsg
+                 FROM dbo.SUP_Tasks
+                 WHERE Machine IN ($placeholders) AND CreateTime BETWEEN ? AND ?
+                 ORDER BY CreateTime DESC",
+                [...$machineIds, $from, $to]
+            );
+
+            return $this->attachMesEndTime($machineCode, $rows, $from, $to);
+        });
+    }
+
+    /**
+     * Gắn giờ nhuộm XONG THẬT (từ MES) vào từng task của timeline.
+     *
+     * Lý do (báo cáo 2026-08-22): `SUP_Tasks.FinishTime` là lúc PHA THUỐC xong, trung bình
+     * 16 phút/task, trong khi mẻ nhuộm thật kéo dài trung bình ~20 giờ. Màn hình lịch sử
+     * trạng thái dựng đoạn CHẠY tới FinishTime nên toàn bộ phần còn lại của mẻ bị hiểu là
+     * "máy nhàn rỗi" — sai hoàn toàn với thực tế máy chạy cả ngày. Gantt không dính lỗi này
+     * vì đã ghép MES từ trước (buildGanttTimeline), nay dùng chung đúng luật ghép đó
+     * (matchMesBatch: mốc pha phải nằm trong [beginTime, endTime] của mẻ cùng lot).
+     *
+     * Thêm 2 khóa cho mỗi dòng, KHÔNG sửa các khóa BPDB gốc để frontend cũ không vỡ:
+     *   - MesEndTime: 'Y-m-d H:i:s' giờ VN, null nếu không khớp mẻ MES nào.
+     *   - MesBatchNo/MesLineNo: khóa mẻ, để gộp các lần pha của cùng một mẻ thành 1 đoạn.
+     */
+    private function attachMesEndTime(string $machineCode, array $rows, string $from, string $to): array
+    {
+        if (empty($rows)) {
+            return $rows;
+        }
+
+        $norm = MachineCodeNormalizer::normalize($machineCode);
+        $mesIndex = $this->loadMesCompletionIndex(
+            [$norm],
+            Carbon::parse($from, 'Asia/Ho_Chi_Minh'),
+            Carbon::parse($to, 'Asia/Ho_Chi_Minh')
+        )['index'];
+
+        foreach ($rows as &$row) {
+            $row['MesEndTime'] = null;
+            $row['MesBatchNo'] = null;
+            $row['MesLineNo'] = null;
+
+            // Mốc dùng để dò mẻ là lúc pha THẬT SỰ chạy; task chưa chạy thì chưa có gì để ghép.
+            $anchor = $row['WorkStartTime'] ?? null;
+            if ($anchor === null || $mesIndex === []) {
+                continue;
+            }
+
+            [$color, $productCode] = $this->splitColorProductFromTitle($row['TaskTitle']);
+            $match = $this->matchMesBatch(
+                $mesIndex,
+                $norm,
+                $color,
+                $productCode,
+                Carbon::parse($anchor, 'Asia/Ho_Chi_Minh')
+            );
+
+            if ($match !== null) {
+                $row['MesEndTime'] = $match['end']->setTimezone('Asia/Ho_Chi_Minh')->format('Y-m-d H:i:s');
+                $row['MesBatchNo'] = $match['batchNo'];
+                $row['MesLineNo'] = $match['lineNo'];
+            }
+        }
+        unset($row);
+
+        return $rows;
     }
 
     private function computeAllMachineStatuses(): array

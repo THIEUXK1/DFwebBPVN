@@ -220,7 +220,43 @@
 
           <p v-if="machineHistoryLoading" class="text-muted">{{ $t('common.loading') }}</p>
           <p v-else-if="machineHistoryError" class="text-error">{{ $t('dashboard.machineHistoryError') }}</p>
-          <div v-else class="table-responsive">
+
+          <!-- Dải trạng thái theo ngày — cùng dữ liệu với bảng ngay bên dưới, chỉ đổi cách
+               nhìn: mỗi ngày một thanh 24h để thấy ngay máy trống vào khung giờ nào. -->
+          <div v-if="!machineHistoryLoading && !machineHistoryError && machineHistoryStrips.length" class="state-strips">
+            <div class="strip-row strip-ruler">
+              <span class="strip-day"></span>
+              <div class="strip-track">
+                <span v-for="h in 8" :key="'tick-' + h" class="strip-tick" :style="{ left: ((h - 1) * 12.5) + '%' }">
+                  {{ String((h - 1) * 3).padStart(2, '0') }}:00
+                </span>
+              </div>
+            </div>
+            <div v-for="strip in machineHistoryStrips" :key="strip.key" class="strip-row">
+              <span class="strip-day">{{ strip.dayLabel }}</span>
+              <div class="strip-track">
+                <span
+                  v-for="b in strip.blocks"
+                  :key="b.key"
+                  class="strip-block"
+                  :class="b.cls"
+                  :style="{ left: b.leftPct + '%', width: b.widthPct + '%' }"
+                  :title="b.tip"
+                ></span>
+              </div>
+            </div>
+            <div class="strip-legend">
+              <span><i class="st-run"></i>{{ $t('dashboard.legendBpdbProcessingLabel') }}</span>
+              <span><i class="st-wait"></i>{{ $t('dashboard.legendBpdbWaitingLabel') }}</span>
+              <span><i class="st-trans"></i>{{ $t('dashboard.legendBpdbTransitioningLabel') }}</span>
+              <span><i class="st-error"></i>{{ $t('dashboard.legendBpdbErrorLabel') }}</span>
+              <span><i class="st-cancel"></i>{{ $t('dashboard.legendBpdbCancelledLabel') }}</span>
+              <span><i class="st-idle"></i>{{ $t('dashboard.legendBpdbIdleLabel') }}</span>
+              <span><i class="st-unknown"></i>{{ $t('dashboard.historyUnknownGap') }}</span>
+            </div>
+          </div>
+
+          <div v-if="!machineHistoryLoading && !machineHistoryError" class="table-responsive">
             <table class="data-table">
               <thead>
                 <tr>
@@ -228,6 +264,7 @@
                   <th>{{ $t('dashboard.thSince') }}</th>
                   <th>{{ $t('dashboard.thUntil') }}</th>
                   <th>{{ $t('dashboard.thTaskDuration') }}</th>
+                  <th>{{ $t('dashboard.thIdleAfter') }}</th>
                   <th>{{ $t('dashboard.thCurrentTask') }}</th>
                   <th>{{ $t('dashboard.thTaskError') }}</th>
                 </tr>
@@ -241,11 +278,12 @@
                   <td class="dur-since">{{ row.fromText }}</td>
                   <td class="dur-since">{{ row.toText }}</td>
                   <td class="dur-value">{{ row.durationText }}</td>
+                  <td class="dur-value dur-idle-after">{{ row.idleAfterText }}</td>
                   <td class="dur-task">{{ row.title }}</td>
                   <td class="text-error font-xs">{{ row.error }}</td>
                 </tr>
                 <tr v-if="machineHistoryRows.length === 0">
-                  <td colspan="6" class="text-center text-muted">{{ $t('dashboard.machineHistoryEmpty') }}</td>
+                  <td colspan="7" class="text-center text-muted">{{ $t('dashboard.machineHistoryEmpty') }}</td>
                 </tr>
               </tbody>
             </table>
@@ -406,6 +444,8 @@ const OPERATIONAL_STATUS_LABEL_KEYS: Record<string, string> = {
   CANCELLED: 'dashboard.legendBpdbCancelledLabel',
   ERROR: 'dashboard.legendBpdbErrorLabel',
   IDLE: 'dashboard.legendBpdbIdleLabel',
+  // Không có trong lưới máy: chỉ lịch sử mới phân biệt được "khoảng không có bằng chứng".
+  UNKNOWN: 'dashboard.historyUnknownGap',
 };
 
 // Khoảng trống giữa 2 task ngắn hơn ngưỡng này thì không dựng dòng IDLE riêng — nếu không
@@ -426,6 +466,8 @@ const machineHistoryRows = computed(() => {
   const segments: any[] = [];
   const ms = (v: string | null | undefined) => (v ? new Date(v).getTime() : null);
   let prevEnd: number | null = null;
+  // prevEnd có phải mốc kết thúc CHẮC CHẮN (từ MES) hay chỉ là giờ pha xong của BPDB.
+  let prevEndKnown = false;
 
   const push = (status: string, fromMs: number, toMs: number | null, task: any, ongoing: boolean) => {
     const endMs = toMs ?? nowTick.value;
@@ -440,6 +482,11 @@ const machineHistoryRows = computed(() => {
       durationText: formatDuration(seconds),
       title: task?.TaskTitle || '—',
       error: task?.ErrorMsg || '',
+      // Mốc số (không phải chuỗi đã format) để tính cột "Dừng tới mẻ sau" ở lượt quét
+      // thứ hai bên dưới — lúc push chưa biết mẻ kế tiếp bắt đầu khi nào.
+      fromMs,
+      endMs: ongoing ? null : endMs,
+      idleAfterText: '—',
       // Đoạn còn "đang tiếp diễn" quá 24h là dấu hiệu task BPDB chưa được đóng (task
       // orphan) chứ không phải máy chạy thật — tô cảnh báo để không bị đọc nhầm.
       rowClass: status === 'ERROR'
@@ -448,16 +495,38 @@ const machineHistoryRows = computed(() => {
     });
   };
 
+  // Các mẻ MES đã dựng đoạn — mỗi mẻ chỉ một lần, xem giải thích ở vòng lặp bên dưới.
+  const seenBatches = new Set<string>();
+
   tasks.forEach((task: any) => {
     const created = ms(task.CreateTime)!;
     const started = ms(task.WorkStartTime);
-    const finished = ms(task.FinishTime);
+    // FinishTime của BPDB là lúc PHA THUỐC xong (đo 22/08: trung bình 16 phút/task), KHÔNG
+    // phải lúc máy rảnh — mẻ nhuộm chạy tiếp trung bình ~20 giờ sau đó. Ưu tiên giờ nhuộm
+    // xong thật từ MES (backend gắn sẵn ở MesEndTime), đúng nguồn mà Gantt đang dùng.
+    const mesEnd = ms(task.MesEndTime);
+    const finished = mesEnd ?? ms(task.FinishTime);
     const rawStatus = Number(task.TaskStatus);
     const isDeleted = !!task.IsDeleted;
 
-    // Máy trống giữa task trước và task này.
+    // Một mẻ được pha nhiều lần trong lúc đang nhuộm; các lần pha sau nằm TRỌN trong đoạn
+    // chạy đã dựng từ lần pha đầu, nên bỏ qua — nếu không bảng sẽ có 5-6 dòng "đang xử lý"
+    // trùng giờ nhau cho cùng một mẻ.
+    const batchKey = task.MesBatchNo ? `${task.MesBatchNo}|${task.MesLineNo ?? '1'}` : null;
+    if (batchKey !== null) {
+      if (seenBatches.has(batchKey)) return;
+      seenBatches.add(batchKey);
+    }
+
+    // Khoảng giữa task trước và task này. CHỈ dám gọi là "máy trống" khi biết chắc mẻ
+    // trước đã nhuộm xong (mốc kết thúc lấy từ MES). Nếu mốc kết thúc chỉ là FinishTime của
+    // BPDB (pha xong ~16 phút) thì mẻ nhiều khả năng VẪN ĐANG NHUỘM — gọi là nhàn rỗi là
+    // sai, nên đánh dấu KHÔNG RÕ thay vì bịa ra trạng thái không có bằng chứng.
     if (prevEnd !== null && created - prevEnd >= IDLE_GAP_MIN_SECONDS * 1000) {
-      push(prevEnd >= nowTick.value - 24 * 3600 * 1000 ? 'COMPLETED_RECENTLY' : 'IDLE', prevEnd, created, null, false);
+      const gapStatus = !prevEndKnown
+        ? 'UNKNOWN'
+        : (prevEnd >= nowTick.value - 24 * 3600 * 1000 ? 'COMPLETED_RECENTLY' : 'IDLE');
+      push(gapStatus, prevEnd, created, null, false);
     }
 
     // Đoạn CHỜ: từ lúc tạo task tới lúc thật sự bắt đầu chạy.
@@ -466,6 +535,7 @@ const machineHistoryRows = computed(() => {
       // Task chưa từng chạy và chưa đóng -> vẫn đang chờ tới bây giờ.
       push(isDeleted || rawStatus === 99 ? 'CANCELLED' : 'WAITING', created, null, task, !isDeleted && rawStatus !== 99);
       prevEnd = null;
+      prevEndKnown = false;
       return;
     }
     if (waitEnd - created >= IDLE_GAP_MIN_SECONDS * 1000) {
@@ -479,17 +549,107 @@ const machineHistoryRows = computed(() => {
       ? 'ERROR'
       : (isDeleted || rawStatus === 99 ? 'CANCELLED' : (rawStatus === 20 ? 'TRANSITIONING' : 'PROCESSING'));
     push(runStatus, runFrom, finished, task, finished === null);
+    // Đoạn chạy chỉ được coi là "biết chắc đã kết thúc" khi mốc kết thúc đến từ MES — cột
+    // "Dừng tới mẻ sau" chỉ tính cho những đoạn như vậy.
+    segments[segments.length - 1].endKnown = mesEnd !== null;
 
     prevEnd = finished;
+    prevEndKnown = mesEnd !== null;
   });
 
-  // Máy trống từ task cuối cùng tới bây giờ.
+  // Khoảng từ task cuối cùng tới bây giờ — cùng luật với các khoảng ở giữa.
   if (prevEnd !== null && nowTick.value - prevEnd >= IDLE_GAP_MIN_SECONDS * 1000) {
-    push(nowTick.value - prevEnd <= 24 * 3600 * 1000 ? 'COMPLETED_RECENTLY' : 'IDLE', prevEnd, null, null, true);
+    const tailStatus = !prevEndKnown
+      ? 'UNKNOWN'
+      : (nowTick.value - prevEnd <= 24 * 3600 * 1000 ? 'COMPLETED_RECENTLY' : 'IDLE');
+    push(tailStatus, prevEnd, null, null, true);
   }
+
+  // Cột "Dừng tới mẻ sau": với mỗi đoạn máy ĐANG CHIẾM (chạy/chuyển/lỗi), đo tới lúc máy
+  // thật sự chạy lại — tức mốc bắt đầu của đoạn RUN kế tiếp, KHÔNG phải mốc tạo task kế
+  // tiếp. Task thường được tạo trước hàng giờ so với lúc máy chạy thật, lấy mốc tạo sẽ
+  // báo thiếu thời gian dừng. Đoạn cuối chưa có mẻ kế tiếp thì để trống thay vì đo tới
+  // hiện tại — dòng IDLE/COMPLETED_RECENTLY cuối bảng đã nói đúng điều đó rồi.
+  const RUN_STATUSES = ['PROCESSING', 'TRANSITIONING', 'ERROR'];
+  segments.forEach((seg, i) => {
+    if (!RUN_STATUSES.includes(seg.status) || seg.endMs === null) return;
+    // Không có giờ kết thúc thật từ MES thì không biết mẻ nhuộm xong lúc nào — báo một con
+    // số "dừng 4 giờ" ở đây là bịa, để trống đúng hơn.
+    if (!seg.endKnown) return;
+    const next = segments.slice(i + 1).find((s) => RUN_STATUSES.includes(s.status));
+    if (!next) return;
+    const idleSeconds = Math.floor((next.fromMs - seg.endMs) / 1000);
+    if (idleSeconds >= IDLE_GAP_MIN_SECONDS) {
+      seg.idleAfterText = formatDuration(idleSeconds);
+    }
+  });
 
   // Mới nhất lên đầu — người vận hành quan tâm "vừa rồi máy làm gì" trước tiên.
   return segments.reverse();
+});
+
+const HISTORY_STATE_CLASS: Record<string, string> = {
+  PROCESSING: 'st-run',
+  TRANSITIONING: 'st-trans',
+  WAITING: 'st-wait',
+  ERROR: 'st-error',
+  CANCELLED: 'st-cancel',
+  IDLE: 'st-idle',
+  COMPLETED_RECENTLY: 'st-idle',
+  UNKNOWN: 'st-unknown',
+};
+
+// Dải trạng thái: mỗi ngày một thanh ngang 24h, tô lại ĐÚNG các đoạn của bảng bên dưới —
+// dùng chung machineHistoryRows chứ không tính lại, để biểu đồ và bảng không bao giờ lệch
+// nhau. Khoảng nào không có đoạn nào phủ thì để nền trơ của track (nghĩa là máy trống,
+// cùng màu với IDLE).
+const machineHistoryStrips = computed(() => {
+  const segs = [...machineHistoryRows.value].sort((a: any, b: any) => a.fromMs - b.fromMs);
+  if (segs.length === 0) return [];
+
+  const lastEnd = segs.reduce((max: number, s: any) => Math.max(max, s.endMs ?? nowTick.value), 0);
+  const cursor = new Date(segs[0].fromMs);
+  cursor.setHours(0, 0, 0, 0);
+
+  const strips: any[] = [];
+  while (cursor.getTime() < lastEnd) {
+    const dayStart = cursor.getTime();
+    const nextDay = new Date(cursor);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const dayEnd = nextDay.getTime();
+    // Lấy độ dài thật của ngày thay vì hằng số 24h — ngày đổi giờ mùa vẫn ra đúng tỉ lệ.
+    const span = dayEnd - dayStart;
+
+    const blocks: any[] = [];
+    segs.forEach((s: any) => {
+      const from = Math.max(s.fromMs, dayStart);
+      const to = Math.min(s.endMs ?? nowTick.value, dayEnd);
+      if (to <= from) return;
+      const seconds = Math.floor((to - from) / 1000);
+      blocks.push({
+        key: `${s.key}-${dayStart}`,
+        cls: HISTORY_STATE_CLASS[s.status] ?? 'st-idle',
+        leftPct: ((from - dayStart) / span) * 100,
+        widthPct: ((to - from) / span) * 100,
+        tip: [
+          s.statusLabel,
+          `${formatTime(new Date(from).toISOString())} → ${formatTime(new Date(to).toISOString())}`,
+          formatDuration(seconds),
+          s.title && s.title !== '—' ? s.title : null,
+        ].filter(Boolean).join(' · '),
+      });
+    });
+
+    strips.push({
+      key: dayStart,
+      dayLabel: new Date(dayStart).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' }),
+      blocks,
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  // Ngày mới nhất lên đầu, cùng chiều với bảng bên dưới.
+  return strips.reverse();
 });
 
 const anchorLabelKeys: Record<string, string> = {
@@ -1151,6 +1311,107 @@ const formatTime = (dateStr: string) => {
   font-weight: 700;
   color: var(--text-title);
   white-space: nowrap;
+}
+
+/* ── Dải trạng thái theo ngày trong modal Lịch sử trạng thái máy ── */
+.state-strips {
+  margin-bottom: 16px;
+}
+
+.strip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.strip-day {
+  flex: 0 0 46px;
+  font-size: 0.7rem;
+  font-family: monospace;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.strip-track {
+  position: relative;
+  flex: 1;
+  height: 18px;
+  /* Nền track = máy trống: khoảng nào không có đoạn nào phủ lên thì hiểu là không có mẻ,
+     cùng màu với ô IDLE để không phải vẽ thêm block rỗng cho từng khe. */
+  background: var(--bg-muted, #e9ecef);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.strip-block {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* Mẻ ngắn vài phút vẫn phải thấy được, nếu không dải sẽ nuốt mất các lần pha ngắn. */
+  min-width: 2px;
+}
+
+.strip-block.st-run { background: #2f9e44; }
+.strip-block.st-trans { background: #1c7ed6; }
+.strip-block.st-wait { background: #f59f00; }
+.strip-block.st-error { background: #e03131; }
+.strip-block.st-cancel { background: #868e96; }
+.strip-block.st-idle { background: var(--bg-muted, #e9ecef); }
+/* Sọc chéo = không có bằng chứng, cố tình KHÔNG dùng màu đặc để không bị đọc thành một
+   trạng thái đã xác định. */
+.strip-block.st-unknown {
+  background: repeating-linear-gradient(45deg, #ced4da 0 4px, #f1f3f5 4px 8px);
+}
+
+.strip-ruler .strip-track {
+  height: 14px;
+  background: none;
+  overflow: visible;
+}
+
+.strip-tick {
+  position: absolute;
+  top: 0;
+  font-size: 0.65rem;
+  font-family: monospace;
+  color: var(--text-muted);
+  transform: translateX(-50%);
+}
+
+.strip-ruler .strip-tick:first-child { transform: none; }
+
+.strip-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 8px 0 0 54px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.strip-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+
+.strip-legend .st-run { background: #2f9e44; }
+.strip-legend .st-trans { background: #1c7ed6; }
+.strip-legend .st-wait { background: #f59f00; }
+.strip-legend .st-error { background: #e03131; }
+.strip-legend .st-cancel { background: #868e96; }
+.strip-legend .st-idle { background: var(--bg-muted, #e9ecef); border: 1px solid var(--border-color, #ced4da); }
+.strip-legend .st-unknown { background: repeating-linear-gradient(45deg, #ced4da 0 3px, #f1f3f5 3px 6px); }
+
+/* Thời gian máy nằm không sau mẻ đó — nhạt hơn cột "Kéo dài" để không tranh mắt với
+   thời lượng chạy, vốn là số chính của bảng. */
+.dur-idle-after {
+  font-weight: 500;
+  color: var(--text-muted);
 }
 
 .dur-since, .dur-anchor {
