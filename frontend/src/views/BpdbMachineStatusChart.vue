@@ -498,10 +498,19 @@ interface Row {
   hasData: boolean;
 }
 
+// Máy KHÔNG hiển thị trên biểu đồ này (yêu cầu 2026-08-23: bỏ nhóm VDG). Lọc ở trình duyệt
+// chứ KHÔNG sửa GANTT_HIDDEN_MACHINES của backend: endpoint đó đang phục vụ chung cho trang
+// Gantt, ẩn ở đó là ẩn luôn trên màn hình của người khác — vượt quá phạm vi yêu cầu.
+const HIDDEN_MACHINE_PREFIXES = ['VDG'];
+const isHiddenMachine = (code: string) =>
+  HIDDEN_MACHINE_PREFIXES.some((p) => code.toUpperCase().startsWith(p));
+
 const rows = computed<Row[]>(() => {
   // Chỉ lấy group CHA (mỗi Máy VD một group cha, các group con là Tank/MES) — giữ nguyên
   // thứ tự backend trả về để hàng máy không nhảy loạn giữa các lần tải.
-  const parents = rawGroups.value.filter((g) => Array.isArray(g.nestedGroups) && g.nestedGroups.length > 0);
+  const parents = rawGroups.value.filter(
+    (g) => Array.isArray(g.nestedGroups) && g.nestedGroups.length > 0 && !isHiddenMachine(g.id)
+  );
   const winStart = viewStart.value;
   const winEnd = viewEnd.value;
   const span = windowSpan.value;
