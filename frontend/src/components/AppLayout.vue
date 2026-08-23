@@ -576,6 +576,7 @@ const menuGroupsRaw = [
       { path: '/bpdb-admin', labelKey: 'layout.menuBpdbAdmin', icon: 'settings', adminOnly: true },
       { path: '/bpdb-machines', labelKey: 'layout.menuBpdbMachines', icon: 'batch', adminOnly: true },
       { path: '/bpdb-machines/gantt', labelKey: 'layout.menuBpdbGantt', icon: 'queue', adminOnly: true },
+      { path: '/bpdb-machines/status', labelKey: 'layout.menuBpdbStatusChart', icon: 'queue', adminOnly: true },
       // Bản TEST tạm (yêu cầu 2026-08-11) — thử tính năng đẩy tín hiệu mẻ vừa chạy sang
       // /machine-id-board (nhấp nháy đỏ) trước khi gộp vào route Gantt chính thức ở trên.
       { path: '/bpdb-machines/gantt-test', labelKey: 'layout.menuBpdbGanttTest', icon: 'queue', adminOnly: true }
@@ -623,6 +624,7 @@ const currentRouteName = computed(() => {
     '/bpdb-admin': t('layout.routeNames.bpdbAdmin'),
     '/bpdb-machines': t('layout.routeNames.bpdbMachines'),
     '/bpdb-machines/gantt': t('layout.routeNames.bpdbGantt'),
+    '/bpdb-machines/status': t('layout.routeNames.bpdbStatusChart'),
     '/bpdb-machines/gantt-test': t('layout.routeNames.bpdbGanttTest'),
     '/order-scan': t('layout.routeNames.orderScan'),
     '/print-station': t('layout.routeNames.printStation'),

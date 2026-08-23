@@ -322,6 +322,16 @@ const routes = [
     component: () => import('../views/BpdbMachinesGantt.vue'),
     meta: { requiresAuth: false }
   },
+  {
+    // Biểu đồ CHẠY/DỪNG của toàn bộ máy VD trên một trục giờ chung (yêu cầu 2026-08-23).
+    // Cùng nguồn dữ liệu và cùng chế độ công khai với /bpdb-machines/gantt ở trên (dùng
+    // endpoint /api/public/... nên KHÔNG được đặt requiresAuth:true, xem ghi chú route đó),
+    // khác ở chỗ không nạp vis-timeline — chỉ CSS thuần nên nhẹ, hợp màn hình treo xưởng.
+    path: '/bpdb-machines/status',
+    name: 'BpdbMachineStatusChart',
+    component: () => import('../views/BpdbMachineStatusChart.vue'),
+    meta: { requiresAuth: false }
+  },
   // Bản TEST tạm của route trên (yêu cầu 2026-08-11) — clone nguyên, chỉ thêm tính năng đẩy
   // tín hiệu mẻ vừa chạy sang /machine-id-board. Xem ghi chú đầu BpdbMachinesGanttTest.vue.
   {

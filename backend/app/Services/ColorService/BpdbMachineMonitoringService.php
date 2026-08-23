@@ -750,6 +750,12 @@ class BpdbMachineMonitoringService
             // Lấy các mẻ có khoảng [begin,end] GIAO với cửa sổ Gantt — mẻ VD có thể kéo dài
             // nhiều ngày nên beginTime có thể nằm xa trước fromDt; lọc theo begin_time hẹp sẽ
             // bỏ sót. Điều kiện giao: begin <= toDt AND end >= fromDt (nới nhẹ 1 ngày).
+            //
+            // KHÔNG THU HẸP mức nới 1 ngày này: accessor sửa lệch múi giờ của
+            // MesBatchCompletion CHỈ áp dụng lúc đọc giá trị ra PHP, KHÔNG áp vào mệnh đề
+            // WHERE — nên 2 điều kiện dưới đây vẫn đang so với mốc còn lệch 7 tiếng trong DB.
+            // Mức nới 1 ngày hiện đang che phần lệch đó; bóp lại còn vài giờ là bắt đầu bỏ sót
+            // mẻ ở rìa cửa sổ mà không có lỗi nào báo ra.
             $rows = MesBatchCompletion::query()
                 ->whereIn('machine_code', $normCodes)
                 ->whereNotNull('end_time')

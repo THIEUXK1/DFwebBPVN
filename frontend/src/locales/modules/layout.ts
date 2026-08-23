@@ -43,6 +43,7 @@ export default {
     menuBpdbAdmin: 'BPDB / JIT (Color Service)',
     menuBpdbMachines: 'Máy VD (BPDB)',
     menuBpdbGantt: 'Gantt Máy VD (BPDB)',
+    menuBpdbStatusChart: 'Biểu đồ trạng thái Máy VD (BPDB)',
     menuBpdbGanttTest: 'Gantt Máy VD (BPDB) — TEST đẩy nhấp nháy',
 
     toolsTitle: 'TẢI CÔNG CỤ',
@@ -123,6 +124,7 @@ export default {
       bpdbAdmin: 'Giám sát tích hợp Color Service (BPDB/JIT)',
       bpdbMachines: 'Máy VD — Trạng thái vận hành (BPDB)',
       bpdbGantt: 'Tiến độ Máy VD — Biểu đồ Gantt (BPDB)',
+      bpdbStatusChart: 'Trạng thái Máy VD — CHẠY/DỪNG (BPDB)',
       bpdbGanttTest: 'Tiến độ Máy VD — Biểu đồ Gantt (BPDB) — TEST đẩy nhấp nháy',
       orderScan: 'Trạm Quét đơn QR',
       printStation: 'Trạm In tem',
@@ -175,6 +177,7 @@ export default {
     menuBpdbAdmin: 'BPDB / JIT (Color Service)',
     menuBpdbMachines: 'Dyeing Machines (BPDB)',
     menuBpdbGantt: 'Dyeing Machines Gantt (BPDB)',
+    menuBpdbStatusChart: 'Dyeing Machine Status Chart (BPDB)',
     menuBpdbGanttTest: 'Dyeing Machines Gantt (BPDB) — TEST blink push',
 
     toolsTitle: 'DOWNLOAD TOOLS',
@@ -255,6 +258,7 @@ export default {
       bpdbAdmin: 'Color Service Integration Monitoring (BPDB/JIT)',
       bpdbMachines: 'Dyeing Machines — Operating Status (BPDB)',
       bpdbGantt: 'Dyeing Machines Progress — Gantt Chart (BPDB)',
+      bpdbStatusChart: 'Dyeing Machine Status Chart (BPDB)',
       bpdbGanttTest: 'Dyeing Machines Progress — Gantt Chart (BPDB) — TEST blink push',
       orderScan: 'QR Order Scan Station',
       printStation: 'Label Printing Station',
@@ -307,6 +311,7 @@ export default {
     menuBpdbAdmin: 'BPDB / JIT（配色系统）',
     menuBpdbMachines: '染色机台 (BPDB)',
     menuBpdbGantt: '染色机台甘特图 (BPDB)',
+    menuBpdbStatusChart: '染色机台状态图 (BPDB)',
     menuBpdbGanttTest: '染色机台甘特图 (BPDB) — 闪烁推送测试',
 
     toolsTitle: '工具下载',
@@ -387,6 +392,7 @@ export default {
       bpdbAdmin: '配色系统集成监控 (BPDB/JIT)',
       bpdbMachines: '染色机台 — 运行状态 (BPDB)',
       bpdbGantt: '染色机台进度 — 甘特图 (BPDB)',
+      bpdbStatusChart: '染色机台状态图 (BPDB)',
       bpdbGanttTest: '染色机台进度 — 甘特图 (BPDB) — 闪烁推送测试',
       orderScan: 'QR 订单扫描站',
       printStation: '标签打印站',

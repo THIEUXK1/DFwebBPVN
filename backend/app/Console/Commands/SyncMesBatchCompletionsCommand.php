@@ -289,7 +289,14 @@ class SyncMesBatchCompletionsCommand extends Command
         return mb_substr($value, 0, $max);
     }
 
-    /** MES trả 'Y-m-d H:i:s' theo giờ VN; parse gắn đúng tz, null nếu rỗng/không hợp lệ. */
+    /**
+     * MES trả 'Y-m-d H:i:s' theo giờ VN; parse gắn đúng tz, null nếu rỗng/không hợp lệ.
+     *
+     * LƯU Ý về cách mốc này nằm trong DB: upsert() ghi thẳng qua query builder nên Carbon bị
+     * format 'Y-m-d H:i:s' KHÔNG kèm offset, và session Postgres bị ép UTC — tức cột
+     * timestamptz đang giữ GIỜ TƯỜNG Việt Nam bị gán nhãn UTC (lệch 7 tiếng). Phía đọc đã bù
+     * lại ở accessor của MesBatchCompletion; đổi cách ghi ở đây thì PHẢI sửa cả accessor đó.
+     */
     private function parseVnTime(mixed $value, string $tz): ?Carbon
     {
         $value = trim((string) ($value ?? ''));
