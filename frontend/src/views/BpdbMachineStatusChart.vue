@@ -114,7 +114,6 @@
     <div class="chart-legend">
       <span><i class="blk-run"></i>{{ $t('bpdbMachineStatusChart.legendRun') }}</span>
       <span><i class="blk-stop"></i>{{ $t('bpdbMachineStatusChart.legendStop') }}</span>
-      <span><i class="blk-unknown"></i>{{ $t('bpdbMachineStatusChart.legendUnknown') }}</span>
       <span class="legend-note">{{ $t('bpdbMachineStatusChart.legendNote') }}</span>
       <span class="legend-note">{{ $t('bpdbMachineStatusChart.mesOnlyNote') }}</span>
       <span class="legend-note">{{ $t('bpdbMachineStatusChart.lastSynced', { time: lastSyncedText }) }}</span>
@@ -141,11 +140,15 @@
  * thúc THẬT ghép từ MES (endSource) — đúng thứ màn hình này cần, không phải thêm API mới.
  *
  * Luật dựng đoạn dùng ĐÚNG luật của Gantt/Dashboard, không phát minh luật mới:
- *   - endSource='MES' | 'MES_ONLY' : giờ nhuộm xong THẬT -> sau mốc đó máy DỪNG thật.
- *   - endSource='BPDB'             : chỉ là giờ PHA xong (~16 phút/task), mẻ nhiều khả năng
- *                                    VẪN ĐANG NHUỘM -> khoảng sau đó là KHÔNG RÕ, không được
- *                                    tô là "dừng" (xem commit 1086d71).
- *   - endSource='BPDB_RUNNING'     : chưa có bằng chứng kết thúc -> đang chạy tới hiện tại.
+ *   - endSource='MES'      : giờ nhuộm xong THẬT -> sau mốc đó máy DỪNG thật.
+ *   - endSource='BPDB'     : chỉ là giờ PHA xong (~16 phút/task), mẻ nhiều khả năng VẪN ĐANG
+ *                            NHUỘM (xem commit 1086d71) -> KHÔNG có bằng chứng máy đã dừng.
+ *   - endSource='BPDB_RUNNING' : chưa có bằng chứng kết thúc -> đang chạy tới hiện tại.
+ *   - endSource='MES_ONLY' : bị loại hẳn, xem ghi chú trong machineRuns.
+ *
+ * Màn hình này CHỈ CÓ 2 MÀU: CHẠY và DỪNG (yêu cầu người dùng 23/08/2026). Trường hợp thứ ba
+ * "không đủ bằng chứng" trước đó có màu riêng, nay gộp vào DỪNG — biết trước là làm thời gian
+ * dừng bị tính DƯ, chi tiết ở ghi chú trong hàm dựng block bên dưới.
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
@@ -483,7 +486,7 @@ const machineRuns = computed<Record<string, RunSeg[]>>(() => {
 
 interface Block {
   key: string;
-  kind: 'run' | 'stop' | 'unknown';
+  kind: 'run' | 'stop';
   leftPct: number;
   widthPct: number;
   label: string;
@@ -525,10 +528,9 @@ const rows = computed<Row[]>(() => {
       const b = Math.min(to, winEnd);
       if (b <= a) return;
       if (kind === 'run') runMs += b - a;
-      const labelKey =
-        kind === 'run' ? 'bpdbMachineStatusChart.legendRun'
-        : kind === 'stop' ? 'bpdbMachineStatusChart.legendStop'
-        : 'bpdbMachineStatusChart.legendUnknown';
+      const labelKey = kind === 'run'
+        ? 'bpdbMachineStatusChart.legendRun'
+        : 'bpdbMachineStatusChart.legendStop';
       blocks.push({
         key: `${g.id}-${kind}-${a}`,
         kind,
@@ -544,17 +546,21 @@ const rows = computed<Row[]>(() => {
       });
     };
 
-    // Trước mẻ đầu tiên trong tầm dữ liệu đã tải: không có bằng chứng nào về máy, để KHÔNG
-    // RÕ thay vì mặc định coi là dừng.
+    // Mọi khoảng ngoài đoạn CHẠY đều tô DỪNG (quyết định của người dùng 2026-08-23), kể cả
+    // khi KHÔNG có bằng chứng máy đã dừng thật — trước đó những khoảng này được tô riêng là
+    // "KHÔNG RÕ". Hệ quả đã báo trước và người dùng chấp nhận: đoạn mẻ trước chưa được xác
+    // nhận kết thúc trên MES nhiều khả năng máy VẪN ĐANG NHUỘM (đo 23/08: 42% số lô còn được
+    // cấp hóa chất sau hơn 1 giờ), nên thời gian dừng bị tính DƯ và cột % chạy bị thấp hơn
+    // thực tế. Giữ nguyên lời cảnh báo trong tooltip để người xem còn phân biệt được đoạn nào
+    // là bằng chứng thật, đoạn nào là suy đoán.
     let cursor: number | null = null;
     let cursorKnown = false;
 
     segs.forEach((s) => {
       if (cursor === null) {
-        push('unknown', winStart, s.from);
+        push('stop', winStart, s.from, t('bpdbMachineStatusChart.unknownReason'));
       } else if (s.from > cursor) {
-        push(cursorKnown ? 'stop' : 'unknown', cursor, s.from,
-          cursorKnown ? undefined : t('bpdbMachineStatusChart.unknownReason'));
+        push('stop', cursor, s.from, cursorKnown ? undefined : t('bpdbMachineStatusChart.unknownReason'));
       }
       // Không bao giờ vẽ quá vạch hiện tại: mốc kết thúc từ MES đôi khi là giờ DỰ KIẾN nằm ở
       // tương lai — vẽ nguyên si thì thanh CHẠY dài hơn cả thời gian đã trôi qua.
@@ -568,10 +574,9 @@ const rows = computed<Row[]>(() => {
     // kế tiếp) để trống — tương lai chưa xảy ra, tô bất cứ màu gì cũng là bịa.
     const tailEnd = Math.min(winEnd, nowTick.value);
     if (cursor === null) {
-      push('unknown', winStart, tailEnd);
+      push('stop', winStart, tailEnd, t('bpdbMachineStatusChart.unknownReason'));
     } else if (tailEnd > cursor) {
-      push(cursorKnown ? 'stop' : 'unknown', cursor, tailEnd,
-        cursorKnown ? undefined : t('bpdbMachineStatusChart.unknownReason'));
+      push('stop', cursor, tailEnd, cursorKnown ? undefined : t('bpdbMachineStatusChart.unknownReason'));
     }
 
     const visibleSpan = Math.max(1, Math.min(winEnd, nowTick.value) - winStart);
@@ -786,11 +791,6 @@ onUnmounted(() => {
 }
 .blk-run { background: #111827; }
 .blk-stop { background: repeating-linear-gradient(90deg, #e5e7eb 0 6px, #d1d5db 6px 7px); }
-/* Sọc chéo = KHÔNG RÕ: cố ý nhìn khác hẳn hai loại kia, để không ai đọc nhầm thành "đã dừng". */
-.blk-unknown {
-  background: repeating-linear-gradient(45deg, #fde68a 0 6px, #fef3c7 6px 12px);
-  opacity: 0.85;
-}
 .blk-label {
   font-size: 10px;
   font-style: normal;
@@ -799,8 +799,7 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 .blk-run .blk-label { color: #f9fafb; }
-.blk-stop .blk-label,
-.blk-unknown .blk-label { color: #374151; }
+.blk-stop .blk-label { color: #374151; }
 
 .chart-legend {
   display: flex;
@@ -821,7 +820,6 @@ onUnmounted(() => {
 }
 .chart-legend .blk-run { background: #111827; }
 .chart-legend .blk-stop { background: repeating-linear-gradient(90deg, #e5e7eb 0 6px, #d1d5db 6px 7px); }
-.chart-legend .blk-unknown { background: repeating-linear-gradient(45deg, #fde68a 0 6px, #fef3c7 6px 12px); }
 .legend-note { font-size: 11px; }
 .empty-state { padding: 24px 0; text-align: center; }
 
