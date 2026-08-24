@@ -972,7 +972,7 @@ onUnmounted(() => {
   top: -2px;
   bottom: -2px;
   width: 2px;
-  /* Vạch giờ hiện tại dùng vàng hổ phách: xanh dương và đỏ nay đều là màu trạng thái. */
+  /* Vạch giờ hiện tại dùng vàng hổ phách vì xanh lá và đỏ đều đã là màu trạng thái. */
   background: #f59e0b;
   z-index: 2;
 }
@@ -993,19 +993,17 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
 }
-/* Màu trạng thái (yêu cầu 24/08 → xanh lá 24/08 buổi 2 → thêm sắc đỏ DỪNG 24/08 buổi 3):
-   CHẠY = xanh lá đặc, DỪNG = đỏ NHẠT/DỊU (không phải đỏ báo lỗi rực như --status-red — đó là
-   màu banner mất kết nối, dùng cho DỪNG thì hai mức cảnh báo lẫn lộn). Màn hình treo xưởng cả
-   ngày nên vẫn giữ nguyên tắc CHẠY đậm/DỪNG nhạt — chỉ đổi DỪNG từ xám sang đỏ desaturate để
-   mắt vẫn phân biệt được "có màu = có ý nghĩa trạng thái" mà không chói. */
+/* Màu trạng thái (yêu cầu 24/08 → xanh lá buổi 2 → đỏ nhạt buổi 3 → ĐỎ ĐẬM buổi 4 theo
+   ảnh timeline mẫu người dùng gửi): CHẠY = xanh lá đặc, DỪNG = đỏ đậm đặc, chữ trắng.
+   Đỏ này KHÁC token --status-red của banner mất kết nối (đỏ tươi hơn) để hai mức cảnh báo
+   không lẫn nhau: đây là đỏ trầm #c62828, banner lỗi vẫn rực hơn một nấc. */
 .blk-run {
   background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
   box-shadow: 0 1px 2px rgba(22, 163, 74, 0.28);
 }
-/* Viền vẽ bằng inset shadow để không đổi kích thước ô. */
 .blk-stop {
-  background: #f8e6e7;
-  box-shadow: inset 0 0 0 1px #e3b3b5;
+  background: linear-gradient(180deg, #d43a3a 0%, #c62828 100%);
+  box-shadow: 0 1px 2px rgba(198, 40, 40, 0.28);
 }
 .blk-label {
   font-size: clamp(9px, calc(var(--row-h) * 0.4), 12px);
@@ -1015,7 +1013,7 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 .blk-run .blk-label { color: #f0fdf4; }
-.blk-stop .blk-label { color: #a5484a; }
+.blk-stop .blk-label { color: #fff5f5; }
 
 .chart-legend {
   flex: 0 0 auto;
@@ -1036,10 +1034,7 @@ onUnmounted(() => {
   vertical-align: middle;
 }
 .chart-legend .blk-run { background: #16a34a; }
-.chart-legend .blk-stop {
-  background: #f8e6e7;
-  box-shadow: inset 0 0 0 1px #e3b3b5;
-}
+.chart-legend .blk-stop { background: #c62828; }
 .legend-note { font-size: 11px; }
 .empty-state { padding: 24px 0; text-align: center; }
 
@@ -1084,7 +1079,7 @@ onUnmounted(() => {
 .fs-clock b { font-size: 26px; font-variant-numeric: tabular-nums; }
 .fs-clock span { display: block; font-size: 12px; color: var(--text-muted, #6b7280); }
 
-/* Theme tối: xanh lá sáng thêm một nấc, ô DỪNG chuyển thành xám tối. */
+/* Theme tối: cả xanh lá lẫn đỏ sáng thêm một nấc để không chìm vào nền tối. */
 :global([data-theme='dark']) .blk-run {
   background: linear-gradient(180deg, #4ade80 0%, #22c55e 100%);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
@@ -1093,10 +1088,10 @@ onUnmounted(() => {
 :global([data-theme='dark']) .head-kpi { color: #4ade80; }
 :global([data-theme='dark']) .row-runpct.is-hot { color: #86efac; }
 :global([data-theme='dark']) .blk-run .blk-label { color: #f0fdf4; }
-:global([data-theme='dark']) .blk-stop,
-:global([data-theme='dark']) .chart-legend .blk-stop {
-  background: #3f2b2c;
-  box-shadow: inset 0 0 0 1px #6b3f41;
+:global([data-theme='dark']) .blk-stop {
+  background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
-:global([data-theme='dark']) .blk-stop .blk-label { color: #e0a3a4; }
+:global([data-theme='dark']) .chart-legend .blk-stop { background: #dc2626; }
+:global([data-theme='dark']) .blk-stop .blk-label { color: #fff5f5; }
 </style>
