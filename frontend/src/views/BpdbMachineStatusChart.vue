@@ -774,7 +774,8 @@ onUnmounted(() => {
   top: -2px;
   bottom: -2px;
   width: 2px;
-  background: #ef4444;
+  /* Vạch giờ hiện tại dùng vàng hổ phách: xanh dương và đỏ nay đều là màu trạng thái. */
+  background: #f59e0b;
   z-index: 2;
 }
 
@@ -789,8 +790,15 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
 }
-.blk-run { background: #111827; }
-.blk-stop { background: repeating-linear-gradient(90deg, #e5e7eb 0 6px, #d1d5db 6px 7px); }
+/* Màu trạng thái (yêu cầu 2026-08-24): CHẠY = xanh dương đặc, DỪNG = ô xám trung tính.
+   Chỉ trạng thái CHẠY mới có màu, DỪNG để xám nhạt — màn hình treo xưởng cả ngày, nếu
+   cả hai trạng thái đều rực màu thì mắt không bắt được thông tin nào. */
+.blk-run { background: #2563eb; }
+/* Viền vẽ bằng inset shadow để không đổi kích thước ô. */
+.blk-stop {
+  background: #eceef1;
+  box-shadow: inset 0 0 0 1px #d5d9df;
+}
 .blk-label {
   font-size: 10px;
   font-style: normal;
@@ -798,8 +806,8 @@ onUnmounted(() => {
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
-.blk-run .blk-label { color: #f9fafb; }
-.blk-stop .blk-label { color: #374151; }
+.blk-run .blk-label { color: #eff6ff; }
+.blk-stop .blk-label { color: #6b7280; }
 
 .chart-legend {
   display: flex;
@@ -818,8 +826,11 @@ onUnmounted(() => {
   margin-right: 6px;
   vertical-align: middle;
 }
-.chart-legend .blk-run { background: #111827; }
-.chart-legend .blk-stop { background: repeating-linear-gradient(90deg, #e5e7eb 0 6px, #d1d5db 6px 7px); }
+.chart-legend .blk-run { background: #2563eb; }
+.chart-legend .blk-stop {
+  background: #eceef1;
+  box-shadow: inset 0 0 0 1px #d5d9df;
+}
 .legend-note { font-size: 11px; }
 .empty-state { padding: 24px 0; text-align: center; }
 
@@ -834,13 +845,14 @@ onUnmounted(() => {
 .fs-clock b { font-size: 26px; font-variant-numeric: tabular-nums; }
 .fs-clock span { display: block; font-size: 12px; color: var(--color-text-muted, #6b7280); }
 
-/* Theme tối: thanh CHẠY phải sáng lên trên nền tối, nếu giữ #111827 sẽ chìm mất. */
+/* Theme tối: xanh sáng thêm một nấc, ô DỪNG chuyển thành xám tối. */
 :global([data-theme='dark']) .blk-run,
-:global([data-theme='dark']) .chart-legend .blk-run { background: #f3f4f6; }
-:global([data-theme='dark']) .blk-run .blk-label { color: #111827; }
+:global([data-theme='dark']) .chart-legend .blk-run { background: #3b82f6; }
+:global([data-theme='dark']) .blk-run .blk-label { color: #eff6ff; }
 :global([data-theme='dark']) .blk-stop,
 :global([data-theme='dark']) .chart-legend .blk-stop {
-  background: repeating-linear-gradient(90deg, #374151 0 6px, #4b5563 6px 7px);
+  background: #374151;
+  box-shadow: inset 0 0 0 1px #4b5563;
 }
-:global([data-theme='dark']) .blk-stop .blk-label { color: #e5e7eb; }
+:global([data-theme='dark']) .blk-stop .blk-label { color: #9ca3af; }
 </style>
