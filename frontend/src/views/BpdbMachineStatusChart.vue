@@ -765,7 +765,11 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   padding: clamp(8px, 1.4vw, 18px) clamp(10px, 1.6vw, 22px) 12px;
-  background: var(--color-bg, #fff);
+  /* --bg-main/--bg-card/... là biến theme THẬT của app (định nghĩa ở style.css, có bản dark
+     riêng). Các đợt sửa trước dùng nhầm một bộ tên --color-* chưa từng được định nghĩa ở đâu
+     cả — luôn rơi về giá trị fallback SÁNG bất kể theme, nên chế độ tối trông "chưa ăn màu"
+     (lỗi xác nhận 24/08/2026, xem cùng ghi chú ở style.css dòng ~37 về lớp lỗi này). */
+  background: var(--bg-main, #fff);
   overflow: hidden;
 }
 .status-chart-page.is-immersive { padding: 6px clamp(8px, 1vw, 14px) 8px; }
@@ -814,11 +818,11 @@ onUnmounted(() => {
   gap: 6px 8px;
   padding: 6px 8px;
   border-radius: 10px;
-  background: var(--color-surface-2, #f6f7f9);
-  border: 1px solid var(--color-border, #e5e7eb);
+  background: var(--bg-card-hover, #f6f7f9);
+  border: 1px solid var(--border-card, #e5e7eb);
 }
 .field { display: flex; flex-direction: column; gap: 2px; }
-.field-label { font-size: 11px; color: var(--color-text-muted, #6b7280); }
+.field-label { font-size: 11px; color: var(--text-muted, #6b7280); }
 .realtime-toggle {
   display: inline-flex;
   align-items: center;
@@ -833,8 +837,8 @@ onUnmounted(() => {
   gap: 2px;
   padding: 2px;
   border-radius: 8px;
-  background: var(--color-bg, #fff);
-  border: 1px solid var(--color-border, #e5e7eb);
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-card, #e5e7eb);
 }
 .nav-group .btn { border-radius: 6px; }
 
@@ -846,12 +850,12 @@ onUnmounted(() => {
   border-radius: 4px;
   font-size: 13px;
   margin-bottom: 8px;
-  background: var(--color-warning-bg, #fff7ed);
-  color: var(--color-warning-text, #9a3412);
+  background: var(--status-yellow-bg, #fff7ed);
+  color: var(--status-yellow, #9a3412);
 }
 .stale-banner.error-banner {
-  background: var(--color-error-bg, #fef2f2);
-  color: var(--color-error-text, #b91c1c);
+  background: var(--status-red-bg, #fef2f2);
+  color: var(--status-red, #b91c1c);
 }
 .text-error { flex: 0 0 auto; }
 
@@ -868,10 +872,10 @@ onUnmounted(() => {
   touch-action: none;
   cursor: grab;
   user-select: none;
-  border: 1px solid var(--color-border, #e5e7eb);
+  border: 1px solid var(--border-card, #e5e7eb);
   border-radius: 12px;
   padding: 0 clamp(6px, 0.8vw, 12px) 8px;
-  background: var(--color-surface, #fff);
+  background: var(--bg-card, #fff);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   overflow: hidden;
 }
@@ -885,8 +889,8 @@ onUnmounted(() => {
 .chart-ruler {
   flex: 0 0 auto;
   padding: 6px 0 10px;
-  background: var(--color-surface, #fff);
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  background: var(--bg-card, #fff);
+  border-bottom: 1px solid var(--border-card, #e5e7eb);
   margin-bottom: 6px;
 }
 .chart-body {
@@ -910,7 +914,7 @@ onUnmounted(() => {
 .ruler-corner {
   font-size: clamp(10px, 0.7vw, 11px);
   font-weight: 500;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--text-muted, #6b7280);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -922,8 +926,8 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
   padding: 1px 5px;
   border-radius: 999px;
-  background: var(--color-surface-2, #f1f2f4);
-  color: var(--color-text-muted, #6b7280);
+  background: var(--bg-card-hover, #f1f2f4);
+  color: var(--text-muted, #6b7280);
 }
 .row-runpct.is-hot {
   background: color-mix(in srgb, #16a34a 14%, transparent);
@@ -939,7 +943,7 @@ onUnmounted(() => {
   min-width: 0;
   height: var(--row-h);
   border-radius: 5px;
-  background: var(--color-surface-2, #f3f4f6);
+  background: var(--bg-card-hover, #f3f4f6);
   transition: height 0.15s ease;
 }
 .chart-ruler .row-track { height: 20px; background: transparent; }
@@ -954,13 +958,13 @@ onUnmounted(() => {
   align-items: center;
 }
 .tick-text { font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.tick-line { width: 1px; flex: 1 1 auto; background: var(--color-border, #d1d5db); }
+.tick-line { width: 1px; flex: 1 1 auto; background: var(--border-card, #d1d5db); }
 .grid-line {
   position: absolute;
   top: 0;
   bottom: 0;
   width: 1px;
-  background: var(--color-border, #e5e7eb);
+  background: var(--border-card, #e5e7eb);
   opacity: 0.6;
 }
 .now-line {
@@ -978,7 +982,7 @@ onUnmounted(() => {
   border-radius: 6px;
   transition: background 0.12s ease;
 }
-.chart-row:hover { background: color-mix(in srgb, var(--color-text, #111827) 4%, transparent); }
+.chart-row:hover { background: color-mix(in srgb, var(--text-body, #111827) 4%, transparent); }
 .state-block {
   position: absolute;
   top: 2px;
@@ -989,17 +993,19 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
 }
-/* Màu trạng thái (yêu cầu 24/08 → đổi xanh lá 24/08 buổi 2): CHẠY = xanh lá đặc, DỪNG = ô
-   xám trung tính. Chỉ trạng thái CHẠY mới có màu, DỪNG để xám nhạt — màn hình treo xưởng cả
-   ngày, nếu cả hai trạng thái đều rực màu thì mắt không bắt được thông tin nào. */
+/* Màu trạng thái (yêu cầu 24/08 → xanh lá 24/08 buổi 2 → thêm sắc đỏ DỪNG 24/08 buổi 3):
+   CHẠY = xanh lá đặc, DỪNG = đỏ NHẠT/DỊU (không phải đỏ báo lỗi rực như --status-red — đó là
+   màu banner mất kết nối, dùng cho DỪNG thì hai mức cảnh báo lẫn lộn). Màn hình treo xưởng cả
+   ngày nên vẫn giữ nguyên tắc CHẠY đậm/DỪNG nhạt — chỉ đổi DỪNG từ xám sang đỏ desaturate để
+   mắt vẫn phân biệt được "có màu = có ý nghĩa trạng thái" mà không chói. */
 .blk-run {
   background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
   box-shadow: 0 1px 2px rgba(22, 163, 74, 0.28);
 }
 /* Viền vẽ bằng inset shadow để không đổi kích thước ô. */
 .blk-stop {
-  background: #eceef1;
-  box-shadow: inset 0 0 0 1px #d5d9df;
+  background: #f8e6e7;
+  box-shadow: inset 0 0 0 1px #e3b3b5;
 }
 .blk-label {
   font-size: clamp(9px, calc(var(--row-h) * 0.4), 12px);
@@ -1009,7 +1015,7 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 .blk-run .blk-label { color: #f0fdf4; }
-.blk-stop .blk-label { color: #6b7280; }
+.blk-stop .blk-label { color: #a5484a; }
 
 .chart-legend {
   flex: 0 0 auto;
@@ -1019,7 +1025,7 @@ onUnmounted(() => {
   gap: 14px;
   margin-top: 10px;
   font-size: 12px;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--text-muted, #6b7280);
 }
 .chart-legend i {
   display: inline-block;
@@ -1031,8 +1037,8 @@ onUnmounted(() => {
 }
 .chart-legend .blk-run { background: #16a34a; }
 .chart-legend .blk-stop {
-  background: #eceef1;
-  box-shadow: inset 0 0 0 1px #d5d9df;
+  background: #f8e6e7;
+  box-shadow: inset 0 0 0 1px #e3b3b5;
 }
 .legend-note { font-size: 11px; }
 .empty-state { padding: 24px 0; text-align: center; }
@@ -1076,7 +1082,7 @@ onUnmounted(() => {
   line-height: 1.1;
 }
 .fs-clock b { font-size: 26px; font-variant-numeric: tabular-nums; }
-.fs-clock span { display: block; font-size: 12px; color: var(--color-text-muted, #6b7280); }
+.fs-clock span { display: block; font-size: 12px; color: var(--text-muted, #6b7280); }
 
 /* Theme tối: xanh lá sáng thêm một nấc, ô DỪNG chuyển thành xám tối. */
 :global([data-theme='dark']) .blk-run {
@@ -1084,15 +1090,13 @@ onUnmounted(() => {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 :global([data-theme='dark']) .chart-legend .blk-run { background: #22c55e; }
-:global([data-theme='dark']) .chart-viewport,
-:global([data-theme='dark']) .chart-ruler { background: var(--color-surface, #111827); }
 :global([data-theme='dark']) .head-kpi { color: #4ade80; }
 :global([data-theme='dark']) .row-runpct.is-hot { color: #86efac; }
 :global([data-theme='dark']) .blk-run .blk-label { color: #f0fdf4; }
 :global([data-theme='dark']) .blk-stop,
 :global([data-theme='dark']) .chart-legend .blk-stop {
-  background: #374151;
-  box-shadow: inset 0 0 0 1px #4b5563;
+  background: #3f2b2c;
+  box-shadow: inset 0 0 0 1px #6b3f41;
 }
-:global([data-theme='dark']) .blk-stop .blk-label { color: #9ca3af; }
+:global([data-theme='dark']) .blk-stop .blk-label { color: #e0a3a4; }
 </style>
