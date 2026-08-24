@@ -3,9 +3,19 @@
        menu điều hướng chung), người xem công khai thì không — quyết định MỘT LẦN lúc khởi
        tạo, không đổi trong vòng đời trang (đổi wrapper = remount toàn bộ cây con). -->
   <component :is="pageWrapper">
-  <div class="status-chart-page" :class="{ 'is-immersive': isBrowserFullscreen }">
+  <div
+    ref="rootRef"
+    class="status-chart-page"
+    :class="{ 'is-immersive': isBrowserFullscreen, 'is-dense': rowHeight <= 22 }"
+    :style="{ '--row-h': rowHeight + 'px', height: pageH ? pageH + 'px' : undefined }"
+  >
     <div class="page-head" v-show="!isBrowserFullscreen">
-      <h2 class="page-title">{{ $t('bpdbMachineStatusChart.title') }}</h2>
+      <h2 class="page-title">
+        {{ $t('bpdbMachineStatusChart.title') }}
+        <span class="head-kpi" :title="$t('bpdbMachineStatusChart.legendRun')">
+          <i></i>{{ fleetRunPct }}%
+        </span>
+      </h2>
       <div class="toolbar-group">
         <label class="field">
           <span class="field-label">{{ $t('bpdbMachineStatusChart.windowLabel') }}</span>
@@ -83,11 +93,11 @@
         </div>
       </div>
 
-      <div class="chart-body">
+      <div class="chart-body" ref="chartBodyEl">
       <div v-for="row in visibleRows" :key="row.code" class="chart-row">
         <span class="row-label" :title="row.name">
-          {{ row.name }}
-          <b class="row-runpct" :class="{ 'is-hot': row.runPct >= 60 }">{{ row.runPct }}%</b>
+          <span class="row-name">{{ row.name }}</span>
+          <b class="row-runpct" :class="{ 'is-hot': row.runPct >= 60, 'is-cold': row.runPct === 0 }">{{ row.runPct }}%</b>
         </span>
         <div class="row-track">
           <span v-for="tk in ticks" :key="'g-' + row.code + '-' + tk.leftPct" class="grid-line" :style="{ left: tk.leftPct + '%' }"></span>
@@ -599,6 +609,57 @@ const visibleRows = computed(() => {
   });
 });
 
+/** % chạy trung bình toàn xưởng trong cửa sổ đang xem — số tổng quan đọc từ xa. */
+const fleetRunPct = computed(() => {
+  const list = visibleRows.value;
+  if (!list.length) return 0;
+  return Math.round(list.reduce((s, r) => s + r.runPct, 0) / list.length);
+});
+
+// --- Vừa khít một màn hình, KHÔNG cuộn (yêu cầu người dùng 24/08/2026) ---------------------
+// Hai phép đo tách biệt, cùng kỹ thuật với WeighingStationLarge.vue (fitRoot đo từ mép trên
+// thật của phần tử thay vì đặt cứng 100vh — route này có thể nằm trong AppLayout, tức đã bị
+// đẩy xuống dưới thanh trên và nằm trong .content-container có padding riêng):
+//   1. pageH: chiều cao TOÀN TRANG, ép bằng đúng khoảng trống còn lại của khung chứa.
+//   2. rowHeight: đo THẬT vùng chứa các dòng máy (chartBodyEl) rồi chia đều cho số dòng đang
+//      hiện — không đoán trước "thanh công cụ cao bao nhiêu" nữa, nên dù bật/tắt banner lỗi,
+//      toolbar rớt xuống 2 dòng trên máy hẹp, hay đổi cỡ chữ trình duyệt, biểu đồ vẫn tự co
+//      đúng, không bao giờ tràn khỏi khung.
+const rootRef = ref<HTMLElement | null>(null);
+const chartBodyEl = ref<HTMLElement | null>(null);
+const pageH = ref<number | null>(null);
+const rowsAreaH = ref(0);
+const ROW_GAP = 6;
+
+const rowHeight = computed(() => {
+  const count = visibleRows.value.length || 1;
+  const raw = rowsAreaH.value / count - ROW_GAP;
+  // Sàn thấp (6px) chỉ để tránh chia cho 0/âm khi khung còn chưa kịp đo lần đầu — không đặt
+  // sàn cao như bản trước vì mục tiêu là KHÔNG BAO GIỜ tràn, thà dòng mảnh hơn là phải cuộn.
+  // Trần 46px để vài máy lẻ không bị kéo thành thanh khổng lồ vô nghĩa.
+  return Math.round(Math.min(46, Math.max(6, raw)));
+});
+
+/** Lớp gắn tạm trên `<body>`: gỡ padding/khoá cuộn của `.content-container` (AppLayout) khi
+ *  trang này đang mở, y hệt cơ chế LOP_TRAN_VIEN của WeighingStationLarge.vue. Không ảnh hưởng
+ *  gì khi xem công khai (không có AppLayout bao ngoài, selector không khớp phần tử nào). */
+const BODY_FIT_CLASS = 'df-bpdb-status-fit';
+
+function fitRoot() {
+  const el = rootRef.value;
+  if (!el) return;
+  const top = el.getBoundingClientRect().top;
+  const parent = el.parentElement;
+  const padBottom = parent ? parseFloat(getComputedStyle(parent).paddingBottom) || 0 : 0;
+  const next = Math.max(320, Math.floor(window.innerHeight - top - padBottom));
+  if (pageH.value === null || Math.abs(pageH.value - next) > 1) pageH.value = next;
+}
+
+function fitRows() {
+  const h = chartBodyEl.value?.clientHeight || 0;
+  if (Math.abs(rowsAreaH.value - h) > 1) rowsAreaH.value = h;
+}
+
 // --- Toàn màn hình + đồng hồ (cùng cơ chế với BpdbMachinesGantt.vue) ----------------------
 // F11 KHÔNG set document.fullscreenElement — media query bắt được cả hai đường vào.
 const fullscreenMedia = window.matchMedia('(display-mode: fullscreen)');
@@ -608,6 +669,9 @@ const syncBrowserFullscreenState = () => {
   const was = isBrowserFullscreen.value;
   isBrowserFullscreen.value = !!document.fullscreenElement || fullscreenMedia.matches;
   if (isAdminUser && !was && isBrowserFullscreen.value) isFullscreen.value = true;
+  // Ẩn/hiện .page-head đổi hẳn chiều cao còn lại cho biểu đồ — không đợi sự kiện resize (trình
+  // duyệt thường bắn resize khi vào/thoát fullscreen, nhưng không đảm bảo trên mọi nền tảng).
+  requestAnimationFrame(fitAll);
 };
 
 const toggleBrowserFullscreen = () => {
@@ -626,9 +690,35 @@ const clockDate = computed(() =>
 // --- Vòng đời -----------------------------------------------------------------------------
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
+let roRoot: ResizeObserver | null = null;
+let roRows: ResizeObserver | null = null;
+
+const fitAll = () => {
+  fitRoot();
+  fitRows();
+};
 
 onMounted(() => {
   loadData();
+  document.body.classList.add(BODY_FIT_CLASS);
+  // Đo lần đầu ngay khi DOM vừa dựng xong (trước khi ảnh/font tải xong `top` còn là số tạm,
+  // rAF đợi đúng một khung vẽ để lấy số thật).
+  requestAnimationFrame(fitAll);
+  if (typeof ResizeObserver !== 'undefined') {
+    // Khung CHA (ví dụ .content-container của AppLayout) đổi cao khi bật/tắt toàn màn hình,
+    // xoay màn hình tablet... — đo lại chiều cao trang.
+    if (rootRef.value?.parentElement) {
+      roRoot = new ResizeObserver(fitRoot);
+      roRoot.observe(rootRef.value.parentElement);
+    }
+    // Vùng chứa dòng máy đổi cao khi toolbar rớt xuống 2 dòng, banner lỗi hiện/ẩn, hay chính
+    // pageH vừa đổi — đo lại số dòng vừa khung.
+    if (chartBodyEl.value) {
+      roRows = new ResizeObserver(fitRows);
+      roRows.observe(chartBodyEl.value);
+    }
+  }
+  window.addEventListener('resize', fitAll);
   // Kim giờ hiện tại và các đoạn "đang chạy" phải nhích theo thời gian thật; 10s là đủ mượt
   // cho màn hình treo mà không ép Vue tính lại toàn bộ biểu đồ mỗi giây.
   tickTimer = setInterval(() => {
@@ -654,45 +744,104 @@ onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer);
   if (tickTimer) clearInterval(tickTimer);
   if (ensureTimer) clearTimeout(ensureTimer);
+  roRoot?.disconnect();
+  roRows?.disconnect();
+  window.removeEventListener('resize', fitAll);
   document.removeEventListener('fullscreenchange', syncBrowserFullscreenState);
   fullscreenMedia.removeEventListener('change', syncBrowserFullscreenState);
+  document.body.classList.remove(BODY_FIT_CLASS);
 });
 </script>
 
 <style scoped>
 .status-chart-page {
-  padding: 12px 16px 24px;
+  /* --row-h do script đo THẬT vùng chứa dòng máy rồi chia đều (fitRows), không còn đoán mò;
+     --label-w co theo bề ngang màn hình để trên tablet dọc phần nhãn máy không ăn mất nửa
+     biểu đồ. Chiều cao trang do fitRoot() ép bằng JS qua style height ở template — CSS chỉ
+     cần khai display:flex + overflow:hidden để khoá cứng, không cho tràn ra ngoài. */
+  --row-h: 26px;
+  --label-w: clamp(76px, 11vw, 132px);
+  --row-gap: 6px;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(8px, 1.4vw, 18px) clamp(10px, 1.6vw, 22px) 12px;
   background: var(--color-bg, #fff);
-  min-height: 100vh;
+  overflow: hidden;
 }
-.status-chart-page.is-immersive { padding: 8px 12px; }
+.status-chart-page.is-immersive { padding: 6px clamp(8px, 1vw, 14px) 8px; }
 
 .page-head {
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px 14px;
   margin-bottom: 10px;
 }
-.page-title { margin: 0; font-size: 18px; }
-.toolbar-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.page-title {
+  margin: 0;
+  font-size: clamp(15px, 1.4vw, 20px);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+/* Chỉ số tổng quan cạnh tiêu đề: người quản lý đi ngang liếc một cái là biết xưởng đang
+   chạy bao nhiêu %, không cần đọc từng dòng máy. */
+.head-kpi {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, #16a34a 12%, transparent);
+  color: #16a34a;
+}
+.head-kpi i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--color-surface-2, #f6f7f9);
+  border: 1px solid var(--color-border, #e5e7eb);
+}
 .field { display: flex; flex-direction: column; gap: 2px; }
 .field-label { font-size: 11px; color: var(--color-text-muted, #6b7280); }
-.realtime-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
-.nav-group { display: inline-flex; align-items: center; gap: 4px; }
-
-/* touch-action:none là BẮT BUỘC cho tablet xưởng: nếu không, trình duyệt nuốt cử chỉ kéo
-   ngang thành thao tác cuộn trang và pointermove không bao giờ tới tay mình. */
-.chart-viewport {
-  touch-action: none;
-  cursor: grab;
-  user-select: none;
+.realtime-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.chart-viewport.is-panning { cursor: grabbing; }
+.nav-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--color-bg, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+}
+.nav-group .btn { border-radius: 6px; }
+
 .icon-btn { display: inline-flex; align-items: center; }
 
 .stale-banner {
+  flex: 0 0 auto;
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 13px;
@@ -704,8 +853,29 @@ onUnmounted(() => {
   background: var(--color-error-bg, #fef2f2);
   color: var(--color-error-text, #b91c1c);
 }
+.text-error { flex: 0 0 auto; }
 
-/* --- Lưới biểu đồ: nhãn máy cố định bên trái + rãnh thời gian co giãn --- */
+/* --- Lưới biểu đồ: nhãn máy cố định bên trái + rãnh thời gian co giãn ---
+   Toàn bộ khối này là MỘT cột flex chiếm hết phần cao còn lại của trang (flex:1), không
+   cuộn riêng — mục tiêu là vừa khít một màn, không phải cuộn để thấy hết (yêu cầu 24/08/2026).
+   touch-action:none là BẮT BUỘC cho tablet xưởng: nếu không, trình duyệt nuốt cử chỉ kéo
+   ngang thành thao tác cuộn trang và pointermove không bao giờ tới tay mình. */
+.chart-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 12px;
+  padding: 0 clamp(6px, 0.8vw, 12px) 8px;
+  background: var(--color-surface, #fff);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+.chart-viewport.is-panning { cursor: grabbing; }
 .chart-ruler,
 .chart-row {
   display: flex;
@@ -713,16 +883,21 @@ onUnmounted(() => {
   gap: 8px;
 }
 .chart-ruler {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  padding: 4px 0 10px;
-  background: var(--color-bg, #fff);
+  flex: 0 0 auto;
+  padding: 6px 0 10px;
+  background: var(--color-surface, #fff);
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  margin-bottom: 6px;
+}
+.chart-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 .row-label {
-  flex: 0 0 120px;
-  width: 120px;
-  font-size: 13px;
+  flex: 0 0 var(--label-w);
+  width: var(--label-w);
+  font-size: clamp(11px, 0.85vw, 13px);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -730,25 +905,44 @@ onUnmounted(() => {
   gap: 6px;
   overflow: hidden;
   white-space: nowrap;
+}
+.row-name { overflow: hidden; text-overflow: ellipsis; }
+.ruler-corner {
+  font-size: clamp(10px, 0.7vw, 11px);
+  font-weight: 500;
+  color: var(--color-text-muted, #6b7280);
+  white-space: nowrap;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
-.ruler-corner { font-size: 11px; font-weight: 500; color: var(--color-text-muted, #6b7280); }
 .row-runpct {
-  font-size: 11px;
+  flex: none;
+  font-size: 10px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--color-surface-2, #f1f2f4);
   color: var(--color-text-muted, #6b7280);
 }
-.row-runpct.is-hot { color: var(--color-success-text, #15803d); }
+.row-runpct.is-hot {
+  background: color-mix(in srgb, #16a34a 14%, transparent);
+  color: #15803d;
+}
+.row-runpct.is-cold { opacity: 0.55; }
+/* Máy đang chật vật (dòng quá thấp) thì bỏ hẳn % — chữ 10px trong ô 16px là nhiễu. */
+.is-dense .row-runpct { display: none; }
 
 .row-track {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
-  height: 26px;
-  border-radius: 3px;
+  height: var(--row-h);
+  border-radius: 5px;
   background: var(--color-surface-2, #f3f4f6);
+  transition: height 0.15s ease;
 }
-.chart-ruler .row-track { height: 18px; background: transparent; }
+.chart-ruler .row-track { height: 20px; background: transparent; }
 
 .ruler-tick {
   position: absolute;
@@ -779,42 +973,51 @@ onUnmounted(() => {
   z-index: 2;
 }
 
-.chart-row { margin-bottom: 6px; }
+.chart-row {
+  margin-bottom: var(--row-gap);
+  border-radius: 6px;
+  transition: background 0.12s ease;
+}
+.chart-row:hover { background: color-mix(in srgb, var(--color-text, #111827) 4%, transparent); }
 .state-block {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
-  border-radius: 2px;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 4px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-/* Màu trạng thái (yêu cầu 2026-08-24): CHẠY = xanh dương đặc, DỪNG = ô xám trung tính.
-   Chỉ trạng thái CHẠY mới có màu, DỪNG để xám nhạt — màn hình treo xưởng cả ngày, nếu
-   cả hai trạng thái đều rực màu thì mắt không bắt được thông tin nào. */
-.blk-run { background: #2563eb; }
+/* Màu trạng thái (yêu cầu 24/08 → đổi xanh lá 24/08 buổi 2): CHẠY = xanh lá đặc, DỪNG = ô
+   xám trung tính. Chỉ trạng thái CHẠY mới có màu, DỪNG để xám nhạt — màn hình treo xưởng cả
+   ngày, nếu cả hai trạng thái đều rực màu thì mắt không bắt được thông tin nào. */
+.blk-run {
+  background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+  box-shadow: 0 1px 2px rgba(22, 163, 74, 0.28);
+}
 /* Viền vẽ bằng inset shadow để không đổi kích thước ô. */
 .blk-stop {
   background: #eceef1;
   box-shadow: inset 0 0 0 1px #d5d9df;
 }
 .blk-label {
-  font-size: 10px;
+  font-size: clamp(9px, calc(var(--row-h) * 0.4), 12px);
   font-style: normal;
   font-weight: 700;
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
-.blk-run .blk-label { color: #eff6ff; }
+.blk-run .blk-label { color: #f0fdf4; }
 .blk-stop .blk-label { color: #6b7280; }
 
 .chart-legend {
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 14px;
-  margin-top: 14px;
+  margin-top: 10px;
   font-size: 12px;
   color: var(--color-text-muted, #6b7280);
 }
@@ -826,13 +1029,43 @@ onUnmounted(() => {
   margin-right: 6px;
   vertical-align: middle;
 }
-.chart-legend .blk-run { background: #2563eb; }
+.chart-legend .blk-run { background: #16a34a; }
 .chart-legend .blk-stop {
   background: #eceef1;
   box-shadow: inset 0 0 0 1px #d5d9df;
 }
 .legend-note { font-size: 11px; }
 .empty-state { padding: 24px 0; text-align: center; }
+
+/* Dòng bị nén quá thấp thì chữ trong ô chỉ còn là vệt nhiễu — bỏ đi, màu ô đã đủ nghĩa. */
+.is-dense .blk-label { display: none; }
+
+/* --- Thích nghi màn hình hẹp (tablet dọc / điện thoại) ---
+   Không xếp nhãn máy xuống dưới rãnh thời gian: đọc theo dòng ngang mới so sánh được các
+   máy với nhau — đó là toàn bộ mục đích của biểu đồ này. Chỉ thu nhãn và thanh công cụ. */
+@media (max-width: 900px) {
+  .status-chart-page { --label-w: clamp(64px, 18vw, 96px); }
+  .page-head { align-items: stretch; flex-direction: column; }
+  .toolbar-group { justify-content: flex-start; }
+  .toolbar-group .field { flex: 1 1 140px; }
+  .chart-legend { gap: 8px 12px; }
+}
+@media (max-width: 560px) {
+  .status-chart-page { --label-w: 58px; }
+  .head-kpi { font-size: 11px; }
+  .legend-note { flex: 1 1 100%; }
+}
+
+/* Gắn/gỡ bởi script lúc mount/unmount (BODY_FIT_CLASS). Khi trang này nằm trong AppLayout,
+   `.content-container` vốn có padding + overflow-y:auto riêng — giữ nguyên thì fitRoot() đo
+   đúng khoảng trống còn lại nhưng khung chứa vẫn có thể tự sinh thanh cuộn của chính nó (lệch
+   vài pixel do border/scrollbar). Bỏ padding và khoá cuộn tại đây, ép trang con tự chịu trách
+   nhiệm vừa khít — cùng kỹ thuật LOP_TRAN_VIEN trong WeighingStationLarge.vue. Khi xem công
+   khai (không có AppLayout) selector này không khớp phần tử nào, vô hại. */
+:global(body.df-bpdb-status-fit .content-container) {
+  padding: 0;
+  overflow: hidden;
+}
 
 .fs-clock {
   position: fixed;
@@ -845,10 +1078,17 @@ onUnmounted(() => {
 .fs-clock b { font-size: 26px; font-variant-numeric: tabular-nums; }
 .fs-clock span { display: block; font-size: 12px; color: var(--color-text-muted, #6b7280); }
 
-/* Theme tối: xanh sáng thêm một nấc, ô DỪNG chuyển thành xám tối. */
-:global([data-theme='dark']) .blk-run,
-:global([data-theme='dark']) .chart-legend .blk-run { background: #3b82f6; }
-:global([data-theme='dark']) .blk-run .blk-label { color: #eff6ff; }
+/* Theme tối: xanh lá sáng thêm một nấc, ô DỪNG chuyển thành xám tối. */
+:global([data-theme='dark']) .blk-run {
+  background: linear-gradient(180deg, #4ade80 0%, #22c55e 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+:global([data-theme='dark']) .chart-legend .blk-run { background: #22c55e; }
+:global([data-theme='dark']) .chart-viewport,
+:global([data-theme='dark']) .chart-ruler { background: var(--color-surface, #111827); }
+:global([data-theme='dark']) .head-kpi { color: #4ade80; }
+:global([data-theme='dark']) .row-runpct.is-hot { color: #86efac; }
+:global([data-theme='dark']) .blk-run .blk-label { color: #f0fdf4; }
 :global([data-theme='dark']) .blk-stop,
 :global([data-theme='dark']) .chart-legend .blk-stop {
   background: #374151;
