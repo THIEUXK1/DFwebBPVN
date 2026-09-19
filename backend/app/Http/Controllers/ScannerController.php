@@ -676,6 +676,33 @@ class ScannerController extends Controller
      * lấy từ payload qrDye, không áp cho CHEMICAL/A11/DLG).
      */
     /**
+     * Trạm tự đăng ký qua Agent (AgentAuth::handle) chỉ được gán `type` đúng khi request đăng ký
+     * ĐẦU TIÊN có kèm `role`/`scale_kind`; thiếu thì trạm sinh ra với type='AUTO_REGISTERED' và
+     * firstOrCreate về sau KHÔNG bao giờ sửa lại. Hậu quả thật (WS-SCALE-VN-DF026, 29/08→19/09/2026):
+     * 43 mẻ đã cân xong, đã in phiếu giấy, nằm mãi trong hàng đợi trình duyệt vì mỗi lần gửi lên
+     * đều bị 403 "chỉ được phép quét tại các Trạm Cân sản xuất".
+     *
+     * Suy loại cân từ capability/tiền tố mã trạm (cùng căn cứ WeighingJobController dùng để chọn
+     * màn hình cân nhỏ/cân to) thay vì chặn thẳng. Trả null khi không đủ căn cứ — trạm thật sự
+     * không phải trạm cân vẫn bị chặn như cũ.
+     */
+    private function suyRaLoaiCanTuTram(Workstation $workstation): ?string
+    {
+        $cap = strtoupper((string) $workstation->default_capability);
+        if ($cap === 'SMALL_SCALE' || $cap === 'LARGE_SCALE') {
+            return 'DYE';
+        }
+
+        $code = strtoupper((string) $workstation->code);
+        if (str_starts_with($code, 'WS-SCALE') || str_starts_with($code, 'WS-LARGE')
+            || str_starts_with($code, 'WS-SMALL') || str_contains($code, 'WEIGH-SCALE')) {
+            return 'DYE';
+        }
+
+        return null;
+    }
+
+    /**
      * `$batchOrId` nhận cả UUID (luồng scan() qua "DF:ORDER:<uuid>") lẫn ProductionBatch ĐÃ NẠP
      * SẴN (luồng scanRawDyeQr — nó vừa tra/tạo chính bản ghi này xong). Truyền thẳng object để
      * bỏ được findOrFail + 2 quan hệ eager-load lặp lại: DB nằm ở máy khác, đo thật 2026-08-02
@@ -684,21 +711,27 @@ class ScannerController extends Controller
     private function handleOrderScan($batchOrId, Workstation $workstation, ?array $rackLines = null, bool $returnJob = false)
     {
         // Verify workstation matches a weighing station type
+        //
+        // SMALL_SCALE/LARGE_SCALE nằm trong danh sách này vì đó là `type` THẬT của các trạm cân
+        // do WorkstationsSeeder tạo (WS-SMALL-01/02, WS-LARGE-01) — chúng cân thuốc nhuộm y hệt
+        // trạm DYE_WEIGHING, chỉ khác cỡ cân vật lý.
         $allowedTypes = [
             'DYE_WEIGHING' => 'DYE',
             'CHEMICAL_WEIGHING' => 'CHEMICAL',
             'A11_WEIGHING' => 'A11',
             'DLG_WEIGHING' => 'DLG',
+            'SMALL_SCALE' => 'DYE',
+            'LARGE_SCALE' => 'DYE',
         ];
 
-        if (! array_key_exists($workstation->type, $allowedTypes)) {
+        $jobType = $allowedTypes[$workstation->type] ?? $this->suyRaLoaiCanTuTram($workstation);
+
+        if ($jobType === null) {
             return response()->json([
                 'status' => 'ERROR',
                 'message' => 'Mã QR Đơn công thức chỉ được phép quét tại các Trạm Cân sản xuất.',
             ], 403);
         }
-
-        $jobType = $allowedTypes[$workstation->type];
 
         return DB::transaction(function () use ($batchOrId, $workstation, $jobType, $rackLines, $returnJob) {
             $batch = $batchOrId instanceof ProductionBatch

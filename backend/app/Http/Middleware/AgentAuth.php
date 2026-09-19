@@ -141,7 +141,28 @@ class AgentAuth
                 ]
             );
 
-            if ($workstation->wasRecentlyCreated && $defaults) {
+            // VA LAI TRAM DA LO SINH RA SAI (2026-09-19): firstOrCreate chi gan type luc TAO, nen
+            // tram nao dang ky lan dau bang mot request THIEU role/scale_kind se ket vinh vien o
+            // type='AUTO_REGISTERED' du cac lan goi sau deu gui du. Thuc te WS-SCALE-VN-DF026:
+            // 43 me da can xong, da in phieu, bi ScannerController::handleOrderScan tra 403 suot
+            // tu 29/08 den 19/09. Chi va khi type con la AUTO_REGISTERED/rong — KHONG dung vao
+            // tram da duoc quan tri vien dat type bang tay o man Quan ly Workstation.
+            $typeHienTai = (string) $workstation->type;
+            $daVaLai = false;
+            if (! $workstation->wasRecentlyCreated && $defaults
+                && ($typeHienTai === '' || $typeHienTai === 'AUTO_REGISTERED')) {
+                $workstation->type = $defaults['type'];
+                $workstation->workstation_type = $defaults['type'];
+                $workstation->default_capability ??= $defaults['default_capability'];
+                $workstation->default_route ??= $defaults['default_route'];
+                $workstation->save();
+                $daVaLai = true;
+            }
+
+            // Tram vua va lai cung phai duoc cap capability: luc tao no ra khong co $defaults nen
+            // vong lap nay da bi bo qua, thieu SMALL_SCALE/LARGE_SCALE thi trinh duyet khong vao
+            // noi man hinh can (ROUTE_CAPABILITY_MAP).
+            if (($workstation->wasRecentlyCreated || $daVaLai) && $defaults) {
                 foreach (array_merge($defaults['caps'], ['SCAN_QR', 'LOCAL_AGENT']) as $capCode) {
                     $cap = Capability::where('code', $capCode)->first();
                     if ($cap) {
