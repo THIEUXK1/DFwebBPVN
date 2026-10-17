@@ -227,7 +227,16 @@
      POST chi nhan origin loopback / host Backend:Urls / Local:AllowedOriginHosts.
      AUTO_COM KHONG doc duoc cong dang bi PuTTY giu — phai tat PuTTY cua can do truoc.
      Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode. -->
-<?define PackageVersion = "4.9.0.0"?>
+<!-- 4.9.1.0 (17/10/2026) — SUA AUTO_COM: "an TIEP xong bang khong nhay can" (vn-df026).
+     Ban 4.9.0.0 chay StableFilter theo TUNG DONG can phat ra, nen luc dang do vat tu khong bao gio
+     "on dinh" ma man can chi cap nhat delta bang so on dinh. Nay giu dong moi nhat va dua vao
+     StableFilter o moi nhip doc 10ms — y het nhanh PuTTY doc dong cuoi file log. -->
+<!-- 4.9.2.0 (17/10/2026) — COM CO DINH + nut DO CAN. Nguoi dung bao cham: can im (khong ai dat
+     gi, hoac bao -E) qua 5s la Agent tha cong di do lai, dat vat len phai cho do xong moi co so.
+     Nay do ra cong nao thi CO DINH cong do (luu "port" vao scale_mode.json), khoi dong lai mo thang
+     khong do. Chi tha cong khi cong bien mat khoi Windows (rut cap) va cho no cam lai dung ten.
+     Do lai chi khi bam nut DO CAN tren thanh tren man can (POST /scale/source rescan=true). -->
+<?define PackageVersion = "4.9.2.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.ProductLabel))"

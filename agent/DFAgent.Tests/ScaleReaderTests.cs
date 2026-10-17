@@ -368,6 +368,70 @@ public class ScaleReaderTests
         finally { File.Delete(path); }
     }
 
+    /// <summary>
+    /// Loi that vn-df026 (17/10/2026): AUTO_COM chay StableFilter theo TUNG DONG can phat ra, nen
+    /// luc dang do vat tu khong bao gio "on dinh" va o delta dung im. Phai on dinh theo NHIP DOC
+    /// y het nhanh PuTTY: cung mot dong doc 2 nhip lien tiep = on dinh.
+    /// </summary>
+    [Fact]
+    public void AutoCom_OnDinhTheoNhipDoc_GiongPuTTY()
+    {
+        string fileCheDo = Path.Combine(Path.GetTempPath(), $"dfagent_mode_{Guid.NewGuid():N}.json");
+        var reader = NewReaderWith(("Scale:ModeFile", fileCheDo));
+        try
+        {
+            Assert.True(reader.DoiCheDo("AUTO_COM"));
+
+            reader.IngestSerialData("12,ST,GS,+000010.5g\r\n");
+            var lan1 = reader.ReadCurrentWeightWithStability();
+            Assert.Equal(10.5, lan1.Weight!.Value, precision: 6);
+            Assert.False(lan1.IsStable);
+            Assert.True(reader.ReadCurrentWeightWithStability().IsStable); // khong co dong moi van on dinh
+
+            reader.IngestSerialData("12,ST,GS,+000012.0g\r\n");
+            Assert.False(reader.ReadCurrentWeightWithStability().IsStable);
+            var lan4 = reader.ReadCurrentWeightWithStability();
+            Assert.True(lan4.IsStable);
+            Assert.Equal(12.0, lan4.Weight!.Value, precision: 6);
+        }
+        finally
+        {
+            reader.DoiCheDo("PUTTY_LOG"); // dung vong do cong that tren may chay test
+            reader.Dispose();
+            File.Delete(fileCheDo);
+        }
+    }
+
+    /// <summary>
+    /// 17/10/2026: cong COM do ra duoc CO DINH (luu file) — khoi dong lai mo thang, khong do nua;
+    /// chi nut DO CAN (doLai) moi bo cong do di.
+    /// </summary>
+    [Fact]
+    public void AutoCom_NhoCongCoDinh_DoLaiThiBoCong()
+    {
+        string fileCheDo = Path.Combine(Path.GetTempPath(), $"dfagent_mode_{Guid.NewGuid():N}.json");
+        File.WriteAllText(fileCheDo, "{\"mode\":\"AUTO_COM\",\"port\":\"COM99\"}");
+        var reader = NewReaderWith(("Scale:ModeFile", fileCheDo));
+        try
+        {
+            Assert.Equal("AUTO_COM", reader.CheDo);
+            Assert.Equal("COM99", reader.CongCoDinh);
+
+            // Bam lai nut COM dang chay: giu nguyen cong co dinh.
+            Assert.True(reader.DoiCheDo("AUTO_COM"));
+            Assert.Equal("COM99", reader.CongCoDinh);
+
+            Assert.True(reader.DoiCheDo("AUTO_COM", doLai: true));
+            Assert.Null(reader.CongCoDinh);
+        }
+        finally
+        {
+            reader.DoiCheDo("PUTTY_LOG");
+            reader.Dispose();
+            File.Delete(fileCheDo);
+        }
+    }
+
     // Tu do cong COM (AUTO_COM): nhan dang mot cong "co can" tu du lieu nghe duoc.
     [Theory]
     [InlineData("US,+000466.6  g\r\n0000000\r\nUS,+000486.7  g\r\n", true)]   // can to, xen dong 0

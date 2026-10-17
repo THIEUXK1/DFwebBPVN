@@ -17,6 +17,14 @@
         @click="onDoi('AUTO_COM')"
       >{{ $t('scaleSourceSwitch.auto') }}</button>
     </div>
+    <!-- DÒ CÂN: tìm lại cổng COM của cân rồi cố định cổng đó. Chỉ cần bấm khi cắm cáp sang lỗ USB
+         khác (Windows đổi số COM) — bình thường Agent mở thẳng cổng đã cố định, không dò. -->
+    <button
+      class="src-rescan"
+      :disabled="dangDoi || nguonCan.khoa"
+      :title="nguonCan.khoa ? $t('scaleSourceSwitch.busyTitle') : $t('scaleSourceSwitch.rescanTitle')"
+      @click="onDoLai"
+    >{{ $t('scaleSourceSwitch.rescan') }}</button>
     <span class="src-info" :class="{ bad: !!loi }" :title="loi || nguonCan.msg || ''">{{ loi || moTa }}</span>
   </div>
 </template>
@@ -37,6 +45,19 @@ const moTa = computed(() => {
   if (nguonCan.port) return t('scaleSourceSwitch.readingPort', { port: nguonCan.port });
   return nguonCan.msg || '';
 });
+
+async function onDoLai() {
+  if (dangDoi.value) return;
+  dangDoi.value = true;
+  loi.value = '';
+  try {
+    await doiNguonCan('AUTO_COM', true);
+  } catch (e: any) {
+    loi.value = t(`scaleSourceSwitch.${MA_LOI[e?.message] || 'errRejected'}`);
+  } finally {
+    dangDoi.value = false;
+  }
+}
 
 const MA_LOI: Record<string, string> = {
   AGENT_UNREACHABLE: 'errUnreachable',
@@ -106,6 +127,23 @@ async function onDoi(mode: CheDoNguonCan) {
 .src-seg button:disabled { cursor: not-allowed; opacity: 0.55; }
 .src-seg button.on:disabled { opacity: 0.85; }
 
+.src-rescan {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-divider);
+  border-radius: var(--radius-full);
+  background-color: var(--bg-card);
+  color: var(--text-title);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+.src-rescan:hover:not(:disabled) { border-color: var(--primary-hover); color: var(--primary-hover); }
+.src-rescan:disabled { cursor: not-allowed; opacity: 0.55; }
+
 .src-info {
   max-width: 220px;
   font-size: 12px;
@@ -121,5 +159,6 @@ async function onDoi(mode: CheDoNguonCan) {
 .compact { gap: 6px; }
 .compact .src-seg { height: 20px; padding: 1px; }
 .compact .src-seg button { padding: 0 8px; font-size: 11px; }
+.compact .src-rescan { height: 20px; padding: 0 8px; font-size: 11px; }
 .compact .src-info { font-size: 11px; max-width: 260px; }
 </style>

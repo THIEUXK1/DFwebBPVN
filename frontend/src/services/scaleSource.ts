@@ -57,9 +57,12 @@ export function ghiNguonTuGoiSo(kind: ScaleKind, d: any) {
  * Bảo Agent trên CHÍNH máy này chuyển nguồn cân. Đi thẳng loopback (không qua backend, không gửi
  * token đăng nhập) — trình duyệt vẫn không chạm phần cứng, việc mở cổng COM là của Agent (ADR-002).
  *
+ * `doLai` = nút DÒ CÂN: Agent bỏ cổng COM đã cố định và dò lại từ đầu. Không có cờ này thì chế
+ * độ COM mở thẳng cổng đã cố định, không dò — dò mất vài giây mỗi cổng.
+ *
  * Ném Error với mã ngắn để giao diện dịch ra câu dễ hiểu.
  */
-export async function doiNguonCan(mode: CheDoNguonCan): Promise<void> {
+export async function doiNguonCan(mode: CheDoNguonCan, doLai = false): Promise<void> {
   const kind = nguonCan.kind;
   if (!kind) throw new Error('NO_STATION');
 
@@ -70,7 +73,7 @@ export async function doiNguonCan(mode: CheDoNguonCan): Promise<void> {
     res = await fetch(`http://127.0.0.1:${CONG_AGENT_CUC_BO[kind]}/scale/source`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify({ mode, rescan: doLai }),
       cache: 'no-store',
       credentials: 'omit',
       signal: huy.signal,

@@ -307,14 +307,17 @@ public class LocalWeightServer : BackgroundService
             }
 
             string? mode = null;
+            bool doLai = false;
             try
             {
                 using var doc = await JsonDocument.ParseAsync(req.InputStream);
                 if (doc.RootElement.TryGetProperty("mode", out var m)) mode = m.GetString();
+                // Nút DÒ CÂN: bỏ cổng COM đã cố định, dò lại từ đầu.
+                if (doc.RootElement.TryGetProperty("rescan", out var r) && r.ValueKind == JsonValueKind.True) doLai = true;
             }
             catch (JsonException) { /* xử lý như thiếu mode bên dưới */ }
 
-            if (mode is null || !_scaleReader.DoiCheDo(mode))
+            if (mode is null || !_scaleReader.DoiCheDo(mode, doLai))
             {
                 GhiJson(res, 422, new { status = "INVALID", message = "mode phai la PUTTY_LOG hoac AUTO_COM" });
                 return;
