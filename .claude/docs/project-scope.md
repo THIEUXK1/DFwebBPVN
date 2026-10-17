@@ -1,6 +1,8 @@
 # Project Scope - Phạm vi Dự án DF
 
-> Trích lọc và chuẩn hóa từ `.claude/project-overview.md` mục 4-5, dùng làm tiêu chí nhanh để đánh giá một yêu cầu mới có nằm trong phạm vi MVP hay không trước khi bắt tay code.
+> Đọc khi nhận một yêu cầu mới và cần xét nó có thuộc phạm vi không. Trích từ `.claude/project-overview.md` mục 4-5.
+
+**Một câu:** DF là web app thay 12 workbook Excel VBA + các DB Access của xưởng nhuộm — cân thuốc/hóa chất, in tem QR, điều phối cấp máy — đứng giữa MES và hệ pha màu tự động, chạy song song với VBA cũ cho tới khi nghiệm thu.
 
 ---
 
@@ -31,13 +33,20 @@ Di trú dữ liệu trong phạm vi: `RECORD.accdb`, `RECORD(1).accdb`, và `che
 - Xóa bỏ hoặc tắt các Macro Excel cũ trước khi giai đoạn chạy song song (Phase 12) đạt tiêu chuẩn nghiệm thu chính thức (biên bản UAT).
 - Bất kỳ tính năng nào gọi dịch vụ sinh QR hoặc xử lý dữ liệu công thức qua bên thứ ba trên Internet (vi phạm ADR-003).
 
-## 3. Quy tắc khi nhận yêu cầu mới nằm ngoài danh sách 12 phân hệ trên
-1. Không tự triển khai ngay — xác nhận với người dùng đây là mở rộng phạm vi (scope change) hay thuộc phân hệ hiện có bị hiểu nhầm.
-2. Nếu là mở rộng phạm vi thật sự, đề xuất ghi nhận vào `.claude/open-questions.md` hoặc tạo ADR mới (phối hợp vai trò [[system-architect]]) trước khi code.
-3. Không tự ý mở rộng phạm vi điều khiển phần cứng (PLC/SCADA) hoặc tích hợp bên thứ ba dưới bất kỳ lý do "tiện lợi" nào.
+## 3. Do's & Don'ts riêng của phạm vi
+- **Do:** port đúng hành vi VBA gốc trước, cải tiến sau — mọi khác biệt so với workbook phải ghi rõ lý do (xem `source-traceability.md`).
+- **Do:** giữ song song đường cũ (PuTTY log, workbook) khi thêm đường mới cho xưởng, để UAT so được hai bên.
+- **Don't:** "dọn" hay tắt một chức năng VBA vì trông lỗi thời — ADR-012 từng phải đảo ngược một quyết định DEPRECATED vì hệ pha màu không có API.
+- **Don't:** tự đóng blocker nghiệp vụ (`CH-BUS-*`) bằng suy đoán — chỉ đóng bằng bằng chứng mã nguồn hoặc xác nhận văn bản (xem `decision-records.md`).
 
-## 4. Giai đoạn hiện tại và ảnh hưởng tới phạm vi làm việc
-Dự án đang ở **Phase 12 – UAT & Chạy song song** (xem `.claude/CLAUDE.md` mục 7). Điều này có nghĩa:
-- 12 phân hệ MVP nêu trên đã code xong (Phase 0-11) — công việc hiện tại là **sửa lỗi phát sinh từ UAT thực tế**, không phải phát triển tính năng mới trừ khi có yêu cầu rõ ràng.
-- Trước khi thêm tính năng mới ngoài việc sửa lỗi UAT, xác nhận với người dùng vì có thể ảnh hưởng tới lịch trình Cutover (Phase 13).
-- Vấn đề nghiệp vụ chưa chốt cần xác nhận trước khi UAT hoàn tất: quy tắc chia ca 3x8h cho báo cáo sản lượng (`open-questions.md` mục CH-BUS-003).
+## 4. Vùng xám — phải hỏi trước khi làm
+| Tình huống | Hỏi ai / ghi ở đâu |
+|---|---|
+| Yêu cầu không khớp phân hệ nào ở mục 1 | Người dùng: scope change hay hiểu nhầm phân hệ? Ghi `open-questions.md` hoặc ADR mới (qua `system-architect`) |
+| Thêm tính năng mới (không phải sửa lỗi UAT) | Người dùng — có thể dời lịch Cutover (Phase 13) |
+| Agent làm thêm việc với phần cứng/phần mềm khác trên máy trạm (RPA, đọc cửa sổ, cổng COM) | ADR mới; tham chiếu ADR-012/013 |
+| Quy tắc nghiệp vụ còn mở: chia ca 3x8h (CH-BUS-003), 15L special (ADR-BUS-011), RECORD_A↔B (ADR-BUS-013), `chem_order.tblRECORD` (ADR-BUS-014) | Giữ default an toàn đã ghi trong `decision-records.md`, không tự chốt |
+
+## 5. Người dùng & môi trường
+- Operator/trưởng ca tại xưởng dùng máy trạm kiosk (Windows, có máy đời cũ — lý do có `@vitejs/plugin-legacy`), mô hình "1 máy tính = 1 công đoạn" (`workstation-redesign-audit.md`).
+- Production: CS-SERVER `10.0.60.209` (xem `database-safety.md` mục 7). Giai đoạn hiện tại: `.claude/CLAUDE.md` mục 7 — Phase 12, công việc chính là **sửa lỗi UAT**.

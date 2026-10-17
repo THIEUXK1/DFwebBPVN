@@ -3709,3 +3709,58 @@ chay `php artisan test`** o may nay (bo test se DROP SCHEMA app tren DB producti
 so hien dung kieu day tu hang xu; (2) bam NEXT roi thu sua lai -> phai khong sua duoc; (3) F5 giua
 luc do -> so sua tay con nguyen, o van vang; (4) SAVE -> phieu in va DB cung mot muc tieu, co dong
 audit `WEIGHING_TARGET_OVERRIDE`.
+
+---
+
+## 2026-09-24 — Cong tac NGUON CAN tren /weighing-station-large (PuTTY / TU DO COM)
+
+**Yeu cau nguoi dung:** mot cong tac tren man can to: (1) lay so theo cach truyen thong, (2) Agent tu
+xem can dang cam o cong COM nao roi tu lay cong do.
+
+**Agent (`agent/ScaleReader.cs`, `agent/LocalWeightServer.cs`):**
+- Them che do `AUTO_COM` ben canh `PUTTY_LOG` / `SERIAL`. Doi duoc luc dang chay (`DoiCheDo`), luu
+  lua chon vao `scale_mode.json` canh exe (thang `Scale:Source` trong appsettings, ke ca sau restart).
+- Do cong: mo lan luot `SerialPort.GetPortNames()` bang baud/parity trong appsettings, nghe toi da
+  `Scale:AutoProbeMs` (1500ms); can **>= 2 dong tron ven** la khung so can (`CoKhungSoCan`) moi nhan
+  cong — sai baud ra rac doi khi lot mot chu so. Cong bi giu (PuTTY) bao ro "dang bi chuong trinh khac
+  giu". Giu cong ma im > 5s thi tu do lai. So COM cu > 1.5s tra null (khong de man hinh tuong can
+  dung yen khi rut day). DTR/RTS bat mac dinh nhu PuTTY.
+- `GET/POST /scale/source` tren cong loopback. POST chi nhan Origin loopback / host trong
+  `Backend:Urls` / `Local:AllowedOriginHosts` (them `192.168.250.151`, `10.0.60.209` vao
+  appsettings.large.json) — trang la mo tren may tram khong gat duoc nguon can. Goi `/weight` va
+  `/weight/stream` kem them `scale_mode`, `com_port`, `scale_msg`.
+
+**Frontend:** `useScaleFeed` them `nguonCan/congCom/thongDiepNguon/doiNguonCan`; man can to them cong
+tac 2 nut trong cot thong tin ben phai, khoa khi dang can do (`currentIndex >= 0`), doi nguon thi
+reset bi.
+
+**Rang buoc can noi voi xuong:** AUTO_COM KHONG doc duoc cong ma PuTTY dang mo — phai tat PuTTY cua
+can to truoc. May cai CA HAI Agent ma ca hai cung AUTO_COM thi co the Agent can to giu nham can nho
+(ben nao mo truoc thi giu) — hien chi Agent can to co cong tac tren man hinh.
+
+**Kiem chung:** `dotnet test` agent 79/79 dat (them test CoKhungSoCan, CheDoTuCauHinh, /scale/source
+origin la 403 / doi hop le / SERIAL 422). `vue-tsc` khong loi moi, `vite build` thanh cong.
+**CHUA thu tren may tram that voi can that** va **chua build lai MSI** — can: dong goi MSI can to moi,
+cai len may tram, tat PuTTY, gat TU DO COM, xac nhan hien "Dang doc COMx" va so can khop mat can.
+
+**Bo sung cung ngay — can nho `/weighing-station-v2`:** gan cung cong tac NGUON CAN vao dai RAW
+(truoc o gia lap), dung chung `doiNguonCan` cua `useScaleFeed('SMALL')` -> Agent can nho cong 8770.
+Them `Local:AllowedOriginHosts` vao appsettings.small.json. Khong can sua Agent (code dung chung).
+Luu y: may cai CA HAI Agent thi chi nen de MOT ben o AUTO_COM, hoac bat ca hai khi PuTTY tat het
+va chap nhan ben nao mo truoc thi giu cong truoc — nen gat tung ben va xem ben kia hien dung COM.
+Kiem chung: `vue-tsc` khong loi moi, `vite build` thanh cong. Chua thu tren may that, chua build MSI.
+
+**Doi vi tri cung ngay — cong tac chuyen len THANH TREN (AppLayout), theo yeu cau nguoi dung:**
+- Go cong tac khoi ca 2 man tram can. Them `services/scaleSource.ts` (state dung chung `nguonCan`:
+  kind/mode/port/msg/khoa + `doiNguonCan`), component `components/ScaleSourceSwitch.vue`, i18n
+  `locales/modules/ScaleSourceSwitch.ts`. Dat o ca topbar day du VA dai thu gon 24px (dang mac
+  dinh cua cannho/canto).
+- `useScaleFeed` dang ky `nguonCan.kind` khi man can mo, xoa khi roi trang -> cong tac tu an o moi
+  man khac; ghi mode/port/msg tu goi so can; mode doi giua hai gia tri da biet thi reset bi.
+- Moi man tram can chi con 1 dong `watch(currentIndex)` -> `nguonCan.khoa` (khoa khi dang can do).
+Kiem chung: `vue-tsc` khong loi moi, `vite build` thanh cong. Chua xem bang mat tren trinh duyet.
+
+**Build bo cai 4.9.0.0 (24/09/2026):** nang `PackageVersion` 4.8.0.0 -> 4.9.0.0 trong
+DFAgentSetup.wxs, chay `agent/installer/build.ps1` -> 3 MSI (CanNho, CanTo, CanTo-InOut), da copy
+sang `backend/public/downloads/` (tu build.ps1) va `C:\Users\v240298\Downloads\BoCaiCan\` theo yeu
+cau nguoi dung (3 ban cu 10/08 cat vao `BoCaiCan\cu-4.8.0.0\`). Chua cai thu len may tram nao.
