@@ -298,6 +298,7 @@ import { currentWorkstation, adoptLocalWorkstation } from '../services/workstati
 import { scannerService } from '../services/scanner';
 import { isFullscreen } from '../services/layout';
 import { useScaleFeed } from '../composables/useScaleFeed';
+import { nguonCan } from '../services/scaleSource';
 import { inPhieuTrongTrang } from '../utils/slipPrint';
 import { parseDyeQr, docQrMeNhuom, MAX_RACK_LINES, type ParsedDyeQr } from '../utils/qrDyeParser';
 import { processTone } from '../utils/processColor';
@@ -338,6 +339,9 @@ const parallelNotice = ref('');
 
 /** Ô đang cân (0-based). -1 = chưa bấm NEXT lần nào (AutoRunning=False trong VBA). */
 const currentIndex = ref(-1);
+// Khoá công tắc nguồn cân trên thanh trên (AppLayout) khi đang cân dở: đổi nguồn giữa mẻ là đổi
+// cái cân mà bì đang chốt theo.
+watch(currentIndex, (i) => { nguonCan.khoa = i >= 0; }, { immediate: true });
 /** Giá trị delta đã chốt cho từng ô — giữ ở client tới lúc SAVE, đúng biến p1..p9 của VBA. */
 const capturedWeights = ref<Record<number, number>>({});
 /**

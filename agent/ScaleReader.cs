@@ -12,40 +12,175 @@ public class ScaleReader : IDisposable
     // Đường dẫn file log PuTTY trên máy trạm cân (xác nhận với người dùng 2026-08-01).
     public const string DefaultLogFilePath = @"D:\scale\putty_log.txt";
 
+    /// <summary>Đọc đuôi file log PuTTY — cách TRUYỀN THỐNG, đúng như Excel VBA.</summary>
+    public const string CheDoPutty = "PUTTY_LOG";
+    /// <summary>Mở thẳng MỘT cổng COM cố định (Scale:PortName) — chỉ bật được từ appsettings.</summary>
+    public const string CheDoSerial = "SERIAL";
+    /// <summary>Tự dò xem cân đang cắm ở cổng COM nào rồi mở thẳng cổng đó (2026-09-24).</summary>
+    public const string CheDoTuDoCom = "AUTO_COM";
+
     private readonly ILogger<ScaleReader> _logger;
     private readonly IConfiguration _config;
     private SerialPort? _serialPort;
     private readonly string[] _logFilePaths;
-    private readonly bool _useSimulation;
+    private readonly string _fileCheDo;
+
+    // Chế độ đổi được lúc đang chạy (công tắc trên /weighing-station-large), nên không còn là
+    // readonly. volatile: vòng đọc 10ms của Worker đọc nó mà không lấy khoá.
+    private volatile string _cheDo = CheDoPutty;
+    private readonly object _cheDoLock = new();
 
     public ScaleReader(ILogger<ScaleReader> logger, IConfiguration config)
     {
         _logger = logger;
         _config = config;
-        // Scale:Source là cờ chính thức (2026-08-01): "PUTTY_LOG" = đọc đuôi file log PuTTY,
-        // đúng cách hệ Excel VBA cũ vẫn chạy ở xưởng; "SERIAL" = mở thẳng cổng COM.
-        //
-        // Trước đây chỉ có cờ UseSimulation, đặt tên sai bản chất: đọc file PuTTY là cách vận
-        // hành THẬT của xưởng suốt nhiều năm, không phải chế độ giả lập. Người vận hành phải bật
-        // một cờ tên "UseSimulation" để chạy sản xuất thật là chỗ rất dễ hiểu nhầm và dễ bị ai đó
-        // tắt đi vì tưởng là đồ demo. Vẫn đọc cờ cũ làm dự phòng để máy đã cài không đổi hành vi
-        // sau khi cập nhật Agent.
-        string? source = _config.GetValue<string>("Scale:Source");
-        _useSimulation = string.IsNullOrWhiteSpace(source)
-            ? _config.GetValue<bool>("Scale:UseSimulation", true)
-            : !string.Equals(source, "SERIAL", StringComparison.OrdinalIgnoreCase);
-
         _logFilePaths = ResolveLogFilePaths(_config);
+        _fileCheDo = _config.GetValue<string>("Scale:ModeFile")
+                     ?? Path.Combine(AppContext.BaseDirectory, "scale_mode.json");
 
-        if (!_useSimulation)
+        // Lựa chọn thợ đã bấm trên màn hình được ưu tiên hơn appsettings — không thì cứ restart
+        // service (cập nhật, mất điện) là công tắc tự nhảy về chỗ cũ mà không ai hay.
+        string? daLuu = DocCheDoDaLuu();
+        string cheDo = daLuu ?? CheDoTuCauHinh(_config);
+        if (daLuu is not null)
         {
-            InitializeSerialPort();
+            _logger.LogInformation("Nguồn cân lấy theo lựa chọn đã lưu trên màn hình ({File}): {Mode}", _fileCheDo, daLuu);
         }
-        else
+
+        ApDungCheDo(cheDo);
+    }
+
+    /// <summary>
+    /// Chế độ đọc cân theo appsettings.
+    ///
+    /// Scale:Source là cờ chính thức (2026-08-01): "PUTTY_LOG" = đọc đuôi file log PuTTY, đúng cách
+    /// hệ Excel VBA cũ vẫn chạy ở xưởng; "SERIAL" = mở thẳng cổng COM; "AUTO_COM" = tự dò cổng.
+    ///
+    /// Trước đây chỉ có cờ UseSimulation, đặt tên sai bản chất: đọc file PuTTY là cách vận hành
+    /// THẬT của xưởng suốt nhiều năm, không phải chế độ giả lập. Vẫn đọc cờ cũ làm dự phòng để máy
+    /// đã cài không đổi hành vi sau khi cập nhật Agent.
+    /// </summary>
+    public static string CheDoTuCauHinh(IConfiguration config)
+    {
+        string? source = config.GetValue<string>("Scale:Source");
+        if (string.IsNullOrWhiteSpace(source))
         {
-            _logger.LogInformation(
-                "Đọc cân từ file log PuTTY (cách cũ, giống Excel VBA). Thứ tự ưu tiên: {Paths}",
-                string.Join(" -> ", _logFilePaths));
+            return config.GetValue<bool>("Scale:UseSimulation", true) ? CheDoPutty : CheDoSerial;
+        }
+
+        if (string.Equals(source, CheDoSerial, StringComparison.OrdinalIgnoreCase)) return CheDoSerial;
+        if (string.Equals(source, CheDoTuDoCom, StringComparison.OrdinalIgnoreCase)) return CheDoTuDoCom;
+        return CheDoPutty;
+    }
+
+    /// <summary>Chế độ đang chạy: <see cref="CheDoPutty"/>, <see cref="CheDoSerial"/> hoặc <see cref="CheDoTuDoCom"/>.</summary>
+    public string CheDo => _cheDo;
+
+    /// <summary>Cổng COM đang đọc (chế độ tự dò hoặc SERIAL), null nếu chưa mở được cổng nào.</summary>
+    public string? CongDangDung => _cheDo switch
+    {
+        CheDoTuDoCom => _congTuDo?.PortName,
+        CheDoSerial => _serialPort is { IsOpen: true } ? _serialPort.PortName : null,
+        _ => null,
+    };
+
+    /// <summary>Một câu cho người đứng máy biết nguồn cân đang ra sao (kết quả dò cổng, file PuTTY...).</summary>
+    public string TrangThaiNguon => _cheDo switch
+    {
+        CheDoTuDoCom => _trangThaiDoCong,
+        CheDoSerial => _serialPort is { IsOpen: true }
+            ? $"Đang đọc cổng cố định {_serialPort.PortName}"
+            : "Không mở được cổng COM cố định trong appsettings (Scale:PortName)",
+        _ => ResolveActiveLogFile() is { } f ? $"Đang đọc file log PuTTY {f}" : "Chưa thấy file log PuTTY",
+    };
+
+    /// <summary>
+    /// Đổi nguồn cân lúc đang chạy — gọi từ công tắc trên màn hình qua <see cref="LocalWeightServer"/>.
+    /// Chỉ nhận PUTTY_LOG và AUTO_COM: SERIAL cần khai báo cổng/baud cụ thể nên chỉ bật từ appsettings.
+    /// </summary>
+    public bool DoiCheDo(string cheDo)
+    {
+        string? chuan = cheDo?.Trim().ToUpperInvariant() switch
+        {
+            CheDoPutty => CheDoPutty,
+            CheDoTuDoCom => CheDoTuDoCom,
+            _ => null,
+        };
+        if (chuan is null) return false;
+
+        ApDungCheDo(chuan);
+        LuuCheDo(chuan);
+        return true;
+    }
+
+    private void ApDungCheDo(string cheDo)
+    {
+        lock (_cheDoLock)
+        {
+            DungTuDoCom();
+            if (_serialPort != null)
+            {
+                try { _serialPort.DataReceived -= OnDataReceived; _serialPort.Close(); } catch { /* đang đóng */ }
+                _serialPort.Dispose();
+                _serialPort = null;
+            }
+
+            // Không mang số / trạng thái StableFilter của nguồn cũ sang nguồn mới: hai dòng liên
+            // tiếp của HAI nguồn khác nhau mà tình cờ trùng số sẽ bị coi là "ổn định".
+            lock (_serialLock)
+            {
+                _serialBuffer.Clear();
+                _latestSerialWeight = null;
+                _latestSerialStable = false;
+            }
+            _lastRawValue = null;
+            _sameValueCount = 0;
+
+            _cheDo = cheDo;
+
+            if (cheDo == CheDoSerial)
+            {
+                InitializeSerialPort();
+            }
+            else if (cheDo == CheDoTuDoCom)
+            {
+                BatTuDoCom();
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Đọc cân từ file log PuTTY (cách cũ, giống Excel VBA). Thứ tự ưu tiên: {Paths}",
+                    string.Join(" -> ", _logFilePaths));
+            }
+        }
+    }
+
+    private string? DocCheDoDaLuu()
+    {
+        try
+        {
+            if (!File.Exists(_fileCheDo)) return null;
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(_fileCheDo));
+            string? m = doc.RootElement.TryGetProperty("mode", out var p) ? p.GetString() : null;
+            return m is CheDoPutty or CheDoTuDoCom ? m : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Không đọc được file lựa chọn nguồn cân {File} ({Msg}) — dùng appsettings.", _fileCheDo, ex.Message);
+            return null;
+        }
+    }
+
+    private void LuuCheDo(string cheDo)
+    {
+        try
+        {
+            File.WriteAllText(_fileCheDo, System.Text.Json.JsonSerializer.Serialize(new { mode = cheDo, at = DateTime.Now }));
+        }
+        catch (Exception ex)
+        {
+            // Không lưu được thì chế độ mới VẪN chạy — chỉ là restart service sẽ về appsettings.
+            _logger.LogWarning("Không lưu được lựa chọn nguồn cân vào {File} ({Msg}).", _fileCheDo, ex.Message);
         }
     }
 
@@ -101,13 +236,14 @@ public class ScaleReader : IDisposable
         }
     }
 
+    // Đọc từ chính cổng phát sự kiện, không từ `_serialPort`: chế độ tự dò dùng cổng riêng `_congTuDo`.
     private void OnDataReceived(object sender, SerialDataReceivedEventArgs e)
     {
-        if (_serialPort == null || !_serialPort.IsOpen) return;
+        if (sender is not SerialPort cong || !cong.IsOpen) return;
 
         try
         {
-            string rawData = _serialPort.ReadExisting();
+            string rawData = cong.ReadExisting();
             IngestSerialData(rawData);
         }
         catch (Exception ex)
@@ -138,7 +274,23 @@ public class ScaleReader : IDisposable
     /// </summary>
     public (double? Weight, bool IsStable) ReadCurrentWeightWithStability()
     {
-        if (_useSimulation || _serialPort == null || !_serialPort.IsOpen)
+        string cheDo = _cheDo;
+
+        if (cheDo == CheDoTuDoCom)
+        {
+            // Không lui về file PuTTY như SERIAL: người dùng đã chọn rõ "tự dò COM", lặng lẽ đọc
+            // file là hiện số từ một nguồn khác với cái đang ghi trên công tắc.
+            //
+            // Số cũ quá ngưỡng thì trả null, KHÔNG trả số cuối: Worker ghi bản chụp mỗi 10ms với
+            // tuổi = 0, nên trả số cuối là màn hình thấy một cái cân "đứng yên" trong khi dây đã rút.
+            if (Environment.TickCount64 - Interlocked.Read(ref _mocSoCuoi) > TuDoComSoCuMs) return (null, false);
+            lock (_serialLock)
+            {
+                return (_latestSerialWeight, _latestSerialStable);
+            }
+        }
+
+        if (cheDo != CheDoSerial || _serialPort == null || !_serialPort.IsOpen)
         {
             return ReadSimulatedWeight();
         }
@@ -221,7 +373,219 @@ public class ScaleReader : IDisposable
                 _latestSerialWeight = weight;
                 _latestSerialStable = isStable;
             }
+            Interlocked.Exchange(ref _mocSoCuoi, Environment.TickCount64);
         }
+    }
+
+    // ======================= CHẾ ĐỘ TỰ DÒ CỔNG COM (AUTO_COM) =======================
+    //
+    // Cân đổi cổng COM mỗi khi cắm cáp USB-RS232 sang lỗ USB khác (Windows cấp số COM mới), và
+    // PuTTY thì phải có người vào sửa session. Chế độ này mở lần lượt từng cổng, cổng nào phát ra
+    // khung số cân thì giữ lấy; mất số quá lâu thì tự dò lại.
+    //
+    // RÀNG BUỘC PHẦN CỨNG: một cổng COM chỉ một chương trình mở được. PuTTY đang mở cổng của cân
+    // thì chế độ này KHÔNG đọc được cổng đó (bị báo "đang bị chương trình khác giữ") — phải tắt
+    // PuTTY của cân này trước khi bật.
+
+    /// <summary>Số cân COM cũ hơn ngần này (ms) coi như không còn — xem ReadCurrentWeightWithStability.</summary>
+    private const int TuDoComSoCuMs = 1500;
+    /// <summary>Đang giữ một cổng mà im quá ngần này (ms) thì bỏ cổng đó, dò lại từ đầu.</summary>
+    private const int TuDoComMatSoMs = 5000;
+    /// <summary>Không tìm thấy cân ở cổng nào thì nghỉ ngần này (ms) rồi dò lại.</summary>
+    private const int TuDoComNghiMs = 3000;
+
+    private SerialPort? _congTuDo;
+    private CancellationTokenSource? _tuDoCts;
+    private volatile string _trangThaiDoCong = "Chưa dò";
+    private long _mocSoCuoi;
+
+    /// <summary>Gọi trong <see cref="_cheDoLock"/>.</summary>
+    private void BatTuDoCom()
+    {
+        _trangThaiDoCong = "Đang dò cổng COM...";
+        _tuDoCts = new CancellationTokenSource();
+        var token = _tuDoCts.Token;
+        _ = Task.Run(() => VongTuDoCom(token), CancellationToken.None);
+        _logger.LogInformation("Nguồn cân: TỰ DÒ cổng COM (baud {Baud}).", _config.GetValue<int>("Scale:BaudRate", 9600));
+    }
+
+    /// <summary>Gọi trong <see cref="_cheDoLock"/>.</summary>
+    private void DungTuDoCom()
+    {
+        _tuDoCts?.Cancel();
+        _tuDoCts?.Dispose();
+        _tuDoCts = null;
+        DongCongTuDo();
+    }
+
+    private void DongCongTuDo()
+    {
+        var cong = Interlocked.Exchange(ref _congTuDo, null);
+        if (cong == null) return;
+        try { cong.DataReceived -= OnDataReceived; cong.Close(); } catch { /* cáp đã rút */ }
+        cong.Dispose();
+    }
+
+    private async Task VongTuDoCom(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var dangGiu = _congTuDo;
+                if (dangGiu != null)
+                {
+                    bool imQuaLau = Environment.TickCount64 - Interlocked.Read(ref _mocSoCuoi) > TuDoComMatSoMs;
+                    if (dangGiu.IsOpen && !imQuaLau)
+                    {
+                        await Task.Delay(1000, ct);
+                        continue;
+                    }
+
+                    _logger.LogWarning("Cổng {Port} không còn số cân quá {Ms}ms — dò lại.", dangGiu.PortName, TuDoComMatSoMs);
+                    lock (_cheDoLock)
+                    {
+                        if (ct.IsCancellationRequested) return;
+                        DongCongTuDo();
+                    }
+                }
+
+                var (timThay, moiDu) = DoTimCongCoCan(ct);
+                if (timThay == null)
+                {
+                    await Task.Delay(TuDoComNghiMs, ct);
+                    continue;
+                }
+
+                // Nhận cổng trong khoá: người dùng có thể vừa gạt công tắc về PuTTY đúng lúc dò
+                // xong — khi đó phải trả cổng ngay, không được giữ nó chặn mất PuTTY.
+                lock (_cheDoLock)
+                {
+                    if (ct.IsCancellationRequested)
+                    {
+                        timThay.Dispose();
+                        return;
+                    }
+
+                    Interlocked.Exchange(ref _mocSoCuoi, Environment.TickCount64);
+                    timThay.DataReceived += OnDataReceived;
+                    _congTuDo = timThay;
+                }
+                IngestSerialData(moiDu);
+                _logger.LogInformation("Tự dò: tìm thấy cân ở {Port}.", timThay.PortName);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Đổi chế độ — thoát êm.
+        }
+        catch (Exception ex)
+        {
+            _trangThaiDoCong = $"Lỗi dò cổng: {ex.Message}";
+            _logger.LogError(ex, "Vòng tự dò cổng COM dừng vì lỗi.");
+        }
+    }
+
+    /// <summary>
+    /// Mở lần lượt từng cổng COM, nghe tối đa Scale:AutoProbeMs (mặc định 1500ms), cổng nào có
+    /// khung số cân thì trả về cổng đó ĐANG MỞ (kèm dữ liệu đã nghe được để nạp luôn).
+    /// </summary>
+    private (SerialPort? Cong, string DuLieu) DoTimCongCoCan(CancellationToken ct)
+    {
+        string[] cacCong = SerialPort.GetPortNames()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n.Length).ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (cacCong.Length == 0)
+        {
+            _trangThaiDoCong = "Máy không có cổng COM nào — kiểm tra cáp USB-RS232 của cân đã cắm chưa.";
+            return (null, string.Empty);
+        }
+
+        int ngheMs = _config.GetValue<int>("Scale:AutoProbeMs", 1500);
+        var ketQua = new List<string>();
+
+        foreach (string ten in cacCong)
+        {
+            ct.ThrowIfCancellationRequested();
+            _trangThaiDoCong = $"Đang thử {ten}...";
+
+            SerialPort? cong = null;
+            try
+            {
+                cong = TaoCong(ten);
+                cong.Open();
+
+                var nghe = new System.Text.StringBuilder();
+                long han = Environment.TickCount64 + ngheMs;
+                while (Environment.TickCount64 < han && !ct.IsCancellationRequested)
+                {
+                    string s = cong.ReadExisting();
+                    if (s.Length > 0)
+                    {
+                        nghe.Append(s);
+                        if (nghe.Length > TailWindowBytes) nghe.Remove(0, nghe.Length - TailWindowBytes);
+                        if (CoKhungSoCan(nghe.ToString()))
+                        {
+                            _trangThaiDoCong = $"Đang đọc cân ở {ten} (tự dò)";
+                            return (cong, nghe.ToString());
+                        }
+                    }
+                    Thread.Sleep(50);
+                }
+
+                ketQua.Add(nghe.Length == 0 ? $"{ten}: im lặng" : $"{ten}: không phải số cân");
+            }
+            catch (UnauthorizedAccessException)
+            {
+                ketQua.Add($"{ten}: đang bị chương trình khác giữ (PuTTY?)");
+            }
+            catch (Exception ex)
+            {
+                ketQua.Add($"{ten}: {ex.Message}");
+            }
+
+            try { cong?.Close(); } catch { /* bỏ qua */ }
+            cong?.Dispose();
+        }
+
+        _trangThaiDoCong = "Không thấy cân ở cổng nào — " + string.Join("; ", ketQua);
+        return (null, string.Empty);
+    }
+
+    private SerialPort TaoCong(string ten)
+    {
+        var cong = new SerialPort(
+            ten,
+            _config.GetValue<int>("Scale:BaudRate", 9600),
+            _config.GetValue<Parity>("Scale:Parity", Parity.None),
+            _config.GetValue<int>("Scale:DataBits", 8),
+            _config.GetValue<StopBits>("Scale:StopBits", StopBits.One));
+        // PuTTY (cách đang chạy được ở xưởng) bật sẵn DTR/RTS khi mở cổng; một số cáp USB-RS232
+        // không cấp nguồn cho đầu chuyển nếu thiếu hai chân này, và khi đó cân im lặng hoàn toàn.
+        cong.DtrEnable = _config.GetValue<bool>("Scale:DtrEnable", true);
+        cong.RtsEnable = _config.GetValue<bool>("Scale:RtsEnable", true);
+        return cong;
+    }
+
+    /// <summary>
+    /// Đoạn dữ liệu nghe được có phải từ một cái cân hay không: cần ÍT NHẤT HAI dòng trọn vẹn đều
+    /// là khung số cân. Một dòng thì chưa đủ — sai baud cũng ra rác, mà rác thỉnh thoảng lọt được
+    /// một chữ số và qua mặt được <see cref="LaDongSoCan"/>.
+    /// </summary>
+    public static bool CoKhungSoCan(string duLieu)
+    {
+        int cuoi = duLieu.LastIndexOfAny(LineBreakChars);
+        if (cuoi < 0) return false;
+
+        int soDong = 0;
+        foreach (string dong in duLieu.Substring(0, cuoi).Split(LineBreakChars, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!LaDongSoCan(dong) || TrichSoCan(dong).Value is null) continue;
+            if (++soDong >= 2) return true;
+        }
+        return false;
     }
 
     // Throttle cảnh báo "chưa thấy file log cân" — vòng lặp Worker nay chạy mỗi ReadIntervalMs
@@ -528,6 +892,7 @@ public class ScaleReader : IDisposable
 
     public void Dispose()
     {
+        lock (_cheDoLock) { DungTuDoCom(); }
         if (_serialPort != null)
         {
             if (_serialPort.IsOpen)

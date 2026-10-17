@@ -41,7 +41,7 @@ public class LocalWeightServerTests : IAsyncLifetime
             })
             .Build();
 
-        _server = new LocalWeightServer(NullLogger<LocalWeightServer>.Instance, config, _snapshot);
+        _server = new LocalWeightServer(NullLogger<LocalWeightServer>.Instance, config, _snapshot, DocCan(config));
     }
 
     public async Task InitializeAsync()
@@ -157,7 +157,7 @@ public class LocalWeightServerTests : IAsyncLifetime
             })
             .Build();
 
-        var tat = new LocalWeightServer(NullLogger<LocalWeightServer>.Instance, config, new ScaleSnapshot());
+        var tat = new LocalWeightServer(NullLogger<LocalWeightServer>.Instance, config, new ScaleSnapshot(), DocCan(config));
         await tat.StartAsync(CancellationToken.None);
 
         // 3 lan go cua la du: neu no CO mo cong thi mo ngay, khong phai doi 2 giay.
@@ -183,7 +183,7 @@ public class LocalWeightServerTests : IAsyncLifetime
             })
             .Build();
 
-        var rackOnly = new LocalWeightServer(NullLogger<LocalWeightServer>.Instance, config, new ScaleSnapshot());
+        var rackOnly = new LocalWeightServer(NullLogger<LocalWeightServer>.Instance, config, new ScaleSnapshot(), DocCan(config));
         await rackOnly.StartAsync(CancellationToken.None);
 
         Assert.False(await ChoCongMo(congKhac, soLan: 3));
@@ -291,8 +291,73 @@ public class LocalWeightServerTests : IAsyncLifetime
         Assert.InRange(dem, 1, 8);
     }
 
+    /* ========================== CONG TAC NGUON CAN: /scale/source ========================== */
+
+    // File luu lua chon phai nam ngoai thu muc bin, khong thi lan chay test sau doc lai lua chon
+    // cua lan truoc va ca bo test doi hanh vi.
+    private static readonly string FileCheDoTest = Path.Combine(Path.GetTempPath(), $"dfagent_scale_mode_{Guid.NewGuid():N}.json");
+
+    private static ScaleReader DocCan(IConfiguration config)
+    {
+        var voiFile = new ConfigurationBuilder()
+            .AddConfiguration(config)
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Scale:ModeFile"] = FileCheDoTest })
+            .Build();
+        return new ScaleReader(NullLogger<ScaleReader>.Instance, voiFile);
+    }
+
+    private Task<HttpResponseMessage> DoiNguon(string body, string? origin)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{CongTest}/scale/source")
+        {
+            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
+        };
+        if (origin != null) req.Headers.Add("Origin", origin);
+        return _http.SendAsync(req);
+    }
+
+    [Fact]
+    public async Task Nguon_can_mac_dinh_la_PuTTY_va_hien_trong_goi_so_can()
+    {
+        var goi = JsonDocument.Parse(await _http.GetStringAsync($"http://127.0.0.1:{CongTest}/weight")).RootElement;
+        Assert.Equal("PUTTY_LOG", goi.GetProperty("scale_mode").GetString());
+
+        var nguon = JsonDocument.Parse(await _http.GetStringAsync($"http://127.0.0.1:{CongTest}/scale/source")).RootElement;
+        Assert.Equal("PUTTY_LOG", nguon.GetProperty("scale_mode").GetString());
+    }
+
+    [Fact]
+    public async Task Doi_nguon_tu_origin_la_bi_tu_choi()
+    {
+        var res = await DoiNguon("{\"mode\":\"AUTO_COM\"}", "https://trang-la.example.com");
+        Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+
+        var nguon = JsonDocument.Parse(await _http.GetStringAsync($"http://127.0.0.1:{CongTest}/scale/source")).RootElement;
+        Assert.Equal("PUTTY_LOG", nguon.GetProperty("scale_mode").GetString());
+    }
+
+    [Fact]
+    public async Task Doi_nguon_hop_le_roi_doi_lai()
+    {
+        var bat = await DoiNguon("{\"mode\":\"AUTO_COM\"}", "http://localhost:3001");
+        Assert.Equal(HttpStatusCode.OK, bat.StatusCode);
+        Assert.Equal("AUTO_COM", JsonDocument.Parse(await bat.Content.ReadAsStringAsync()).RootElement.GetProperty("scale_mode").GetString());
+
+        var tat = await DoiNguon("{\"mode\":\"PUTTY_LOG\"}", "http://localhost:3001");
+        Assert.Equal("PUTTY_LOG", JsonDocument.Parse(await tat.Content.ReadAsStringAsync()).RootElement.GetProperty("scale_mode").GetString());
+    }
+
+    [Fact]
+    public async Task Doi_nguon_SERIAL_hoac_rac_bi_422()
+    {
+        // SERIAL can cong/baud cu the nen chi bat tu appsettings, khong cho gat tu man hinh.
+        Assert.Equal((HttpStatusCode) 422, (await DoiNguon("{\"mode\":\"SERIAL\"}", null)).StatusCode);
+        Assert.Equal((HttpStatusCode) 422, (await DoiNguon("khong-phai-json", null)).StatusCode);
+    }
+
     public async Task DisposeAsync()
     {
+        try { File.Delete(FileCheDoTest); } catch { }
         _cts.Cancel();
         try { await _server.StopAsync(CancellationToken.None); } catch { }
         _http.Dispose();

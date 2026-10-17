@@ -367,4 +367,33 @@ public class ScaleReaderTests
         }
         finally { File.Delete(path); }
     }
+
+    // Tu do cong COM (AUTO_COM): nhan dang mot cong "co can" tu du lieu nghe duoc.
+    [Theory]
+    [InlineData("US,+000466.6  g\r\n0000000\r\nUS,+000486.7  g\r\n", true)]   // can to, xen dong 0
+    [InlineData("12,ST,GS,+000010.5g\r\n12,ST,GS,+000010.5g\r\n", true)]      // can nho
+    [InlineData("US,+000466.6  g\r\n", false)]                                // mot dong chua du
+    [InlineData("US,+000466.6  g\r\nUS,+0004", false)]                        // dong thu hai con cut
+    [InlineData("0000000\r\n0000000\r\n0000000\r\n", false)]                  // toan so 0
+    [InlineData("ðþÿ\r\nàá\r\n", false)]             // sai baud: rac khong co so
+    [InlineData("", false)]
+    public void CoKhungSoCan_nhan_dung_cong_co_can(string duLieu, bool mongDoi)
+    {
+        Assert.Equal(mongDoi, ScaleReader.CoKhungSoCan(duLieu));
+    }
+
+    [Theory]
+    [InlineData(null, null, "PUTTY_LOG")]
+    [InlineData("SERIAL", null, "SERIAL")]
+    [InlineData("auto_com", null, "AUTO_COM")]
+    [InlineData(null, "false", "SERIAL")]
+    [InlineData("la-lung", null, "PUTTY_LOG")]
+    public void CheDoTuCauHinh_doc_dung_Scale_Source(string? source, string? useSim, string mongDoi)
+    {
+        var dict = new Dictionary<string, string?>();
+        if (source != null) dict["Scale:Source"] = source;
+        if (useSim != null) dict["Scale:UseSimulation"] = useSim;
+        var config = new ConfigurationBuilder().AddInMemoryCollection(dict).Build();
+        Assert.Equal(mongDoi, ScaleReader.CheDoTuCauHinh(config));
+    }
 }

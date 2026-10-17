@@ -14,6 +14,9 @@
 import { ref, watch, onUnmounted } from 'vue';
 import axios from 'axios';
 import { currentWorkstation } from '../services/workstation';
+import { CONG_AGENT_CUC_BO, nguonCan, ghiNguonTuGoiSo, type ScaleKind } from '../services/scaleSource';
+
+export type { ScaleKind };
 
 /**
  * Số cân cũ hơn ngưỡng này coi như KHÔNG CÒN GIÁ TRỊ: không hiển thị, không được làm bì, không
@@ -43,30 +46,7 @@ const STALE_READING_MS = 1500;
  */
 const LOST_SIGNAL_MS = 3000;
 
-/**
- * Loại cân mà màn hình đang dùng — cũng chính là loại BỘ CÀI Agent phục vụ nó:
- *   SMALL → Agent "Cân nhỏ" (service DFAgentSmall, mã trạm WS-SCALE-*), màn /weighing-station-v2
- *   LARGE → Agent "Cân to"  (service DFAgentLarge, mã trạm WS-LARGE-*), màn /weighing-station-large
- *
- * Hai bộ cài chạy song song được trên CÙNG một máy, mà backend ghép cặp trình duyệt với Agent
- * theo IP nguồn — nên nếu không nói rõ đang hỏi cân nào thì màn Cân to có thể đọc phải số của
- * cân nhỏ. Tham số này chính là thứ tách hai đường đó ra.
- */
-export type ScaleKind = 'SMALL' | 'LARGE';
-
-/**
- * ĐƯỜNG CÂN CỤC BỘ (ADR-013) — cổng mà Agent trên CHÍNH máy trạm này đang nghe.
- *
- * Vì sao có: Agent đọc cân mỗi 10ms, nhưng đi qua backend thì con số phải chờ hai lần nhịp
- * (Agent đẩy 200ms + màn hình hỏi 200ms) cộng hai chặng mạng qua một backend xử lý tuần tự —
- * tổng 400-900ms. Đọc thẳng Agent trên loopback còn ~50ms, tức ngang bản VBA đang chạy ngoài
- * xưởng (nó đọc cùng file log, cùng máy, không qua server nào).
- *
- * Con số cổng là QUY ƯỚC hai bên tự biết: trang web không có cách nào đọc `appsettings.json` của
- * Agent. Đổi ở đây thì phải đổi `LocalWeightServer.CongMacDinh*` bên `agent/LocalWeightServer.cs`.
- * Hai loại cân hai cổng vì hai bộ cài chạy song song được trên cùng một máy.
- */
-const CONG_AGENT_CUC_BO: Record<ScaleKind, number> = { SMALL: 8770, LARGE: 8771 };
+// ScaleKind và CONG_AGENT_CUC_BO nay ở services/scaleSource.ts — thanh trên của AppLayout cũng cần.
 
 /**
  * Cắt cuộc gọi cục bộ sau ngần này. Trên loopback, trả lời mất chưa tới 1ms và cổng đóng thì bị
@@ -287,9 +267,14 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
     readingAgeMs.value = typeof ageMs === 'number' ? ageMs : null;
     const fresh = d?.has_reading !== false && (ageMs == null || ageMs <= STALE_READING_MS);
 
+    // Chỉ Agent cục bộ gửi mấy trường này — gói từ backend không có thì thành "không rõ", đừng giữ
+    // lại giá trị cũ của một nguồn đã không còn trả lời.
+    ghiNguonTuGoiSo(scaleKind, d);
+
     ingestRawWeight(parseFloat(d?.weight ?? 0), Boolean(d?.is_stable), fresh);
     scaleOnline.value = true;
   }
+
 
   /**
    * Hỏi Agent trên chính máy này. Trả `null` nghĩa là không có đường đó — người gọi phải tự rơi
@@ -486,7 +471,27 @@ export function useScaleFeed(scaleKind: ScaleKind = 'SMALL') {
     else mocThuLaiCucBo = 0;
   });
 
-  onUnmounted(stopPolling);
+  // Công tắc nguồn cân trên thanh trên (AppLayout) chỉ hiện khi có màn trạm cân đang mở — màn
+  // nào dùng composable này thì nhận làm chủ công tắc cho tới khi rời trang.
+  nguonCan.kind = scaleKind;
+  nguonCan.mode = null;
+  nguonCan.port = null;
+  nguonCan.msg = null;
+  nguonCan.khoa = false;
+
+  // Đổi nguồn là đổi cả cái cân đang đọc — bì của nguồn cũ không còn nghĩa gì. Chỉ khi đổi giữa
+  // HAI nguồn đã biết: null -> PUTTY_LOG là lúc đường cục bộ vừa nối lại, không phải đổi nguồn.
+  watch(() => nguonCan.mode, (moi, cu) => {
+    if (moi && cu && moi !== cu) resetTareForNewSlot();
+  });
+
+  onUnmounted(() => {
+    stopPolling();
+    if (nguonCan.kind === scaleKind) {
+      nguonCan.kind = null;
+      nguonCan.khoa = false;
+    }
+  });
 
   return {
     liveWeight,

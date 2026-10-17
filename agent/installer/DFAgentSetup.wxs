@@ -220,7 +220,14 @@
      StableFilter(rawNum). Dong cua can to mang co ST/US o dau va co nay nhay lien tuc ngay ca khi
      con so dung yen, nen so tren dong tho thi bo dem bi reset mai mai.
      Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode. -->
-<?define PackageVersion = "4.8.0.0"?>
+<!-- 4.9.0.0 (24/09/2026) — CONG TAC NGUON CAN: PuTTY (truyen thong) hoac TU DO COM.
+     Scale:Source nhan them AUTO_COM: Agent mo lan luot tung cong COM, cong nao phat >= 2 dong khung
+     so can thi giu va doc thang; im > 5s thi do lai. Doi duoc luc dang chay qua POST /scale/source
+     tren cong loopback (cong tac o thanh tren man can), lua chon luu vao scale_mode.json canh exe.
+     POST chi nhan origin loopback / host Backend:Urls / Local:AllowedOriginHosts.
+     AUTO_COM KHONG doc duoc cong dang bi PuTTY giu — phai tat PuTTY cua can do truoc.
+     Nhay minor: khong doi ten service, thu muc cai hay UpgradeCode. -->
+<?define PackageVersion = "4.9.0.0"?>
 <?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="DF Local Agent ($(var.ProductLabel))"

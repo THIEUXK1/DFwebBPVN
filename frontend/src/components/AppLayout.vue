@@ -62,6 +62,9 @@
         <button class="topbar-toggle-btn" @click="setTopbarPref('show')" :title="$t('layout.topbarShowTitle')">
           {{ $t('layout.topbarShowLabel') }}
         </button>
+        <!-- Công tắc nguồn cân cũng phải có ở dải thu gọn: đây là dạng MẶC ĐỊNH của cannho/canto,
+             chỉ đặt ở topbar đầy đủ thì thợ trạm cân không bao giờ thấy nó. -->
+        <ScaleSourceSwitch compact />
         <span class="collapsed-ws">{{ currentWorkstation ? currentWorkstation.code : $t('layout.noWorkstationConfigured') }}</span>
       </div>
 
@@ -82,6 +85,9 @@
         </div>
 
         <div class="topbar-right">
+          <!-- Nguồn cân (PuTTY / tự dò COM) — tự ẩn khi không mở màn trạm cân nào. -->
+          <ScaleSourceSwitch />
+
           <!-- Workstation Pill: mọi tài khoản đã đăng nhập đều bấm được để đổi trạm. Chỉ phiên
                kiosk (mở bằng link máy, không đăng nhập) mới bị cố định trạm theo link. -->
           <div
@@ -298,6 +304,7 @@ import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '../stores/auth';
 import { useRouter, useRoute } from 'vue-router';
 import SvgIcon from './SvgIcon.vue';
+import ScaleSourceSwitch from './ScaleSourceSwitch.vue';
 import {
   currentWorkstation,
   workstationsList,

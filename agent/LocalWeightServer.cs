@@ -63,14 +63,19 @@ public class LocalWeightServer : BackgroundService
     private readonly int _port;
     private readonly string _workstationId;
     private readonly string _scaleKind;
+    private readonly ScaleReader _scaleReader;
+    private readonly HashSet<string> _hostDuocDoiNguon;
 
     public LocalWeightServer(
         ILogger<LocalWeightServer> logger,
         IConfiguration config,
-        ScaleSnapshot snapshot)
+        ScaleSnapshot snapshot,
+        ScaleReader scaleReader)
     {
         _logger = logger;
         _snapshot = snapshot;
+        _scaleReader = scaleReader;
+        _hostDuocDoiNguon = HostDuocDoiNguon(config);
 
         _scaleKind = Worker.ResolveScaleKind(config);
         _workstationId = Worker.ResolveWorkstationId(config);
@@ -145,7 +150,7 @@ public class LocalWeightServer : BackgroundService
             // CORS: trang web chạy ở origin khác (http://localhost:3001 hoặc http://10.0.60.209:3001).
             // `*` chấp nhận được vì chỉ nghe loopback và chỉ trả một con số cân đọc-được.
             res.AddHeader("Access-Control-Allow-Origin", "*");
-            res.AddHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+            res.AddHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
             res.AddHeader("Access-Control-Allow-Headers", "Content-Type");
             // Xem ghi chú số 2 ở đầu lớp — thiếu dòng này là Chrome chặn khi mở màn bằng IP riêng.
             res.AddHeader("Access-Control-Allow-Private-Network", "true");
@@ -164,6 +169,12 @@ public class LocalWeightServer : BackgroundService
             if (duong.Equals("/weight/stream", StringComparison.OrdinalIgnoreCase))
             {
                 await PhucVuLuong(res, token);
+                return;
+            }
+
+            if (duong.Equals("/scale/source", StringComparison.OrdinalIgnoreCase))
+            {
+                await PhucVuNguonCan(ctx);
                 return;
             }
 
@@ -262,6 +273,92 @@ public class LocalWeightServer : BackgroundService
             age_ms = ban?.TuoiMs,
             source = "AGENT_LOCAL",
             scale_kind = _scaleKind,
+            // Công tắc nguồn cân trên màn hình đọc 3 trường này ngay trong luồng số cân, khỏi
+            // phải hỏi riêng. Đường backend không có chúng — màn hình coi như "không rõ".
+            scale_mode = _scaleReader.CheDo,
+            com_port = _scaleReader.CongDangDung,
+            scale_msg = _scaleReader.TrangThaiNguon,
         });
+    }
+
+    /// <summary>
+    /// `GET /scale/source` — nguồn cân đang dùng. `POST /scale/source` body `{"mode":"PUTTY_LOG"|"AUTO_COM"}`
+    /// — công tắc trên /weighing-station-large.
+    ///
+    /// POST là thao tác GHI đầu tiên của cổng không xác thực này, nên không mở cho mọi origin như
+    /// GET: trang web nào đang mở trên máy trạm cũng gọi được 127.0.0.1, và một trang lạ gạt nguồn
+    /// cân giữa ca là cân chết câm. Chỉ nhận origin là loopback hoặc máy chủ DF (host lấy từ
+    /// Backend:Urls, cộng Local:AllowedOriginHosts). Không có Origin (curl ngay trên máy) thì cho qua.
+    /// </summary>
+    private async Task PhucVuNguonCan(HttpListenerContext ctx)
+    {
+        var req = ctx.Request;
+        var res = ctx.Response;
+
+        if (req.HttpMethod == "POST")
+        {
+            string? origin = req.Headers["Origin"];
+            if (!string.IsNullOrEmpty(origin)
+                && !(Uri.TryCreate(origin, UriKind.Absolute, out var o) && _hostDuocDoiNguon.Contains(o.Host)))
+            {
+                _logger.LogWarning("Tu choi doi nguon can tu origin la: {Origin}", origin);
+                GhiJson(res, 403, new { status = "FORBIDDEN", message = "Origin khong duoc phep doi nguon can" });
+                return;
+            }
+
+            string? mode = null;
+            try
+            {
+                using var doc = await JsonDocument.ParseAsync(req.InputStream);
+                if (doc.RootElement.TryGetProperty("mode", out var m)) mode = m.GetString();
+            }
+            catch (JsonException) { /* xử lý như thiếu mode bên dưới */ }
+
+            if (mode is null || !_scaleReader.DoiCheDo(mode))
+            {
+                GhiJson(res, 422, new { status = "INVALID", message = "mode phai la PUTTY_LOG hoac AUTO_COM" });
+                return;
+            }
+
+            _logger.LogInformation("Nguon can doi sang {Mode} theo cong tac tren man hinh (origin {Origin})", mode, origin ?? "-");
+        }
+        else if (req.HttpMethod != "GET")
+        {
+            res.StatusCode = 405;
+            res.Close();
+            return;
+        }
+
+        GhiJson(res, 200, new
+        {
+            status = "SUCCESS",
+            scale_mode = _scaleReader.CheDo,
+            com_port = _scaleReader.CongDangDung,
+            scale_msg = _scaleReader.TrangThaiNguon,
+        });
+    }
+
+    private static void GhiJson(HttpListenerResponse res, int status, object duLieu)
+    {
+        var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(duLieu));
+        res.StatusCode = status;
+        res.ContentType = "application/json; charset=utf-8";
+        res.ContentLength64 = body.Length;
+        res.OutputStream.Write(body, 0, body.Length);
+        res.Close();
+    }
+
+    private static HashSet<string> HostDuocDoiNguon(IConfiguration config)
+    {
+        var hosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "localhost", "127.0.0.1" };
+        foreach (var url in Worker.ResolveBackendUrls(config))
+        {
+            if (Uri.TryCreate(url, UriKind.Absolute, out var u)) hosts.Add(u.Host);
+        }
+        foreach (var h in config.GetSection("Local:AllowedOriginHosts").Get<string[]>() ?? Array.Empty<string>())
+        {
+            if (!string.IsNullOrWhiteSpace(h)) hosts.Add(h.Trim());
+        }
+        return hosts;
     }
 }
